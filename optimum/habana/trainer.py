@@ -16,10 +16,12 @@ import copy
 import math
 import os
 import random
+import shutil
 import sys
 import tempfile
 import time
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -29,6 +31,7 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
 
+from optimum.habana.trainer_utils import to_device_dtype
 from optimum.utils import logging
 from transformers import Trainer, __version__
 from transformers.configuration_utils import PretrainedConfig
@@ -65,6 +68,8 @@ from transformers.trainer_utils import (
     EvalLoopOutput,
     EvalPrediction,
     HPSearchBackend,
+    HubStrategy,
+    IntervalStrategy,
     PredictionOutput,
     ShardedDDPOption,
     TrainOutput,
@@ -76,7 +81,7 @@ from transformers.trainer_utils import (
 )
 from transformers.training_args import TrainingArguments
 
-from .gaudi_configuration import GaudiConfig
+from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 
 
 if TYPE_CHECKING:
@@ -196,7 +201,7 @@ class GaudiTrainer(Trainer):
                 )
                 raise error
             self.FusedNorm = FusedClipNorm(
-                model.parameters(),
+                self.model.parameters(),
                 self.args.max_grad_norm,
             )
 
@@ -209,16 +214,23 @@ class GaudiTrainer(Trainer):
         if self.optimizer is None:
             decay_parameters = get_parameter_names(self.model, [torch.nn.LayerNorm])
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
-            optimizer_grouped_parameters = [
-                {
-                    "params": [p for n, p in self.model.named_parameters() if n in decay_parameters],
-                    "weight_decay": self.args.weight_decay,
-                },
-                {
-                    "params": [p for n, p in self.model.named_parameters() if n not in decay_parameters],
-                    "weight_decay": 0.0,
-                },
-            ]
+
+            optimizer_grouped_parameters = []
+            for t_params, t_weight_decay in zip(
+                [
+                    [p for n, p in self.model.named_parameters() if n in decay_parameters],
+                    [p for n, p in self.model.named_parameters() if n not in decay_parameters],
+                ],
+                [self.args.weight_decay, 0.0],
+            ):
+                # Empty groups of parameters are filtered because they make FusedAdamW crash
+                if t_params:
+                    optimizer_grouped_parameters.append(
+                        {
+                            "params": t_params,
+                            "weight_decay": t_weight_decay,
+                        }
+                    )
 
             if self.gaudi_config.use_fused_adam:
                 try:
@@ -329,14 +341,15 @@ class GaudiTrainer(Trainer):
                 model = torch.nn.parallel.DistributedDataParallel(
                     model, bucket_cap_mb=230, gradient_as_bucket_view=True
                 )
-            elif self.args.ddp_bucket_cap_mb is not None:
-                kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
-            model = torch.nn.parallel.DistributedDataParallel(
-                model,
-                device_ids=[self.args.local_rank] if self.args._n_gpu != 0 else None,
-                output_device=self.args.local_rank if self.args._n_gpu != 0 else None,
-                **kwargs,
-            )
+            else:
+                if self.args.ddp_bucket_cap_mb is not None:
+                    kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
+                model = torch.nn.parallel.DistributedDataParallel(
+                    model,
+                    device_ids=[self.args.local_rank] if self.args._n_gpu != 0 else None,
+                    output_device=self.args.local_rank if self.args._n_gpu != 0 else None,
+                    **kwargs,
+                )
 
         return model
 
@@ -397,6 +410,18 @@ class GaudiTrainer(Trainer):
             model_reloaded = True
             # Reinitializes optimizer and scheduler
             self.optimizer, self.lr_scheduler = None, None
+            # Reinitialize Habana fused clip norm to avoid inconsistencies
+            # If not done, test_model_init in test_trainer.py will fail
+            if args.use_habana and self.gaudi_config.use_fused_clip_norm:
+                try:
+                    from habana_frameworks.torch.hpex.normalization import FusedClipNorm
+                except ImportError as error:
+                    error.msg = f"Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'. {error.msg}."
+                    raise error
+                self.FusedNorm = FusedClipNorm(
+                    self.model.parameters(),
+                    self.args.max_grad_norm,
+                )
 
         # Load potential model checkpoint
         if isinstance(resume_from_checkpoint, bool) and resume_from_checkpoint:
@@ -587,9 +612,7 @@ class GaudiTrainer(Trainer):
         # _total_loss_scalar is updated everytime .item() has to be called on tr_loss and stores the sum of all losses
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
-        # model.zero_grad()
-        for param in model.parameters():
-            param.grad = None
+        model.zero_grad(set_to_none=True)
 
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
@@ -659,12 +682,9 @@ class GaudiTrainer(Trainer):
                 else:
                     tr_loss_step = self.training_step(model, inputs)
 
-                if args.logging_nan_inf_filter and (not (args.use_habana or is_torch_tpu_available())):
-                    if torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step):
-                        # if loss is nan or inf simply add the average of previous logged losses
-                        tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
-                    else:
-                        tr_loss += tr_loss_step
+                if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
+                    # if loss is nan or inf simply add the average of previous logged losses
+                    tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                 else:
                     tr_loss += tr_loss_step
 
@@ -742,9 +762,7 @@ class GaudiTrainer(Trainer):
                     if optimizer_was_run and not self.deepspeed:
                         self.lr_scheduler.step()
 
-                    # model.zero_grad()
-                    for param in model.parameters():
-                        param.grad = None
+                    model.zero_grad(set_to_none=True)
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
                     if args.use_lazy_mode:
@@ -898,13 +916,7 @@ class GaudiTrainer(Trainer):
         elif self.args.should_save and not self.deepspeed:
             # deepspeed.save_checkpoint above saves model/optim/sched
             if self.args.use_habana:
-                optim_dict = dict()
-                for state in self.optimizer.state.values():
-                    for k, v in state.items():
-                        if isinstance(v, torch.Tensor):
-                            optim_dict[k] = v.to("cpu")
-                        else:
-                            optim_dict[k] = v
+                optim_dict = to_device_dtype(self.optimizer.state_dict(), target_device=torch.device("cpu"))
                 torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
             else:
                 torch.save(self.optimizer.state_dict(), os.path.join(output_dir, OPTIMIZER_NAME))
@@ -1105,10 +1117,7 @@ class GaudiTrainer(Trainer):
             all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
         if preds_host is not None:
             if args.use_habana:
-                if isinstance(preds_host, tuple):
-                    preds_host = tuple(v.to(dtype=torch.float32) for v in preds_host)
-                else:
-                    preds_host = preds_host.to(dtype=torch.float32)
+                preds_host = to_device_dtype(preds_host, target_dtype=torch.float32)
             logits = nested_numpify(preds_host)
             all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
         if labels_host is not None:
@@ -1450,7 +1459,7 @@ class GaudiTrainer(Trainer):
             state_dict = self.model.state_dict()
         if state_dict:
             # state_dict items have to be saved on the CPU
-            state_dict = {k: v.to("cpu") for k, v in state_dict.items()}
+            state_dict = to_device_dtype(state_dict, target_device=torch.device("cpu"))
 
         # Save a trained model and configuration using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
@@ -1466,5 +1475,72 @@ class GaudiTrainer(Trainer):
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
 
+        self.gaudi_config.save_pretrained(output_dir)
+
         # Good practice: save your training arguments together with the trained model
         torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
+
+    def _push_from_checkpoint(self, checkpoint_folder):
+        # Only push from one node.
+        if not self.is_world_process_zero() or self.args.hub_strategy == HubStrategy.END:
+            return
+        # If we haven't finished the last push, we don't do this one.
+        if self.push_in_progress is not None and not self.push_in_progress.is_done:
+            return
+
+        output_dir = self.args.output_dir
+        # To avoid a new synchronization of all model weights, we just copy the file from the checkpoint folder
+        modeling_files = [CONFIG_NAME, WEIGHTS_NAME, GAUDI_CONFIG_NAME]
+        for modeling_file in modeling_files:
+            if os.path.isfile(os.path.join(checkpoint_folder, modeling_file)):
+                shutil.copy(os.path.join(checkpoint_folder, modeling_file), os.path.join(output_dir, modeling_file))
+        # Saving the tokenizer is fast and we don't know how many files it may have spawned, so we resave it to be sure.
+        if self.tokenizer is not None:
+            self.tokenizer.save_pretrained(output_dir)
+        # Same for the training arguments
+        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
+
+        try:
+            if self.args.hub_strategy == HubStrategy.CHECKPOINT:
+                # Temporarily move the checkpoint just saved for the push
+                tmp_checkpoint = os.path.join(output_dir, "last-checkpoint")
+                # We have to remove the "last-checkpoint" dir if it exists, otherwise the checkpoint is moved as a
+                # subfolder.
+                if os.path.isdir(tmp_checkpoint):
+                    shutil.rmtree(tmp_checkpoint)
+                shutil.move(checkpoint_folder, tmp_checkpoint)
+
+            if self.args.save_strategy == IntervalStrategy.STEPS:
+                commit_message = f"Training in progress, step {self.state.global_step}"
+            else:
+                commit_message = f"Training in progress, epoch {int(self.state.epoch)}"
+            _, self.push_in_progress = self.repo.push_to_hub(
+                commit_message=commit_message, blocking=False, auto_lfs_prune=True
+            )
+        finally:
+            if self.args.hub_strategy == HubStrategy.CHECKPOINT:
+                # Move back the checkpoint to its place
+                shutil.move(tmp_checkpoint, checkpoint_folder)
+
+    def _load_optimizer_and_scheduler(self, checkpoint):
+        """If optimizer and scheduler states exist, load them."""
+        if checkpoint is None:
+            return
+
+        if os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) and os.path.isfile(
+            os.path.join(checkpoint, SCHEDULER_NAME)
+        ):
+            # Load in optimizer and scheduler states
+            map_location = "cpu" if self.args.use_habana else self.args.device
+            self.optimizer.load_state_dict(
+                torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
+            )
+            # Move optimizer states to HPU
+            if self.args.use_habana:
+                to_device_dtype(self.optimizer.state.values(), target_device=torch.device("hpu"))
+
+            with warnings.catch_warnings(record=True) as caught_warnings:
+                self.lr_scheduler.load_state_dict(torch.load(os.path.join(checkpoint, SCHEDULER_NAME)))
+            reissue_pt_warnings(caught_warnings)
+            if self.do_grad_scaling and os.path.isfile(os.path.join(checkpoint, SCALER_NAME)):
+                self.scaler.load_state_dict(torch.load(os.path.join(checkpoint, SCALER_NAME)))

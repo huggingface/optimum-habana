@@ -42,6 +42,7 @@ DEFAULT_FP32_OPS = [
     "nll_loss",
     "log_softmax",
 ]
+GAUDI_CONFIG_NAME = "gaudi_config.json"
 
 
 class GaudiConfig(BaseConfig):

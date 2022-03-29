@@ -20,6 +20,7 @@ install_requires = [
     "sentencepiece",
     "scipy",
     "pillow",
+    "psutil",
     "pytest",
     "pytest-pythonpath",
     "parameterized",
