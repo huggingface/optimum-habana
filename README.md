@@ -42,7 +42,7 @@ pip install -r requirements.txt`
 ## How to use it?
 🤗 Optimum Habana was designed with one goal in mind: make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors.
 There are two main classes one needs to know:
-- GaudiTrainer: the trainer class that takes care of compiling (lazy mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
+- GaudiTrainer: the trainer class that takes care of compiling (lazy mode) or not (eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
 - GaudiConfig: the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
 
 The `GaudiTrainer` is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
@@ -95,15 +95,48 @@ trainer = GaudiTrainer(
 )
 ```
 
+with for example the following Gaudi configuration written in a JSON file:
+```json
+{
+  "use_habana_mixed_precision": true,
+  "hmp_opt_level": "O1",
+  "hmp_is_verbose": false,
+  "use_fused_adam": true,
+  "use_fused_clip_norm": true,
+  "log_device_mem_alloc": false,
+  "hmp_bf16_ops": [
+    "add",
+    "addmm",
+    "bmm",
+    "dropout",
+    "gelu",
+    "iadd",
+    "linear",
+    "layer_norm",
+    "matmul",
+    "mm",
+    "rsub"
+  ],
+  "hmp_fp32_ops": [
+    "embedding",
+    "nll_loss",
+    "log_softmax",
+    "truediv",
+    "div",
+    "softmax"
+  ]
+}
+```
+
 
 ## Supported Models
 
 The following model architectures, tasks and device distributions are currently supported by 🤗 Optimum Habana:
-| | Sequence Classification | Question Answering | Single Card | Multi Card |
-|-|:-----------------------:|:------------------:|:-----------:|:--------:|
-| BERT       |   |  |  |  |
-| RoBERTa    | ✗ |  |  |  |
-| ALBERT     | ✗ |  |  |  |
-| DistilBERT | ✗ |  |  |  |
+|            | Text Classification | Question Answering | Single Card | Multi Card |
+|------------|:-------------------:|:------------------:|:-----------:|:----------:|
+| BERT       |                     |                    |             |            |
+| RoBERTa    | ✗                   |                    |             |            |
+| ALBERT     | ✗                   |                    |             |            |
+| DistilBERT | ✗                   |                    |             |            |
 
 If you find any issue while using those, please open an issue or a pull request.
