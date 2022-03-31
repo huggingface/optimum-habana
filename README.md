@@ -42,7 +42,7 @@ pip install -r requirements.txt`
 ## How to use it?
 🤗 Optimum Habana was designed with one goal in mind: make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors.
 There are two main classes one needs to know:
-- GaudiTrainer: the trainer class that takes care of compiling (lazy mode) or not (eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
+- GaudiTrainer: the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
 - GaudiConfig: the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
 
 The `GaudiTrainer` is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
