@@ -134,9 +134,9 @@ with for example the following Gaudi configuration written in a JSON file:
 The following model architectures, tasks and device distributions are currently supported by 🤗 Optimum Habana:
 |            | Text Classification | Question Answering | Single Card | Multi Card |
 |------------|:-------------------:|:------------------:|:-----------:|:----------:|
-| BERT       |                     |                    |             |            |
-| RoBERTa    | ✗                   |                    |             |            |
-| ALBERT     | ✗                   |                    |             |            |
-| DistilBERT | ✗                   |                    |             |            |
+| BERT       | :heavy_check_mark:  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| RoBERTa    | ✗                   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| ALBERT     | ✗                   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| DistilBERT | ✗                   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
 
 If you find any issue while using those, please open an issue or a pull request.
