@@ -811,7 +811,7 @@ class GaudiTrainer(Trainer):
                     )
                 else:
                     # We load the model state dict on the CPU to avoid an OOM error.
-                    state_dict = torch.load(best_model_path, map_location="cpu")
+                    state_dict = torch.load(best_model_path, map_location="hpu")
                     # If the model is on the GPU, it still works!
                     self._load_state_dict_in_model(state_dict)
             else:
