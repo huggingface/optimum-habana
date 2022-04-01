@@ -898,13 +898,13 @@ class GaudiTrainer(Trainer):
         elif self.args.should_save and not self.deepspeed:
             # deepspeed.save_checkpoint above saves model/optim/sched
             if self.args.use_habana:
-                optim_dict = dict()
-                for state in self.optimizer.state.values():
+                optim_dict = copy.deepcopy(self.optimizer.state_dict())
+                for state in optim_dict['state'].values():
                     for k, v in state.items():
                         if isinstance(v, torch.Tensor):
-                            optim_dict[k] = v.to("cpu")
+                            state[k] = v.to("cpu")
                         else:
-                            optim_dict[k] = v
+                            state[k] = v
                 torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
             else:
                 torch.save(self.optimizer.state_dict(), os.path.join(output_dir, OPTIMIZER_NAME))
@@ -965,6 +965,43 @@ class GaudiTrainer(Trainer):
         # Maybe delete some older checkpoints.
         if self.args.should_save:
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
+
+    def _load_optimizer_and_scheduler(self, checkpoint):
+        """If optimizer and scheduler states exist, load them."""
+        if checkpoint is None:
+            return
+
+        if self.deepspeed:
+            # deepspeed loads optimizer/lr_scheduler together with the model in deepspeed_init
+            return
+
+        if os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) and os.path.isfile(
+            os.path.join(checkpoint, SCHEDULER_NAME)
+        ):
+            # Load in optimizer and scheduler states
+            if is_torch_tpu_available():
+                # On TPU we have to take some extra precautions to properly load the states on the right device.
+                optimizer_state = torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location="cpu")
+                with warnings.catch_warnings(record=True) as caught_warnings:
+                    lr_scheduler_state = torch.load(os.path.join(checkpoint, SCHEDULER_NAME), map_location="cpu")
+                reissue_pt_warnings(caught_warnings)
+
+                xm.send_cpu_data_to_device(optimizer_state, self.args.device)
+                xm.send_cpu_data_to_device(lr_scheduler_state, self.args.device)
+
+                self.optimizer.load_state_dict(optimizer_state)
+                self.lr_scheduler.load_state_dict(lr_scheduler_state)
+            else:
+                map_location = "cpu" if is_sagemaker_mp_enabled() or self.args.use_habana else self.args.device
+                # map_location = torch.device("cpu")
+                self.optimizer.load_state_dict(
+                    torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
+                )
+                with warnings.catch_warnings(record=True) as caught_warnings:
+                    self.lr_scheduler.load_state_dict(torch.load(os.path.join(checkpoint, SCHEDULER_NAME)))
+                reissue_pt_warnings(caught_warnings)
+                if self.do_grad_scaling and os.path.isfile(os.path.join(checkpoint, SCALER_NAME)):
+                    self.scaler.load_state_dict(torch.load(os.path.join(checkpoint, SCALER_NAME)))
 
     def evaluation_loop(
         self,
