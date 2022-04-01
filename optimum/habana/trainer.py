@@ -899,7 +899,7 @@ class GaudiTrainer(Trainer):
             # deepspeed.save_checkpoint above saves model/optim/sched
             if self.args.use_habana:
                 optim_dict = copy.deepcopy(self.optimizer.state_dict())
-                for state in optim_dict['state'].values():
+                for state in optim_dict["state"].values():
                     for k, v in state.items():
                         if isinstance(v, torch.Tensor):
                             state[k] = v.to("cpu")
