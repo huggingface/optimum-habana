@@ -978,6 +978,33 @@ class GaudiTrainer(Trainer):
         if self.args.should_save:
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
 
+    def _load_optimizer_and_scheduler(self, checkpoint):
+        """If optimizer and scheduler states exist, load them."""
+        if checkpoint is None:
+            return
+
+        if self.deepspeed:
+            # deepspeed loads optimizer/lr_scheduler together with the model in deepspeed_init
+            return
+
+        if os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) and os.path.isfile(
+            os.path.join(checkpoint, SCHEDULER_NAME)
+        ):
+            # Load in optimizer and scheduler states
+            map_location = "cpu" if is_sagemaker_mp_enabled() or self.args.use_habana else self.args.device
+            self.optimizer.load_state_dict(
+                torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
+            )
+            # Move optimizer states to HPU
+            if self.args.use_habana:
+                to_device_dtype(self.optimizer.state.values(), target_device=torch.device("hpu"))
+
+            with warnings.catch_warnings(record=True) as caught_warnings:
+                self.lr_scheduler.load_state_dict(torch.load(os.path.join(checkpoint, SCHEDULER_NAME)))
+            reissue_pt_warnings(caught_warnings)
+            if self.do_grad_scaling and os.path.isfile(os.path.join(checkpoint, SCALER_NAME)):
+                self.scaler.load_state_dict(torch.load(os.path.join(checkpoint, SCALER_NAME)))
+
     def evaluation_loop(
         self,
         dataloader: DataLoader,
@@ -1518,26 +1545,3 @@ class GaudiTrainer(Trainer):
             if self.args.hub_strategy == HubStrategy.CHECKPOINT:
                 # Move back the checkpoint to its place
                 shutil.move(tmp_checkpoint, checkpoint_folder)
-
-    def _load_optimizer_and_scheduler(self, checkpoint):
-        """If optimizer and scheduler states exist, load them."""
-        if checkpoint is None:
-            return
-
-        if os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) and os.path.isfile(
-            os.path.join(checkpoint, SCHEDULER_NAME)
-        ):
-            # Load in optimizer and scheduler states
-            map_location = "cpu" if self.args.use_habana else self.args.device
-            self.optimizer.load_state_dict(
-                torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
-            )
-            # Move optimizer states to HPU
-            if self.args.use_habana:
-                to_device_dtype(self.optimizer.state.values(), target_device=torch.device("hpu"))
-
-            with warnings.catch_warnings(record=True) as caught_warnings:
-                self.lr_scheduler.load_state_dict(torch.load(os.path.join(checkpoint, SCHEDULER_NAME)))
-            reissue_pt_warnings(caught_warnings)
-            if self.do_grad_scaling and os.path.isfile(os.path.join(checkpoint, SCALER_NAME)):
-                self.scaler.load_state_dict(torch.load(os.path.join(checkpoint, SCALER_NAME)))
