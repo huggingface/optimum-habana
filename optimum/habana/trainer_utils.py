@@ -18,11 +18,15 @@ import torch
 
 def to_device_dtype(my_input, target_device: torch.device = None, target_dtype: torch.dtype = None):
     """
-    Move a state_dict to the target device.
+    Move a state_dict to the target device and convert it into target_dtype.
 
     Args:
-        my_input: input to move to the target device
-        target_device (torch.device, optional): target device. Defaults to torch.device("cpu").
+        my_input : input to transform
+        target_device (torch.device, optional): target_device to move the input on. Defaults to None.
+        target_dtype (torch.dtype, optional): target dtype to convert the input into. Defaults to None.
+
+    Returns:
+        : transformed input
     """
     if isinstance(my_input, torch.Tensor):
         if target_device is None:
@@ -31,10 +35,10 @@ def to_device_dtype(my_input, target_device: torch.device = None, target_dtype: 
             target_dtype = my_input.dtype
         return my_input.to(device=target_device, dtype=target_dtype)
     elif isinstance(my_input, list):
-        return [to_device_dtype(i, target_device) for i in my_input]
+        return [to_device_dtype(i, target_device, target_dtype) for i in my_input]
     elif isinstance(my_input, tuple):
-        return tuple(to_device_dtype(i, target_device) for i in my_input)
+        return tuple(to_device_dtype(i, target_device, target_dtype) for i in my_input)
     elif isinstance(my_input, dict):
-        return {k: to_device_dtype(v, target_device) for k, v in my_input.items()}
+        return {k: to_device_dtype(v, target_device, target_dtype) for k, v in my_input.items()}
     else:
         return my_input
