@@ -26,11 +26,11 @@ uses special features of those tokenizers. You can check if your favorite model 
 
 Note that if your dataset contains samples with no possible answers (like SQUAD version 2), you need to pass along the flag `--version_2_with_negative`.
 
-## Fine-tuning BERT on SQuAD1.0
+## Fine-tuning BERT on SQuAD1.1
 
 ### Single-card Training
 
-This example code fine-tunes BERT on the SQuAD1.0 dataset.
+This example code fine-tunes BERT on the SQuAD1.1 dataset.
 It runs in 63 minutes with BERT-large.
 
 
