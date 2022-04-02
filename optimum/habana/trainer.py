@@ -1087,10 +1087,7 @@ class GaudiTrainer(Trainer):
                     losses = nested_numpify(losses_host)
                     all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
                 if preds_host is not None:
-                    if isinstance(preds_host, tuple):
-                        preds_host = tuple(v.to(dtype=torch.float32) for v in preds_host)
-                    else:
-                        preds_host = preds_host.to(dtype=torch.float32)
+                    preds_host = to_device_dtype(preds_host, dtype=torch.float32)
                     logits = nested_numpify(preds_host)
                     all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
                 if labels_host is not None:
