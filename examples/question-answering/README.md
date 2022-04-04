@@ -43,13 +43,13 @@ python run_qa.py \
   --do_eval \
   --per_device_train_batch_size 24 \
   --per_device_eval_batch_size 8 \
-  --use_habana \
-  --use_lazy_mode \
   --learning_rate 3e-5 \
   --num_train_epochs 2 \
   --max_seq_length 384 \
   --doc_stride 128 \
-  --output_dir ./output/debug_squad/
+  --output_dir ./output/debug_squad/ \
+  --use_habana \
+  --use_lazy_mode
 ```
 
 Training with the previously defined hyper-parameters yields the following results:
@@ -61,4 +61,29 @@ exact_match = 86.6887
 
 ### Multi-card Training
 
-To be completed
+Here is how you would fine-tune the BERT large model (with whole word masking) on the SQuAD dataset using the `run_qa` script, with 8 HPUs:
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_qa.py \
+    --model_name_or_path bert-large-uncased-whole-word-masking \
+    --gaudi_config_name gaudi_config_name_or_path \
+    --dataset_name squad \
+    --do_train \
+    --do_eval \
+    --per_device_train_batch_size 24 \
+    --per_device_eval_batch_size 8 \
+    --learning_rate 3e-5 \
+    --num_train_epochs 2 \
+    --max_seq_length 384 \
+    --doc_stride 128 \
+    --output_dir /tmp/squad_output/ \
+    --use_habana \
+    --use_lazy_mode
+```
+
+It runs in 11 minutes with BERT-large and yields the following results:
+```bash
+f1 = 93.1666
+exact_match = 86.8874
+```

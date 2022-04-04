@@ -46,7 +46,7 @@ line, 🤗 GaudiTrainer supports resuming from a checkpoint via `trainer.train(r
 2. If `resume_from_checkpoint` is a path to a specific checkpoint it will use that saved checkpoint folder to resume the training from.
 
 
-### Upload the trained/fine-tuned model to the Hub
+## Uploading the trained/fine-tuned model to the Hub
 
 All the example scripts support automatic upload of your final model to the [Model Hub](https://huggingface.co/models) by adding a `--push_to_hub` argument. It will then create a repository with your username slash the name of the folder you are using as `output_dir`. For instance, `"sgugger/test-mrpc"` if your username is `sgugger` and you are working in the folder `~/tmp/test-mrpc`.
 
@@ -57,6 +57,7 @@ A few notes on this integration:
 - you will need to be logged in to the Hugging Face website locally for it to work, the easiest way to achieve this is to run `huggingface-cli login` and then type your username and password when prompted. You can also pass along your authentication token with the `--hub_token` argument.
 - the `output_dir` you pick will either need to be a new folder or a local clone of the distant repository you are using.
 
+
 ## Distributed training
 
 All the PyTorch scripts in this repository work out of the box with distributed training. To launch one of them on _n_ HPUs,
@@ -66,22 +67,4 @@ use the following command:
 python gaudi_spawn.py \
     --world_size number_of_hpu_you_have --use_mpi \
     path_to_script.py --all_arguments_of_the_script
-```
-
-As an example, here is how you would fine-tune the BERT large model (with whole word masking) on the text
-classification MRPC task using the `run_glue` script, with 8 HPUs:
-
-```bash
-python gaudi_spawn.py \
-    --world_size 8 --use_mpi pytorch/text-classification/run_glue.py \
-    --model_name_or_path bert-large-uncased-whole-word-masking \
-    --task_name mrpc \
-    --do_train \
-    --do_eval \
-    --max_seq_length 128 \
-    --per_device_train_batch_size 32 \
-    --per_device_eval_batch_size 8 \
-    --learning_rate 3e-5 \
-    --num_train_epochs 2 \
-    --output_dir /tmp/mrpc_output/
 ```
