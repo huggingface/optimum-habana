@@ -16,6 +16,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+from optimum.utils import logging
 from transformers.file_utils import (
     cached_property,
     is_sagemaker_dp_enabled,
@@ -25,7 +26,6 @@ from transformers.file_utils import (
     torch_required,
 )
 from transformers.training_args import TrainingArguments
-from transformers.utils import logging
 
 
 if is_torch_available():
@@ -112,6 +112,7 @@ class GaudiTrainingArguments(TrainingArguments):
             self._n_gpu = 1
         elif self.use_habana:
             logger.info("Habana is enabled.")
+
             if self.use_lazy_mode:
                 os.environ["PT_HPU_LAZY_MODE"] = "1"
                 logger.info("Enabled lazy mode.")
@@ -124,6 +125,7 @@ class GaudiTrainingArguments(TrainingArguments):
             self._n_gpu = 1
             world_size = 1
             rank = -1
+
             if "WORLD_SIZE" in os.environ and "RANK" in os.environ:
                 world_size = int(os.environ["WORLD_SIZE"])
                 rank = int(os.environ["RANK"])
@@ -162,7 +164,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     raise error
                 os.environ["ID"] = str(self.local_rank)
                 torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
-                logger.info("Enable distributed run")
+                logger.info("Enabled distributed run.")
 
         elif self.local_rank == -1:
             # if n_gpu is > 1 we'll use nn.DataParallel.
