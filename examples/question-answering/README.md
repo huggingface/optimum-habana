@@ -37,7 +37,7 @@ It runs in 63 minutes with BERT-large.
 ```bash
 python run_qa.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
-  --gaudi_config_name path_to_my_gaudi_config \
+  --gaudi_config_name gaudi_config_name_or_path \
   --dataset_name squad \
   --do_train \
   --do_eval \
