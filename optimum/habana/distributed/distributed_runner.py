@@ -268,7 +268,6 @@ class DistributedRunner:
                     sys.stdout.flush()
                     sys.stderr.flush()
                     if proc.returncode != 0:
-                        print("RETURNCODE =", proc.returncode)
                         logger.error(f"{command}  exited with status = {proc.returncode}")
                         return proc.returncode
                 # subprocess.run(command, shell=True, executable="/bin/bash", capture_output=True, check=True)

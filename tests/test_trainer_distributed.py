@@ -12,19 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict
 from pathlib import Path
+from typing import Dict
 
-from transformers import EvalPrediction, HfArgumentParser, is_torch_available
-from transformers.testing_utils import TestCasePlus
-from optimum.habana import GaudiTrainingArguments, GaudiConfig
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
 
 # from optimum.habana.testing_utils import require_torch_multi_hpu
 from optimum.habana.distributed import DistributedRunner
 from optimum.utils import logging
-
-
-PATH_TO_GAUDI_SPAWN = Path(__file__).parent.parent.resolve() / "examples" / "gaudi_spawn.py"
+from transformers import EvalPrediction, HfArgumentParser, is_torch_available
+from transformers.testing_utils import TestCasePlus
 
 
 logger = logging.get_logger(__name__)
@@ -32,7 +29,6 @@ logger = logging.get_logger(__name__)
 
 if is_torch_available():
     import torch
-
     from torch import nn
     from torch.utils.data import Dataset
 
@@ -65,19 +61,25 @@ if is_torch_available():
                 return input_ids
 
 
-class TestTrainerDistributed(TestCasePlus):
+class TestGaudiTrainerDistributed(TestCasePlus):
     # require_torch_multi_hpu is commented because importing torch.hpu
     # before the main script makes the test fail
     # @require_torch_multi_hpu
-    def test_trainer(self):
+    def test_gaudi_trainer_distributed(self):
 
         output_dir = self.get_auto_remove_tmp_dir()
-        command_list = [
-            f"{self.test_file_dir}/test_trainer_distributed.py --output_dir {output_dir} --use_habana --use_lazy_mode"
-        ]
+        # command_list = [
+        #     f"{self.test_file_dir}/test_trainer_distributed.py --output_dir {output_dir} --use_habana --use_lazy_mode"
+        # ]
+        command_list = [f"{self.test_file_dir}/test_trainer_distributed.py"]
+        command_list += ["--output_dir"]
+        command_list += [output_dir]
+        command_list += ["--use_habana"]
+        command_list += ["--use_lazy_mode"]
+        command = [" ".join(command_list)]
 
         distributed_runner = DistributedRunner(
-            command_list=command_list,
+            command_list=command,
             world_size=8,
             use_mpi=True,
             multi_hls=False,
@@ -86,14 +88,13 @@ class TestTrainerDistributed(TestCasePlus):
         ret_code = distributed_runner.run()
 
         # ret_code equals 0 or None if successful run
-        print("RET_CODE =", ret_code)
         self.assertTrue(ret_code == 0 or ret_code is None)
 
 
 if __name__ == "__main__":
     # The script below is meant to be run under mpirun, on a machine with multiple HPUs:
     #
-    # PYTHONPATH="src" python PATH_TO_GAUDI_SPAWN --world_size 8 --use_mpi --output_dir output_dir ./tests/test_trainer_distributed.py
+    # PYTHONPATH="src" python optimum-habana/examples/gaudi_spawn.py --world_size 8 --use_mpi --output_dir output_dir ./tests/test_trainer_distributed.py
 
     parser = HfArgumentParser((GaudiTrainingArguments,))
     training_args = parser.parse_args_into_dataclasses()[0]
