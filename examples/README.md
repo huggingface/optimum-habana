@@ -66,5 +66,7 @@ use the following command:
 ```bash
 python gaudi_spawn.py \
     --world_size number_of_hpu_you_have --use_mpi \
-    path_to_script.py --all_arguments_of_the_script
+    path_to_script.py --args1 --args2 ... --argsN
 ```
+where `--argX` is an argument of the script to run in a distributed way.
+Examples are given for question answering [here](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/README.md#multi-card-training) and for text classification [here](https://github.com/huggingface/optimum-habana/blob/main/examples/tex

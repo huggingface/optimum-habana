@@ -30,6 +30,10 @@ GLUE is made up of a total of 9 different tasks where task name can be one of co
 
 ## Fine-tuning BERT on MRPC
 
+For the following cases, an example of Gaudi configuration file is given
+[here](https://github.com/huggingface/optimum-habana#how-to-use-it).
+
+
 ### Single-card Training
 
 The following example fine-tunes BERT Large (lazy mode) on the `mrpc` dataset hosted on our [hub](https://huggingface.co/datasets):
