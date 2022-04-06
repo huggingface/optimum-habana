@@ -19,10 +19,7 @@
 import os
 import subprocess
 import sys
-from pathlib import Path
 
-from optimum.habana.distributed.generate_hcl_config import generate_hcl_config_unless_hccl
-from optimum.habana.distributed.multi_node_utils import run_per_ip
 from optimum.utils import logging
 
 
@@ -41,7 +38,6 @@ class DistributedRunner:
         use_mpi=False,
         use_env=False,
         map_by="socket",
-        hls_type="HLS1",
         multi_hls=False,
     ):
         self.__commands = command_list
@@ -50,9 +46,6 @@ class DistributedRunner:
         self.__multi_hls = multi_hls
         self.__use_env = use_env
         self.__interpreter = f"{sys.executable} "
-        # Change the hls_type to actual type
-        # Based on the machine type passed in constructor
-        self.___hls_type = hls_type
 
         self.__model_env_vars = {}
 
@@ -77,13 +70,6 @@ class DistributedRunner:
             self.create_single_card_setup()
 
     def setup_config_env(self):
-        tmp_dir = "/tmp"
-        __worker_per_node = self.__world_size
-        gen_hcl_config = True
-        # Dont generate HCL config in below scenarios
-        # HCCL host NIC scaling is enabled.i.e.  "HCCL_OVER_TCP" is 1/True
-        # HCCL libfabric host NIC scaling is enabled.i.e.  "HCCL_OVER_OFI" is 1/True
-        # HCL_CONFIG_PATH is already set
         hccl_over_tcp = os.getenv("HCCL_OVER_TCP")
         hccl_over_ofi = os.getenv("HCCL_OVER_OFI")
         if hccl_over_tcp or hccl_over_ofi:
@@ -93,29 +79,8 @@ class DistributedRunner:
                 hccl_over_ofi = hccl_over_ofi.lower() in ["1", "true"]
             logger.info(f"HCCL_OVER_TCP={os.getenv('HCCL_OVER_TCP')}")
             logger.info(f"HCCL_OVER_OFI={os.getenv('HCCL_OVER_OFI')}")
-            if hccl_over_tcp or hccl_over_ofi:
-                logger.info("skiping HCL config generation")
-                gen_hcl_config = False
-        if os.getenv("HCL_CONFIG_PATH"):
-            logger.info("HCL_CONFIG_PATH is already set")
-            logger.info("skiping HCL config generation")
-            gen_hcl_config = False
-        if self.__multi_hls:
-            __cnt = len(os.getenv("MULTI_HLS_IPS").split(","))
-            gen_hcl_path = Path(__file__).parent.joinpath("generate_hcl_config.py")
-            # Create HCL config on each remote IP.
-            if gen_hcl_config:
-                __worker_per_node = self.__world_size // __cnt
-                run_per_ip(
-                    (f"{sys.executable} {str(gen_hcl_path)} {tmp_dir} " f"{__worker_per_node} {self.___hls_type}"),
-                    ["MULTI_HLS_IPS", "PYTHONPATH"],
-                    False,
-                )
 
-        if gen_hcl_config and self.__world_size > 1:
-            # HCL_CONFIG_PATH env var is set in generate_hcl_config_r()
-            generate_hcl_config_unless_hccl(f"{tmp_dir}", __worker_per_node, hls_type=self.___hls_type)
-        logger.info(f"HLS ({self.__world_size}): HCL_CONFIG_PATH = {str(os.environ.get('HCL_CONFIG_PATH'))}")
+        logger.info(f"HLS ({self.__world_size})")
 
     def get_peval(self):
         cmd1 = "lscpu 2>/dev/null | awk '/Socket\(s\)/  { print $2 }'"
@@ -185,7 +150,6 @@ class DistributedRunner:
 
         self.setup_config_env()
         envlist = [
-            "HCL_CONFIG_PATH",
             "MAX_WAIT_ATTEMPTS",
             "LOG_LEVEL_ALL",
             "LOG_LEVEL_SYN_API",
@@ -204,6 +168,12 @@ class DistributedRunner:
             "HCCL_DEFAULT_NIC_COUNT",
             "PT_HCCL_SLICE_SIZE_MB",
             "HCCL_OVER_OFI",
+            "MULTI_HLS_IPS",
+            "https_proxy",
+            "HTTPS_PROXY",
+            "http_proxy",
+            "HTTP_PROXY",
+            "MULTI_STREAMS_ENABLE",
         ]
         assert os.getenv("MULTI_HLS_IPS"), "environment variable MULTI_HLS_IPS is not set"
         __hls_list = str(os.getenv("MULTI_HLS_IPS", "")).split(",")
