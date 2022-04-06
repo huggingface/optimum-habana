@@ -38,6 +38,13 @@ Last but not least, don't forget to install requirements for every example:
 `cd <example-folder>
 pip install -r requirements.txt`
 
+> Alternatively, you can install the package without pip as follows:
+> ```bash
+> git clone https://github.com/huggingface/optimum-habana.git
+> cd optimum-habana
+> python setup.py install
+> ```
+
 
 ## How to use it?
 🤗 Optimum Habana was designed with one goal in mind: make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors.

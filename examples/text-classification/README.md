@@ -27,27 +27,52 @@ and can also be used for a dataset hosted on our [hub](https://huggingface.co/da
 
 GLUE is made up of a total of 9 different tasks where task name can be one of cola, sst2, mrpc, stsb, qqp, mnli, qnli, rte, wnli.
 
+
+## Fine-tuning BERT on MRPC
+
+For the following cases, an example of Gaudi configuration file is given
+[here](https://github.com/huggingface/optimum-habana#how-to-use-it).
+
+
 ### Single-card Training
 
-The following example fine-tunes BERT Large (Lazy mode) on the `mrpc` dataset hosted on our [hub](https://huggingface.co/datasets):
+The following example fine-tunes BERT Large (lazy mode) on the `mrpc` dataset hosted on our [hub](https://huggingface.co/datasets):
 
 ```bash
 python run_glue.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
-  --gaudi_config_name path_to_my_gaudi_config_json \
+  --gaudi_config_name gaudi_config_name_or_path \
   --task_name mrpc \
   --do_train \
   --do_eval \
-  --max_seq_length 128 \
   --per_device_train_batch_size 32 \
   --learning_rate 3e-5 \
   --num_train_epochs 3 \
+  --max_seq_length 128 \
   --output_dir ./output/mrpc/ \
   --use_habana \
-  --use_lazy_mode \
-  --dataset_name mrpc
+  --use_lazy_mode
 ```
 
 ### Multi-card Training
 
-To be completed
+Here is how you would fine-tune the BERT large model (with whole word masking) on the text classification MRPC task using the `run_glue`
+script, with 8 HPUs:
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_glue.py \
+    --model_name_or_path bert-large-uncased-whole-word-masking \
+    --gaudi_config_name gaudi_config_name_or_path \
+    --task_name mrpc \
+    --do_train \
+    --do_eval \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 8 \
+    --learning_rate 3e-5 \
+    --num_train_epochs 3 \
+    --max_seq_length 128 \
+    --output_dir /tmp/mrpc_output/ \
+    --use_habana \
+    --use_lazy_mode
+```
