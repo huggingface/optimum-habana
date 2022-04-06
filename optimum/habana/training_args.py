@@ -114,9 +114,9 @@ class GaudiTrainingArguments(TrainingArguments):
             logger.info("Habana is enabled.")
 
             if self.use_lazy_mode:
-                os.environ["PT_HPU_LAZY_MODE"] = "1"
                 logger.info("Enabled lazy mode.")
             else:
+                os.environ["PT_HPU_LAZY_MODE"] = "2"
                 logger.info("Enabled eager mode because use_lazy_mode=False.")
             from habana_frameworks.torch.utils.library_loader import load_habana_module
 
