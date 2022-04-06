@@ -337,19 +337,18 @@ class GaudiTrainer(Trainer):
             else:
                 kwargs["find_unused_parameters"] = True
 
+            if self.args.ddp_bucket_cap_mb is not None:
+                kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
             if self.args.use_habana:
-                model = torch.nn.parallel.DistributedDataParallel(
-                    model, bucket_cap_mb=230, gradient_as_bucket_view=True
-                )
-            else:
-                if self.args.ddp_bucket_cap_mb is not None:
-                    kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
-                model = torch.nn.parallel.DistributedDataParallel(
-                    model,
-                    device_ids=[self.args.local_rank] if self.args._n_gpu != 0 else None,
-                    output_device=self.args.local_rank if self.args._n_gpu != 0 else None,
-                    **kwargs,
-                )
+                kwargs["bucket_cap_mb"] = 230
+                kwargs["gradient_as_bucket_view"] = True
+                kwargs["find_unused_parameters"] = False
+            model = torch.nn.parallel.DistributedDataParallel(
+                model,
+                device_ids=[self.args.local_rank] if self.args._n_gpu != 0 and not self.args.use_habana else None,
+                output_device=self.args.local_rank if self.args._n_gpu != 0 and not self.args.use_habana else None,
+                **kwargs,
+            )
 
         return model
 
@@ -682,7 +681,11 @@ class GaudiTrainer(Trainer):
                 else:
                     tr_loss_step = self.training_step(model, inputs)
 
-                if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
+                if (
+                    args.logging_nan_inf_filter
+                    and not args.use_habana
+                    and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
+                ):
                     # if loss is nan or inf simply add the average of previous logged losses
                     tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                 else:
