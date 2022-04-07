@@ -212,9 +212,6 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-    if training_args.use_habana and model_args.model_name_or_path == "bert-large-uncased-whole-word-masking":
-        os.environ["PT_HPU_POOL_STRATEGY"] = "0"
-
     # Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
