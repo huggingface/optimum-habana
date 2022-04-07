@@ -809,10 +809,7 @@ class GaudiTrainer(Trainer):
         if args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
             # Wait for everyone to get here so we are sure the model has been saved by process 0.
             if args.local_rank != -1:
-                if args.use_habana:
-                    torch.distributed.barrier()
-                else:
-                    dist.barrier()
+                dist.barrier()
 
             logger.info(
                 f"Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric})."
