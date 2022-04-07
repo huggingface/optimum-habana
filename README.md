@@ -14,6 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
+<p align="center">
+    <img src="readme_logo.png" />
+</p>
+
+
 # Optimum Habana
 
 🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor](https://docs.habana.ai/en/latest/index.html).
