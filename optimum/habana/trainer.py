@@ -983,6 +983,10 @@ class GaudiTrainer(Trainer):
         if self.args.should_save:
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
 
+        # Synchronize all processes after saving the current checkpoint
+        if self.args.local_rank != -1 and self.args.use_habana:
+            torch.distributed.barrier()
+
     def _load_optimizer_and_scheduler(self, checkpoint):
         """If optimizer and scheduler states exist, load them."""
         if checkpoint is None:
@@ -1424,7 +1428,6 @@ class GaudiTrainer(Trainer):
         Will save the model, so you can reload it using `from_pretrained()`.
         Will only save from the main process.
         """
-
         if output_dir is None:
             output_dir = self.args.output_dir
 
