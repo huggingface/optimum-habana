@@ -18,6 +18,31 @@ limitations under the License.
 This folder contains actively maintained examples of use of 🤗 Optimum Habana for question answering and text classification.
 
 
+## Distributed training
+
+All the PyTorch scripts in this repository work out of the box with distributed training. To launch one of them on _n_ HPUs,
+use the following command:
+
+```bash
+python gaudi_spawn.py \
+    --world_size number_of_hpu_you_have --use_mpi \
+    path_to_script.py --args1 --args2 ... --argsN
+```
+where `--argX` is an argument of the script to run in a distributed way.
+Examples are given for question answering [here](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/README.md#multi-card-training) and for text classification [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification#multi-card-training).
+
+
+## Loading from a Tensorflow/Flax checkpoint file instead of a PyTorch model
+
+If a model also has Tensorflow or Flax checkpoints, you can load them instead of a PyTorch checkpoint by specifying `from_tf=True` or `from_flax=True` in the model instantiation.
+
+You can try it for SQuAD [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/question-answering/run_qa.py#L310) or for MRPC [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/text-classification/run_glue.py#L338).
+
+You can check if a model has such checkpoints on the [Hub](https://huggingface.co/models). You can also specify a URL or a path to a Tensorflow/Flax checkpoint in `model_args.model_name_or_path`.
+
+> Resuming from a checkpoint will only work with a PyTorch checkpoint.
+
+
 ## Running quick tests
 
 Most examples are equipped with a mechanism to truncate the number of dataset samples to the desired length. This is useful for debugging purposes, for example to quickly check that all stages of the programs can complete, before running the same setup on the full dataset which may take hours to complete.
@@ -56,17 +81,3 @@ A few notes on this integration:
 
 - you will need to be logged in to the Hugging Face website locally for it to work, the easiest way to achieve this is to run `huggingface-cli login` and then type your username and password when prompted. You can also pass along your authentication token with the `--hub_token` argument.
 - the `output_dir` you pick will either need to be a new folder or a local clone of the distant repository you are using.
-
-
-## Distributed training
-
-All the PyTorch scripts in this repository work out of the box with distributed training. To launch one of them on _n_ HPUs,
-use the following command:
-
-```bash
-python gaudi_spawn.py \
-    --world_size number_of_hpu_you_have --use_mpi \
-    path_to_script.py --args1 --args2 ... --argsN
-```
-where `--argX` is an argument of the script to run in a distributed way.
-Examples are given for question answering [here](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/README.md#multi-card-training) and for text classification [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification#multi-card-training).
