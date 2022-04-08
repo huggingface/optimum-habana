@@ -807,10 +807,8 @@ class GaudiTrainer(Trainer):
 
         logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
         if args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
-            # Wait for everyone to get here so we are sur the model has been saved by process 0.
-            if is_torch_tpu_available():
-                xm.rendezvous("load_best_model_at_end")
-            elif args.local_rank != -1:
+            # Wait for everyone to get here so we are sure the model has been saved by process 0.
+            if args.local_rank != -1:
                 dist.barrier()
 
             logger.info(
@@ -917,12 +915,13 @@ class GaudiTrainer(Trainer):
                     if self.do_grad_scaling:
                         torch.save(self.scaler.state_dict(), os.path.join(output_dir, SCALER_NAME))
         elif self.args.should_save and not self.deepspeed:
+            # This block is exectuted by the main process only
             # deepspeed.save_checkpoint above saves model/optim/sched
+            optim_dict = self.optimizer.state_dict()
             if self.args.use_habana:
-                optim_dict = to_device_dtype(self.optimizer.state_dict(), target_device=torch.device("cpu"))
-                torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
-            else:
-                torch.save(self.optimizer.state_dict(), os.path.join(output_dir, OPTIMIZER_NAME))
+                # Move the state dict from HPU to CPU before saving
+                optim_dict = to_device_dtype(optim_dict, target_device=torch.device("cpu"))
+            torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
             with warnings.catch_warnings(record=True) as caught_warnings:
                 torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
             reissue_pt_warnings(caught_warnings)
@@ -980,6 +979,10 @@ class GaudiTrainer(Trainer):
         # Maybe delete some older checkpoints.
         if self.args.should_save:
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
+
+        # Synchronize all processes after saving the current checkpoint
+        if self.args.local_rank != -1 and self.args.use_habana:
+            torch.distributed.barrier()
 
     def _load_optimizer_and_scheduler(self, checkpoint):
         """If optimizer and scheduler states exist, load them."""
@@ -1422,15 +1425,10 @@ class GaudiTrainer(Trainer):
         Will save the model, so you can reload it using `from_pretrained()`.
         Will only save from the main process.
         """
-
         if output_dir is None:
             output_dir = self.args.output_dir
 
-        if self.args.use_habana:
-            self._save_hpu(output_dir)
-        elif is_torch_tpu_available():
-            self._save_tpu(output_dir)
-        elif is_sagemaker_mp_enabled():
+        if is_sagemaker_mp_enabled():
             # Calling the state_dict needs to be done on the wrapped model and on all processes.
             state_dict = self.model_wrapped.state_dict()
             if self.args.should_save:
@@ -1439,15 +1437,12 @@ class GaudiTrainer(Trainer):
             ShardedDDPOption.ZERO_DP_2 in self.args.sharded_ddp or ShardedDDPOption.ZERO_DP_3 in self.args.sharded_ddp
         ):
             state_dict = self.model.state_dict()
-
             if self.args.should_save:
                 self._save(output_dir, state_dict=state_dict)
         elif self.deepspeed:
-
             # this takes care of everything as long as we aren't under zero3
             if self.args.should_save:
                 self._save(output_dir)
-
             if is_deepspeed_zero3_enabled():
                 # It's too complicated to try to override different places where the weights dump gets
                 # saved, so since under zero3 the file is bogus, simply delete it. The user should
@@ -1458,7 +1453,6 @@ class GaudiTrainer(Trainer):
                     if os.path.isfile(file):
                         # logger.info(f"deepspeed zero3: removing {file}, see zero_to_fp32.py to recover weights")
                         os.remove(file)
-
                 # now save the real model if stage3_gather_16bit_weights_on_model_save=True
                 # if false it will not be saved.
                 # This must be called on all ranks
@@ -1468,7 +1462,6 @@ class GaudiTrainer(Trainer):
                         "Saving the full checkpoint instead, use zero_to_fp32.py to recover weights"
                     )
                     self.deepspeed.save_checkpoint(output_dir)
-
         elif self.args.should_save:
             self._save(output_dir)
 
@@ -1476,7 +1469,7 @@ class GaudiTrainer(Trainer):
         if self.args.push_to_hub and not _internal_call:
             self.push_to_hub(commit_message="Model save")
 
-    def _save_hpu(self, output_dir: Optional[str] = None, state_dict=None):
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
         # If we are executing this function, we are the process zero, so we don't check for that.
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
@@ -1484,7 +1477,7 @@ class GaudiTrainer(Trainer):
 
         if state_dict is None:
             state_dict = self.model.state_dict()
-        if state_dict:
+        if state_dict and self.args.use_habana:
             # state_dict items have to be saved on the CPU
             state_dict = to_device_dtype(state_dict, target_device=torch.device("cpu"))
 
