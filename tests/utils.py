@@ -18,9 +18,17 @@ MODELS_TO_TEST_MAPPING = {
         ("bert-base-uncased", ""),
         ("bert-large-uncased-whole-word-masking", ""),
     ],
-    "roberta": [("roberta-base", ""), ("roberta-large", "")],
-    "albert": [("albert-large-v2", ""), ("albert-xxlarge-v1", "")],
-    "distilbert": [("distilbert-base-uncased", "")],
+    "roberta": [
+        ("roberta-base", ""),
+        ("roberta-large", ""),
+    ],
+    "albert": [
+        ("albert-large-v2", ""),
+        ("albert-xxlarge-v1", ""),
+    ],
+    "distilbert": [
+        ("distilbert-base-uncased", ""),
+    ],
 }
 
 VALID_MODELS_FOR_QUESTION_ANSWERING = [

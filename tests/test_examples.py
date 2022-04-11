@@ -36,6 +36,14 @@ from .utils import (
 )
 
 
+BASELINE_DIRECTORY = Path(__file__).parent.resolve() / Path("baselines")
+PATH_TO_DEFAULT_GAUDI_CONFIG = Path(__file__).parent.resolve() / Path("configs/gaudi_config_example_test.json")
+# Models should reach at least 99% of their baseline accuracy
+F1_SCORE_PERF_FACTOR = 0.99
+# Trainings should last at most 5% longer than the baseline
+TRAINING_TIME_PERF_FACTOR = 1.05
+
+
 def _get_supported_models_for_script(
     models_to_test: Dict[str, List[Tuple[str]]],
     task_mapping: Dict[str, str],
@@ -44,12 +52,12 @@ def _get_supported_models_for_script(
     """
     Filters models that can perform the task from models_to_test.
     Args:
-        models_to_test: mapping between a model type and a tuple (model_name_or_path, ipu_config_name).
+        models_to_test: mapping between a model type and a tuple (model_name_or_path, gaudi_config_name).
         task_mapping: mapping between a model config and a model class.
         valid_models_for_task: list of supported models for a specific task.
     Returns:
         A list of models that are supported for the task.
-        Each element of the list follows the same format: (model_type, (model_name_or_path, ipu_config_name)).
+        Each element of the list follows the same format: (model_type, (model_name_or_path, gaudi_config_name)).
     """
 
     def is_valid_model_type(model_type: str) -> bool:
@@ -60,10 +68,7 @@ def _get_supported_models_for_script(
         return False
 
     return [
-        (model_type, names)
-        for (model_type, possible_names) in models_to_test.items()
-        for names in possible_names
-        if is_valid_model_type(model_type)
+        model for model_type, models in models_to_test.items() for model in models if is_valid_model_type(model_type)
     ]
 
 
@@ -88,30 +93,34 @@ class ExampleTestMeta(type):
     models.
     """
 
-    def __new__(cls, name, bases, attrs, example_name=None):
-        models_to_test = []
+    def __new__(cls, name, bases, attrs, example_name=None, multi_card=False):
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
                 raise AttributeError(f"Could not create class because no model was found for example {example_name}")
-        for _, names in models_to_test:
-            model_name, gaudi_config_name = names
-            attrs[f"test_{example_name}_{model_name}"] = cls._create_test(model_name, gaudi_config_name)
+        for model_name, gaudi_config_name in models_to_test:
+            attrs[
+                f"test_{example_name}_{model_name}_{'multi_card' if multi_card else 'single_card'}"
+            ] = cls._create_test(model_name, gaudi_config_name, multi_card)
         attrs["EXAMPLE_NAME"] = example_name
         return super().__new__(cls, name, bases, attrs)
 
     @classmethod
-    def _create_test(cls, model_name: str, gaudi_config_name: str) -> Callable[[], None]:
+    def _create_test(cls, model_name: str, gaudi_config_name: str, multi_card: bool = False) -> Callable[[], None]:
         """
         Creates a test function that runs an example for a specific (model_name, gaudi_config_name) pair.
         Args:
-            model_name: the model_name_or_path.
-            gaudi_config_name: the gaudi config name.
+            model_name (str): the model_name_or_path.
+            gaudi_config_name (str): the gaudi config name.
+            multi_card (bool): whether it is a distributed run or not.
         Returns:
             The test function that runs the example.
         """
 
-        @slow
+        if not gaudi_config_name:
+            gaudi_config_name = PATH_TO_DEFAULT_GAUDI_CONFIG
+
+        # @slow
         def test(self):
             if self.EXAMPLE_NAME is None:
                 raise ValueError("An example name must be provided")
@@ -126,25 +135,40 @@ class ExampleTestMeta(type):
 
             self._install_requirements(example_script.parent / "requirements.txt")
 
+            path_to_baseline = BASELINE_DIRECTORY / Path(model_name.replace("-", "_")).with_suffix(".json")
+            with path_to_baseline.open("r") as json_file:
+                baseline = json.load(json_file)[self.TASK_NAME]
+
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
+                    multi_card,
                     example_script,
                     model_name,
                     gaudi_config_name,
                     tmp_dir,
                     task=self.TASK_NAME,
-                    do_eval=self.EVAL_IS_SUPPORTED,
-                    train_batch_size=self.TRAIN_BATCH_SIZE,
-                    eval_batch_size=self.EVAL_BATCH_SIZE,
+                    lr=baseline.get("learning_rate"),
+                    train_batch_size=baseline.get("train_batch_size"),
+                    eval_batch_size=baseline.get("eval_batch_size"),
+                    num_epochs=baseline.get("num_train_epochs"),
+                    max_seq_length=self.MAX_SEQ_LENGTH,
                 )
+
                 p = subprocess.Popen(cmd_line)
                 return_code = p.wait()
                 self.assertEqual(return_code, 0)
 
-                if self.EVAL_IS_SUPPORTED:
-                    with open(Path(tmp_dir) / "all_results.json") as fp:
-                        results = json.load(fp)
-                    self.assertGreaterEqual(float(results[self.SCORE_NAME]), self.EVAL_SCORE_THRESHOLD)
+                with open(Path(tmp_dir) / "all_results.json") as fp:
+                    results = json.load(fp)
+                distribution = "multi_card" if multi_card else "single_card"
+                self.assertGreaterEqual(
+                    float(results["eval_f1"]),
+                    F1_SCORE_PERF_FACTOR * baseline.get("perf").get(distribution).get("f1_score"),
+                )
+                self.assertLessEqual(
+                    float(results["train_runtime"]),
+                    TRAINING_TIME_PERF_FACTOR * baseline.get("perf").get(distribution).get("training_time"),
+                )
 
             # TODO: is a cleanup of the dataset cache needed?
             # self._cleanup_dataset_cache()
@@ -159,59 +183,59 @@ class ExampleTesterBase(TestCase):
         EXAMPLE_DIR (`str` or `os.Pathlike`): the directory containing the examples.
         EXAMPLE_NAME (`str`): the name of the example script without the file extension, e.g. run_qa, run_glue, etc.
         TASK_NAME (`str`): the name of the dataset to use.
-        EVAL_IS_SUPPORTED (`bool`): whether evaluation is currently supported on IPUs.
             If True, the example will run evaluation, otherwise it will be skipped.
-        EVAL_SCORE_THRESHOLD (`float`): the score threshold from which training is assumed to have worked.
-        SCORE_NAME (`str`): the name of the metric to use for checking that the example ran successfully.
         DATASET_PARAMETER_NAME (`str`): the argument name to use for the dataset parameter.
             Most of the time it will be "dataset_name", but for some tasks on a benchmark it might be something else.
-        TRAIN_BATCH_SIZE (`int`): the batch size to give to the example script for training.
-        EVAL_BATCH_SIZE (`int`): the batch size to give to the example script for evaluation.
-        INFERENCE_DEVICE_ITERATIONS (`int`): the number of device iterations to use for evaluation.
-        GRADIENT_ACCUMULATION_STEPS (`int`): the number of gradient accumulation to use during training.
+        MAX_SEQ_LENGTH ('str'): the max_seq_length argument for this dataset.
+            The maximum total input sequence length after tokenization. Sequences longer than this will be truncated, sequences shorter will be padded.
     """
 
     EXAMPLE_DIR = Path(os.path.dirname(__file__)).parent / "examples"
     EXAMPLE_NAME = None
     TASK_NAME = None
-    EVAL_IS_SUPPORTED = True
-    EVAL_SCORE_THRESHOLD = 0.75
-    SCORE_NAME = "eval_accuracy"
     DATASET_PARAMETER_NAME = "dataset_name"
-    TRAIN_BATCH_SIZE = 2
-    EVAL_BATCH_SIZE = 2
+    MAX_SEQ_LENGTH = 384
 
     def _create_command_line(
         self,
-        script: str,
+        multi_card: bool,
+        script: Path,
         model_name: str,
-        ipu_config_name: str,
+        gaudi_config_name: str,
         output_dir: str,
         task: Optional[str] = None,
-        do_eval: bool = True,
-        lr: float = 1e-5,
-        train_batch_size: int = 2,
-        eval_batch_size: int = 2,
+        lr: float = 3e-5,
+        train_batch_size: int = 8,
+        eval_batch_size: int = 8,
         num_epochs: int = 2,
+        max_seq_length: int = 128,
         extra_command_line_arguments: Optional[List[str]] = None,
     ) -> List[str]:
-        do_eval_option = "--do_eval" if do_eval else " "
         task_option = f"--{self.DATASET_PARAMETER_NAME} {task}" if task else " "
 
-        cmd_line = [
+        cmd_line = ["python3"]
+        if multi_card:
+            cmd_line.append(f"{script.parent.parent / 'gaudi_spawn.py'}")
+            cmd_line.append("--world_size 8")
+            cmd_line.append("--use_mpi")
+
+        cmd_line += [
             f"{script}",
             f"--model_name_or_path {model_name}",
-            f"--gaudi_config_name {ipu_config_name}",
+            f"--gaudi_config_name {gaudi_config_name}",
             f"{task_option}",
             "--do_train",
-            f"{do_eval_option}",
+            "--do_eval",
             f"--output_dir {output_dir}",
-            "--overwrite_output_dir true",
+            "--overwrite_output_dir",
             f"--learning_rate {lr}",
             f"--per_device_train_batch_size {train_batch_size}",
             f"--per_device_eval_batch_size {eval_batch_size}",
             "--save_strategy epoch",
             f" --num_train_epochs {num_epochs}",
+            f"--max_seq_length {max_seq_length}",
+            "--use_habana",
+            "--use_lazy_mode",
         ]
         if extra_command_line_arguments is not None:
             cmd_line += extra_command_line_arguments
@@ -234,8 +258,16 @@ class ExampleTesterBase(TestCase):
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
     TASK_NAME = "mrpc"
     DATASET_PARAMETER_NAME = "task_name"
+    MAX_SEQ_LENGTH = 128
 
 
 class QuestionAnsweringExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa"):
     TASK_NAME = "squad"
-    SCORE_NAME = "eval_f1"
+    MAX_SEQ_LENGTH = 384
+
+
+class QuestionAnsweringExampleTesterMultiCard(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa", multi_card=True
+):
+    TASK_NAME = "squad"
+    MAX_SEQ_LENGTH = 384
