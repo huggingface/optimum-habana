@@ -161,19 +161,13 @@ class GaudiTrainer(Trainer):
         self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_lazy_mode:
-            try:
-                import habana_frameworks.torch.core as htcore
-            except ImportError as error:
-                error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
-                raise error
+            import habana_frameworks.torch.core as htcore
+
             self.htcore = htcore
 
         if self.gaudi_config.use_habana_mixed_precision:
-            try:
-                from habana_frameworks.torch.hpex import hmp
-            except ImportError as error:
-                error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-                raise error
+            from habana_frameworks.torch.hpex import hmp
+
             self.hmp = hmp
 
             # Open temporary files to mixed-precision write ops
@@ -193,13 +187,8 @@ class GaudiTrainer(Trainer):
                     )
 
         if self.gaudi_config.use_fused_clip_norm:
-            try:
-                from habana_frameworks.torch.hpex.normalization import FusedClipNorm
-            except ImportError as error:
-                error.msg = (
-                    f"Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'. {error.msg}."
-                )
-                raise error
+            from habana_frameworks.torch.hpex.normalization import FusedClipNorm
+
             self.FusedNorm = FusedClipNorm(
                 self.model.parameters(),
                 self.args.max_grad_norm,
@@ -233,13 +222,8 @@ class GaudiTrainer(Trainer):
                     )
 
             if self.gaudi_config.use_fused_adam:
-                try:
-                    from habana_frameworks.torch.hpex.optimizers import FusedAdamW
-                except ImportError as error:
-                    error.msg = (
-                        f"Could not import 'FusedAdamW' from 'habana_frameworks.torch.hpex.optimizers'. {error.msg}."
-                    )
-                    raise error
+                from habana_frameworks.torch.hpex.optimizers import FusedAdamW
+
                 optimizer_cls = FusedAdamW
                 optimizer_kwargs = {
                     "lr": self.args.learning_rate,
@@ -412,11 +396,8 @@ class GaudiTrainer(Trainer):
             # Reinitialize Habana fused clip norm to avoid inconsistencies
             # If not done, test_model_init in test_trainer.py will fail
             if args.use_habana and self.gaudi_config.use_fused_clip_norm:
-                try:
-                    from habana_frameworks.torch.hpex.normalization import FusedClipNorm
-                except ImportError as error:
-                    error.msg = f"Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'. {error.msg}."
-                    raise error
+                from habana_frameworks.torch.hpex.normalization import FusedClipNorm
+
                 self.FusedNorm = FusedClipNorm(
                     self.model.parameters(),
                     self.args.max_grad_norm,

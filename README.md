@@ -120,6 +120,7 @@ with for example the following Gaudi configuration written in a JSON file:
     "add",
     "addmm",
     "bmm",
+    "div",
     "dropout",
     "gelu",
     "iadd",
@@ -127,15 +128,14 @@ with for example the following Gaudi configuration written in a JSON file:
     "layer_norm",
     "matmul",
     "mm",
-    "rsub"
+    "rsub",
+    "softmax",
+    "truediv"
   ],
   "hmp_fp32_ops": [
     "embedding",
     "nll_loss",
-    "log_softmax",
-    "truediv",
-    "div",
-    "softmax"
+    "log_softmax"
   ]
 }
 ```

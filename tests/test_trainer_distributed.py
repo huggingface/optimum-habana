@@ -68,9 +68,7 @@ class TestGaudiTrainerDistributed(TestCasePlus):
     def test_gaudi_trainer_distributed(self):
 
         output_dir = self.get_auto_remove_tmp_dir()
-        # command_list = [
-        #     f"{self.test_file_dir}/test_trainer_distributed.py --output_dir {output_dir} --use_habana --use_lazy_mode"
-        # ]
+
         command_list = [f"{self.test_file_dir}/test_trainer_distributed.py"]
         command_list += ["--output_dir"]
         command_list += [output_dir]
@@ -94,7 +92,7 @@ class TestGaudiTrainerDistributed(TestCasePlus):
 if __name__ == "__main__":
     # The script below is meant to be run under mpirun, on a machine with multiple HPUs:
     #
-    # PYTHONPATH="src" python optimum-habana/examples/gaudi_spawn.py --world_size 8 --use_mpi --output_dir output_dir ./tests/test_trainer_distributed.py
+    # python ./examples/gaudi_spawn.py --world_size 8 --use_mpi --output_dir output_dir ./tests/test_trainer_distributed.py
 
     parser = HfArgumentParser((GaudiTrainingArguments,))
     training_args = parser.parse_args_into_dataclasses()[0]

@@ -113,6 +113,15 @@ class GaudiTrainingArguments(TrainingArguments):
             device = torch.device("cuda", self.local_rank)
             self._n_gpu = 1
         elif self.use_habana:
+            try:
+                from habana_frameworks.torch.utils.library_loader import is_habana_avaialble
+            except ImportError as error:
+                error.msg = (
+                    f"Could not import is_habana_avaialble from habana_frameworks.utils.library_loader. {error.msg}."
+                )
+                raise error
+            if not is_habana_avaialble():
+                raise RuntimeError("Habana is not available.")
             logger.info("Habana is enabled.")
 
             if self.use_lazy_mode:
@@ -159,11 +168,8 @@ class GaudiTrainingArguments(TrainingArguments):
                     logger.info("Single node run")
 
             if self.local_rank != -1:
-                try:
-                    import habana_frameworks.torch.core.hccl
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.core.hccl. {error.msg}."
-                    raise error
+                import habana_frameworks.torch.core.hccl
+
                 os.environ["ID"] = str(self.local_rank)
                 torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
                 logger.info("Enabled distributed run.")
