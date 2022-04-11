@@ -66,6 +66,8 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": "Whether to use lazy mode for training the model."},
     )
 
+    adam_epsilon: float = field(default=1e-6, metadata={"help": "Epsilon for AdamW optimizer."})
+
     @cached_property
     @torch_required
     def _setup_devices(self) -> "torch.device":
