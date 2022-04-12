@@ -91,3 +91,16 @@ It runs in 11 minutes with BERT-large and yields the following results:
 f1 = 93.1666
 exact_match = 86.8874
 ```
+
+
+### Recommended Hyperparameters
+
+|        | learning_rate | per_device_train_batch_size | num_train_epochs |
+|---------------|:----:|:--:|:-:|
+| BERT base     | 3e-5 | 24 | 2 |
+| BERT large    | 3e-5 | 24 | 2 |
+| RoBERTa base  | 3e-5 | 12 | 2 |
+| RoBERTa large | 3e-5 | 12 | 2 |
+| ALBERT large  | 6e-5 | 32 | 2 |
+| ALBERT XXL    | 5e-5 | 12 | 2 |
+| DistilBERT    | 5e-5 | 8  | 2 |

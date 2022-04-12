@@ -21,7 +21,7 @@ limitations under the License.
 
 # Optimum Habana
 
-🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor](https://docs.habana.ai/en/latest/index.html).
+🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
 It provides a set of tools enabling model loading and fine-tuning on single- and multi-HPU settings for question answering and text classification.
 
 
@@ -120,6 +120,7 @@ with for example the following Gaudi configuration written in a JSON file:
     "add",
     "addmm",
     "bmm",
+    "div",
     "dropout",
     "gelu",
     "iadd",
@@ -127,15 +128,14 @@ with for example the following Gaudi configuration written in a JSON file:
     "layer_norm",
     "matmul",
     "mm",
-    "rsub"
+    "rsub",
+    "softmax",
+    "truediv"
   ],
   "hmp_fp32_ops": [
     "embedding",
     "nll_loss",
-    "log_softmax",
-    "truediv",
-    "div",
-    "softmax"
+    "log_softmax"
   ]
 }
 ```
