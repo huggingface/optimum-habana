@@ -1,0 +1,18 @@
+{
+    "squad": {
+        "learning_rate": 3e-5,
+        "num_train_epochs": 2,
+        "train_batch_size": 12,
+        "eval_batch_size": 8,
+        "perf": {
+            "single_card": {
+                "f1_score": 92.4953,
+                "training_time": 1360.7421
+            },
+            "multi_card": {
+                "f1_score": 91.7834,
+                "training_time": 300.0349
+            }
+        }
+    }
+}
