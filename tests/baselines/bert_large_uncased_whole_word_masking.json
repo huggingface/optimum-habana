@@ -22,12 +22,12 @@
         "eval_batch_size": 8,
         "perf": {
             "single_card": {
-                "f1_score": false,
-                "training_time": false
+                "f1_score": 0.9181,
+                "training_time": 177.0968
             },
             "multi_card": {
-                "f1_score": false,
-                "training_time": false
+                "f1_score": 0.8529,
+                "training_time": 128.3384
             }
         }
     }

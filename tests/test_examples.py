@@ -50,7 +50,7 @@ def _get_supported_models_for_script(
     valid_models_for_task: List[str],
 ) -> List[Tuple[str]]:
     """
-    Filters models that can perform the task from models_to_test.
+    Filter models that can perform the task from models_to_test.
     Args:
         models_to_test: mapping between a model type and a tuple (model_name_or_path, gaudi_config_name).
         task_mapping: mapping between a model config and a model class.
@@ -108,7 +108,7 @@ class ExampleTestMeta(type):
     @classmethod
     def _create_test(cls, model_name: str, gaudi_config_name: str, multi_card: bool = False) -> Callable[[], None]:
         """
-        Creates a test function that runs an example for a specific (model_name, gaudi_config_name) pair.
+        Create a test function that runs an example for a specific (model_name, gaudi_config_name) pair.
         Args:
             model_name (str): the model_name_or_path.
             gaudi_config_name (str): the gaudi config name.
@@ -120,7 +120,7 @@ class ExampleTestMeta(type):
         if not gaudi_config_name:
             gaudi_config_name = PATH_TO_DEFAULT_GAUDI_CONFIG
 
-        # @slow
+        @slow
         def test(self):
             if self.EXAMPLE_NAME is None:
                 raise ValueError("An example name must be provided")
@@ -156,15 +156,21 @@ class ExampleTestMeta(type):
 
                 p = subprocess.Popen(cmd_line)
                 return_code = p.wait()
+
+                # Ensure the run finished without any issue
                 self.assertEqual(return_code, 0)
 
                 with open(Path(tmp_dir) / "all_results.json") as fp:
                     results = json.load(fp)
                 distribution = "multi_card" if multi_card else "single_card"
+
+                # Ensure the accuracy requirement is met
                 self.assertGreaterEqual(
                     float(results["eval_f1"]),
                     F1_SCORE_PERF_FACTOR * baseline.get("perf").get(distribution).get("f1_score"),
                 )
+
+                # Ensure the performance requirement is met
                 self.assertLessEqual(
                     float(results["train_runtime"]),
                     TRAINING_TIME_PERF_FACTOR * baseline.get("perf").get(distribution).get("training_time"),
@@ -183,7 +189,6 @@ class ExampleTesterBase(TestCase):
         EXAMPLE_DIR (`str` or `os.Pathlike`): the directory containing the examples.
         EXAMPLE_NAME (`str`): the name of the example script without the file extension, e.g. run_qa, run_glue, etc.
         TASK_NAME (`str`): the name of the dataset to use.
-            If True, the example will run evaluation, otherwise it will be skipped.
         DATASET_PARAMETER_NAME (`str`): the argument name to use for the dataset parameter.
             Most of the time it will be "dataset_name", but for some tasks on a benchmark it might be something else.
         MAX_SEQ_LENGTH ('str'): the max_seq_length argument for this dataset.
@@ -247,8 +252,10 @@ class ExampleTesterBase(TestCase):
         """
         Installs the necessary requirements to run the example if the provided file exists, otherwise does nothing.
         """
+
         if not Path(requirements_filename).exists():
             return
+
         cmd_line = f"pip install -r {requirements_filename}".split()
         p = subprocess.Popen(cmd_line)
         return_code = p.wait()
@@ -261,12 +268,20 @@ class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMe
     MAX_SEQ_LENGTH = 128
 
 
+class MultiCardTextClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue", multi_card=True
+):
+    TASK_NAME = "mrpc"
+    DATASET_PARAMETER_NAME = "task_name"
+    MAX_SEQ_LENGTH = 128
+
+
 class QuestionAnsweringExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa"):
     TASK_NAME = "squad"
     MAX_SEQ_LENGTH = 384
 
 
-class QuestionAnsweringExampleTesterMultiCard(
+class MultiCardQuestionAnsweringExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa", multi_card=True
 ):
     TASK_NAME = "squad"

@@ -1,6 +1,6 @@
 {
     "squad": {
-        "learning_rate": 6e-5,
+        "learning_rate": 5e-5,
         "num_train_epochs": 2,
         "train_batch_size": 12,
         "eval_batch_size": 2,

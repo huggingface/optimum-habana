@@ -6,28 +6,28 @@
         "eval_batch_size": 8,
         "perf": {
             "single_card": {
-                "f1_score": false,
-                "training_time": false
+                "f1_score": 88.0717,
+                "training_time": 1208.908
             },
             "multi_card": {
-                "f1_score": false,
-                "training_time": false
+                "f1_score": 85.3326,
+                "training_time": 244.3042
             }
         }
     },
     "mrpc": {
-        "learning_rate": 2e-5,
+        "learning_rate": 3e-5,
         "num_train_epochs": 3,
         "train_batch_size": 32,
         "eval_batch_size": 8,
         "perf": {
             "single_card": {
-                "f1_score": false,
-                "training_time": false
+                "f1_score": 0.9103,
+                "training_time": 64.3312
             },
             "multi_card": {
-                "f1_score": false,
-                "training_time": false
+                "f1_score": 0.8404,
+                "training_time": 61.8822
             }
         }
     }
