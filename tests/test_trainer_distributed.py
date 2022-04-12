@@ -16,8 +16,6 @@ from pathlib import Path
 from typing import Dict
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
-
-# from optimum.habana.testing_utils import require_torch_multi_hpu
 from optimum.habana.distributed import DistributedRunner
 from optimum.utils import logging
 from transformers import EvalPrediction, HfArgumentParser, is_torch_available
@@ -62,9 +60,6 @@ if is_torch_available():
 
 
 class TestGaudiTrainerDistributed(TestCasePlus):
-    # require_torch_multi_hpu is commented because importing torch.hpu
-    # before the main script makes the test fail
-    # @require_torch_multi_hpu
     def test_gaudi_trainer_distributed(self):
 
         output_dir = self.get_auto_remove_tmp_dir()
