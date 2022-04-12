@@ -36,8 +36,6 @@ To install the package from source:
 
 `pip install git+https://github.com/huggingface/optimum-habana.git`
 
-This has been tested with 🤗 Transformers 4.17.0.
-
 Last but not least, don't forget to install requirements for every example:
 
 `cd <example-folder>
