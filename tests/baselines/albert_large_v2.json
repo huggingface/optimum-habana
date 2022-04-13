@@ -6,7 +6,7 @@
         "distribution": {
             "single_card": {
                 "learning_rate": 5e-5,
-                "f1_score": 92.0759,
+                "f1_score": 92.1239,
                 "training_time": 4212.6
             },
             "multi_card": {
