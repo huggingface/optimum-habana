@@ -101,7 +101,8 @@ exact_match = 86.8874
 | BERT large                 | 3e-5 | 24 | 2 |
 | RoBERTa base               | 3e-5 | 12 | 2 |
 | RoBERTa large              | 3e-5 | 12 | 2 |
-| ALBERT large               | 6e-5 | 32 | 2 |
+| ALBERT large (single-card) | 5e-5 | 32 | 2 |
+| ALBERT large (multi-card)  | 6e-5 | 32 | 2 |
 | ALBERT XXL (single-card)   | 5e-6 | 12 | 2 |
 | ALBERT XXL (multi-card)    | 5e-5 | 12 | 2 |
 | DistilBERT                 | 5e-5 | 8  | 3 |
