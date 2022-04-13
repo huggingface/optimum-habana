@@ -120,7 +120,7 @@ class ExampleTestMeta(type):
         if not gaudi_config_name:
             gaudi_config_name = PATH_TO_DEFAULT_GAUDI_CONFIG
 
-        # @slow
+        @slow
         def test(self):
             if self.EXAMPLE_NAME is None:
                 raise ValueError("An example name must be provided")
@@ -237,7 +237,6 @@ class ExampleTesterBase(TestCase):
             f"--learning_rate {lr}",
             f"--per_device_train_batch_size {train_batch_size}",
             f"--per_device_eval_batch_size {eval_batch_size}",
-            # "--save_strategy epoch",
             f" --num_train_epochs {num_epochs}",
             f"--max_seq_length {max_seq_length}",
             "--use_habana",
@@ -263,18 +262,18 @@ class ExampleTesterBase(TestCase):
         self.assertEqual(return_code, 0)
 
 
-# class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
-#     TASK_NAME = "mrpc"
-#     DATASET_PARAMETER_NAME = "task_name"
-#     MAX_SEQ_LENGTH = 128
+class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
+    TASK_NAME = "mrpc"
+    DATASET_PARAMETER_NAME = "task_name"
+    MAX_SEQ_LENGTH = 128
 
 
-# class MultiCardTextClassificationExampleTester(
-#     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue", multi_card=True
-# ):
-#     TASK_NAME = "mrpc"
-#     DATASET_PARAMETER_NAME = "task_name"
-#     MAX_SEQ_LENGTH = 128
+class MultiCardTextClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue", multi_card=True
+):
+    TASK_NAME = "mrpc"
+    DATASET_PARAMETER_NAME = "task_name"
+    MAX_SEQ_LENGTH = 128
 
 
 class QuestionAnsweringExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa"):
