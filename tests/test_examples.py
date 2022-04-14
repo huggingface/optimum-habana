@@ -150,7 +150,7 @@ class ExampleTestMeta(type):
                     tmp_dir,
                     task=self.TASK_NAME,
                     lr=baseline.get("distribution").get(distribution).get("learning_rate"),
-                    train_batch_size=baseline.get("train_batch_size"),
+                    train_batch_size=baseline.get("distribution").get(distribution).get("train_batch_size"),
                     eval_batch_size=baseline.get("eval_batch_size"),
                     num_epochs=baseline.get("num_train_epochs"),
                     max_seq_length=self.MAX_SEQ_LENGTH,
