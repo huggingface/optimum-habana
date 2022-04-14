@@ -7,13 +7,13 @@
                 "learning_rate": 5e-6,
                 "train_batch_size": 12,
                 "f1_score": 94.8791,
-                "training_time": 19656.6
+                "training_time": 19740
             },
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 12,
                 "f1_score": 95.006,
-                "training_time": 2625
+                "training_time": 2700
             }
         }
     }
