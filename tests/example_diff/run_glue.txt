@@ -1,0 +1,19 @@
+30a31,32
+> from optimum.habana import GaudiConfig, GaudiTrainer
+> from optimum.habana import GaudiTrainingArguments as TrainingArguments
+39,40d40
+<     Trainer,
+<     TrainingArguments,
+340a323,328
+>     gaudi_config = GaudiConfig.from_pretrained(
+>         training_args.gaudi_config_name if training_args.gaudi_config_name else model_args.model_name_or_path,
+>         cache_dir=model_args.cache_dir,
+>         revision=model_args.model_revision,
+>         use_auth_token=True if model_args.use_auth_token else None,
+>     )
+491c476
+<     trainer = Trainer(
+---
+>     trainer = GaudiTrainer(
+492a478
+>         gaudi_config=gaudi_config,

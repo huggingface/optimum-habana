@@ -1,0 +1,18 @@
+3c3
+< # Copyright 2020 The HuggingFace Team All rights reserved.
+---
+> # Copyright 2022 The HuggingFace Team All rights reserved.
+30a31,32
+> from optimum.habana import GaudiConfig
+> from optimum.habana.training_args import GaudiTrainingArguments as TrainingArguments
+40d41
+<     TrainingArguments,
+302a295,300
+>     gaudi_config = GaudiConfig.from_pretrained(
+>         training_args.gaudi_config_name if training_args.gaudi_config_name else model_args.model_name_or_path,
+>         cache_dir=model_args.cache_dir,
+>         revision=model_args.model_revision,
+>         use_auth_token=True if model_args.use_auth_token else None,
+>     )
+584a578
+>         gaudi_config=gaudi_config,
