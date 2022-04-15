@@ -25,14 +25,19 @@ limitations under the License.
 It provides a set of tools enabling model loading and fine-tuning on single- and multi-HPU settings for question answering and text classification.
 
 
+## What is a Habana Processing Unit (HPU)?
+
+Quote from the Hugging Face [blog post](https://huggingface.co/blog/habana):
+
+> Habana Gaudi training solutions, which power Amazon’s EC2 DL1 instances and Supermicro’s X12 Gaudi AI Training Server, deliver price/performance up to 40% lower than comparable training solutions and enable customers to train more while spending less. The integration of ten 100 Gigabit Ethernet ports onto every Gaudi processor enables system scaling from 1 to thousands of Gaudis with ease and cost-efficiency. Habana’s SynapseAI® is optimized—at inception—to enable Gaudi performance and usability, supports TensorFlow and PyTorch frameworks, with a focus on computer vision and natural language processing applications.
+
+
 ## Install
-<!-- To install the latest release of this package:
+To install the latest release of this package:
 
 `pip install optimum[habana]`
 
-Optimum Habana is a fast-moving project, and you may want to install from source: -->
-
-To install the package from source:
+Optimum Habana is a fast-moving project, and you may want to install it from source:
 
 `pip install git+https://github.com/huggingface/optimum-habana.git`
 
@@ -56,7 +61,7 @@ There are two main classes one needs to know:
 - GaudiConfig: the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
 
 The `GaudiTrainer` is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
-<!-- That's how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their [original counterparts](https://github.com/huggingface/transformers/tree/master/examples/pytorch). -->
+That's how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their [original counterparts](https://github.com/huggingface/transformers/tree/main/examples/pytorch).
 
 Original script:
 ```python
