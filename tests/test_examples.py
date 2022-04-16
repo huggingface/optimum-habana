@@ -139,6 +139,8 @@ class ExampleTestMeta(type):
             with path_to_baseline.open("r") as json_file:
                 baseline = json.load(json_file)[self.TASK_NAME]
 
+            distribution = "multi_card" if multi_card else "single_card"
+
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
                     multi_card,
@@ -147,8 +149,8 @@ class ExampleTestMeta(type):
                     gaudi_config_name,
                     tmp_dir,
                     task=self.TASK_NAME,
-                    lr=baseline.get("learning_rate"),
-                    train_batch_size=baseline.get("train_batch_size"),
+                    lr=baseline.get("distribution").get(distribution).get("learning_rate"),
+                    train_batch_size=baseline.get("distribution").get(distribution).get("train_batch_size"),
                     eval_batch_size=baseline.get("eval_batch_size"),
                     num_epochs=baseline.get("num_train_epochs"),
                     max_seq_length=self.MAX_SEQ_LENGTH,
@@ -162,18 +164,17 @@ class ExampleTestMeta(type):
 
                 with open(Path(tmp_dir) / "all_results.json") as fp:
                     results = json.load(fp)
-                distribution = "multi_card" if multi_card else "single_card"
 
                 # Ensure the accuracy requirement is met
                 self.assertGreaterEqual(
                     float(results["eval_f1"]),
-                    F1_SCORE_PERF_FACTOR * baseline.get("perf").get(distribution).get("f1_score"),
+                    F1_SCORE_PERF_FACTOR * baseline.get("distribution").get(distribution).get("f1_score"),
                 )
 
                 # Ensure the performance requirement is met
                 self.assertLessEqual(
                     float(results["train_runtime"]),
-                    TRAINING_TIME_PERF_FACTOR * baseline.get("perf").get(distribution).get("training_time"),
+                    TRAINING_TIME_PERF_FACTOR * baseline.get("distribution").get(distribution).get("training_time"),
                 )
 
             # TODO: is a cleanup of the dataset cache needed?
@@ -236,7 +237,6 @@ class ExampleTesterBase(TestCase):
             f"--learning_rate {lr}",
             f"--per_device_train_batch_size {train_batch_size}",
             f"--per_device_eval_batch_size {eval_batch_size}",
-            "--save_strategy epoch",
             f" --num_train_epochs {num_epochs}",
             f"--max_seq_length {max_seq_length}",
             "--use_habana",
