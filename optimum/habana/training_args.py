@@ -13,15 +13,11 @@
 #  limitations under the License.
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Optional
 
 from optimum.utils import logging
-from transformers.file_utils import (
-    cached_property,
-    is_torch_available,
-    torch_required,
-)
+from transformers.file_utils import cached_property, is_torch_available, torch_required
 from transformers.training_args import TrainingArguments
 
 
@@ -30,6 +26,24 @@ if is_torch_available():
 
 
 logger = logging.get_logger(__name__)
+
+
+# List of arguments that are not supported by optimum-habana
+UNSUPPORTED_ARGUMENTS = [
+    "bf16",  # bf16 for CUDA devices
+    "bf16_full_eval",  # bf16 for CUDA devices
+    "deepspeed",
+    "fp16",
+    "fp16_backend",
+    "fp16_full_eval",
+    "fp16_opt_level",
+    "half_precision_backend",  # not supported, Habana Mixed Precision should be used and specified in Gaudi configuration
+    "mp_parameters",
+    "sharded_ddp",
+    "tf32",
+    "tpu_metrics_debug",
+    "tpu_num_cores",
+]
 
 
 @dataclass
@@ -76,6 +90,24 @@ class GaudiTrainingArguments(TrainingArguments):
             raise ValueError("--tf32 is not supported by optimum-habana.")
 
         super().__post_init__()
+
+    def __str__(self):
+        self_as_dict = asdict(self)
+
+        # Remove deprecated arguments. That code should be removed once
+        # those deprecated arguments are removed from TrainingArguments. (TODO: transformers v5)
+        del self_as_dict["per_gpu_train_batch_size"]
+        del self_as_dict["per_gpu_eval_batch_size"]
+        # Remove arguments that are unsupported by optimum-habana
+        for key in UNSUPPORTED_ARGUMENTS:
+            del self_as_dict[key]
+
+        self_as_dict = {k: f"<{k.upper()}>" if k.endswith("_token") else v for k, v in self_as_dict.items()}
+
+        attrs_as_str = [f"{k}={v},\n" for k, v in sorted(self_as_dict.items())]
+        return f"{self.__class__.__name__}(\n{''.join(attrs_as_str)})"
+
+    __repr__ = __str__
 
     @cached_property
     @torch_required

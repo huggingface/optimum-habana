@@ -213,10 +213,18 @@ def main():
     transformers.utils.logging.enable_default_handler()
     transformers.utils.logging.enable_explicit_format()
 
+    gaudi_config = GaudiConfig.from_pretrained(
+        training_args.gaudi_config_name if training_args.gaudi_config_name else model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+    )
+
     # Log on each process the small summary:
     logger.warning(
-        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-        + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
+        + f"distributed training: {bool(training_args.local_rank != -1)}, "
+        + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
     )
     logger.info(f"Training/evaluation parameters {training_args}")
 
@@ -316,12 +324,6 @@ def main():
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
         num_labels=num_labels,
         finetuning_task=data_args.task_name,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    gaudi_config = GaudiConfig.from_pretrained(
-        training_args.gaudi_config_name if training_args.gaudi_config_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,

@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Dict
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
-
 from optimum.habana.distributed import DistributedRunner
 from optimum.utils import logging
 from transformers import EvalPrediction, HfArgumentParser, is_torch_available

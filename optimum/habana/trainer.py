@@ -36,10 +36,7 @@ from transformers import Trainer, __version__
 from transformers.configuration_utils import PretrainedConfig
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
-from transformers.file_utils import (
-    CONFIG_NAME,
-    WEIGHTS_NAME,
-)
+from transformers.file_utils import CONFIG_NAME, WEIGHTS_NAME
 from transformers.integrations import hp_params
 from transformers.modeling_utils import PreTrainedModel, unwrap_model
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
