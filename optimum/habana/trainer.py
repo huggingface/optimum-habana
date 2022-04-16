@@ -150,7 +150,6 @@ class GaudiTrainer(Trainer):
                             hmp_bf16_file.name,
                             hmp_fp32_file.name,
                         )
-                        # TODO: manage the case where the user specifies only one set of ops (bf16 or fp32)
                         self.hmp.convert(
                             opt_level=self.gaudi_config.hmp_opt_level,
                             bf16_file_path=hmp_bf16_file.name,
