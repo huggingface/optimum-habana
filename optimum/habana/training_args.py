@@ -66,7 +66,11 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": "Whether to use lazy mode for training the model."},
     )
 
+    # Override the default value of epsilon to be consistent with Habana FusedAdamW
     adam_epsilon: float = field(default=1e-6, metadata={"help": "Epsilon for AdamW optimizer."})
+
+    # Override logging_nan_inf_filter to make False the default value
+    logging_nan_inf_filter: bool = field(default=False, metadata={"help": "Filter nan and inf losses for logging."})
 
     def __post_init__(self):
         # Raise errors for arguments that are not supported by optimum-habana

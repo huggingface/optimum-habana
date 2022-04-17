@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import dataclasses
+import math
 import os
 import random
 import re
@@ -23,7 +24,6 @@ import time
 import unittest
 from pathlib import Path
 from typing import Optional, Union
-from unittest.mock import Mock, patch
 
 import numpy as np
 
@@ -32,7 +32,7 @@ from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.utils import logging
 from parameterized import parameterized
 from requests.exceptions import HTTPError
-from transformers import AutoTokenizer, IntervalStrategy, PretrainedConfig, is_torch_available
+from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
 from transformers.file_utils import WEIGHTS_NAME
 from transformers.testing_utils import (
     ENDPOINT_STAGING,
@@ -49,14 +49,7 @@ from transformers.testing_utils import (
     require_sigopt,
     require_tokenizers,
     require_torch,
-    require_torch_bf16,
-    require_torch_gpu,
-    require_torch_multi_gpu,
-    require_torch_non_multi_gpu,
-    require_torch_tf32,
-    require_torch_up_to_2_gpus,
     require_wandb,
-    slow,
 )
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 from transformers.training_args import OptimizerNames
@@ -70,17 +63,7 @@ if is_torch_available():
 
     import transformers.optimization
     from optimum.habana import GaudiTrainer
-    from transformers import (
-        AutoModelForSequenceClassification,
-        EarlyStoppingCallback,
-        GlueDataset,
-        GlueDataTrainingArguments,
-        GPT2Config,
-        GPT2LMHeadModel,
-        LineByLineTextDataset,
-        PreTrainedModel,
-        TrainerState,
-    )
+    from transformers import EarlyStoppingCallback, GPT2Config, GPT2LMHeadModel, PreTrainedModel, TrainerState
     from transformers.modeling_utils import unwrap_model
 
 
@@ -484,7 +467,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         self.assertFalse(torch.allclose(trainer.model.b, b))
         self.assertEqual(trainer.optimizer.state_dict()["param_groups"][0]["lr"], 1.0)
 
-    # TODO: investigate why this test fails
+    # TODO: enable this test when mse_loss is fixed in habana_frameworks
     # def test_adafactor_lr_none(self):
     #     # test the special case where lr=None, since Trainer can't not have lr_scheduler
 
@@ -507,29 +490,16 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
     #     self.assertFalse(torch.allclose(trainer.model.b, b))
     #     self.assertGreater(trainer.optimizer.state_dict()["param_groups"][0]["lr"], 0)
 
-    # @require_torch_gpu
-    # @require_torch_bf16
+    # TODO: enable this test when mse_loss is fixed in habana_frameworks
     # def test_mixed_bf16(self):
-
     #     # very basic test
     #     trainer = get_regression_trainer(learning_rate=0.1, bf16=True)
     #     trainer.train()
     #     self.check_trained_model(trainer.model)
 
-    #     # --bf16 --half_precision_backend apex can't be used together
+    #     # --bf16 is not supported and should raise an error
     #     with self.assertRaises(ValueError):
-    #         trainer = get_regression_trainer(learning_rate=0.1, bf16=True, half_precision_backend="apex")
-
-    #     # will add more specific tests once there are some bugs to fix
-
-    # @require_torch_gpu
-    # @require_torch_tf32
-    # def test_tf32(self):
-
-    #     # very basic test
-    #     trainer = get_regression_trainer(learning_rate=0.1, tf32=True)
-    #     trainer.train()
-    #     self.check_trained_model(trainer.model)
+    #         trainer = get_regression_trainer(learning_rate=0.1, bf16=True)
 
 
 @require_torch
@@ -542,9 +512,18 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.n_epochs = args.num_train_epochs
         self.batch_size = args.train_batch_size
 
+    def test_eager_mode(self):
+        train_dataset = RegressionDataset()
+        eval_dataset = RegressionDataset()
+        model = RegressionModel()
+        gaudi_config = get_gaudi_config()
+        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=False)
+        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer.train()
+        _ = trainer.evaluate()
+        _ = trainer.predict(eval_dataset)
+
     def test_trainer_works_with_dict(self):
-        # Edge case because Apex with mode O2 will change our models to return dicts. This test checks it doesn't break
-        # anything.
         train_dataset = RegressionDataset()
         eval_dataset = RegressionDataset()
         model = RegressionDictModel()
@@ -555,7 +534,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         _ = trainer.evaluate()
         _ = trainer.predict(eval_dataset)
 
-    # TODO: replace GPT2 by tiny-bert
     def test_evaluation_with_keys_to_drop(self):
         config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
         tiny_gpt2 = GPT2LMHeadModel(config)
@@ -598,93 +576,99 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         train_output = trainer.train()
         self.assertEqual(train_output.global_step, 10)
 
-    # TODO: make tests crash, replace GPT2 by tiny-bert
-    # def test_logging_inf_nan_filter(self):
-    #     config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-    #     tiny_gpt2 = GPT2LMHeadModel(config)
-    #     x = torch.randint(0, 100, (128,))
-    #     train_dataset = RepeatDataset(x)
+    def test_logging_inf_nan_filter(self):
+        config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
+        tiny_gpt2 = GPT2LMHeadModel(config)
+        x = torch.randint(0, 100, (128,))
+        train_dataset = RepeatDataset(x)
 
-    #     # GaudiTrainer without inf/nan filter
-    #     gaudi_config = get_gaudi_config()
-    #     args = GaudiTrainingArguments(
-    #         "./test",
-    #         learning_rate=1e9,
-    #         logging_steps=5,
-    #         logging_nan_inf_filter=False,
-    #         use_habana=True,
-    #         use_lazy_mode=True,
-    #     )
-    #     trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
-    #     trainer.train()
-    #     log_history_no_filter = trainer.state.log_history
+        # GaudiTrainer without inf/nan filter
+        gaudi_config = get_gaudi_config()
+        args = GaudiTrainingArguments(
+            "./test",
+            learning_rate=1e9,
+            logging_steps=5,
+            logging_nan_inf_filter=False,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+        trainer.train()
+        log_history_no_filter = trainer.state.log_history
 
-    #     # GaudiTrainer with inf/nan filter
-    #     args = GaudiTrainingArguments(
-    #         "./test",
-    #         learning_rate=1e9,
-    #         logging_steps=5,
-    #         logging_nan_inf_filter=True,
-    #         use_habana=True,
-    #         use_lazy_mode=True,
-    #     )
-    #     trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
-    #     trainer.train()
-    #     log_history_filter = trainer.state.log_history
+        # GaudiTrainer with inf/nan filter
+        args = GaudiTrainingArguments(
+            "./test",
+            learning_rate=1e9,
+            logging_steps=5,
+            logging_nan_inf_filter=True,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+        trainer.train()
+        log_history_filter = trainer.state.log_history
 
-    #     def is_any_loss_nan_or_inf(log_history):
-    #         losses = [l["loss"] for l in log_history[:-1]]
-    #         return any(math.isnan(x) for x in losses) or any(math.isinf(x) for x in losses)
+        def is_any_loss_nan_or_inf(log_history):
+            losses = [l["loss"] for l in log_history[:-1]]
+            return any(math.isnan(x) for x in losses) or any(math.isinf(x) for x in losses)
 
-    #     self.assertTrue(is_any_loss_nan_or_inf(log_history_no_filter))
-    #     self.assertFalse(is_any_loss_nan_or_inf(log_history_filter))
+        self.assertTrue(is_any_loss_nan_or_inf(log_history_no_filter))
+        self.assertFalse(is_any_loss_nan_or_inf(log_history_filter))
 
-    # def test_train_and_eval_dataloaders(self):
-    #     n_gpu = max(1, torch.cuda.device_count())
-    #     trainer = get_regression_trainer(learning_rate=0.1, per_device_train_batch_size=16)
-    #     self.assertEqual(trainer.get_train_dataloader().batch_size, 16 * n_gpu)
-    #     trainer = get_regression_trainer(learning_rate=0.1, per_device_eval_batch_size=16)
-    #     self.assertEqual(trainer.get_eval_dataloader().batch_size, 16 * n_gpu)
+    def test_train_and_eval_dataloaders(self):
+        trainer = get_regression_trainer(learning_rate=0.1, per_device_train_batch_size=16)
+        self.assertEqual(trainer.get_train_dataloader().batch_size, 16)
+        trainer = get_regression_trainer(learning_rate=0.1, per_device_eval_batch_size=16)
+        self.assertEqual(trainer.get_eval_dataloader().batch_size, 16)
 
-    #     # Check drop_last works
-    #     trainer = get_regression_trainer(
-    #         train_len=66, eval_len=74, learning_rate=0.1, per_device_train_batch_size=16, per_device_eval_batch_size=32
-    #     )
-    #     self.assertEqual(len(trainer.get_train_dataloader()), 66 // (16 * n_gpu) + 1)
-    #     self.assertEqual(len(trainer.get_eval_dataloader()), 74 // (32 * n_gpu) + 1)
+        # Check drop_last works
+        trainer = get_regression_trainer(
+            train_len=66, eval_len=74, learning_rate=0.1, per_device_train_batch_size=16, per_device_eval_batch_size=32
+        )
+        self.assertEqual(len(trainer.get_train_dataloader()), 66 // (16) + 1)
+        self.assertEqual(len(trainer.get_eval_dataloader()), 74 // (32) + 1)
 
-    #     trainer = get_regression_trainer(
-    #         train_len=66,
-    #         eval_len=74,
-    #         learning_rate=0.1,
-    #         per_device_train_batch_size=16,
-    #         per_device_eval_batch_size=32,
-    #         dataloader_drop_last=True,
-    #     )
-    #     self.assertEqual(len(trainer.get_train_dataloader()), 66 // (16 * n_gpu))
-    #     self.assertEqual(len(trainer.get_eval_dataloader()), 74 // (32 * n_gpu))
+        trainer = get_regression_trainer(
+            train_len=66,
+            eval_len=74,
+            learning_rate=0.1,
+            per_device_train_batch_size=16,
+            per_device_eval_batch_size=32,
+            dataloader_drop_last=True,
+        )
+        self.assertEqual(len(trainer.get_train_dataloader()), 66 // (16))
+        self.assertEqual(len(trainer.get_eval_dataloader()), 74 // (32))
 
-    #     # Check passing a new dataset for evaluation works
-    #     new_eval_dataset = RegressionDataset(length=128)
-    #     self.assertEqual(len(trainer.get_eval_dataloader(new_eval_dataset)), 128 // (32 * n_gpu))
+        # Check passing a new dataset for evaluation works
+        new_eval_dataset = RegressionDataset(length=128)
+        self.assertEqual(len(trainer.get_eval_dataloader(new_eval_dataset)), 128 // (32))
 
-    # @require_torch_multi_gpu
-    # def test_data_is_not_parallelized_when_model_is_parallel(self):
-    #     model = RegressionModel()
-    #     # Make the Trainer believe it's a parallelized model
-    #     model.is_parallelizable = True
-    #     model.model_parallel = True
-    #     args = TrainingArguments("./regression", per_device_train_batch_size=16, per_device_eval_batch_size=16)
-    #     trainer = Trainer(model, args, train_dataset=RegressionDataset(), eval_dataset=RegressionDataset())
-    #     # Check the Trainer was fooled
-    #     self.assertTrue(trainer.is_model_parallel)
-    #     self.assertEqual(trainer.args.n_gpu, 1)
+    def test_data_is_not_parallelized_when_model_is_parallel(self):
+        model = RegressionModel()
+        # Make the Trainer believe it's a parallelized model
+        model.is_parallelizable = True
+        model.model_parallel = True
+        args = GaudiTrainingArguments(
+            "./regression",
+            per_device_train_batch_size=16,
+            per_device_eval_batch_size=16,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        gaudi_config = get_gaudi_config()
+        trainer = GaudiTrainer(
+            model, gaudi_config, args, train_dataset=RegressionDataset(), eval_dataset=RegressionDataset()
+        )
+        # Check the Trainer was fooled
+        self.assertTrue(trainer.is_model_parallel)
+        self.assertEqual(trainer.args.n_gpu, 1)
 
-    #     # The batch size of the training and evaluation dataloaders should be 16, not 16 * n_gpu
-    #     self.assertEqual(trainer.get_train_dataloader().batch_size, 16)
-    #     self.assertEqual(len(trainer.get_train_dataloader()), 64 // 16)
-    #     self.assertEqual(trainer.get_eval_dataloader().batch_size, 16)
-    #     self.assertEqual(len(trainer.get_eval_dataloader()), 64 // 16)
+        # The batch size of the training and evaluation dataloaders should be 16, not 16 * n_gpu
+        self.assertEqual(trainer.get_train_dataloader().batch_size, 16)
+        self.assertEqual(len(trainer.get_train_dataloader()), 64 // 16)
+        self.assertEqual(trainer.get_eval_dataloader().batch_size, 16)
+        self.assertEqual(len(trainer.get_eval_dataloader()), 64 // 16)
 
     # TODO: enable this test when mse_loss is fixed in habana_frameworks
     # def test_evaluate(self):
@@ -793,31 +777,28 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     #         self.assertTrue(np.array_equal(2 * expected + 1, seen[: expected.shape[0]]))
     #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    # TODO: problem with transformers logs
-    # def test_log_level(self):
-    #     # testing only --log_level (--log_level_replica requires multiple gpus and DDP and is tested elsewhere)
-    #     logger = logging.get_logger()
-    #     log_info_string = "Running training"
+    def test_log_level(self):
+        # testing only --log_level (--log_level_replica requires multiple gpus and DDP and is tested elsewhere)
+        logger = logging.get_logger()
+        log_info_string = "Running training"
 
-    #     # test with the default log_level - should be info and thus log on the main process
-    #     with CaptureLogger(logger) as cl:
-    #         trainer = get_regression_trainer()
-    #         trainer.train()
-    #     print("CL.OUT =", cl.out)
-    #     self.assertIn(log_info_string, cl.out)
+        # test with the default log_level - should be info and thus log on the main process
+        with CaptureLogger(logger) as cl:
+            trainer = get_regression_trainer()
+            trainer.train()
+        self.assertIn(log_info_string, cl.out)
 
-    #     # test with low log_level - lower than info
-    #     with CaptureLogger(logger) as cl:
-    #         trainer = get_regression_trainer(log_level="debug")
-    #         trainer.train()
-    #     print("CL.OUT =", cl.out)
-    #     self.assertIn(log_info_string, cl.out)
+        # test with low log_level - lower than info
+        with CaptureLogger(logger) as cl:
+            trainer = get_regression_trainer(log_level="debug")
+            trainer.train()
+        self.assertIn(log_info_string, cl.out)
 
-    #     # test with high log_level - should be quiet
-    #     with CaptureLogger(logger) as cl:
-    #         trainer = get_regression_trainer(log_level="error")
-    #         trainer.train()
-    #     self.assertNotIn(log_info_string, cl.out)
+        # test with high log_level - should be quiet
+        with CaptureLogger(logger) as cl:
+            trainer = get_regression_trainer(log_level="error")
+            trainer.train()
+        self.assertNotIn(log_info_string, cl.out)
 
     def test_save_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -831,25 +812,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             trainer.train()
             self.check_saved_checkpoints(tmpdir, 5, int(self.n_epochs * 64 / self.batch_size), False)
 
-    # @require_torch_multi_gpu
-    # def test_run_seq2seq_double_train_wrap_once(self):
-    #     # test that we don't wrap the model more than once
-    #     # since wrapping primarily happens on multi-gpu setup we want multiple gpus to test for
-    #     # example DataParallel(DataParallel(model))
-
-    #     trainer = get_regression_trainer()
-    #     trainer.train()
-    #     model_wrapped_before = trainer.model_wrapped
-    #     trainer.train()
-    #     model_wrapped_after = trainer.model_wrapped
-    #     self.assertIs(model_wrapped_before, model_wrapped_after, "should be not wrapped twice")
-
-    @require_torch_up_to_2_gpus
     def test_can_resume_training(self):
-        # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
-        # save_steps, the checkpoint will resume training at epoch 2 or more (so the data seen by the model
-        # won't be the same since the training dataloader is shuffled).
-
         with tempfile.TemporaryDirectory() as tmpdir:
             kwargs = dict(output_dir=tmpdir, train_len=128, save_steps=5, learning_rate=0.1)
             trainer = get_regression_trainer(**kwargs)
@@ -943,10 +906,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             trainer.train(resume_from_checkpoint=True)
         self.assertTrue("No valid checkpoint found in output directory" in str(context.exception))
 
-    @require_torch_non_multi_gpu
     def test_resume_training_with_randomness(self):
-        # This test will fail flakily for more than 1 GPUs since the result will be slightly more different
-
         train_dataset = RegressionDataset(length=128)
         eval_dataset = RegressionDataset()
 
@@ -990,7 +950,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         trainer.train(resume_from_checkpoint=False)
 
-    # @require_torch_up_to_2_gpus
+    # TODO: enable this test when mse_loss is fixed in habana_frameworks
     # def test_resume_training_with_gradient_accumulation(self):
     #     # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
     #     # save_steps, the checkpoint will resume training at epoch 2 or more (so the data seen by the model
@@ -1028,7 +988,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     #         self.assertEqual(b, b1)
     #         self.check_trainer_state_are_the_same(state, state1)
 
-    # @require_torch_up_to_2_gpus
+    # TODO: enable this test when mse_loss is fixed in habana_frameworks
     # def test_resume_training_with_frozen_params(self):
     #     # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
     #     # save_steps, the checkpoint will resume training at epoch 2 or more (so the data seen by the model
@@ -1138,22 +1098,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             trainer.train()
             self.check_saved_checkpoints(tmpdir, 5, total, is_pretrained=False)
             self.check_best_model_has_been_loaded(tmpdir, 5, total, trainer, "eval_loss", is_pretrained=False)
-
-    @slow
-    def test_trainer_eval_mrpc(self):
-        MODEL_ID = "bert-base-cased-finetuned-mrpc"
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-        model = AutoModelForSequenceClassification.from_pretrained(MODEL_ID)
-        data_args = GlueDataTrainingArguments(
-            task_name="mrpc", data_dir=f"{get_tests_dir()}/fixtures/tests_samples/MRPC", overwrite_cache=True
-        )
-        eval_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="dev")
-
-        training_args = GaudiTrainingArguments(output_dir="./examples", no_cuda=True)
-        gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=training_args, eval_dataset=eval_dataset)
-        result = trainer.evaluate()
-        self.assertLess(result["eval_loss"], 0.2)
 
     def test_training_iterable_dataset(self):
         config = RegressionModelConfig()
@@ -1382,124 +1326,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         # with mem metrics disabled
         trainer = get_regression_trainer(skip_memory_metrics=True)
         self.check_mem_metrics(trainer, self.assertNotIn)
-
-    # @require_torch_gpu
-    # def test_fp16_full_eval(self):
-
-    #     # this is a sensitive test so let's keep debugging printouts in place for quick diagnosis.
-    #     # it's using pretty large safety margins, but small enough to detect broken functionality.
-    #     debug = 0
-    #     n_gpus = get_gpu_count()
-
-    #     bs = 8
-    #     eval_len = 16 * n_gpus
-    #     # make the params somewhat big so that there will be enough RAM consumed to be able to
-    #     # measure things. We should get about 64KB for a+b in fp32
-    #     a = torch.ones(1000, bs) + 0.001
-    #     b = torch.ones(1000, bs) - 0.001
-
-    #     # 1. with mem metrics enabled
-    #     trainer = get_regression_trainer(a=a, b=b, eval_len=eval_len, skip_memory_metrics=False)
-    #     metrics = trainer.evaluate()
-    #     del trainer
-    #     gc.collect()
-
-    #     fp32_init = metrics["init_mem_gpu_alloc_delta"]
-    #     fp32_eval = metrics["eval_mem_gpu_alloc_delta"]
-
-    #     if debug:
-    #         print(f"fp32_init {fp32_init}")
-    #         print(f"fp32_eval {fp32_eval}")
-
-    #     # here we expect the model to be preloaded in trainer.__init__ and consume around 64K gpu ram.
-    #     # perfect world: fp32_init == 64<<10
-    #     self.assertGreater(fp32_init, 59_000)
-    #     # after eval should be no extra memory allocated - with a small margin (other than the peak
-    #     # memory consumption for the forward calculation that gets recovered)
-    #     # perfect world: fp32_eval == close to zero
-    #     self.assertLess(fp32_eval, 5_000)
-
-    #     # 2. with mem metrics disabled
-    #     trainer = get_regression_trainer(a=a, b=b, eval_len=eval_len, fp16_full_eval=True, skip_memory_metrics=False)
-    #     metrics = trainer.evaluate()
-    #     fp16_init = metrics["init_mem_gpu_alloc_delta"]
-    #     fp16_eval = metrics["eval_mem_gpu_alloc_delta"]
-
-    #     if debug:
-    #         print(f"fp16_init {fp16_init}")
-    #         print(f"fp16_eval {fp16_eval}")
-
-    #     # here we expect the model to not be preloaded in trainer.__init__, so with a small margin it should be close to 0
-    #     # perfect world: fp16_init == close to zero
-    #     self.assertLess(fp16_init, 5_000)
-    #     # here we put the model on device in eval and only `half()` of it, i.e. about 32K,(again we ignore the peak margin which gets returned back)
-    #     # perfect world: fp32_init == 32<<10
-    #     self.assertGreater(fp16_eval, 27_000)
-
-    #     # 3. relative comparison fp32 vs full fp16
-    #     # should be about half of fp16_init
-    #     # perfect world: fp32_init/2 == fp16_eval
-    #     self.assertAlmostEqual(fp16_eval, fp32_init / 2, delta=5_000)
-
-    # @require_torch_gpu
-    # @require_torch_bf16
-    # def test_bf16_full_eval(self):
-    #     # note: most of the logic is the same as test_fp16_full_eval
-
-    #     # this is a sensitive test so let's keep debugging printouts in place for quick diagnosis.
-    #     # it's using pretty large safety margins, but small enough to detect broken functionality.
-    #     debug = 0
-    #     n_gpus = get_gpu_count()
-
-    #     bs = 8
-    #     eval_len = 16 * n_gpus
-    #     # make the params somewhat big so that there will be enough RAM consumed to be able to
-    #     # measure things. We should get about 64KB for a+b in fp32
-    #     a = torch.ones(1000, bs) + 0.001
-    #     b = torch.ones(1000, bs) - 0.001
-
-    #     # 1. with mem metrics enabled
-    #     trainer = get_regression_trainer(a=a, b=b, eval_len=eval_len, skip_memory_metrics=False)
-    #     metrics = trainer.evaluate()
-    #     del trainer
-    #     gc.collect()
-
-    #     fp32_init = metrics["init_mem_gpu_alloc_delta"]
-    #     fp32_eval = metrics["eval_mem_gpu_alloc_delta"]
-
-    #     if debug:
-    #         print(f"fp32_init {fp32_init}")
-    #         print(f"fp32_eval {fp32_eval}")
-
-    #     # here we expect the model to be preloaded in trainer.__init__ and consume around 64K gpu ram.
-    #     # perfect world: fp32_init == 64<<10
-    #     self.assertGreater(fp32_init, 59_000)
-    #     # after eval should be no extra memory allocated - with a small margin (other than the peak
-    #     # memory consumption for the forward calculation that gets recovered)
-    #     # perfect world: fp32_eval == close to zero
-    #     self.assertLess(fp32_eval, 5_000)
-
-    #     # 2. with mem metrics disabled
-    #     trainer = get_regression_trainer(a=a, b=b, eval_len=eval_len, bf16_full_eval=True, skip_memory_metrics=False)
-    #     metrics = trainer.evaluate()
-    #     bf16_init = metrics["init_mem_gpu_alloc_delta"]
-    #     bf16_eval = metrics["eval_mem_gpu_alloc_delta"]
-
-    #     if debug:
-    #         print(f"bf16_init {bf16_init}")
-    #         print(f"bf16_eval {bf16_eval}")
-
-    #     # here we expect the model to not be preloaded in trainer.__init__, so with a small margin it should be close to 0
-    #     # perfect world: bf16_init == close to zero
-    #     self.assertLess(bf16_init, 5_000)
-    #     # here we put the model on device in eval and only `half()` of it, i.e. about 32K,(again we ignore the peak margin which gets returned back)
-    #     # perfect world: fp32_init == 32<<10
-    #     self.assertGreater(bf16_eval, 27_000)
-
-    #     # 3. relative comparison fp32 vs full bf16
-    #     # should be about half of bf16_init
-    #     # perfect world: fp32_init/2 == bf16_eval
-    #     self.assertAlmostEqual(bf16_eval, fp32_init / 2, delta=5_000)
 
     def test_no_wd_param_group(self):
         model = nn.Sequential(TstLayer(128), nn.ModuleList([TstLayer(128), TstLayer(128)]))
@@ -1801,7 +1627,6 @@ class GaudiTrainerHyperParameterSigOptIntegrationTest(unittest.TestCase):
             )
 
 
-# TODO: see how Habana's FusedAdam could be added here
 optim_test_params = []
 if is_torch_available():
     default_adam_kwargs = {
@@ -1859,34 +1684,6 @@ class GaudiTrainerOptimizerChoiceTest(unittest.TestCase):
         trainer = get_regression_trainer(optim=name)
         trainer.gaudi_config.use_fused_adam = False
         trainer.train()
-
-
-# def test_fused_adam(self):
-#     # Pretend that apex is installed and mock apex.optimizers.FusedAdam exists.
-#     # Trainer.get_optimizer_cls_and_kwargs does not use FusedAdam, but only has to return a
-#     # class called, so mocking apex.optimizers.FusedAdam should be fine for testing and allow
-#     # the test to run without requiring an apex installation.
-#     mock = Mock()
-#     modules = {
-#         "apex": mock,
-#         "apex.optimizers": mock.optimizers,
-#         "apex.optimizers.FusedAdam": mock.optimizers.FusedAdam,
-#     }
-#     with patch.dict("sys.modules", modules):
-#         self.check_optim_and_kwargs(
-#             OptimizerNames.ADAMW_APEX_FUSED,
-#             default_adam_kwargs,
-#             mock.optimizers.FusedAdam,
-#         )
-
-# def test_fused_adam_no_apex(self):
-#     args = TrainingArguments(optim=OptimizerNames.ADAMW_APEX_FUSED, output_dir="None")
-
-#     # Pretend that apex does not exist, even if installed. By setting apex to None, importing
-#     # apex will fail even if apex is installed.
-#     with patch.dict("sys.modules", {"apex.optimizers": None}):
-#         with self.assertRaises(ValueError):
-#             Trainer.get_optimizer_cls_and_kwargs(args)
 
 
 @require_torch

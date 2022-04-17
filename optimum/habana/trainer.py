@@ -168,6 +168,12 @@ class GaudiTrainer(Trainer):
                     self.args.max_grad_norm,
                 )
 
+        # Set the correct log level depending on the node
+        # Already done in super().init() but we have to do it again
+        # because optimum.utils.logging is used here
+        log_level = args.get_process_log_level()
+        logging.set_verbosity(log_level)
+
     def create_optimizer(self):
         """
         Setup the optimizer.
@@ -195,7 +201,7 @@ class GaudiTrainer(Trainer):
                         }
                     )
 
-            if self.gaudi_config.use_fused_adam:
+            if self.gaudi_config.use_fused_adam and self.args.use_habana:
                 try:
                     from habana_frameworks.torch.hpex.optimizers import FusedAdamW
                 except ImportError as error:
@@ -559,11 +565,7 @@ class GaudiTrainer(Trainer):
                 else:
                     tr_loss_step = self.training_step(model, inputs)
 
-                if (
-                    args.logging_nan_inf_filter
-                    and not args.use_habana
-                    and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
-                ):
+                if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
                     # if loss is nan or inf simply add the average of previous logged losses
                     tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                 else:
@@ -586,7 +588,7 @@ class GaudiTrainer(Trainer):
                         elif hasattr(model, "clip_grad_norm_"):
                             # Some models (like FullyShardedDDP) have a specific way to do gradient clipping
                             model.clip_grad_norm_(args.max_grad_norm)
-                        elif self.gaudi_config.use_fused_clip_norm:
+                        elif self.gaudi_config.use_fused_clip_norm and args.use_habana:
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
