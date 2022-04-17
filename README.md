@@ -37,7 +37,7 @@ To install the latest release of this package:
 
 `pip install optimum[habana]`
 
-Optimum Habana is a fast-moving project, and you may want to install from source:
+Optimum Habana is a fast-moving project, and you may want to install it from source:
 
 `pip install git+https://github.com/huggingface/optimum-habana.git`
 

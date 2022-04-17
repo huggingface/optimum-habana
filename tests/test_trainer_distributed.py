@@ -63,9 +63,7 @@ class TestGaudiTrainerDistributed(TestCasePlus):
     def test_gaudi_trainer_distributed(self):
 
         output_dir = self.get_auto_remove_tmp_dir()
-        # command_list = [
-        #     f"{self.test_file_dir}/test_trainer_distributed.py --output_dir {output_dir} --use_habana --use_lazy_mode"
-        # ]
+
         command_list = [f"{self.test_file_dir}/test_trainer_distributed.py"]
         command_list += ["--output_dir"]
         command_list += [output_dir]
