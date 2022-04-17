@@ -170,7 +170,8 @@ class GaudiTrainer(Trainer):
 
         # Set the correct log level depending on the node
         # Already done in super().init() but we have to do it again
-        # because optimum.utils.logging is used here
+        # because we use optimum.utils.logging here and not
+        # transformers.utils.logging
         log_level = args.get_process_log_level()
         logging.set_verbosity(log_level)
 
