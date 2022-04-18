@@ -22,7 +22,7 @@ limitations under the License.
 # Optimum Habana
 
 🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
-It provides a set of tools enabling model loading and fine-tuning on single- and multi-HPU settings for question answering and text classification.
+It provides a set of tools enabling model loading and fine-tuning on single- and multi-HPU settings for different downstream tasks.
 
 
 ## What is a Habana Processing Unit (HPU)?
