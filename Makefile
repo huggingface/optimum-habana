@@ -14,6 +14,8 @@
 
 .PHONY:	style test
 
+slow_tests: export RUN_SLOW = true
+
 # Run code quality checks
 style_check:
 	black --check .
@@ -24,8 +26,11 @@ style:
 	isort .
 
 # Run tests for the library
-test:
-	python -m pytest tests
+fast_tests:
+	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py
+
+slow_tests:
+	python -m pytest tests/test_examples.py
 
 # Utilities to release to PyPi
 build_dist_install_tools:

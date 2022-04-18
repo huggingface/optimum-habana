@@ -1,33 +1,37 @@
 {
     "squad": {
-        "learning_rate": 3e-5,
         "num_train_epochs": 2,
-        "train_batch_size": 24,
         "eval_batch_size": 8,
-        "perf": {
+        "distribution": {
             "single_card": {
+                "learning_rate": 3e-5,
+                "train_batch_size": 24,
                 "f1_score": 88.0717,
                 "training_time": 1208.908
             },
             "multi_card": {
+                "learning_rate": 3e-5,
+                "train_batch_size": 24,
                 "f1_score": 85.3326,
                 "training_time": 244.3042
             }
         }
     },
     "mrpc": {
-        "learning_rate": 3e-5,
         "num_train_epochs": 3,
-        "train_batch_size": 32,
         "eval_batch_size": 8,
-        "perf": {
+        "distribution": {
             "single_card": {
+                "learning_rate": 3e-5,
+                "train_batch_size": 32,
                 "f1_score": 0.9103,
-                "training_time": 64.3312
+                "training_time": 57.2504
             },
             "multi_card": {
-                "f1_score": 0.8404,
-                "training_time": 61.8822
+                "learning_rate": 3e-5,
+                "train_batch_size": 16,
+                "f1_score": 0.8697,
+                "training_time": 54.8891
             }
         }
     }

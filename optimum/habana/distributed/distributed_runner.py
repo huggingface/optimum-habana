@@ -50,7 +50,7 @@ class DistributedRunner:
         self.__model_env_vars = {}
 
         logger.info(
-            f"Training is {'not' if self.__world_size == 1 else ''} distributed, world_size = {self.__world_size}"
+            f"Training is {'not ' if self.__world_size == 1 else ''}distributed, world_size = {self.__world_size}"
         )
         # Distributed training
         if self.__world_size > 1:
@@ -240,7 +240,6 @@ class DistributedRunner:
                     if proc.returncode != 0:
                         logger.error(f"{command}  exited with status = {proc.returncode}")
                         return proc.returncode
-                # subprocess.run(command, shell=True, executable="/bin/bash", capture_output=True, check=True)
             if self.__model_env_vars:
                 for env_name in [*self.__model_env_vars.keys()]:  # iterate keys of self.__model_env_vars
                     del os.environ[str(env_name)]
