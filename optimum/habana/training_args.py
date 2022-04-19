@@ -117,10 +117,12 @@ class GaudiTrainingArguments(TrainingArguments):
     @torch_required
     def _setup_devices(self) -> "torch.device":
         logger.info("PyTorch: setting up devices")
+        if torch.distributed.is_initialized() and self.local_rank == -1:
+            logger.warning("torch.distributed process group is initialized, but local_rank == -1. ")
         if self.no_cuda:
             device = torch.device("cpu")
             self._n_gpu = 0
-            if self.local_rank != -1:
+            if self.local_rank != -1 and not torch.distributed.is_initialized():
                 # Initializes distributed backend for cpu
                 if self.xpu_backend not in ("mpi", "ccl"):
                     raise ValueError(
@@ -183,5 +185,9 @@ class GaudiTrainingArguments(TrainingArguments):
                 os.environ["ID"] = str(self.local_rank)
                 torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
                 logger.info("Enabled distributed run.")
+        else:
+            raise ValueError(
+                "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
+            )
 
         return device

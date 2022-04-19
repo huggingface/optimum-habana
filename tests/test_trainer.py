@@ -33,7 +33,6 @@ from optimum.utils import logging
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
-from transformers.file_utils import WEIGHTS_NAME
 from transformers.testing_utils import (
     ENDPOINT_STAGING,
     PASS,
@@ -53,6 +52,7 @@ from transformers.testing_utils import (
 )
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 from transformers.training_args import OptimizerNames
+from transformers.utils import WEIGHTS_NAME
 from transformers.utils.hp_naming import TrialShortNamer
 
 
@@ -149,6 +149,26 @@ if is_torch_available():
             while self.current_sample < len(self.dataset):
                 yield self.dataset[self.current_sample]
                 self.current_sample += 1
+
+    class MultiLoader:
+        def __init__(self, loaders):
+            self.loaders = loaders
+
+        def __len__(self):
+            return sum(len(loader) for loader in self.loaders)
+
+        def __iter__(self):
+            for loader in self.loaders:
+                yield from loader
+
+    class CustomDataloaderTrainer(GaudiTrainer):
+        def get_train_dataloader(self):
+            dataloaders = [super().get_train_dataloader(), super().get_train_dataloader()]
+            return MultiLoader(dataloaders)
+
+        def get_eval_dataloader(self, eval_dataset):
+            dataloaders = [super().get_eval_dataloader(eval_dataset), super().get_eval_dataloader(eval_dataset)]
+            return MultiLoader(dataloaders)
 
     class RegressionModel(nn.Module):
         def __init__(self, a=0, b=0, double_output=False):
@@ -643,6 +663,84 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         # Check passing a new dataset for evaluation works
         new_eval_dataset = RegressionDataset(length=128)
         self.assertEqual(len(trainer.get_eval_dataloader(new_eval_dataset)), 128 // (32))
+
+    # tests that we do not require dataloader to have a .dataset attribute
+    def test_dataloader_without_dataset(self):
+        train_dataset = RegressionDataset(length=128)
+        args = GaudiTrainingArguments(output_dir="tmp_trainer", use_habana=True, use_lazy_mode=True)
+        trainer = CustomDataloaderTrainer(
+            model=RegressionModel(),
+            gaudi_config=get_gaudi_config(),
+            args=args,
+            train_dataset=train_dataset,
+            eval_dataset=train_dataset,
+        )
+        trainer.train()
+        trainer.evaluate()
+
+    def test_sampler_seed(self):
+        # nb: we don't want to inherit from IterableDataset to hit the right code path
+        class DummyDataset(torch.utils.data.Dataset):
+            def __init__(self, length: int = 101):
+                self.length = length
+
+            def __len__(self):
+                return self.length
+
+            def __getitem__(self, i):
+                if (i < 0) or (i >= self.length):
+                    raise IndexError
+                return {"input_ids": [i]}
+
+        class DummyModel(PreTrainedModel):
+            def __init__(self, num_params: int):
+                super().__init__(PretrainedConfig())
+                # Add some (unused) params. the point here is that randomness in model_init shouldn't influence
+                # data loader order.
+                self.params = nn.Parameter(torch.randn(num_params))
+
+            def forward(self, input_ids, labels=None):
+                if labels is not None:
+                    return torch.tensor(0.0, device=input_ids.device), input_ids
+                else:
+                    return input_ids
+
+        def _get_first_data_sample(num_params, seed, data_seed, **kwargs):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                trainer = GaudiTrainer(
+                    model_init=lambda: DummyModel(num_params),
+                    gaudi_config=get_gaudi_config(),
+                    args=GaudiTrainingArguments(
+                        output_dir=tmpdir,
+                        **kwargs,
+                        seed=seed,
+                        data_seed=data_seed,
+                        local_rank=-1,
+                        use_habana=True,
+                        use_lazy_mode=True,
+                    ),
+                    train_dataset=DummyDataset(),
+                )
+
+                return next(iter(trainer.get_train_dataloader()))
+
+        # test that the seed is passed to the sampler
+        # the codepath we want to hit is world_size <= 1, and both group_by_length
+        for group_by_length in [True, False]:
+            sample42_1 = _get_first_data_sample(num_params=10, seed=42, data_seed=42, group_by_length=group_by_length)
+            sample42_2 = _get_first_data_sample(num_params=11, seed=42, data_seed=42, group_by_length=group_by_length)
+            self.assertTrue(torch.equal(sample42_1["input_ids"], sample42_2["input_ids"]))
+
+            # should get same samples with different seed, so long as data_seed is the same
+            sample42_3 = _get_first_data_sample(num_params=11, seed=11, data_seed=42, group_by_length=group_by_length)
+            self.assertTrue(torch.equal(sample42_1["input_ids"], sample42_3["input_ids"]))
+
+            # make sure we have some randomness in the samples if data_seed is different
+            others = [
+                _get_first_data_sample(num_params=i, seed=42, data_seed=i, group_by_length=group_by_length)
+                for i in range(10)
+            ]
+            self.assertTrue(any(not torch.equal(sample42_1["input_ids"], sample["input_ids"]) for sample in others))
 
     def test_data_is_not_parallelized_when_model_is_parallel(self):
         model = RegressionModel()
