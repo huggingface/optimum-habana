@@ -22,8 +22,8 @@ limitations under the License.
 # Optimum Habana
 
 🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
-It provides a set of tools enabling model loading and fine-tuning on single- and multi-HPU settings for different downstream tasks.
-The current release focuses on question answering and text classification.
+It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU settings for different downstream tasks.
+The current release focuses on question answering and text classification and enables users to try other models for other tasks with only a few changes.
 
 
 ## What is a Habana Processing Unit (HPU)?
@@ -56,7 +56,7 @@ pip install -r requirements.txt`
 
 
 ## How to use it?
-🤗 Optimum Habana was designed with one goal in mind: make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors.
+🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors**.
 There are two main classes one needs to know:
 - GaudiTrainer: the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
 - GaudiConfig: the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
@@ -145,14 +145,16 @@ with for example the following Gaudi configuration written in a JSON file:
 ```
 
 
-## Supported Models
+## Validated Models
 
-The following model architectures, tasks and device distributions are currently supported by 🤗 Optimum Habana:
+The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
 |            | Text Classification | Question Answering | Single Card | Multi Card |
 |------------|:-------------------:|:------------------:|:-----------:|:----------:|
 | BERT       | :heavy_check_mark:  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
 | RoBERTa    | ✗                   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
 | ALBERT     | ✗                   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
 | DistilBERT | ✗                   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+
+Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 
 If you find any issue while using those, please open an issue or a pull request.
