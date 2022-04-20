@@ -27,7 +27,7 @@ style:
 
 # Run tests for the library
 fast_tests:
-	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py
+	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_examples_match_transformers.py
 
 slow_tests:
 	python -m pytest tests/test_examples.py
