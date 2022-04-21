@@ -1,6 +1,6 @@
 OS=ubuntu20.04
 
-# Install Docker
+# Install Docker, see https://docs.docker.com/engine/install/ubuntu/
 sudo apt update
 sudo apt install -y ca-certificates curl gnupg lsb-release
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
@@ -8,7 +8,7 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docke
 sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io
 
-# Install Habana
+# Install Habana, see https://docs.habana.ai/en/latest/Installation_Guide/Base_OS_AMI_AWS.html#run-using-containers
 curl -X GET https://vault.habana.ai/artifactory/api/gpg/key/public | sudo apt-key add --
 echo "deb https://vault.habana.ai/artifactory/debian focal main" >> /etc/apt/sources.list.d/artifactory.list
 sudo dpkg --configure -a
