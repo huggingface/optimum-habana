@@ -9,5 +9,5 @@ sudo apt install -y habanalabs-dkms
 sudo modprobe habanalabs_en
 sudo modprobe habanalabs
 sudo apt install -y habanalabs-container-runtime
-sudo cp daemon_ci.json /etc/docker/daemon.json
+sudo mkdir -p /etc/docker && sudo cp daemon_ci.json /etc/docker/daemon.json
 sudo systemctl restart docker
