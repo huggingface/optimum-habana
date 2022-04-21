@@ -9,14 +9,5 @@ sudo apt install -y habanalabs-dkms
 sudo modprobe habanalabs_en
 sudo modprobe habanalabs
 sudo apt install -y habanalabs-container-runtime
-sudo tee /etc/docker/daemon.json <<EOF
-{
-   "runtimes": {
-      "habana": {
-            "path": "/usr/bin/habana-container-runtime",
-            "runtimeArgs": []
-      }
-   }
-}
-EOF
+sudo cp daemon_ci.json /etc/docker/daemon.json
 sudo systemctl restart docker
