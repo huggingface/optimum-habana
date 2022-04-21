@@ -1,5 +1,3 @@
-OS=ubuntu20.04
-
 # Install Docker, see https://docs.docker.com/engine/install/ubuntu/
 sudo apt update
 sudo apt install -y ca-certificates curl gnupg lsb-release

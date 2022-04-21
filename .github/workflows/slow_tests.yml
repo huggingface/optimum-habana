@@ -57,7 +57,7 @@ jobs:
             docker pull vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442
       - name: Run tests
         run: |
-docker run \
+            docker run \
             -v $PWD:/root/workspace \
             --workdir=/root/workspace \
             --runtime=habana \
