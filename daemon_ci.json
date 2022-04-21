@@ -1,4 +1,5 @@
 {
+    "default-runtime": "habana",
     "runtimes": {
         "habana": {
             "path": "/usr/bin/habana-container-runtime",
