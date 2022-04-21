@@ -27,6 +27,7 @@ style:
 
 # Run tests for the library
 fast_tests:
+	pip install .
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py
 
 slow_tests:
