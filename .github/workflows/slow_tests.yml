@@ -8,7 +8,7 @@ on:
 jobs:
   start-runner:
     name: Start self-hosted EC2 runner
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2
       EC2_AMI_ID: ami-0892d3c7ee96c0bf7
@@ -51,6 +51,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+      - name: Setup Habana
+        run: |
+            /bin/bash ci_test.sh
       - name: Pull Image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442
@@ -65,7 +68,7 @@ jobs:
     needs:
       - start-runner # required to get output from the start-runner job
       - do-the-job # required to wait when the main job is done
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2
     if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
