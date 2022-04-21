@@ -31,6 +31,7 @@ fast_tests:
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py
 
 slow_tests:
+	pip install .
 	python -m pytest tests/test_examples.py
 
 # Utilities to release to PyPi
