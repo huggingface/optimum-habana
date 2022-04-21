@@ -1,0 +1,8 @@
+{
+    "runtimes": {
+        "habana": {
+            "path": "/usr/bin/habana-container-runtime",
+            "runtimeArgs": []
+        }
+    }
+}
