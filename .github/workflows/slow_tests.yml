@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2
-      EC2_AMI_ID: ami-0f4715b5e1e5607b4
+      EC2_AMI_ID: ami-089706938bec255b6
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-452c913d
-      EC2_SECURITY_GROUP: sg-04bb292e4a5754c35
+      EC2_SECURITY_GROUP: sg-025d66c1c4b015293
     outputs:
       label: ${{ steps.start-ec2-runner.outputs.label }}
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
@@ -49,8 +49,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Load Habana drivers
+      - name: Install and load Habana drivers
         run: |
+            apt update
+            apt install -y habanalabs-dkms
             modprobe habanalabs_en
             modprobe habanalabs
       - name: Pull image
