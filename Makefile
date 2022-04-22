@@ -33,7 +33,7 @@ fast_tests:
 # Run non-regression tests
 slow_tests:
 	pip install .
-	python -m pytest tests/test_examples.py -v -s
+	python -m pytest tests/test_examples.py
 
 # Utilities to release to PyPi
 build_dist_install_tools:
