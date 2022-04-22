@@ -51,9 +51,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      # - name: Setup Habana
-      #   run: |
-      #       /bin/bash tests/ci/setup.sh
+      - name: Load Habana drivers
+        run: |
+            df -h
+            modprobe habanalabs_en
+            modprobe habanalabs
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442
