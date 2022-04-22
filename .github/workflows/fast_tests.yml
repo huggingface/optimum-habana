@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2
-      EC2_AMI_ID: ami-0892d3c7ee96c0bf7
+      EC2_AMI_ID: ami-0f4715b5e1e5607b4
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-452c913d
-      EC2_SECURITY_GROUP: sg-03bc907772373b296
+      EC2_SECURITY_GROUP: sg-04bb292e4a5754c35
     outputs:
       label: ${{ steps.start-ec2-runner.outputs.label }}
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
@@ -51,9 +51,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Setup Habana
-        run: |
-            /bin/bash tests/ci/setup.sh
+      # - name: Setup Habana
+      #   run: |
+      #       /bin/bash tests/ci/setup.sh
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442

@@ -32,7 +32,7 @@ fast_tests:
 
 slow_tests:
 	pip install .
-	python -m pytest tests/test_examples.py
+	python -m pytest tests/test_examples.py -v -s
 
 # Utilities to release to PyPi
 build_dist_install_tools:
