@@ -30,10 +30,10 @@ fast_tests:
 	pip install .
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py
 
-# Run non-regression tests
+# Run non-regression tests and check if examples are up to date with the Transformers library
 slow_tests:
 	pip install .
-	python -m pytest tests/test_examples.py
+	python -m pytest tests/test_examples_match_transformers.py tests/test_examples.py
 
 # Utilities to release to PyPi
 build_dist_install_tools:
