@@ -26,7 +26,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "albert": [
         ("albert-large-v2", ""),
-        ("albert-xxlarge-v1", ""),
+        # ("albert-xxlarge-v1", ""),  # make Github action job exceed the limit of 6 hours
     ],
     "distilbert": [
         ("distilbert-base-uncased", ""),
