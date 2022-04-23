@@ -25,12 +25,15 @@ style:
 	black .
 	isort .
 
-# Run tests for the library
+# Run unit and integration tests
 fast_tests:
-	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_examples_match_transformers.py
+	pip install .
+	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py
 
+# Run non-regression tests and check if examples are up to date with the Transformers library
 slow_tests:
-	python -m pytest tests/test_examples.py
+	pip install .
+	python -m pytest tests/test_examples_match_transformers.py tests/test_examples.py
 
 # Utilities to release to PyPi
 build_dist_install_tools:

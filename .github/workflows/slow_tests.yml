@@ -1,0 +1,96 @@
+name: Non-regression tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 1 * * * #every day at 1 am
+
+jobs:
+  start-runner:
+    name: Start self-hosted EC2 runner
+    runs-on: ubuntu-20.04
+    env:
+      AWS_REGION: us-west-2
+      EC2_AMI_ID: ami-089706938bec255b6
+      EC2_INSTANCE_TYPE: dl1.24xlarge
+      EC2_SUBNET_ID: subnet-452c913d
+      EC2_SECURITY_GROUP: sg-025d66c1c4b015293
+    outputs:
+      label: ${{ steps.start-ec2-runner.outputs.label }}
+      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Start EC2 runner
+        id: start-ec2-runner
+        uses: philschmid/philschmid-ec2-github-runner@main
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ${{ env.EC2_AMI_ID }}
+          ec2-instance-type: ${{ env.EC2_INSTANCE_TYPE }}
+          subnet-id: ${{ env.EC2_SUBNET_ID }}
+          security-group-id: ${{ env.EC2_SECURITY_GROUP }}
+          aws-resource-tags: > # optional, requires additional permissions
+            [
+              {"Key": "Name", "Value": "ec2-optimum-habana-github-action-slow-tests"},
+              {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
+            ]
+  do-the-job:
+    name: Run tests
+    needs: start-runner # required to start the main job when the runner is ready
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    env:
+      AWS_REGION: us-west-2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install and load Habana drivers
+        run: |
+            apt update
+            apt install -y habanalabs-dkms
+            modprobe habanalabs_en
+            modprobe habanalabs
+      - name: Pull image
+        run: |
+            docker pull vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442
+      - name: Run tests
+        run: |
+            docker run \
+            -v $PWD:/root/workspace \
+            --workdir=/root/workspace \
+            --runtime=habana \
+            -e HABANA_VISIBLE_DEVICES=all \
+            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            --cap-add=sys_nice \
+            --net=host \
+            --ipc=host \
+            vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442 \
+            /bin/bash tests/ci/slow_tests.sh
+  stop-runner:
+    name: Stop self-hosted EC2 runner
+    needs:
+      - start-runner # required to get output from the start-runner job
+      - do-the-job # required to wait when the main job is done
+    runs-on: ubuntu-20.04
+    env:
+      AWS_REGION: us-west-2
+    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Stop EC2 runner
+        uses: philschmid/philschmid-ec2-github-runner@main
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
