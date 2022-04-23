@@ -26,7 +26,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "albert": [
         ("albert-large-v2", "Habana/albert-large-v2"),
-        ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
+        # ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),  # make Github action job exceed the limit of 6 hours
     ],
     "distilbert": [
         ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
