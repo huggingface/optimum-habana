@@ -25,11 +25,14 @@ style:
 	black .
 	isort .
 
-# Run tests for the library
+# Run unit and integration tests
 fast_tests:
+	pip install .
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py
 
+# Run non-regression tests
 slow_tests:
+	pip install .
 	python -m pytest tests/test_examples.py
 
 # Utilities to release to PyPi
