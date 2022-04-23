@@ -17,19 +17,19 @@
 # TODO: add configuration names once they have been pushed to the hub
 MODELS_TO_TEST_MAPPING = {
     "bert": [
-        ("bert-base-uncased", ""),
-        ("bert-large-uncased-whole-word-masking", ""),
+        ("bert-base-uncased", "Habana/bert-base-uncased"),
+        ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
     ],
     "roberta": [
-        ("roberta-base", ""),
-        ("roberta-large", ""),
+        ("roberta-base", "Habana/roberta-base"),
+        ("roberta-large", "Habana/roberta-large"),
     ],
     "albert": [
-        ("albert-large-v2", ""),
-        ("albert-xxlarge-v1", ""),
+        ("albert-large-v2", "Habana/albert-large-v2"),
+        ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
     ],
     "distilbert": [
-        ("distilbert-base-uncased", ""),
+        ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
     ],
 }
 

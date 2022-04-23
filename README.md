@@ -119,7 +119,6 @@ with for example the following Gaudi configuration written in a JSON file:
   "hmp_is_verbose": false,
   "use_fused_adam": true,
   "use_fused_clip_norm": true,
-  "log_device_mem_alloc": false,
   "hmp_bf16_ops": [
     "add",
     "addmm",
