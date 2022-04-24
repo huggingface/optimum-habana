@@ -3,7 +3,7 @@ import re
 from setuptools import find_namespace_packages, setup
 
 
-# Ensure we match the version set in optimum/version.py
+# Ensure we match the version set in optimum/habana/version.py
 try:
     filepath = "optimum/habana/version.py"
     with open(filepath) as version_file:
@@ -12,7 +12,7 @@ except Exception as error:
     assert False, "Error: Could not open '%s' due %s\n" % (filepath, error)
 
 
-install_requires = [
+INSTALL_REQUIRES = [
     "optimum",
     "datasets",
     "tokenizers",
@@ -20,12 +20,18 @@ install_requires = [
     "sentencepiece",
     "scipy",
     "pillow",
-    "psutil",
+]
+
+TESTS_REQUIRE = [
     "pytest",
-    "pytest-pythonpath",
+    "psutil",
     "parameterized",
     "GitPython",
 ]
+
+EXTRAS_REQUIRE = {
+    "tests": TESTS_REQUIRE,
+}
 
 setup(
     name="optimum-habana",
@@ -52,7 +58,8 @@ setup(
     author_email="hardware@huggingface.co",
     license="Apache",
     packages=find_namespace_packages(include=["optimum*"]),
-    install_requires=install_requires,
+    install_requires=INSTALL_REQUIRES,
+    extras_require=EXTRAS_REQUIRE,
     include_package_data=True,
     zip_safe=False,
 )
