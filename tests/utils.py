@@ -17,7 +17,7 @@
 # TODO: add configuration names once they have been pushed to the hub
 MODELS_TO_TEST_MAPPING = {
     "bert": [
-        ("bert-base-uncased", ""),
+        # ("bert-base-uncased", ""),  # removed from CI to save time
         ("bert-large-uncased-whole-word-masking", ""),
     ],
     "roberta": [
