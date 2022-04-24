@@ -3,7 +3,7 @@ name: Non-regression tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: 0 1 * * * #every day at 1 am
+    - cron: 0 23 * * *  # every day at 1am CET
 
 jobs:
   start-runner:
