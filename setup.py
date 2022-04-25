@@ -13,6 +13,7 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
+    "transformers == 4.18.0",
     "optimum",
     "datasets",
     "tokenizers",
@@ -36,13 +37,11 @@ EXTRAS_REQUIRE = {
 setup(
     name="optimum-habana",
     version=__version__,
-    description="Optimum Library is an extension of the Hugging Face Transformers library, providing a framework to "
-    "integrate third-party libraries from Hardware Partners and interface with their specific "
-    "functionality.",
+    description="Optimum Habana is the interface between the Hugging Face Transformers library and Habana Gaudi Processor (HPU). It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU settings for different downstream tasks.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: Apache Software License",
         "Intended Audience :: Developers",
         "Intended Audience :: Education",
@@ -53,7 +52,7 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
     keywords="transformers, quantization, fine-tuning, gaudi, hpu",
-    url="https://huggingface.co/hardware",
+    url="https://huggingface.co/habana",
     author="HuggingFace Inc. Special Ops Team",
     author_email="hardware@huggingface.co",
     license="Apache",
