@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-east-1
-      EC2_AMI_ID: ami-000a2d91f93b325b3
+      EC2_AMI_ID: ami-0a54664633b809ed5
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-b7533b96
-      EC2_SECURITY_GROUP: sg-0d5e18dcbffcf01f1
+      EC2_SECURITY_GROUP: sg-02677bbf33275aa0e
     outputs:
       label: ${{ steps.start-ec2-runner.outputs.label }}
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
