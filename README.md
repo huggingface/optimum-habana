@@ -91,7 +91,7 @@ from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 # Loading the GaudiConfig needed by the GaudiTrainer to fine-tune the model on HPUs
 gaudi_config = GaudiConfig.from_pretrained(
-    training_args.gaudi_config_name if training_args.gaudi_config_name else model_args.model_name_or_path,
+    training_args.gaudi_config_name,
     cache_dir=model_args.cache_dir,
     revision=model_args.model_revision,
     use_auth_token=True if model_args.use_auth_token else None,
@@ -111,7 +111,7 @@ trainer = GaudiTrainer(
 )
 ```
 
-with for example the following Gaudi configuration written in a JSON file:
+where `training_args.gaudi_config_name` is the name of a model from the [Hub](https://huggingface.co/Habana) (Gaudi configurations are stored in model repositories). You can also give the path to a custom Gaudi configuration written in a JSON file such as this one:
 ```json
 {
   "use_habana_mixed_precision": true,
@@ -119,7 +119,6 @@ with for example the following Gaudi configuration written in a JSON file:
   "hmp_is_verbose": false,
   "use_fused_adam": true,
   "use_fused_clip_norm": true,
-  "log_device_mem_alloc": false,
   "hmp_bf16_ops": [
     "add",
     "addmm",

@@ -117,9 +117,6 @@ class ExampleTestMeta(type):
             The test function that runs the example.
         """
 
-        if not gaudi_config_name:
-            gaudi_config_name = PATH_TO_DEFAULT_GAUDI_CONFIG
-
         @slow
         def test(self):
             if self.EXAMPLE_NAME is None:

@@ -17,19 +17,19 @@
 # TODO: add configuration names once they have been pushed to the hub
 MODELS_TO_TEST_MAPPING = {
     "bert": [
-        # ("bert-base-uncased", ""),  # removed from CI to save time
-        ("bert-large-uncased-whole-word-masking", ""),
+        # ("bert-base-uncased", "Habana/bert-base-uncased"),  # removed from CI to save time
+        ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
     ],
     "roberta": [
-        ("roberta-base", ""),
-        ("roberta-large", ""),
+        ("roberta-base", "Habana/roberta-base"),
+        ("roberta-large", "Habana/roberta-large"),
     ],
     "albert": [
-        ("albert-large-v2", ""),
-        # ("albert-xxlarge-v1", ""),  # make Github action job exceed the limit of 6 hours
+        ("albert-large-v2", "Habana/albert-large-v2"),
+        # ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),  # make Github action job exceed the limit of 6 hours
     ],
     "distilbert": [
-        ("distilbert-base-uncased", ""),
+        ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
     ],
 }
 

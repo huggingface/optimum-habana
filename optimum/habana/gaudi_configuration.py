@@ -62,9 +62,6 @@ class GaudiConfig(BaseConfig):
         # Use Habana's custom fused clip norm implementation
         self.use_fused_clip_norm = kwargs.pop("use_fused_clip_norm", False)
 
-        # Log live memory allocations on device at the given point
-        self.log_device_mem_alloc = kwargs.pop("log_device_mem_alloc", False)
-
     def write_bf16_fp32_ops_to_text_files(
         self,
         path_to_bf16_file: Path,
