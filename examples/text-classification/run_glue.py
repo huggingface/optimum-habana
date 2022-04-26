@@ -214,7 +214,7 @@ def main():
     transformers.utils.logging.enable_explicit_format()
 
     gaudi_config = GaudiConfig.from_pretrained(
-        training_args.gaudi_config_name if training_args.gaudi_config_name else model_args.model_name_or_path,
+        training_args.gaudi_config_name,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
