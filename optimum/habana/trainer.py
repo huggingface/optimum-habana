@@ -110,6 +110,7 @@ class GaudiTrainer(Trainer):
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
     ):
+        _ = "TEST"
         if args is None:
             output_dir = "tmp_trainer"
             logger.info(f"No `GaudiTrainingArguments` passed, using `output_dir={output_dir}`.")
