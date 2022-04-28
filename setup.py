@@ -52,7 +52,7 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
     keywords="transformers, quantization, fine-tuning, gaudi, hpu",
-    url="https://huggingface.co/habana",
+    url="https://huggingface.co/hardware/habana",
     author="HuggingFace Inc. Special Ops Team",
     author_email="hardware@huggingface.co",
     license="Apache",
