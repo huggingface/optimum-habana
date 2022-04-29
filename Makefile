@@ -14,8 +14,6 @@
 
 .PHONY:	style test
 
-slow_tests: export RUN_SLOW = true
-
 # Run code quality checks
 style_check:
 	black --check .
@@ -30,10 +28,20 @@ fast_tests:
 	pip install .[tests]
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py
 
-# Run non-regression tests and check if examples are up to date with the Transformers library
-slow_tests:
+# Run single-card non-regression tests
+slow_tests_1x:
 	pip install .[tests]
-	python -m pytest tests/test_examples_match_transformers.py tests/test_examples.py
+	python -m pytest tests/test_examples.py -k "single_card"
+
+# Run multi-card non-regression tests
+slow_tests_8x:
+	pip install .[tests]
+	python -m pytest tests/test_examples.py -k "multi_card"
+
+# Check if examples are up to date with the Transformers library
+example_diff_tests:
+	pip install .[tests]
+	python -m pytest tests/test_examples_match_transformers.py
 
 # Utilities to release to PyPi
 build_dist_install_tools:

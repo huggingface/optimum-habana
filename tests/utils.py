@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 # Mapping between model families and specific model names with their configuration
-# TODO: add configuration names once they have been pushed to the hub
 MODELS_TO_TEST_MAPPING = {
     "bert": [
-        # ("bert-base-uncased", "Habana/bert-base-uncased"),  # removed from CI to save time
+        ("bert-base-uncased", "Habana/bert-base-uncased"),
         ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
     ],
     "roberta": [
@@ -26,7 +26,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "albert": [
         ("albert-large-v2", "Habana/albert-large-v2"),
-        # ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),  # make Github action job exceed the limit of 6 hours
+        ("albert-xxlarge-v1", "Habana/albert-xxlarge-v1"),
     ],
     "distilbert": [
         ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
