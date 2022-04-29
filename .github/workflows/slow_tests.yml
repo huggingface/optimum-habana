@@ -68,7 +68,7 @@ jobs:
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442 \
             /bin/bash tests/ci/example_diff_tests.sh
-  8x:
+  multi-card:
     name: Test multi-card models
     needs:
       - start-runner
@@ -95,12 +95,12 @@ jobs:
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442 \
             /bin/bash tests/ci/slow_tests_8x.sh
-  1x:
+  single-card:
     name: Test single-card models
     needs:
       - start-runner
       - example-diff
-      - 8x  # run the job when the previous test jobs are done
+      - multi-card  # run the job when the previous test jobs are done
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
       AWS_REGION: us-east-1
@@ -128,8 +128,8 @@ jobs:
     needs:
       - start-runner # required to get output from the start-runner job
       - example-diff
-      - 8x
-      - 1x
+      - multi-card
+      - single-card
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-east-1
