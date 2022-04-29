@@ -6,7 +6,7 @@ on:
     - cron: 0 23 * * *  # every day at 1am CET
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
   start-runner:
