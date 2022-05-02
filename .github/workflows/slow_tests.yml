@@ -156,9 +156,9 @@ jobs:
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442 \
             /bin/bash tests/ci/albert_xxl_1x.sh
-      # -name: Warning
-      #   if: github.event.schedule != '0 23 * * 6'
-      #   run: echo "ALBERT XXL 1x is only tested on Saturdays."
+      - name: Warning
+        if: github.event.schedule != '0 23 * * 6'
+        run: echo "ALBERT XXL 1x is only tested on Saturdays."
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
