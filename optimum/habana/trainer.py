@@ -30,7 +30,7 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
 
-from optimum.habana.trainer_utils import to_device_dtype
+from optimum.habana.trainer_utils import speed_metrics, to_device_dtype
 from optimum.habana.training_args import GaudiTrainingArguments
 from optimum.utils import logging
 from transformers import Trainer, __version__
@@ -66,7 +66,6 @@ from transformers.trainer_utils import (
     get_last_checkpoint,
     has_length,
     set_seed,
-    speed_metrics,
 )
 from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
@@ -455,6 +454,7 @@ class GaudiTrainer(Trainer):
 
         self.state.epoch = 0
         start_time = time.time()
+        start_time_after_warmup = None
         epochs_trained = 0
         steps_trained_in_current_epoch = 0
         steps_trained_progress_bar = None
@@ -548,6 +548,8 @@ class GaudiTrainer(Trainer):
 
             step = -1
             for step, inputs in enumerate(epoch_iterator):
+                if args.throughput_warmup_steps == epoch * steps_in_epoch + step:
+                    start_time_after_warmup = time.time()
 
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
@@ -683,7 +685,16 @@ class GaudiTrainer(Trainer):
         self._total_loss_scalar += tr_loss.item()
         train_loss = self._total_loss_scalar / self.state.global_step
 
-        metrics = speed_metrics("train", start_time, num_samples=num_train_samples, num_steps=self.state.max_steps)
+        # Warmup steps are removed from the calculation of speed metrics
+        num_samples_for_speed_metrics = num_train_samples - args.throughput_warmup_steps * total_train_batch_size
+        num_steps_for_speed_metrics = self.state.max_steps - args.throughput_warmup_steps
+        metrics = speed_metrics(
+            "train",
+            start_time,
+            num_samples=num_samples_for_speed_metrics,
+            num_steps=num_steps_for_speed_metrics,
+            start_time_after_warmup=start_time_after_warmup,
+        )
         self.store_flos()
         metrics["total_flos"] = self.state.total_flos
         metrics["train_loss"] = train_loss

@@ -54,11 +54,13 @@ class GaudiTrainingArguments(TrainingArguments):
     """
 
     use_habana: Optional[bool] = field(
-        default=False, metadata={"help": "Whether to use Habana's HPU for training the model."}
+        default=False,
+        metadata={"help": "Whether to use Habana's HPU for training the model."},
     )
 
     gaudi_config_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained Gaudi config name or path if not the same as model_name."}
+        default=None,
+        metadata={"help": "Pretrained Gaudi config name or path if not the same as model_name."},
     )
 
     use_lazy_mode: bool = field(
@@ -66,11 +68,24 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": "Whether to use lazy mode for training the model."},
     )
 
+    throughput_warmup_steps: int = field(
+        default=0,
+        metadata={
+            "help": "Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N, the first N steps will not be considered in the calculation of the throughput. This is especially useful in lazy mode."
+        },
+    )
+
     # Override the default value of epsilon to be consistent with Habana FusedAdamW
-    adam_epsilon: float = field(default=1e-6, metadata={"help": "Epsilon for AdamW optimizer."})
+    adam_epsilon: float = field(
+        default=1e-6,
+        metadata={"help": "Epsilon for AdamW optimizer."},
+    )
 
     # Override logging_nan_inf_filter to make False the default value
-    logging_nan_inf_filter: bool = field(default=False, metadata={"help": "Filter nan and inf losses for logging."})
+    logging_nan_inf_filter: bool = field(
+        default=False,
+        metadata={"help": "Filter nan and inf losses for logging."},
+    )
 
     def __post_init__(self):
         # Raise errors for arguments that are not supported by optimum-habana

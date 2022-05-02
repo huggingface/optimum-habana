@@ -238,6 +238,7 @@ class ExampleTesterBase(TestCase):
             f"--max_seq_length {max_seq_length}",
             "--use_habana",
             "--use_lazy_mode",
+            "--throughput_warmup_steps 2",
         ]
         if extra_command_line_arguments is not None:
             cmd_line += extra_command_line_arguments

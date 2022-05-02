@@ -53,7 +53,8 @@ python run_qa.py \
   --doc_stride 128 \
   --output_dir ./output/debug_squad/ \
   --use_habana \
-  --use_lazy_mode
+  --use_lazy_mode \
+  --throughput_warmup_steps 2
 ```
 
 Training with the previously defined hyper-parameters yields the following results:
@@ -83,7 +84,8 @@ python ../gaudi_spawn.py \
     --doc_stride 128 \
     --output_dir /tmp/squad_output/ \
     --use_habana \
-    --use_lazy_mode
+    --use_lazy_mode \
+    --throughput_warmup_steps 2
 ```
 
 It runs in 11 minutes with BERT-large and yields the following results:
