@@ -136,14 +136,14 @@ jobs:
       AWS_REGION: us-east-1
     steps:
       - name: Checkout
-        # if: github.event.schedule == '0 23 * * 6'
+        if: github.event.schedule == '0 23 * * 6'
         uses: actions/checkout@v2
       - name: Pull image
-        # if: github.event.schedule == '0 23 * * 6'
+        if: github.event.schedule == '0 23 * * 6'
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442
       - name: Run test
-        # if: github.event.schedule == '0 23 * * 6'
+        if: github.event.schedule == '0 23 * * 6'
         run: |
             docker run \
             -v $PWD:/root/workspace \
