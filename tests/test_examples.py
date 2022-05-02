@@ -99,9 +99,12 @@ class ExampleTestMeta(type):
             if models_to_test is None:
                 raise AttributeError(f"Could not create class because no model was found for example {example_name}")
         for model_name, gaudi_config_name in models_to_test:
-            attrs[
-                f"test_{example_name}_{model_name}_{'multi_card' if multi_card else 'single_card'}"
-            ] = cls._create_test(model_name, gaudi_config_name, multi_card)
+            # Conditional statement to filter out ALBERT XXL 1x
+            # because it takes about 6 hours to complete
+            if model_name != "albert-xxlarge-v1" or multi_card:
+                attrs[
+                    f"test_{example_name}_{model_name}_{'multi_card' if multi_card else 'single_card'}"
+                ] = cls._create_test(model_name, gaudi_config_name, multi_card)
         attrs["EXAMPLE_NAME"] = example_name
         return super().__new__(cls, name, bases, attrs)
 
