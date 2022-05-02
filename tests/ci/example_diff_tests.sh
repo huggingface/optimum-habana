@@ -1,4 +1,4 @@
 #!/bin/bash
 
 pip install --upgrade pip
-make slow_tests
+make example_diff_tests
