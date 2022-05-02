@@ -17,6 +17,7 @@ import json
 import os
 import re
 import subprocess
+from distutils.util import strtobool
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -99,9 +100,9 @@ class ExampleTestMeta(type):
             if models_to_test is None:
                 raise AttributeError(f"Could not create class because no model was found for example {example_name}")
         for model_name, gaudi_config_name in models_to_test:
-            # Conditional statement to filter out ALBERT XXL 1x
-            # because it takes about 6 hours to complete
-            if model_name != "albert-xxlarge-v1" or multi_card:
+            # Conditional statement to filter out ALBERT XXL 1x if env variable RUN_ALBERT_XXL_1X is not true
+            test_albert_xxl_1x = ("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])
+            if model_name != "albert-xxlarge-v1" or multi_card or test_albert_xxl_1x:
                 attrs[
                     f"test_{example_name}_{model_name}_{'multi_card' if multi_card else 'single_card'}"
                 ] = cls._create_test(model_name, gaudi_config_name, multi_card)
