@@ -51,7 +51,8 @@ python run_glue.py \
   --max_seq_length 128 \
   --output_dir ./output/mrpc/ \
   --use_habana \
-  --use_lazy_mode
+  --use_lazy_mode \
+  --throughput_warmup_steps 2
 ```
 
 ### Multi-card Training
@@ -74,5 +75,6 @@ python ../gaudi_spawn.py \
     --max_seq_length 128 \
     --output_dir /tmp/mrpc_output/ \
     --use_habana \
-    --use_lazy_mode
+    --use_lazy_mode \
+    --throughput_warmup_steps 2
 ```
