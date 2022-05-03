@@ -108,6 +108,9 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.tf32:
             raise ValueError("--tf32 is not supported by optimum-habana.")
 
+        if self.throughput_warmup_steps < 0:
+            raise ValueError("--throughput_warmup_steps must be positive.")
+
         super().__post_init__()
 
     def __str__(self):

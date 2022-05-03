@@ -548,7 +548,7 @@ class GaudiTrainer(Trainer):
 
             step = -1
             for step, inputs in enumerate(epoch_iterator):
-                if args.throughput_warmup_steps == epoch * steps_in_epoch + step:
+                if args.throughput_warmup_steps > 0 and args.throughput_warmup_steps == epoch * steps_in_epoch + step:
                     start_time_after_warmup = time.time()
 
                 # Skip past any already trained steps if resuming training
