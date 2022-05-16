@@ -135,7 +135,7 @@ class GaudiTrainingArguments(TrainingArguments):
     @torch_required
     def _setup_devices(self) -> "torch.device":
         logger.info("PyTorch: setting up devices")
-        if torch.distributed.is_initialized() and self.local_rank == -1:
+        if torch.distributed.is_available() and torch.distributed.is_initialized() and self.local_rank == -1:
             logger.warning("torch.distributed process group is initialized, but local_rank == -1. ")
         if self.no_cuda:
             device = torch.device("cpu")
