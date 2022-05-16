@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Optional
 
 from optimum.utils import logging
+from optimum.habana.distributed.utils import print_only_from_main_process
 from transformers.file_utils import cached_property, is_torch_available, torch_required
 from transformers.training_args import TrainingArguments
 
@@ -26,6 +27,8 @@ if is_torch_available():
 
 
 logger = logging.get_logger(__name__)
+log_levels = logging.get_log_levels_dict().copy()
+trainer_log_levels = dict(**log_levels, passive=-1)
 
 
 # List of arguments that are not supported by optimum-habana
@@ -85,6 +88,15 @@ class GaudiTrainingArguments(TrainingArguments):
     logging_nan_inf_filter: bool = field(
         default=False,
         metadata={"help": "Filter nan and inf losses for logging."},
+    )
+
+    # Override the default value to "error" to log only from main process
+    log_level_replica: Optional[str] = field(
+        default="error",
+        metadata={
+            "help": "Logger log level to use on replica nodes. Same choices and defaults as ``log_level``",
+            "choices": trainer_log_levels.keys(),
+        },
     )
 
     def __post_init__(self):
@@ -202,6 +214,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     raise error
                 os.environ["ID"] = str(self.local_rank)
                 torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
+                print_only_from_main_process(self.local_rank == 0)
                 logger.info("Enabled distributed run.")
         else:
             raise ValueError(
