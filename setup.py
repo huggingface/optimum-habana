@@ -21,6 +21,7 @@ INSTALL_REQUIRES = [
     "sentencepiece",
     "scipy",
     "pillow",
+    "huggingface_hub==0.4.0",
 ]
 
 TESTS_REQUIRE = [
