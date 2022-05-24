@@ -13,7 +13,7 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers == 4.18.0",
+    "transformers == 4.19.1",
     "optimum",
     "datasets",
     "tokenizers",
@@ -21,6 +21,7 @@ INSTALL_REQUIRES = [
     "sentencepiece",
     "scipy",
     "pillow",
+    "huggingface_hub==0.4.0",
 ]
 
 TESTS_REQUIRE = [
@@ -51,7 +52,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    keywords="transformers, quantization, fine-tuning, gaudi, hpu",
+    keywords="transformers, mixed-precision training, fine-tuning, gaudi, hpu",
     url="https://huggingface.co/hardware/habana",
     author="HuggingFace Inc. Special Ops Team",
     author_email="hardware@huggingface.co",

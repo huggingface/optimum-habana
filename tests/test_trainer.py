@@ -122,11 +122,12 @@ class AlmostAccuracy:
 
 
 class RegressionModelConfig(PretrainedConfig):
-    def __init__(self, a=0, b=0, double_output=False, **kwargs):
+    def __init__(self, a=0, b=0, double_output=False, random_torch=True, **kwargs):
         super().__init__(**kwargs)
         self.a = a
         self.b = b
         self.double_output = double_output
+        self.random_torch = random_torch
         self.hidden_size = 1
 
 
@@ -224,14 +225,18 @@ if is_torch_available():
             super().__init__(config)
             self.a = nn.Parameter(torch.tensor(config.a).float())
             self.b = nn.Parameter(torch.tensor(config.b).float())
+            self.random_torch = config.random_torch
 
         def forward(self, input_x, labels=None, **kwargs):
             y = input_x * self.a + self.b
-            torch_rand = torch.randn(1).squeeze()
+            if self.random_torch:
+                torch_rand = torch.randn(1).squeeze()
             np_rand = np.random.rand()
             rand_rand = random.random()
 
-            y += 0.05 * torch_rand + 0.05 * torch.tensor(np_rand + rand_rand)
+            if self.random_torch:
+                y += 0.05 * torch_rand
+            y += 0.05 * torch.tensor(np_rand + rand_rand)
 
             if labels is None:
                 return (y,)
@@ -1200,7 +1205,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     def test_training_iterable_dataset(self):
         config = RegressionModelConfig()
         model = RegressionPreTrainedModel(config)
-        train_dataset = SampleIterableDataset()
+        # Adding one column not used by the model should have no impact
+        train_dataset = SampleIterableDataset(label_names=["labels", "extra"])
 
         args = RegressionGaudiTrainingArguments(
             output_dir="./examples", max_steps=4, use_habana=True, use_lazy_mode=True
@@ -1241,7 +1247,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     # def test_evaluation_iterable_dataset(self):
     #     config = RegressionModelConfig(a=1.5, b=2.5)
     #     model = RegressionPreTrainedModel(config)
-    #     eval_dataset = SampleIterableDataset()
+    #     # Adding one column not used by the model should have no impact
+    #     eval_dataset = SampleIterableDataset(label_names=["labels", "extra"])
 
     #     args = RegressionGaudiTrainingArguments(output_dir="./examples", use_habana=True, use_lazy_mode=True)
     #     gaudi_config = get_gaudi_config()
@@ -1292,7 +1299,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertTrue(np.allclose(preds, 1.5 * x + 2.5))
 
         # With a number of elements not a round multiple of the batch size
-        test_dataset = SampleIterableDataset(length=66)
+        # Adding one column not used by the model should have no impact
+        test_dataset = SampleIterableDataset(length=66, label_names=["labels", "extra"])
         preds = trainer.predict(test_dataset).predictions
         x = test_dataset.dataset.x
         self.assertTrue(np.allclose(preds, 1.5 * x + 2.5))
