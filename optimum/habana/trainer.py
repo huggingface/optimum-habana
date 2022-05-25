@@ -32,6 +32,7 @@ from tqdm.auto import tqdm
 
 from optimum.habana.trainer_utils import speed_metrics, to_device_dtype
 from optimum.habana.training_args import GaudiTrainingArguments
+from optimum.habana.distributed import checkpoint as lazy_mode_checkpointing
 from optimum.utils import logging
 from transformers import Trainer, __version__
 from transformers.configuration_utils import PretrainedConfig
@@ -425,6 +426,8 @@ class GaudiTrainer(Trainer):
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
+            if args.use_habana and args.use_lazy_mode:
+                torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
 
         model = self._wrap_model(self.model_wrapped)
 
