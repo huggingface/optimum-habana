@@ -32,6 +32,7 @@ import datasets
 from datasets import load_dataset, load_metric
 
 import transformers
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_CAUSAL_LM_MAPPING,
@@ -46,8 +47,6 @@ from transformers.testing_utils import CaptureLogger
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-
-from optimum.habana import GaudiTrainer, GaudiTrainingArguments, GaudiConfig
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -503,8 +502,7 @@ def main():
         # Data collator will default to DataCollatorWithPadding, so we change it.
         data_collator=default_data_collator,
         compute_metrics=compute_metrics if training_args.do_eval else None,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics
-        if training_args.do_eval else None,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
     )
 
     # Training

@@ -2,11 +2,12 @@
 # backward pass when gradient checkpointing is performed
 # Original implementation here: https://github.com/pytorch/pytorch/blob/v1.10.2/torch/utils/checkpoint.py
 
-import torch
-import habana_frameworks.torch.core as htcore
 import warnings
+from typing import Any, Iterable, Tuple
 
-from typing import Iterable, Any, Tuple
+import torch
+
+import habana_frameworks.torch.core as htcore
 
 
 def detach_variable(inputs: Tuple[Any, ...]) -> Tuple[torch.Tensor, ...]:
@@ -22,15 +23,15 @@ def detach_variable(inputs: Tuple[Any, ...]) -> Tuple[torch.Tensor, ...]:
             out.append(x)
         return tuple(out)
     else:
-        raise RuntimeError(
-            "Only tuple of tensors is supported. Got Unsupported input type: ", type(inputs).__name__)
+        raise RuntimeError("Only tuple of tensors is supported. Got Unsupported input type: ", type(inputs).__name__)
+
 
 def check_backward_validity(inputs: Iterable[Any]) -> None:
     if not any(inp.requires_grad for inp in inputs if isinstance(inp, torch.Tensor)):
         warnings.warn("None of the inputs have requires_grad=True. Gradients will be None")
 
-class CheckpointFunction(torch.autograd.Function):
 
+class CheckpointFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, run_function, preserve_rng_state, *args):
         if torch.is_grad_enabled():  # grad may be disabled, e.g., during validation
@@ -74,7 +75,8 @@ class CheckpointFunction(torch.autograd.Function):
             raise RuntimeError(
                 "Checkpointing is not compatible with .grad() or when an `inputs` parameter"
                 " is passed to .backward(). Please use .backward() and do not pass its `inputs`"
-                " argument.")
+                " argument."
+            )
 
         htcore.mark_step()
 
@@ -113,12 +115,9 @@ class CheckpointFunction(torch.autograd.Function):
                 outputs_with_grad.append(outputs[i])
                 args_with_grad.append(args[i])
         if len(outputs_with_grad) == 0:
-            raise RuntimeError(
-                "none of output has requires_grad=True,"
-                " this checkpoint() is not necessary")
+            raise RuntimeError("none of output has requires_grad=True," " this checkpoint() is not necessary")
         torch.autograd.backward(outputs_with_grad, args_with_grad)
-        grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None
-                      for inp in detached_inputs)
+        grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None for inp in detached_inputs)
 
         return (None, None) + grads
 
@@ -176,7 +175,7 @@ def checkpoint(function, *args, **kwargs):
         Output of running :attr:`function` on :attr:`*args`
     """
     # Hack to mix *args with **kwargs in a python 2.7-compliant way
-    preserve = kwargs.pop('preserve_rng_state', True)
+    preserve = kwargs.pop("preserve_rng_state", True)
     if kwargs:
         raise ValueError("Unexpected keyword arguments: " + ",".join(arg for arg in kwargs))
 
