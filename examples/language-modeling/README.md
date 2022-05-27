@@ -16,15 +16,12 @@ limitations under the License.
 
 # Language model training
 
-Fine-tuning (or training from scratch) the library models for language modeling on a text dataset for GPT, GPT-2,
-ALBERT, BERT, DistilBERT, RoBERTa, XLNet... GPT and GPT-2 are trained or fine-tuned using a causal language modeling
-(CLM) loss while ALBERT, BERT, DistilBERT and RoBERTa are trained or fine-tuned using a masked language modeling (MLM)
-loss. XLNet uses permutation language modeling (PLM), you can find more information about the differences between those
-objectives in our [model summary](https://huggingface.co/transformers/model_summary.html).
-
-There are two sets of scripts provided. The first set leverages the Trainer API. The second set with `no_trainer` in the suffix uses a custom training loop and leverages the 🤗 Accelerate library . Both sets use the 🤗 Datasets library. You can easily customize them to your needs if you need extra processing on your datasets.
-
-**Note:** The old script `run_language_modeling.py` is still available [here](https://github.com/huggingface/transformers/blob/main/examples/legacy/run_language_modeling.py).
+Fine-tuning (or training from scratch) the library models for language modeling on a text dataset.
+GPT-2 is trained or fine-tuned using a causal language modeling
+(CLM) loss.
+<!-- while ALBERT, BERT, DistilBERT and RoBERTa are trained or fine-tuned using a masked language modeling (MLM)
+loss. You can find more information about the differences between those
+objectives in our [model summary](https://huggingface.co/transformers/model_summary.html). -->
 
 The following examples, will run on datasets hosted on our [hub](https://huggingface.co/datasets) or with your own
 text files for training and validation. We give examples of both below.
@@ -51,20 +48,6 @@ python run_clm.py \
     --use_habana \
     --use_lazy_mode
 ```
-<!-- ```bash
-python run_clm.py \
-    --model_name_or_path gpt2 \
-    --dataset_name wikitext \
-    --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
-    --do_train \
-    --do_eval \
-    --output_dir /tmp/test-clm \
-    --gaudi_config_name /root/shared/gaudi_config.json \
-    --use_habana \
-    --use_lazy_mode
-``` -->
 
 This takes about X minutes to train on a single HPU. It reaches
 a score of ~X perplexity once fine-tuned on the dataset.
@@ -110,7 +93,7 @@ This takes about X minutes to train on a single HPU. It reaches
 a score of ~X perplexity once fine-tuned on the dataset.
 
 
-## RoBERTa/BERT/DistilBERT and masked language modeling
+<!-- ## RoBERTa/BERT/DistilBERT and masked language modeling
 
 The following example fine-tunes RoBERTa on WikiText-2. Here too, we're using the raw WikiText-2. The loss is different
 as BERT/RoBERTa have a bidirectional mechanism; we're therefore using the same loss that was used during their
@@ -146,7 +129,7 @@ python run_mlm.py \
 ```
 
 If your dataset is organized with one sample per line, you can use the `--line_by_line` flag (otherwise the script
-concatenates all texts and then splits them in blocks of the same length).
+concatenates all texts and then splits them in blocks of the same length). -->
 
 
 ## Creating a model on the fly
@@ -162,4 +145,4 @@ python run_clm.py \
     --use_lazy_mode
 ```
 
-This feature is only available in `run_clm.py` and `run_mlm.py`.
+<!-- This feature is only available in `run_clm.py` and `run_mlm.py`. -->

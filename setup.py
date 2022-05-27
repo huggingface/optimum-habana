@@ -13,7 +13,7 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers == 4.19.1",
+    "transformers >= 4.19.1",
     "optimum",
     "datasets",
     "tokenizers",
@@ -22,6 +22,7 @@ INSTALL_REQUIRES = [
     "scipy",
     "pillow",
     "huggingface_hub==0.4.0",
+    "fairscale",
 ]
 
 TESTS_REQUIRE = [
