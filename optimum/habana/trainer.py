@@ -583,7 +583,7 @@ class GaudiTrainer(Trainer):
                     tr_loss += tr_loss_step
 
                 self.current_flos += float(self.floating_point_ops(inputs))
-                if args.use_lazy_mode and args.use_habana:
+                if args.use_lazy_mode:
                     self.htcore.mark_step()
 
                 if (step + 1) % args.gradient_accumulation_steps == 0 or (
@@ -630,7 +630,7 @@ class GaudiTrainer(Trainer):
                     model.zero_grad(set_to_none=True)
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
-                    if args.use_lazy_mode and args.use_habana:
+                    if args.use_lazy_mode:
                         self.htcore.mark_step()
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
@@ -923,7 +923,7 @@ class GaudiTrainer(Trainer):
 
             # nested concat does accumulation on tensors of variable length.
             # Added mark step here to avoid graph recompile
-            if args.use_lazy_mode and args.use_habana:
+            if args.use_lazy_mode:
                 self.htcore.mark_step()
 
         if args.past_index and hasattr(self, "_past"):
@@ -1060,7 +1060,7 @@ class GaudiTrainer(Trainer):
                 if self.args.past_index >= 0:
                     self._past = outputs[self.args.past_index - 1]
 
-        if self.args.use_lazy_mode and self.args.use_habana:
+        if self.args.use_lazy_mode:
             self.htcore.mark_step()
 
         if prediction_loss_only:
@@ -1155,7 +1155,7 @@ class GaudiTrainer(Trainer):
 
             # nested concat does accumulation on tensors of variable length.
             # Added mark step here to avoid graph recompile
-            if args.use_lazy_mode and args.use_habana:
+            if args.use_lazy_mode:
                 self.htcore.mark_step()
 
         if args.past_index and hasattr(self, "_past"):
