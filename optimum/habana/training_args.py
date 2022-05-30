@@ -87,6 +87,9 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     def __post_init__(self):
+        if (self.use_lazy_mode or self.gaudi_config_name) and not self.use_habana:
+            raise ValueError("--use_lazy_mode and --gaudi_config_name cannot be used without --use_habana")
+
         # Raise errors for arguments that are not supported by optimum-habana
         if self.bf16 or self.bf16_full_eval:
             raise ValueError(
