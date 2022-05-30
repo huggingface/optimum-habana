@@ -39,6 +39,7 @@ UNSUPPORTED_ARGUMENTS = [
     "fp16_opt_level",
     "half_precision_backend",  # not supported, Habana Mixed Precision should be used and specified in Gaudi configuration
     "mp_parameters",
+    "sharded_ddp",
     "tf32",
     "tpu_metrics_debug",
     "tpu_num_cores",
@@ -105,8 +106,8 @@ class GaudiTrainingArguments(TrainingArguments):
             raise ValueError("--deepspeed is not supported by optimum-habana.")
         if self.mp_parameters:
             raise ValueError("--mp_parameters is not supported by optimum-habana.")
-        if self.sharded_ddp not in ["", "simple"]:
-            raise ValueError("Only 'simple' is supported for --sharded_ddp in optimum-habana.")
+        if self.sharded_ddp:
+            raise ValueError("--sharded_ddp is not supported by optimum-habana.")
         if self.tf32:
             raise ValueError("--tf32 is not supported by optimum-habana.")
 

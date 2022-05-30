@@ -30,7 +30,6 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
 
-from optimum.habana.random import get_hpu_rng_state, set_hpu_rng_state
 from optimum.habana.trainer_utils import speed_metrics, to_device_dtype
 from optimum.habana.training_args import GaudiTrainingArguments
 from optimum.utils import logging
@@ -75,10 +74,6 @@ from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
-
-
-if is_fairscale_available():
-    from fairscale.optim import OSS
 
 
 if TYPE_CHECKING:
@@ -232,14 +227,7 @@ class GaudiTrainer(Trainer):
             else:
                 optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
-            if self.sharded_ddp == ShardedDDPOption.SIMPLE:
-                self.optimizer = OSS(
-                    params=optimizer_grouped_parameters,
-                    optim=optimizer_cls,
-                    **optimizer_kwargs,
-                )
-            else:
-                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
 
         return self.optimizer
 
@@ -464,6 +452,9 @@ class GaudiTrainer(Trainer):
         logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size}")
         logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
         logger.info(f"  Total optimization steps = {max_steps}")
+        logger.info(
+            f"  Number of trainable parameters = {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
+        )
 
         self.state.epoch = 0
         start_time = time.time()
@@ -742,10 +733,6 @@ class GaudiTrainer(Trainer):
         self.save_model(output_dir, _internal_call=True)
 
         # Save optimizer and scheduler
-        if self.sharded_ddp == ShardedDDPOption.SIMPLE:
-            self.optimizer.consolidate_state_dict()
-
-        # Save optimizer and scheduler
         if self.args.should_save:
             # This block is exectuted by the main process only
             optim_dict = self.optimizer.state_dict()
@@ -785,9 +772,6 @@ class GaudiTrainer(Trainer):
             "numpy": np.random.get_state(),
             "cpu": torch.random.get_rng_state(),
         }
-
-        if self.args.use_habana:
-            rng_states["hpu"] = get_hpu_rng_state()
 
         # A process can arrive here before the process 0 has a chance to save the model, in which case output_dir may
         # not yet exist.
@@ -1308,34 +1292,3 @@ class GaudiTrainer(Trainer):
             if self.args.hub_strategy == HubStrategy.CHECKPOINT:
                 # Move back the checkpoint to its place
                 shutil.move(tmp_checkpoint, checkpoint_folder)
-
-    def _load_rng_state(self, checkpoint):
-        # Load RNG states from `checkpoint`
-        if checkpoint is None:
-            return
-
-        local_rank = self.args.local_rank
-        if local_rank != -1:
-            rng_file = os.path.join(checkpoint, f"rng_state_{local_rank}.pth")
-            if not os.path.isfile(rng_file):
-                logger.info(
-                    f"Didn't find an RNG file for process {local_rank}, if you are resuming a training that "
-                    "wasn't launched in a distributed fashion, reproducibility is not guaranteed."
-                )
-                return
-        else:
-            rng_file = os.path.join(checkpoint, "rng_state.pth")
-            if not os.path.isfile(rng_file):
-                logger.info(
-                    "Didn't find an RNG file, if you are resuming a training that was launched in a distributed "
-                    "fashion, reproducibility is not guaranteed."
-                )
-                return
-
-        checkpoint_rng_state = torch.load(rng_file)
-        random.setstate(checkpoint_rng_state["python"])
-        np.random.set_state(checkpoint_rng_state["numpy"])
-        torch.random.set_rng_state(checkpoint_rng_state["cpu"])
-        if self.args.use_habana:
-            # if self.args.local_rank != -1:
-            set_hpu_rng_state(checkpoint_rng_state["hpu"])

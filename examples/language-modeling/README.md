@@ -49,8 +49,8 @@ python run_clm.py \
     --use_lazy_mode
 ```
 
-This takes about X minutes to train on a single HPU. It reaches
-a score of ~X perplexity once fine-tuned on the dataset.
+This takes about 13 minutes to train on a single HPU. It reaches
+a score of about 20.9963 perplexity once fine-tuned on the dataset.
 
 To run on your own training and validation files, use the following command:
 
@@ -89,8 +89,8 @@ python ../gaudi_spawn.py \
     --gradient_checkpointing
 ```
 
-This takes about X minutes to train on a single HPU. It reaches
-a score of ~X perplexity once fine-tuned on the dataset.
+This takes about 4 minutes to train on 8 HPUs. It reaches
+a score of 21.7968 perplexity once fine-tuned on the dataset.
 
 
 <!-- ## RoBERTa/BERT/DistilBERT and masked language modeling

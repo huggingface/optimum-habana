@@ -22,7 +22,6 @@ INSTALL_REQUIRES = [
     "scipy",
     "pillow",
     "huggingface_hub==0.4.0",
-    "fairscale",
 ]
 
 TESTS_REQUIRE = [
