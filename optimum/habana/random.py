@@ -15,7 +15,7 @@
 from typing import Union
 
 import torch
-from torch.cuda import _lazy_call
+from torch.cuda import _lazy_init, _lazy_call
 
 
 def get_hpu_rng_state(device: Union[int, str, torch.device] = "hpu") -> torch.Tensor:

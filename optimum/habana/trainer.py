@@ -78,7 +78,6 @@ from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 
 
 if is_fairscale_available():
-    from fairscale.nn.data_parallel import ShardedDataParallel as ShardedDDP
     from fairscale.optim import OSS
 
 
