@@ -425,6 +425,10 @@ class GaudiTrainer(Trainer):
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
+            if args.use_lazy_mode:
+                from optimum.habana.gradient_checkpointing import checkpoint as lazy_mode_checkpointing
+
+                torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
 
         model = self._wrap_model(self.model_wrapped)
 
@@ -447,6 +451,9 @@ class GaudiTrainer(Trainer):
         logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size}")
         logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
         logger.info(f"  Total optimization steps = {max_steps}")
+        logger.info(
+            f"  Number of trainable parameters = {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
+        )
 
         self.state.epoch = 0
         start_time = time.time()

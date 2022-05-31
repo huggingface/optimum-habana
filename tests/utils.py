@@ -31,6 +31,9 @@ MODELS_TO_TEST_MAPPING = {
     "distilbert": [
         ("distilbert-base-uncased", "Habana/distilbert-base-uncased"),
     ],
+    "gpt2": [
+        ("gpt2", "Habana/gpt2"),
+    ],
 }
 
 VALID_MODELS_FOR_QUESTION_ANSWERING = [
@@ -43,6 +46,15 @@ VALID_MODELS_FOR_QUESTION_ANSWERING = [
 # Only BERT is officially supported for sequence classification
 VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION = [
     "bert",
+    # "roberta",
+    # "albert",
+    # "distilbert",
+]
+
+# Only GPT2 is officially supported for language modeling
+VALID_MODELS_FOR_LANGUAGE_MODELING = [
+    "gpt2",
+    # "bert",
     # "roberta",
     # "albert",
     # "distilbert",
