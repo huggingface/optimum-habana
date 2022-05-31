@@ -25,6 +25,7 @@ from unittest import TestCase
 
 from transformers import (
     CONFIG_MAPPING,
+    MODEL_FOR_CAUSAL_LM_MAPPING,
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
 )
@@ -32,13 +33,13 @@ from transformers.testing_utils import slow
 
 from .utils import (
     MODELS_TO_TEST_MAPPING,
+    VALID_MODELS_FOR_LANGUAGE_MODELING,
     VALID_MODELS_FOR_QUESTION_ANSWERING,
     VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION,
 )
 
 
 BASELINE_DIRECTORY = Path(__file__).parent.resolve() / Path("baselines")
-PATH_TO_DEFAULT_GAUDI_CONFIG = Path(__file__).parent.resolve() / Path("configs/gaudi_config_example_test.json")
 # Models should reach at least 99% of their baseline accuracy
 F1_SCORE_PERF_FACTOR = 0.99
 # Trainings should last at most 5% longer than the baseline
@@ -83,6 +84,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
         VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION,
+    ),
+    "run_clm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        VALID_MODELS_FOR_LANGUAGE_MODELING,
     ),
 }
 
@@ -154,7 +160,10 @@ class ExampleTestMeta(type):
                     train_batch_size=baseline.get("distribution").get(distribution).get("train_batch_size"),
                     eval_batch_size=baseline.get("eval_batch_size"),
                     num_epochs=baseline.get("num_train_epochs"),
-                    max_seq_length=self.MAX_SEQ_LENGTH,
+                    # max_seq_length=self.MAX_SEQ_LENGTH,
+                    extra_command_line_arguments=baseline.get("distribution")
+                    .get(distribution)
+                    .get("extra_arguments", []),
                 )
 
                 p = subprocess.Popen(cmd_line)
@@ -167,10 +176,16 @@ class ExampleTestMeta(type):
                     results = json.load(fp)
 
                 # Ensure the accuracy requirement is met
-                self.assertGreaterEqual(
-                    float(results["eval_f1"]),
-                    F1_SCORE_PERF_FACTOR * baseline.get("distribution").get(distribution).get("f1_score"),
-                )
+                if "eval_f1" in results:
+                    self.assertGreaterEqual(
+                        float(results["eval_f1"]),
+                        F1_SCORE_PERF_FACTOR * baseline.get("distribution").get(distribution).get("f1_score"),
+                    )
+                else:
+                    self.assertLessEqual(
+                        float(results["perplexity"]),
+                        1.01 * baseline.get("distribution").get(distribution).get("perplexity"),
+                    )
 
                 # Ensure the performance requirement is met
                 self.assertLessEqual(
@@ -201,7 +216,7 @@ class ExampleTesterBase(TestCase):
     EXAMPLE_NAME = None
     TASK_NAME = None
     DATASET_PARAMETER_NAME = "dataset_name"
-    MAX_SEQ_LENGTH = 384
+    # MAX_SEQ_LENGTH = 384
 
     def _create_command_line(
         self,
@@ -215,7 +230,7 @@ class ExampleTesterBase(TestCase):
         train_batch_size: int = 8,
         eval_batch_size: int = 8,
         num_epochs: int = 2,
-        max_seq_length: int = 128,
+        # max_seq_length: int = 128,
         extra_command_line_arguments: Optional[List[str]] = None,
     ) -> List[str]:
         task_option = f"--{self.DATASET_PARAMETER_NAME} {task}" if task else " "
@@ -239,11 +254,13 @@ class ExampleTesterBase(TestCase):
             f"--per_device_train_batch_size {train_batch_size}",
             f"--per_device_eval_batch_size {eval_batch_size}",
             f" --num_train_epochs {num_epochs}",
-            f"--max_seq_length {max_seq_length}",
+            # f"--max_seq_length {max_seq_length}",
             "--use_habana",
             "--use_lazy_mode",
             "--throughput_warmup_steps 2",
         ]
+        if hasattr(self, "MAX_SEQ_LENGTH"):
+            cmd_line += [f"--max_seq_length {self.MAX_SEQ_LENGTH}"]
         if extra_command_line_arguments is not None:
             cmd_line += extra_command_line_arguments
 
@@ -288,3 +305,13 @@ class MultiCardQuestionAnsweringExampleTester(
 ):
     TASK_NAME = "squad"
     MAX_SEQ_LENGTH = 384
+
+
+class LanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
+    TASK_NAME = "wikitext"
+
+
+class MultiCardLanguageModelingExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm", multi_card=True
+):
+    TASK_NAME = "wikitext"

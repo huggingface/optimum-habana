@@ -1,0 +1,27 @@
+{
+    "wikitext": {
+        "num_train_epochs": 3,
+        "eval_batch_size": 4,
+        "distribution": {
+            "single_card": {
+                "learning_rate": 5e-5,
+                "train_batch_size": 4,
+                "perplexity": 20.9963,
+                "training_time": 805.9659,
+                "extra_arguments": [
+                    "--dataset_config_name wikitext-2-raw-v1"
+                ]
+            },
+            "multi_card": {
+                "learning_rate": 5e-5,
+                "train_batch_size": 4,
+                "perplexity": 21.7968,
+                "training_time": 269.3443,
+                "extra_arguments": [
+                    "--dataset_config_name wikitext-2-raw-v1",
+                    "--gradient_checkpointing"
+                ]
+            }
+        }
+    }
+}
