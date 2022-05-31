@@ -37,7 +37,7 @@ from transformers import Trainer, __version__
 from transformers.configuration_utils import PretrainedConfig
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
-from transformers.integrations import hp_params, is_fairscale_available
+from transformers.integrations import hp_params
 from transformers.modeling_utils import PreTrainedModel, unwrap_model
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
@@ -61,7 +61,6 @@ from transformers.trainer_utils import (
     HubStrategy,
     IntervalStrategy,
     PredictionOutput,
-    ShardedDDPOption,
     TrainOutput,
     denumpify_detensorize,
     enable_full_determinism,
