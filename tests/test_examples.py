@@ -41,7 +41,7 @@ from .utils import (
 
 BASELINE_DIRECTORY = Path(__file__).parent.resolve() / Path("baselines")
 # Models should reach at least 99% of their baseline accuracy
-F1_SCORE_PERF_FACTOR = 0.99
+ACCURACY_PERF_FACTOR = 0.99
 # Trainings should last at most 5% longer than the baseline
 TRAINING_TIME_PERF_FACTOR = 1.05
 
@@ -160,7 +160,6 @@ class ExampleTestMeta(type):
                     train_batch_size=baseline.get("distribution").get(distribution).get("train_batch_size"),
                     eval_batch_size=baseline.get("eval_batch_size"),
                     num_epochs=baseline.get("num_train_epochs"),
-                    # max_seq_length=self.MAX_SEQ_LENGTH,
                     extra_command_line_arguments=baseline.get("distribution")
                     .get(distribution)
                     .get("extra_arguments", []),
@@ -175,23 +174,8 @@ class ExampleTestMeta(type):
                 with open(Path(tmp_dir) / "all_results.json") as fp:
                     results = json.load(fp)
 
-                # Ensure the accuracy requirement is met
-                if "eval_f1" in results:
-                    self.assertGreaterEqual(
-                        float(results["eval_f1"]),
-                        F1_SCORE_PERF_FACTOR * baseline.get("distribution").get(distribution).get("f1_score"),
-                    )
-                else:
-                    self.assertLessEqual(
-                        float(results["perplexity"]),
-                        1.01 * baseline.get("distribution").get(distribution).get("perplexity"),
-                    )
-
-                # Ensure the performance requirement is met
-                self.assertLessEqual(
-                    float(results["train_runtime"]),
-                    TRAINING_TIME_PERF_FACTOR * baseline.get("distribution").get(distribution).get("training_time"),
-                )
+                # Ensure performance requirements (accuracy, training time) are met
+                self.assert_no_regression(results, baseline.get("distribution").get(distribution))
 
             # TODO: is a cleanup of the dataset cache needed?
             # self._cleanup_dataset_cache()
@@ -216,7 +200,11 @@ class ExampleTesterBase(TestCase):
     EXAMPLE_NAME = None
     TASK_NAME = None
     DATASET_PARAMETER_NAME = "dataset_name"
-    # MAX_SEQ_LENGTH = 384
+    REGRESSION_METRICS = {
+        "f1_score": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
+        "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
+        "training_time": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
+    }
 
     def _create_command_line(
         self,
@@ -225,12 +213,11 @@ class ExampleTesterBase(TestCase):
         model_name: str,
         gaudi_config_name: str,
         output_dir: str,
+        lr: float,
+        train_batch_size: int,
+        eval_batch_size: int,
+        num_epochs: int,
         task: Optional[str] = None,
-        lr: float = 3e-5,
-        train_batch_size: int = 8,
-        eval_batch_size: int = 8,
-        num_epochs: int = 2,
-        # max_seq_length: int = 128,
         extra_command_line_arguments: Optional[List[str]] = None,
     ) -> List[str]:
         task_option = f"--{self.DATASET_PARAMETER_NAME} {task}" if task else " "
@@ -254,13 +241,11 @@ class ExampleTesterBase(TestCase):
             f"--per_device_train_batch_size {train_batch_size}",
             f"--per_device_eval_batch_size {eval_batch_size}",
             f" --num_train_epochs {num_epochs}",
-            # f"--max_seq_length {max_seq_length}",
             "--use_habana",
             "--use_lazy_mode",
             "--throughput_warmup_steps 2",
         ]
-        if hasattr(self, "MAX_SEQ_LENGTH"):
-            cmd_line += [f"--max_seq_length {self.MAX_SEQ_LENGTH}"]
+
         if extra_command_line_arguments is not None:
             cmd_line += extra_command_line_arguments
 
@@ -280,11 +265,23 @@ class ExampleTesterBase(TestCase):
         return_code = p.wait()
         self.assertEqual(return_code, 0)
 
+    def assert_no_regression(self, results: Dict, baseline: Dict):
+        """
+        Assert whether all possible performance requirements are met.
+        Attributes:
+            results (Dict): results of the run to assess
+            baseline (Dict): baseline to assert whether or not there is regression
+        """
+
+        for metric_name, assert_function_and_threshold in self.REGRESSION_METRICS.items():
+            if metric_name in baseline:
+                assert_function, threshold_factor = assert_function_and_threshold
+                assert_function(self, results[metric_name], threshold_factor * baseline[metric_name])
+
 
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
     TASK_NAME = "mrpc"
     DATASET_PARAMETER_NAME = "task_name"
-    MAX_SEQ_LENGTH = 128
 
 
 class MultiCardTextClassificationExampleTester(
@@ -292,19 +289,16 @@ class MultiCardTextClassificationExampleTester(
 ):
     TASK_NAME = "mrpc"
     DATASET_PARAMETER_NAME = "task_name"
-    MAX_SEQ_LENGTH = 128
 
 
 class QuestionAnsweringExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa"):
     TASK_NAME = "squad"
-    MAX_SEQ_LENGTH = 384
 
 
 class MultiCardQuestionAnsweringExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa", multi_card=True
 ):
     TASK_NAME = "squad"
-    MAX_SEQ_LENGTH = 384
 
 
 class LanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
