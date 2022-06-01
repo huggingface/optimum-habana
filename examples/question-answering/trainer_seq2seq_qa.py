@@ -15,24 +15,33 @@
 """
 A subclass of `GaudiTrainer` specific to Question-Answering tasks
 """
+from typing import Dict, List, Optional
 
-from optimum.habana.trainer import GaudiTrainer
-from transformers import Trainer, is_torch_tpu_available
+from torch.utils.data import Dataset
+
+from optimum.habana import GaudiSeq2SeqTrainer
 from transformers.trainer_utils import PredictionOutput
 
 
-if is_torch_tpu_available():
-    import torch_xla.core.xla_model as xm
-    import torch_xla.debug.metrics as met
-
-
-class QuestionAnsweringTrainer(GaudiTrainer):
+class QuestionAnsweringSeq2SeqTrainer(GaudiSeq2SeqTrainer):
     def __init__(self, *args, eval_examples=None, post_process_function=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.eval_examples = eval_examples
         self.post_process_function = post_process_function
 
-    def evaluate(self, eval_dataset=None, eval_examples=None, ignore_keys=None, metric_key_prefix: str = "eval"):
+    # def evaluate(self, eval_dataset=None, eval_examples=None, ignore_keys=None, metric_key_prefix: str = "eval"):
+    def evaluate(
+        self,
+        eval_dataset: Optional[Dataset] = None,
+        eval_examples=None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+        max_length: Optional[int] = None,
+        num_beams: Optional[int] = None,
+    ) -> Dict[str, float]:
+        self._max_length = max_length if max_length is not None else self.args.generation_max_length
+        self._num_beams = num_beams if num_beams is not None else self.args.generation_num_beams
+
         eval_dataset = self.eval_dataset if eval_dataset is None else eval_dataset
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
         eval_examples = self.eval_examples if eval_examples is None else eval_examples
@@ -54,7 +63,7 @@ class QuestionAnsweringTrainer(GaudiTrainer):
             self.compute_metrics = compute_metrics
 
         if self.post_process_function is not None and self.compute_metrics is not None:
-            eval_preds = self.post_process_function(eval_examples, eval_dataset, output.predictions)
+            eval_preds = self.post_process_function(eval_examples, eval_dataset, output)
             metrics = self.compute_metrics(eval_preds)
 
             # Prefix all keys with metric_key_prefix + '_'
@@ -65,10 +74,6 @@ class QuestionAnsweringTrainer(GaudiTrainer):
             self.log(metrics)
         else:
             metrics = {}
-
-        if self.args.tpu_metrics_debug or self.args.debug:
-            # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
-            xm.master_print(met.metrics_report())
 
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, metrics)
         return metrics
