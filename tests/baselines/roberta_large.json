@@ -6,14 +6,20 @@
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 12,
-                "f1_score": 94.4259,
-                "training_time": 5811.6
+                "eval_f1": 94.4259,
+                "train_runtime": 5811.6,
+                "extra_arguments": [
+                    "--max_seq_length 384"
+                ]
             },
             "multi_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 12,
-                "f1_score": 94.5719,
-                "training_time": 769.8
+                "eval_f1": 94.5719,
+                "train_runtime": 769.8,
+                "extra_arguments": [
+                    "--max_seq_length 384"
+                ]
             }
         }
     }
