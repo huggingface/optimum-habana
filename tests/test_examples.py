@@ -197,7 +197,7 @@ class ExampleTesterBase(TestCase):
     """
 
     EXAMPLE_DIR = Path(os.path.dirname(__file__)).parent / "examples"
-    # EXAMPLE_NAME = None
+    EXAMPLE_NAME = None
     TASK_NAME = None
     DATASET_PARAMETER_NAME = "dataset_name"
     REGRESSION_METRICS = {
