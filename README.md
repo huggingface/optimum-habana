@@ -66,6 +66,10 @@ Original script:
 ```python
 from transformers import Trainer, TrainingArguments
 
+training_args = TrainingArguments(
+  # training arguments...
+)
+
 # A lot of code here
 
 # Initialize our Trainer
@@ -85,21 +89,20 @@ Transformed version that can run on Gaudi:
 ```python
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
-# A lot of the same code as the original script here
-
-# Loading the GaudiConfig needed by the GaudiTrainer to fine-tune the model on HPUs
-gaudi_config = GaudiConfig.from_pretrained(
-    training_args.gaudi_config_name,
-    cache_dir=model_args.cache_dir,
-    revision=model_args.model_revision,
-    use_auth_token=True if model_args.use_auth_token else None,
+training_args = GaudiTrainingArguments(
+  # same training arguments...
+  use_habana=True,
+  use_lazy_mode=True,  # whether to use lazy or eager mode
+  gaudi_config_name=path_to_gaudi_config,
 )
+
+# A lot of the same code as the original script here
 
 # Initialize our Trainer
 trainer = GaudiTrainer(
     model=model,
-    gaudi_config=gaudi_config,
-    # The training arguments differ a bit from the original ones, that is why we use GaudiTrainingArguments
+    # You can manually specify the Gaudi configuration to use with
+    # gaudi_config=my_gaudi_config
     args=training_args,
     train_dataset=train_dataset if training_args.do_train else None,
     eval_dataset=eval_dataset if training_args.do_eval else None,
@@ -109,7 +112,7 @@ trainer = GaudiTrainer(
 )
 ```
 
-where `training_args.gaudi_config_name` is the name of a model from the [Hub](https://huggingface.co/Habana) (Gaudi configurations are stored in model repositories). You can also give the path to a custom Gaudi configuration written in a JSON file such as this one:
+where `gaudi_config_name` is the name of a model from the [Hub](https://huggingface.co/Habana) (Gaudi configurations are stored in model repositories). You can also give the path to a custom Gaudi configuration written in a JSON file such as this one:
 ```json
 {
   "use_habana_mixed_precision": true,
@@ -139,6 +142,16 @@ where `training_args.gaudi_config_name` is the name of a model from the [Hub](ht
     "log_softmax"
   ]
 }
+```
+
+If you prefer to instantiate a Gaudi configuration to work on it before giving it to the trainer, you can do it as follows:
+```python
+gaudi_config = GaudiConfig.from_pretrained(
+    gaudi_config_name,
+    cache_dir=model_args.cache_dir,
+    revision=model_args.model_revision,
+    use_auth_token=True if model_args.use_auth_token else None,
+)
 ```
 
 
