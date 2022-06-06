@@ -46,7 +46,9 @@ python run_translation.py \
     --use_lazy_mode \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
-    --pad_to_max_length
+    --pad_to_max_length \
+    --save_strategy epoch \
+    --throughput_warmup_steps 2
 ```
 
 If you get a terrible BLEU score, make sure that you didn't forget to use the `--source_prefix` argument.
@@ -79,7 +81,8 @@ python run_translation.py \
     --use_lazy_mode \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
-    --pad_to_max_length
+    --pad_to_max_length \
+    --throughput_warmup_steps 2
 ```
 
 The task of translation supports only custom JSONLINES files, with each line being a dictionary with a key `"translation"` and its value another dictionary whose keys is the language pair. For example:
@@ -110,7 +113,8 @@ python run_translation.py \
     --use_lazy_mode \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
-    --pad_to_max_length
+    --pad_to_max_length \
+    --throughput_warmup_steps 2
  ```
 
 
@@ -138,5 +142,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
-    --pad_to_max_length
+    --pad_to_max_length \
+    --save_strategy epoch \
+    --throughput_warmup_steps 2
 ```

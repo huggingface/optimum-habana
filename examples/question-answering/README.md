@@ -118,7 +118,8 @@ python run_seq2seq_qa.py \
   --output_dir /tmp/debug_seq2seq_squad/ \
   --gaudi_config_name /root/shared/gaudi_config.json \
   --use_habana \
-  --use_lazy_mode
+  --use_lazy_mode \
+  --throughput_warmup_steps 2
 ```
 
 
