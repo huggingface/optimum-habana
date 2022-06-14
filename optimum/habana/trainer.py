@@ -130,7 +130,10 @@ class GaudiTrainer(Trainer):
             preprocess_logits_for_metrics,
         )
 
-        self.gaudi_config = copy.deepcopy(gaudi_config)
+        if gaudi_config is None:
+            self.gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
+        else:
+            self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
             if self.args.use_lazy_mode:
