@@ -11,11 +11,11 @@
 <     TrainingArguments,
 46d43
 <     is_torch_tpu_available,
-198c195
+209c206
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-219a217,223
+234a232,238
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -23,20 +23,20 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-222,223c226,228
+237,238c241,243
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-490c495
+506c511
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-491a497
+507a513
 >         gaudi_config=gaudi_config,
-498,501c504,505
+514,517c520,521
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -44,7 +44,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-555,559d558
+571,575d574
 < 
 < 
 < def _mp_fn(index):

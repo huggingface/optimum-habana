@@ -18,7 +18,7 @@ from typing import Optional
 
 from optimum.utils import logging
 from transformers.file_utils import cached_property, is_torch_available, torch_required
-from transformers.training_args import TrainingArguments
+from transformers.training_args import TrainingArguments, get_int_from_env
 
 
 if is_torch_available():
@@ -71,7 +71,11 @@ class GaudiTrainingArguments(TrainingArguments):
     throughput_warmup_steps: int = field(
         default=0,
         metadata={
-            "help": "Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N, the first N steps will not be considered in the calculation of the throughput. This is especially useful in lazy mode."
+            "help": (
+                "Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N,"
+                " the first N steps will not be considered in the calculation of the throughput. This is especially"
+                " useful in lazy mode."
+            )
         },
     )
 
@@ -94,11 +98,13 @@ class GaudiTrainingArguments(TrainingArguments):
         # Raise errors for arguments that are not supported by optimum-habana
         if self.bf16 or self.bf16_full_eval:
             raise ValueError(
-                "--bf16 and --bf16_full_eval are not supported by optimum-habana. You should turn on Habana Mixed Precision in your Gaudi configuration to enable bf16."
+                "--bf16 and --bf16_full_eval are not supported by optimum-habana. You should turn on Habana Mixed"
+                " Precision in your Gaudi configuration to enable bf16."
             )
         if self.fp16 or self.fp16_full_eval:
             raise ValueError(
-                "--fp16, --fp16_backend, --fp16_full_eval, --fp16_opt_level and --half_precision_backend are not supported by optimum-habana. Mixed-precision training can be enabled in your Gaudi configuration."
+                "--fp16, --fp16_backend, --fp16_full_eval, --fp16_opt_level and --half_precision_backend are not"
+                " supported by optimum-habana. Mixed-precision training can be enabled in your Gaudi configuration."
             )
         if self.tpu_num_cores or self.tpu_metrics_debug:
             raise ValueError("TPUs are not supported by optimum-habana.")
@@ -143,6 +149,10 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.no_cuda:
             device = torch.device("cpu")
             self._n_gpu = 0
+            self.local_rank = get_int_from_env(
+                ["LOCAL_RANK", "MPI_LOCALRANKID", "OMPI_COMM_WORLD_LOCAL_RANK", "MV2_COMM_WORLD_LOCAL_RANK"],
+                self.local_rank,
+            )
             if self.local_rank != -1 and not torch.distributed.is_initialized():
                 # Initializes distributed backend for cpu
                 if self.xpu_backend not in ("mpi", "ccl"):
@@ -150,7 +160,30 @@ class GaudiTrainingArguments(TrainingArguments):
                         "CPU distributed training backend is not properly set. "
                         "Please set '--xpu_backend' to either 'mpi' or 'ccl'."
                     )
-                torch.distributed.init_process_group(backend=self.xpu_backend)
+                if self.xpu_backend == "ccl" and int(os.environ.get("CCL_WORKER_COUNT", 0)) < 1:
+                    raise ValueError(
+                        "CPU distributed training backend is ccl. but CCL_WORKER_COUNT is not correctly set. "
+                        "Please use like 'export CCL_WORKER_COUNT = 1' to set."
+                    )
+
+                # Try to get launch configuration from environment variables set by MPI launcher - works for Intel MPI, OpenMPI and MVAPICH
+                rank = get_int_from_env(["RANK", "PMI_RANK", "OMPI_COMM_WORLD_RANK", "MV2_COMM_WORLD_RANK"], 0)
+                size = get_int_from_env(["WORLD_SIZE", "PMI_SIZE", "OMPI_COMM_WORLD_SIZE", "MV2_COMM_WORLD_SIZE"], 1)
+                local_size = get_int_from_env(
+                    ["MPI_LOCALNRANKS", "OMPI_COMM_WORLD_LOCAL_SIZE", "MV2_COMM_WORLD_LOCAL_SIZE"], 1
+                )
+                os.environ["RANK"] = str(rank)
+                os.environ["WORLD_SIZE"] = str(size)
+                os.environ["LOCAL_RANK"] = str(self.local_rank)
+                if not os.environ.get("MASTER_PORT", None):
+                    os.environ["MASTER_PORT"] = "29500"
+                if not os.environ.get("MASTER_ADDR", None):
+                    if local_size != size or self.xpu_backend != "mpi":
+                        raise ValueError(
+                            "Looks like distributed multinode run but MASTER_ADDR env not set, "
+                            "please try exporting rank 0's hostname as MASTER_ADDR"
+                        )
+                torch.distributed.init_process_group(backend=self.xpu_backend, rank=rank, world_size=size)
         elif self.use_habana:
             logger.info("Habana is enabled.")
 

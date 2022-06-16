@@ -16,11 +16,11 @@
 
 # Run code quality checks
 style_check:
-	black --check .
+	black --check --preview .
 	isort --check .
 
 style:
-	black .
+	black --preview .
 	isort .
 
 # Run unit and integration tests
