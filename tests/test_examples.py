@@ -201,9 +201,9 @@ class ExampleTesterBase(TestCase):
     TASK_NAME = None
     DATASET_PARAMETER_NAME = "dataset_name"
     REGRESSION_METRICS = {
-        "f1_score": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
+        "eval_f1": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
-        "training_time": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
+        "train_runtime": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
     }
 
     def _create_command_line(
