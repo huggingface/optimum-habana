@@ -22,7 +22,7 @@ INSTALL_REQUIRES = [
     "scipy",
     "pillow",
     "dill < 0.3.5",  # see https://github.com/huggingface/datasets/issues/4506
-    "multiprocess < 0.70.13", # 0.70.13 depends on dill>=0.3.5, to remove when the dill issue is solved
+    "multiprocess < 0.70.13",  # 0.70.13 depends on dill>=0.3.5, to remove when the dill issue is solved
 ]
 
 TESTS_REQUIRE = [
