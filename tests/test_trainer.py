@@ -27,7 +27,7 @@ from typing import Optional, Union
 
 import numpy as np
 
-from huggingface_hub import Repository, delete_repo, login
+from huggingface_hub import HfFolder, Repository, delete_repo, set_access_token
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.utils import logging
 from parameterized import parameterized
@@ -35,7 +35,7 @@ from requests.exceptions import HTTPError
 from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
 from transformers.testing_utils import (
     ENDPOINT_STAGING,
-    PASS,
+    TOKEN,
     USER,
     CaptureLogger,
     TestCasePlus,
@@ -1453,18 +1453,20 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls._token = login(username=USER, password=PASS)
+        cls._token = TOKEN
+        set_access_token(TOKEN)
+        HfFolder.save_token(TOKEN)
 
     @classmethod
     def tearDownClass(cls):
         for model in ["test-trainer", "test-trainer-epoch", "test-trainer-step"]:
             try:
-                delete_repo(token=cls._token, name=model)
+                delete_repo(token=cls._token, repo_id=model)
             except HTTPError:
                 pass
 
         try:
-            delete_repo(token=cls._token, name="test-trainer-org", organization="valid_org")
+            delete_repo(token=cls._token, repo_id="valid_org/test-trainer-org")
         except HTTPError:
             pass
 
