@@ -13,7 +13,7 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.19.1",
+    "transformers >= 4.20.0",
     "optimum",
     "datasets",
     "tokenizers",
@@ -22,7 +22,7 @@ INSTALL_REQUIRES = [
     "scipy",
     "pillow",
     "dill < 0.3.5",  # see https://github.com/huggingface/datasets/issues/4506
-    "multiprocess < 0.70.13", # 0.70.13 depends on dill>=0.3.5, to remove when the dill issue is solved
+    "multiprocess < 0.70.13",  # 0.70.13 depends on dill>=0.3.5, to remove when the dill issue is solved
 ]
 
 TESTS_REQUIRE = [
@@ -39,7 +39,11 @@ EXTRAS_REQUIRE = {
 setup(
     name="optimum-habana",
     version=__version__,
-    description="Optimum Habana is the interface between the Hugging Face Transformers library and Habana Gaudi Processor (HPU). It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU settings for different downstream tasks.",
+    description=(
+        "Optimum Habana is the interface between the Hugging Face Transformers library and Habana Gaudi Processor"
+        " (HPU). It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU"
+        " settings for different downstream tasks."
+    ),
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     classifiers=[

@@ -37,9 +37,7 @@ def parse_args():
     """
     parser = ArgumentParser(
         description=(
-            "Habana Gaudi distributed training launch "
-            "helper utility that will spawn up "
-            "multiple distributed processes"
+            "Habana Gaudi distributed training launch helper utility that will spawn up multiple distributed processes"
         )
     )
 

@@ -4,7 +4,7 @@
 39,40d40
 <     Trainer,
 <     TrainingArguments,
-215a216,222
+235a236,242
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -12,16 +12,16 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-218,219c225,227
+238,239c245,247
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-491c499
+512c520
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-492a501
+513a522
 >         gaudi_config=gaudi_config,
