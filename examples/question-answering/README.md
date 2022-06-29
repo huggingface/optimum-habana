@@ -95,34 +95,6 @@ exact_match = 86.8874
 ```
 
 
-## Fine-tuning T5 on SQuAD2.0
-
-The [`run_seq2seq_qa.py`](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/run_seq2seq_qa.py) script is meant for encoder-decoder (also called seq2seq) Transformer models, such as T5 or BART. These models are generative, rather than discriminative. This means that they learn to generate the correct answer, rather than predicting the start and end position of the tokens of the answer.
-
-This example code fine-tunes T5 on the SQuAD2.0 dataset.
-
-```bash
-python run_seq2seq_qa.py \
-  --model_name_or_path t5-base \
-  --dataset_name squad_v2 \
-  --context_column context \
-  --question_column question \
-  --answer_column answers \
-  --do_train \
-  --do_eval \
-  --per_device_train_batch_size 16 \
-  --learning_rate 3e-5 \
-  --num_train_epochs 2 \
-  --max_seq_length 384 \
-  --doc_stride 128 \
-  --output_dir /tmp/debug_seq2seq_squad/ \
-  --gaudi_config_name /root/shared/gaudi_config.json \
-  --use_habana \
-  --use_lazy_mode \
-  --throughput_warmup_steps 2
-```
-
-
 ### Recommended Hyperparameters for Mixed Precision
 
 | | learning_rate | num_train_epochs | per_device_train_batch_size | per_device_eval_batch_size |
