@@ -174,7 +174,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             torch.distributed.barrier()
 
         with torch.no_grad():
-            with self.autocast_smart_context_manager():
+            with self.compute_loss_context_manager():
                 outputs = model(**inputs)
             if has_labels:
                 if self.label_smoother is not None:

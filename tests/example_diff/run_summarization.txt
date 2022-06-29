@@ -1,0 +1,67 @@
+3c3
+< # Copyright 2021 The HuggingFace Team. All rights reserved.
+---
+> # Copyright 2022 The HuggingFace Team. All rights reserved.
+33a34
+> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+44,45c45
+<     Seq2SeqTrainer,
+<     Seq2SeqTrainingArguments,
+---
+>     default_data_collator,
+54c54
+< check_min_version("4.21.0.dev0")
+---
+> check_min_version("4.20.0")
+202c202
+<                 "efficient on GPU but very bad for TPU."
+---
+>                 "efficient on GPU but very bad for HPU in lazy mode."
+297c297
+<     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+---
+>     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
+321a322,328
+>     gaudi_config = GaudiConfig.from_pretrained(
+>         training_args.gaudi_config_name,
+>         cache_dir=model_args.cache_dir,
+>         revision=model_args.model_revision,
+>         use_auth_token=True if model_args.use_auth_token else None,
+>     )
+> 
+324,325c331,333
+<         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
+<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+---
+>         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
+>         + f"distributed training: {bool(training_args.local_rank != -1)}, "
+>         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
+593,598c601,609
+<     data_collator = DataCollatorForSeq2Seq(
+<         tokenizer,
+<         model=model,
+<         label_pad_token_id=label_pad_token_id,
+<         pad_to_multiple_of=8 if training_args.fp16 else None,
+<     )
+---
+>     if data_args.pad_to_max_length:
+>         data_collator = default_data_collator
+>     else:
+>         data_collator = DataCollatorForSeq2Seq(
+>             tokenizer,
+>             model=model,
+>             label_pad_token_id=label_pad_token_id,
+>             pad_to_multiple_of=8 if training_args.fp16 else None,
+>         )
+636c647
+<     trainer = Seq2SeqTrainer(
+---
+>     trainer = GaudiSeq2SeqTrainer(
+637a649
+>         gaudi_config=gaudi_config,
+726,730d737
+< 
+< 
+< def _mp_fn(index):
+<     # For xla_spawn (TPUs)
+<     main()
