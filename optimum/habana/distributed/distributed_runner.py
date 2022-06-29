@@ -129,7 +129,10 @@ class DistributedRunner:
 
         self.setup_config_env()
         mpi_cmd = self.setup_config_env_mpirun()
-        self.__interpreter = f"mpirun -n {self.__world_size} --bind-to core {mpi_cmd} --rank-by core --report-bindings --allow-run-as-root {sys.executable} "
+        self.__interpreter = (
+            f"mpirun -n {self.__world_size} --bind-to core {mpi_cmd} --rank-by core --report-bindings"
+            f" --allow-run-as-root {sys.executable} "
+        )
 
     def create_single_hls_setup(self):
         """

@@ -55,6 +55,9 @@ python run_glue.py \
   --throughput_warmup_steps 2
 ```
 
+> If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
+
+
 ### Multi-card Training
 
 Here is how you would fine-tune the BERT large model (with whole word masking) on the text classification MRPC task using the `run_glue`
@@ -78,3 +81,5 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --throughput_warmup_steps 2
 ```
+
+> If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.

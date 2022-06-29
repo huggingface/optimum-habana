@@ -7,7 +7,7 @@
 > from optimum.habana.training_args import GaudiTrainingArguments as TrainingArguments
 40d41
 <     TrainingArguments,
-227a229,235
+246a248,254
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -15,12 +15,12 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-230,231c238,240
+249,250c257,259
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-584a594
+603a613
 >         gaudi_config=gaudi_config,

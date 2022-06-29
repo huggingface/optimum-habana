@@ -171,7 +171,10 @@ class GaudiTrainer(Trainer):
                 try:
                     from habana_frameworks.torch.hpex.normalization import FusedClipNorm
                 except ImportError as error:
-                    error.msg = f"Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'. {error.msg}."
+                    error.msg = (
+                        "Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'."
+                        f" {error.msg}."
+                    )
                     raise error
                 self.FusedNorm = FusedClipNorm(
                     self.model.parameters(),
@@ -247,7 +250,11 @@ class GaudiTrainer(Trainer):
                     torch.save(self.optimizer.state_dict(), os.path.join(output_dir, OPTIMIZER_NAME))
                 torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
 
-    def _wrap_model(self, model, training=True):
+    def _wrap_model(self, model, training=True, dataloader=None):
+        if self.args.use_ipex:
+            dtype = torch.bfloat16 if self.use_cpu_amp else torch.float32
+            model = self.ipex_optimize_model(model, training, dtype=dtype)
+
         # train/eval could be run multiple-times - if already wrapped, don't re-wrap it again
         if unwrap_model(model) is not model:
             return model
@@ -342,7 +349,10 @@ class GaudiTrainer(Trainer):
                 try:
                     from habana_frameworks.torch.hpex.normalization import FusedClipNorm
                 except ImportError as error:
-                    error.msg = f"Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'. {error.msg}."
+                    error.msg = (
+                        "Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'."
+                        f" {error.msg}."
+                    )
                     raise error
                 self.FusedNorm = FusedClipNorm(
                     self.model.parameters(),
@@ -414,7 +424,8 @@ class GaudiTrainer(Trainer):
             num_train_samples = args.max_steps * total_train_batch_size
         else:
             raise ValueError(
-                f"args.max_steps must be set to a positive value if dataloader does not have a length, was {args.max_steps}"
+                "args.max_steps must be set to a positive value if dataloader does not have a length, was"
+                f" {args.max_steps}"
             )
 
         if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:
@@ -652,7 +663,7 @@ class GaudiTrainer(Trainer):
                     break
             if step < 0:
                 logger.warning(
-                    f"There seems to be not a single sample in your epoch_iterator, stopping training at step"
+                    "There seems to be not a single sample in your epoch_iterator, stopping training at step"
                     f" {self.state.global_step}! This is expected if you're using an IterableDataset and set"
                     f" num_steps ({max_steps}) higher than the number of available samples."
                 )
@@ -778,6 +789,7 @@ class GaudiTrainer(Trainer):
         # A process can arrive here before the process 0 has a chance to save the model, in which case output_dir may
         # not yet exist.
         os.makedirs(output_dir, exist_ok=True)
+
         if self.args.local_rank == -1:
             torch.save(rng_states, os.path.join(output_dir, "rng_state.pth"))
         else:
@@ -833,7 +845,7 @@ class GaudiTrainer(Trainer):
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
 
-        model = self._wrap_model(self.model, training=False)
+        model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
         batch_size = self.args.eval_batch_size
 
@@ -1060,7 +1072,7 @@ class GaudiTrainer(Trainer):
 
         with torch.no_grad():
             if has_labels:
-                with self.autocast_smart_context_manager():
+                with self.compute_loss_context_manager():
                     loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
                 loss = loss.mean().detach()
 
@@ -1070,7 +1082,7 @@ class GaudiTrainer(Trainer):
                     logits = outputs[1:]
             else:
                 loss = None
-                with self.autocast_smart_context_manager():
+                with self.compute_loss_context_manager():
                     outputs = model(**inputs)
                 if isinstance(outputs, dict):
                     logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
@@ -1111,7 +1123,7 @@ class GaudiTrainer(Trainer):
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
 
-        model = self._wrap_model(self.model, training=False)
+        model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
         batch_size = dataloader.batch_size
         num_examples = self.num_examples(dataloader)

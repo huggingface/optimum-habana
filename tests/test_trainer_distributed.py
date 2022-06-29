@@ -95,8 +95,8 @@ if __name__ == "__main__":
     gaudi_config = GaudiConfig.from_pretrained(Path("tests", "configs", "gaudi_config_trainer_test.json"))
 
     logger.warning(
-        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_hpu: {training_args.world_size}, "
-        f"distributed training: {training_args.local_rank != -1}"
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_hpu: {training_args.world_size},"
+        f" distributed training: {training_args.local_rank != -1}"
     )
 
     # Essentially, what we want to verify in the distributed case is that we get all samples back,
