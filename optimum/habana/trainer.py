@@ -896,7 +896,8 @@ class GaudiTrainer(Trainer):
 
             # Save the logits dtype since we need to convert them into floats during the process
             # They will be converted back into their original dtype right before computing metrics
-            logits_dtype = get_dtype(logits)
+            if logits is not None:
+                logits_dtype = get_dtype(logits)
 
             # Update containers on host
             if loss is not None:
@@ -1002,7 +1003,8 @@ class GaudiTrainer(Trainer):
             all_inputs = nested_truncate(all_inputs, num_samples)
 
         # Convert predictions back into their original dtype if necessary
-        all_preds = convert_into_dtypes(all_preds, logits_dtype)
+        if all_preds is not None:
+            all_preds = convert_into_dtypes(all_preds, logits_dtype)
 
         # Metrics!
         if self.compute_metrics is not None and all_preds is not None and all_labels is not None:
