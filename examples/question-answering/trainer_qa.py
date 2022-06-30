@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-A subclass of `Trainer` specific to Question-Answering tasks
+A subclass of `GaudiTrainer` specific to Question-Answering tasks
 """
 
 from optimum.habana.trainer import GaudiTrainer

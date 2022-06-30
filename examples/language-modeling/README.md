@@ -46,7 +46,8 @@ python run_clm.py \
     --output_dir /tmp/test-clm \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
-    --use_lazy_mode
+    --use_lazy_mode \
+    --throughput_warmup_steps 2
 ```
 
 This takes about 13 minutes to train on a single HPU. It reaches
@@ -66,7 +67,8 @@ python run_clm.py \
     --output_dir /tmp/test-clm \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
-    --use_lazy_mode
+    --use_lazy_mode \
+    --throughput_warmup_steps 2
 ```
 
 
@@ -86,7 +88,8 @@ python ../gaudi_spawn.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
-    --gradient_checkpointing
+    --gradient_checkpointing \
+    --throughput_warmup_steps 2
 ```
 
 This takes about 4 minutes to train on 8 HPUs. It reaches
@@ -142,7 +145,8 @@ python run_clm.py \
     --tokenizer_name gpt2 \
     --config_overrides="n_embd=1024,n_head=16,n_layer=48,n_positions=102" \
     --use_habana \
-    --use_lazy_mode
+    --use_lazy_mode \
+    --throughput_warmup_steps 2
 ```
 
 <!-- This feature is only available in `run_clm.py` and `run_mlm.py`. -->

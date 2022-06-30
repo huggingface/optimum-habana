@@ -1,0 +1,44 @@
+31a32
+> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+43,44d43
+<     Seq2SeqTrainer,
+<     Seq2SeqTrainingArguments,
+54c53
+< check_min_version("4.21.0.dev0")
+---
+> check_min_version("4.20.0")
+170c169
+<                 "efficient on GPU but very bad for TPU."
+---
+>                 "efficient on GPU but very bad for HPU in lazy mode."
+255c254
+<     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+---
+>     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
+280a280,286
+>     gaudi_config = GaudiConfig.from_pretrained(
+>         training_args.gaudi_config_name,
+>         cache_dir=model_args.cache_dir,
+>         revision=model_args.model_revision,
+>         use_auth_token=True if model_args.use_auth_token else None,
+>     )
+> 
+283,284c289,291
+<         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
+<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+---
+>         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
+>         + f"distributed training: {bool(training_args.local_rank != -1)}, "
+>         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
+556c563
+<     trainer = Seq2SeqTrainer(
+---
+>     trainer = GaudiSeq2SeqTrainer(
+557a565
+>         gaudi_config=gaudi_config,
+648,652d655
+< 
+< 
+< def _mp_fn(index):
+<     # For xla_spawn (TPUs)
+<     main()

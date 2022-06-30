@@ -51,7 +51,7 @@ python run_qa.py \
   --num_train_epochs 2 \
   --max_seq_length 384 \
   --doc_stride 128 \
-  --output_dir ./output/debug_squad/ \
+  --output_dir /tmp/squad/ \
   --use_habana \
   --use_lazy_mode \
   --throughput_warmup_steps 2

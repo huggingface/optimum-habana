@@ -14,11 +14,13 @@
 # limitations under the License.
 
 import time
+from typing import Any, List, Tuple, Union
 
+import numpy as np
 import torch
 
 
-def to_device_dtype(my_input, target_device: torch.device = None, target_dtype: torch.dtype = None):
+def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
     """
     Move a state_dict to the target device and convert it into target_dtype.
 
@@ -75,3 +77,56 @@ def speed_metrics(split, start_time, num_samples=None, num_steps=None, start_tim
         result[f"{split}_steps_per_second"] = round(steps_per_second, 3)
 
     return result
+
+
+def get_dtype(logits: Union[torch.Tensor, Tuple[torch.Tensor]]) -> Union[str, List[str]]:
+    """
+    Extract the dtype of logits.
+
+    Args:
+        logits (Union[torch.Tensor, Tuple[torch.Tensor]]): input
+
+    Raises:
+        TypeError: only torch.Tensor and tuple are supported
+
+    Returns:
+        Union[str, List[str]]: logits' dtype
+    """
+    if isinstance(logits, torch.Tensor):
+        # The dtype of a Torch tensor has the format 'torch.XXX', XXX being the actual dtype
+        logits_dtype = str(logits.dtype).split(".")[-1]
+        # If mixed-precision training was performed, dtype must be 'float32' to be understood by Numpy
+        if logits_dtype == "bfloat16":
+            logits_dtype = "float32"
+        return logits_dtype
+    elif isinstance(logits, tuple):
+        return [get_dtype(logits_tensor) for logits_tensor in logits]
+    else:
+        raise TypeError(f"logits should be of type torch.Tensor or tuple, got {type(logits)} which is not supported")
+
+
+def convert_into_dtypes(
+    preds: Union[np.ndarray, Tuple[np.ndarray]], dtypes: Union[str, List[str]]
+) -> Union[np.ndarray, Tuple[np.ndarray]]:
+    """
+    Convert preds into dtypes.
+
+    Args:
+        preds (Union[np.ndarray, Tuple[np.ndarray]]): predictions to convert
+        dtypes (Union[str, List[str]]): dtypes used for the conversion
+
+    Raises:
+        TypeError: only torch.Tensor and tuple are supported
+
+    Returns:
+        Union[np.ndarray, Tuple[np.ndarray]]: converted preds
+    """
+    if isinstance(preds, np.ndarray):
+        if preds.dtype == dtypes:
+            return preds
+        else:
+            return preds.astype(dtypes)
+    elif isinstance(preds, tuple):
+        return tuple(convert_into_dtypes(preds_tensor, dtypes[i]) for i, preds_tensor in enumerate(preds))
+    else:
+        raise TypeError(f"preds should be of type np.ndarray or tuple, got {type(preds)} which is not supported")

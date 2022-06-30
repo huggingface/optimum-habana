@@ -30,7 +30,7 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
 
-from optimum.habana.trainer_utils import speed_metrics, to_device_dtype
+from optimum.habana.trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
 from optimum.habana.training_args import GaudiTrainingArguments
 from optimum.utils import logging
 from transformers import Trainer, __version__
@@ -894,6 +894,11 @@ class GaudiTrainer(Trainer):
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
             inputs_decode = inputs["input_ids"] if args.include_inputs_for_metrics else None
 
+            # Save the logits dtype since we need to convert them into floats during the process
+            # They will be converted back into their original dtype right before computing metrics
+            if logits is not None:
+                logits_dtype = get_dtype(logits)
+
             # Update containers on host
             if loss is not None:
                 losses = self._nested_gather(loss.repeat(batch_size))
@@ -911,6 +916,8 @@ class GaudiTrainer(Trainer):
                     else nested_concat(inputs_host, inputs_decode, padding_index=-100)
                 )
             if logits is not None:
+                if args.use_habana and logits_dtype != "float32":
+                    logits = to_device_dtype(logits, target_dtype=torch.float32)
                 logits = self._pad_across_processes(logits)
                 logits = self._nested_gather(logits)
                 if self.preprocess_logits_for_metrics is not None:
@@ -924,7 +931,8 @@ class GaudiTrainer(Trainer):
                     losses = nested_numpify(losses_host)
                     all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
                 if preds_host is not None:
-                    preds_host = to_device_dtype(preds_host, target_dtype=torch.float32)
+                    if args.use_habana and logits_dtype != "float32":
+                        preds_host = to_device_dtype(preds_host, target_dtype=torch.float32)
                     logits = nested_numpify(preds_host)
                     all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
                 if inputs_host is not None:
@@ -957,7 +965,7 @@ class GaudiTrainer(Trainer):
             losses = nested_numpify(losses_host)
             all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
         if preds_host is not None:
-            if args.use_habana:
+            if args.use_habana and logits_dtype != "float32":
                 preds_host = to_device_dtype(preds_host, target_dtype=torch.float32)
             logits = nested_numpify(preds_host)
             all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
@@ -993,6 +1001,10 @@ class GaudiTrainer(Trainer):
             all_labels = nested_truncate(all_labels, num_samples)
         if all_inputs is not None:
             all_inputs = nested_truncate(all_inputs, num_samples)
+
+        # Convert predictions back into their original dtype if necessary
+        if all_preds is not None:
+            all_preds = convert_into_dtypes(all_preds, logits_dtype)
 
         # Metrics!
         if self.compute_metrics is not None and all_preds is not None and all_labels is not None:
