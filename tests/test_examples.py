@@ -27,6 +27,7 @@ from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_CAUSAL_LM_MAPPING,
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
+    MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
 )
 from transformers.testing_utils import slow
@@ -36,6 +37,7 @@ from .utils import (
     VALID_MODELS_FOR_LANGUAGE_MODELING,
     VALID_MODELS_FOR_QUESTION_ANSWERING,
     VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION,
+    VALID_SEQ2SEQ_MODELS,
 )
 
 
@@ -89,6 +91,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
         VALID_MODELS_FOR_LANGUAGE_MODELING,
+    ),
+    "run_summarization": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
+        VALID_SEQ2SEQ_MODELS,
     ),
 }
 
@@ -309,3 +316,9 @@ class MultiCardLanguageModelingExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm", multi_card=True
 ):
     TASK_NAME = "wikitext"
+
+
+class MultiCardSummarizationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
+):
+    TASK_NAME = "cnn_dailymail"
