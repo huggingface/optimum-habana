@@ -24,3 +24,9 @@
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
 603a613
 >         gaudi_config=gaudi_config,
+672,676d681
+< 
+< 
+< def _mp_fn(index):
+<     # For xla_spawn (TPUs)
+<     main()

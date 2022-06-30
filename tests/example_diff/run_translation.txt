@@ -3,10 +3,6 @@
 43,44d43
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
-54c53
-< check_min_version("4.21.0.dev0")
----
-> check_min_version("4.20.0")
 170c169
 <                 "efficient on GPU but very bad for TPU."
 ---
