@@ -118,5 +118,8 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
         # start training
         trainer.train()
 
-        # start evaluation
-        trainer.evaluate(max_length=model.config.max_length)
+        # start evaluation using greedy search
+        trainer.evaluate(max_length=model.config.max_length, num_beams=1)
+
+        # start evaluation using beam search
+        trainer.evaluate(max_length=model.config.max_length, num_beams=2)
