@@ -119,9 +119,8 @@ class GaudiTrainer(Trainer):
 
         # In lazy_mode, decoder or encoder-decoder architectures are slightly
         # modified to accelerate the generation process
-        if args.use_habana and args.use_lazy_mode and model is not None:
-            if model.__class__ in PRETRAINED_TO_GAUDI_REGISTRY:
-                model = to_gaudi_for_accelerated_generation(model)
+        if args.use_habana and model.__class__ in PRETRAINED_TO_GAUDI_REGISTRY and model is not None:
+            model = to_gaudi_for_accelerated_generation(model)
 
         super().__init__(
             model,
