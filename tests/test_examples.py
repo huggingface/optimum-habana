@@ -326,7 +326,8 @@ class MultiCardLanguageModelingExampleTester(
     TASK_NAME = "wikitext"
 
 
-class MultiCardSummarizationExampleTester(
-    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
-):
-    TASK_NAME = "cnn_dailymail"
+# TODO: uncomment when CI is moved from AWS
+# class MultiCardSummarizationExampleTester(
+#     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
+# ):
+#     TASK_NAME = "cnn_dailymail"
