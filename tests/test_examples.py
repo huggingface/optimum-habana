@@ -210,6 +210,7 @@ class ExampleTesterBase(TestCase):
     REGRESSION_METRICS = {
         "eval_f1": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
+        "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "train_runtime": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
     }
 
