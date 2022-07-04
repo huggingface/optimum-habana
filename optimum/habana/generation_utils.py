@@ -1054,6 +1054,8 @@ class GaudiGenerationMixin(GenerationMixin):
         ['Today is a beautiful day, and a wonderful day.\n\nI was lucky enough to meet the']
         ```"""
 
+        logger.warning("Sampling is slow in lazy mode, eager mode should be preferred at the moment.")
+
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
