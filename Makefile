@@ -31,12 +31,12 @@ fast_tests:
 # Run single-card non-regression tests
 slow_tests_1x:
 	pip install .[tests]
-	python -m pytest tests/test_examples.py -k "single_card"
+	python -m pytest tests/test_examples.py -v -s -k "single_card"
 
 # Run multi-card non-regression tests
 slow_tests_8x:
 	pip install .[tests]
-	python -m pytest tests/test_examples.py -k "multi_card"
+	python -m pytest tests/test_examples.py -v -s -k "multi_card"
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests:

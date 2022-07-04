@@ -210,6 +210,7 @@ class ExampleTesterBase(TestCase):
     REGRESSION_METRICS = {
         "eval_f1": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
+        "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "train_runtime": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
     }
 
@@ -280,10 +281,17 @@ class ExampleTesterBase(TestCase):
             baseline (Dict): baseline to assert whether or not there is regression
         """
 
+        number_asserted_metrics = 0
         for metric_name, assert_function_and_threshold in self.REGRESSION_METRICS.items():
             if metric_name in baseline:
+                number_asserted_metrics += 1
                 assert_function, threshold_factor = assert_function_and_threshold
                 assert_function(self, results[metric_name], threshold_factor * baseline[metric_name])
+        self.assertGreaterEqual(
+            number_asserted_metrics,
+            2,
+            f"{number_asserted_metrics} asserted metric while at least 2 are expected (training time + accuracy). Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received: {baseline.keys()}",
+        )
 
 
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
@@ -318,7 +326,8 @@ class MultiCardLanguageModelingExampleTester(
     TASK_NAME = "wikitext"
 
 
-class MultiCardSummarizationExampleTester(
-    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
-):
-    TASK_NAME = "cnn_dailymail"
+# TODO: uncomment when CI is moved from AWS
+# class MultiCardSummarizationExampleTester(
+#     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
+# ):
+#     TASK_NAME = "cnn_dailymail"
