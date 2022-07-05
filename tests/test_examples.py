@@ -290,7 +290,8 @@ class ExampleTesterBase(TestCase):
         self.assertGreaterEqual(
             number_asserted_metrics,
             2,
-            f"{number_asserted_metrics} asserted metric while at least 2 are expected (training time + accuracy). Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received: {baseline.keys()}",
+            f"{number_asserted_metrics} asserted metric while at least 2 are expected (training time + accuracy)."
+            f" Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received: {baseline.keys()}",
         )
 
 
@@ -326,8 +327,7 @@ class MultiCardLanguageModelingExampleTester(
     TASK_NAME = "wikitext"
 
 
-# TODO: uncomment when CI is moved from AWS
-# class MultiCardSummarizationExampleTester(
-#     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
-# ):
-#     TASK_NAME = "cnn_dailymail"
+class MultiCardSummarizationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
+):
+    TASK_NAME = "cnn_dailymail"
