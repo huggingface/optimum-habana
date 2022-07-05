@@ -14,11 +14,11 @@ jobs:
     name: Start self-hosted EC2 runner
     runs-on: ubuntu-20.04
     env:
-      AWS_REGION: us-east-1
-      EC2_AMI_ID: ami-0a54664633b809ed5
+      AWS_REGION: us-west-2
+      EC2_AMI_ID: ami-0a20beab46db1fdb6
       EC2_INSTANCE_TYPE: dl1.24xlarge
-      EC2_SUBNET_ID: subnet-b7533b96
-      EC2_SECURITY_GROUP: sg-02677bbf33275aa0e
+      EC2_SUBNET_ID: subnet-452c913d
+      EC2_SECURITY_GROUP: sg-0472192d4db070348
     outputs:
       label: ${{ steps.start-ec2-runner.outputs.label }}
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
@@ -49,7 +49,7 @@ jobs:
     needs: start-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
-      AWS_REGION: us-east-1
+      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -76,7 +76,7 @@ jobs:
       - example-diff  # run the job when the previous test job is done
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
-      AWS_REGION: us-east-1
+      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -104,7 +104,7 @@ jobs:
       - multi-card  # run the job when the previous test jobs are done
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
-      AWS_REGION: us-east-1
+      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -133,7 +133,7 @@ jobs:
       - single-card  # run the job when the previous test jobs are done
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
-      AWS_REGION: us-east-1
+      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         if: github.event.schedule == '0 23 * * 6'
@@ -169,7 +169,7 @@ jobs:
       - albert-xxl-single-card
     runs-on: ubuntu-20.04
     env:
-      AWS_REGION: us-east-1
+      AWS_REGION: us-west-2
     if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
     steps:
       - name: Configure AWS credentials
