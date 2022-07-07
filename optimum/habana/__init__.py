@@ -17,6 +17,7 @@
 #  limitations under the License.
 
 from .gaudi_configuration import GaudiConfig
+from .models.bloom import GaudiBloomForCausalLM
 from .models.gpt2 import GaudiGPT2LMHeadModel
 from .models.t5 import GaudiT5ForConditionalGeneration
 from .trainer import GaudiTrainer
