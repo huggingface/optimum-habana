@@ -6,8 +6,8 @@
             "single_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 4,
-                "perplexity": 20.9963,
-                "train_runtime": 805.9659,
+                "perplexity": 21.0141,
+                "train_runtime": 802.3276,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1"
                 ]
@@ -16,7 +16,7 @@
                 "learning_rate": 5e-5,
                 "train_batch_size": 4,
                 "perplexity": 21.7968,
-                "train_runtime": 269.3443,
+                "train_runtime": 187.8622,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--gradient_checkpointing"

@@ -143,6 +143,11 @@ class GaudiTrainingArguments(TrainingArguments):
     @cached_property
     @torch_required
     def _setup_devices(self) -> "torch.device":
+        # Set the log level here for optimum.utils.logging
+        # otherwise logs are not sent in this method.
+        log_level = self.get_process_log_level()
+        logging.set_verbosity(log_level)
+
         logger.info("PyTorch: setting up devices")
         if torch.distributed.is_available() and torch.distributed.is_initialized() and self.local_rank == -1:
             logger.warning("torch.distributed process group is initialized, but local_rank == -1. ")
@@ -205,7 +210,6 @@ class GaudiTrainingArguments(TrainingArguments):
             world_size, rank, self.local_rank = initialize_distributed_hpu()
 
             if self.local_rank != -1:
-                print("WORLD_SIZE", world_size)
                 if world_size > hthpu.device_count():
                     raise RuntimeError(
                         f"world_size is equal to {world_size} but there are only {hthpu.device_count()} devices."
