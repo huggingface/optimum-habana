@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-east-1
-      EC2_AMI_ID: ami-0a640ba15b096568d
+      EC2_AMI_ID: ami-03828378bbb789cf5
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-b7533b96
       EC2_SECURITY_GROUP: sg-06dd6398b8fa627c9
