@@ -30,6 +30,7 @@ TESTS_REQUIRE = [
     "psutil",
     "parameterized",
     "GitPython",
+    "optuna",
 ]
 
 EXTRAS_REQUIRE = {

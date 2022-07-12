@@ -32,12 +32,13 @@ logger = logging.get_logger(__name__)
 
 def parse_args():
     """
-    Helper function parsing the command line options
+    Helper function parsing the command line options.
     @retval ArgumentParser
     """
     parser = ArgumentParser(
         description=(
-            "Habana Gaudi distributed training launch helper utility that will spawn up multiple distributed processes"
+            "Habana Gaudi distributed training launch helper utility that will spawn up multiple distributed"
+            " processes."
         )
     )
 
@@ -54,7 +55,7 @@ def parse_args():
             "The full path to the single HPU training "
             "program/script to be launched in parallel, "
             "followed by all the arguments for the "
-            "training script"
+            "training script."
         ),
     )
 
@@ -72,7 +73,7 @@ def main():
     command_list = [" ".join(sys.argv)]
 
     if args.process_per_node > 0:
-        logger.warning("Multi-node is not officially supported yet, run it at your own risk")
+        logger.warning("Multi-node is not officially supported yet, run it at your own risk.")
         multi_hls = True
     else:
         multi_hls = False
