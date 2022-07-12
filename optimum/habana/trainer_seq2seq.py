@@ -17,9 +17,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 from torch.utils.data import Dataset
 
-from optimum.habana import GaudiTrainer
 from optimum.utils import logging
 from transformers.trainer_utils import PredictionOutput
+
+from .trainer import GaudiTrainer
 
 
 logger = logging.get_logger(__name__)
@@ -142,6 +143,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             "max_length": self._max_length if self._max_length is not None else self.model.config.max_length,
             "num_beams": self._num_beams if self._num_beams is not None else self.model.config.num_beams,
             "synced_gpus": False,  # should be True with deespeed zero3
+            "lazy_mode": self.args.use_lazy_mode,  # pad batches to max_length on-the-fly in lazy mode
         }
 
         if "attention_mask" in inputs:
@@ -166,11 +168,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         if generated_tokens.shape[-1] < gen_kwargs["max_length"]:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
 
-        if self.args.use_lazy_mode:
-            self.htcore.mark_step()
-
-        # Different processes may have different generation work, hence this sync
-        if self.args.local_rank != -1:
+        # Different processes may have different generation work in eager mode, hence this sync
+        if not self.args.use_lazy_mode and self.args.local_rank != -1:
             torch.distributed.barrier()
 
         with torch.no_grad():

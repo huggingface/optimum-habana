@@ -17,6 +17,8 @@
 #  limitations under the License.
 
 from .gaudi_configuration import GaudiConfig
+from .models.gpt2 import GaudiGPT2LMHeadModel
+from .models.t5 import GaudiT5ForConditionalGeneration
 from .trainer import GaudiTrainer
 from .trainer_seq2seq import GaudiSeq2SeqTrainer
 from .training_args import GaudiTrainingArguments

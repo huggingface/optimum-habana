@@ -30,8 +30,6 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
 
-from optimum.habana.trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
-from optimum.habana.training_args import GaudiTrainingArguments
 from optimum.utils import logging
 from transformers import Trainer, __version__
 from transformers.configuration_utils import PretrainedConfig
@@ -73,6 +71,9 @@ from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
+from .modeling_utils import PRETRAINED_TO_GAUDI_REGISTRY, to_gaudi_for_accelerated_generation
+from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
+from .training_args import GaudiTrainingArguments
 
 
 if TYPE_CHECKING:
@@ -115,6 +116,11 @@ class GaudiTrainer(Trainer):
             output_dir = "tmp_trainer"
             logger.info(f"No `GaudiTrainingArguments` passed, using `output_dir={output_dir}`.")
             args = GaudiTrainingArguments(output_dir=output_dir)
+
+        # In lazy_mode, decoder or encoder-decoder architectures are slightly
+        # modified to accelerate the generation process
+        if args.use_habana and model.__class__ in PRETRAINED_TO_GAUDI_REGISTRY and model is not None:
+            model = to_gaudi_for_accelerated_generation(model)
 
         super().__init__(
             model,
@@ -440,7 +446,7 @@ class GaudiTrainer(Trainer):
         if args.gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
             if args.use_lazy_mode:
-                from optimum.habana.gradient_checkpointing import checkpoint as lazy_mode_checkpointing
+                from .gradient_checkpointing import checkpoint as lazy_mode_checkpointing
 
                 torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
 

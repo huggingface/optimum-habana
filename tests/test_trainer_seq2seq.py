@@ -14,8 +14,8 @@
 # limitations under the License.
 
 from optimum.habana import GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-from transformers import BertTokenizer, EncoderDecoderModel
-from transformers.testing_utils import TestCasePlus, require_torch, slow
+from transformers import T5ForConditionalGeneration, T5Tokenizer
+from transformers.testing_utils import TestCasePlus, require_torch
 from transformers.utils import is_datasets_available
 
 
@@ -24,16 +24,12 @@ if is_datasets_available():
 
 
 class GaudiSeq2seqTrainerTester(TestCasePlus):
-    # @slow
     @require_torch
-    def test_finetune_bert2bert(self):
-        bert2bert = EncoderDecoderModel.from_encoder_decoder_pretrained("prajjwal1/bert-tiny", "prajjwal1/bert-tiny")
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    def test_finetune_t5(self):
+        model = T5ForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-t5-v1.1")
+        tokenizer = T5Tokenizer.from_pretrained("t5-small")
 
-        bert2bert.config.vocab_size = bert2bert.config.encoder.vocab_size
-        bert2bert.config.eos_token_id = tokenizer.sep_token_id
-        bert2bert.config.decoder_start_token_id = tokenizer.cls_token_id
-        bert2bert.config.max_length = 128
+        model.config.max_length = 128
 
         train_dataset = datasets.load_dataset("cnn_dailymail", "3.0.0", split="train[:1%]")
         val_dataset = datasets.load_dataset("cnn_dailymail", "3.0.0", split="validation[:1%]")
@@ -52,9 +48,6 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
 
             batch["decoder_input_ids"] = outputs.input_ids
             batch["labels"] = outputs.input_ids.copy()
-            batch["labels"] = [
-                [-100 if token == tokenizer.pad_token_id else token for token in labels] for labels in batch["labels"]
-            ]
             batch["decoder_attention_mask"] = outputs.attention_mask
 
             assert all([len(x) == 512 for x in inputs.input_ids])
@@ -102,24 +95,19 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
 
         training_args = GaudiSeq2SeqTrainingArguments(
             output_dir=output_dir,
-            gaudi_config_name="Habana/bert-base-uncased",
+            gaudi_config_name="Habana/t5",
             per_device_train_batch_size=batch_size,
             per_device_eval_batch_size=batch_size,
-            max_steps=50,
             predict_with_generate=True,
-            evaluation_strategy="steps",
             do_train=True,
             do_eval=True,
-            warmup_steps=0,
-            eval_steps=2,
-            logging_steps=2,
             use_habana=True,
             use_lazy_mode=True,
         )
 
         # instantiate trainer
         trainer = GaudiSeq2SeqTrainer(
-            model=bert2bert,
+            model=model,
             args=training_args,
             compute_metrics=_compute_metrics,
             train_dataset=train_dataset,
@@ -129,3 +117,9 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
 
         # start training
         trainer.train()
+
+        # start evaluation using greedy search
+        trainer.evaluate(max_length=model.config.max_length, num_beams=1)
+
+        # start evaluation using beam search
+        trainer.evaluate(max_length=model.config.max_length, num_beams=2)
