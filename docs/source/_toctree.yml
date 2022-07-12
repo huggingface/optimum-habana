@@ -1,0 +1,5 @@
+- sections:
+  - local: index
+    title: 🤗 Optimum Habana
+  - local: quickstart
+    title: Quickstart
