@@ -508,7 +508,7 @@ class GaudiTrainer(Trainer):
                     steps_trained_progress_bar = tqdm(total=steps_trained_in_current_epoch)
                     steps_trained_progress_bar.set_description("Skipping the first batches")
 
-        print("AAA")
+        print("AAA", args.local_rank)
 
         # Update the references
         self.callback_handler.model = self.model
@@ -528,7 +528,7 @@ class GaudiTrainer(Trainer):
         self.state.is_local_process_zero = self.is_local_process_zero()
         self.state.is_world_process_zero = self.is_world_process_zero()
 
-        print("BBB")
+        print("BBB", args.local_rank)
 
         # tr_loss is a tensor to avoid synchronization of TPUs through .item()
         tr_loss = torch.tensor(0.0).to(args.device)
@@ -539,7 +539,7 @@ class GaudiTrainer(Trainer):
 
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
-        print("CCC")
+        print("CCC", args.local_rank)
 
         # Skip the first epochs_trained epochs to get the random state of the dataloader at the right point.
         if not args.ignore_data_skip:
@@ -557,14 +557,14 @@ class GaudiTrainer(Trainer):
                     # AT THE VERY END!
                     _ = list(train_dataloader.sampler)
 
-        print("DDD")
+        print("DDD", args.local_rank)
 
         for epoch in range(epochs_trained, num_train_epochs):
             if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
                 train_dataloader.sampler.set_epoch(epoch)
             elif hasattr(train_dataloader, "dataset") and isinstance(train_dataloader.dataset, IterableDatasetShard):
                 train_dataloader.dataset.set_epoch(epoch)
-            print("EEE")
+            print("EEE", args.local_rank)
 
             epoch_iterator = train_dataloader
 
@@ -579,17 +579,17 @@ class GaudiTrainer(Trainer):
             )
             self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
 
-            print("FFF")
+            print("FFF", args.local_rank)
 
             if epoch == epochs_trained and resume_from_checkpoint is not None and steps_trained_in_current_epoch == 0:
                 self._load_rng_state(resume_from_checkpoint)
-            print("GGG")
+            print("GGG", args.local_rank)
 
             step = -1
             for step, inputs in enumerate(epoch_iterator):
                 if args.throughput_warmup_steps > 0 and args.throughput_warmup_steps == epoch * steps_in_epoch + step:
                     start_time_after_warmup = time.time()
-                print("HHH")
+                print("HHH", args.local_rank)
 
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
