@@ -477,6 +477,7 @@ class GaudiTrainer(Trainer):
 
         self.state.epoch = 0
         start_time = time.time()
+        print("START TIME =", start_time)
         start_time_after_warmup = None
         epochs_trained = 0
         steps_trained_in_current_epoch = 0

@@ -61,7 +61,9 @@ def speed_metrics(split, start_time, num_samples=None, num_steps=None, start_tim
     - num_steps: number of steps performed
     - start_time_after_warmup: time after warmup steps have been performed
     """
-    runtime = time.time() - start_time
+    t0 = time.time()
+    runtime = t0 - start_time
+    print("RUNTIME =", runtime)
     result = {f"{split}_runtime": round(runtime, 4)}
 
     # Adjust runtime if there were warmup steps
