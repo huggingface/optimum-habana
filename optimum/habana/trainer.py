@@ -508,6 +508,8 @@ class GaudiTrainer(Trainer):
                     steps_trained_progress_bar = tqdm(total=steps_trained_in_current_epoch)
                     steps_trained_progress_bar.set_description("Skipping the first batches")
 
+        print("AAA")
+
         # Update the references
         self.callback_handler.model = self.model
         self.callback_handler.optimizer = self.optimizer
@@ -526,6 +528,8 @@ class GaudiTrainer(Trainer):
         self.state.is_local_process_zero = self.is_local_process_zero()
         self.state.is_world_process_zero = self.is_world_process_zero()
 
+        print("BBB")
+
         # tr_loss is a tensor to avoid synchronization of TPUs through .item()
         tr_loss = torch.tensor(0.0).to(args.device)
         # _total_loss_scalar is updated everytime .item() has to be called on tr_loss and stores the sum of all losses
@@ -534,6 +538,8 @@ class GaudiTrainer(Trainer):
         model.zero_grad(set_to_none=True)
 
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
+
+        print("CCC")
 
         # Skip the first epochs_trained epochs to get the random state of the dataloader at the right point.
         if not args.ignore_data_skip:
@@ -550,6 +556,8 @@ class GaudiTrainer(Trainer):
                     # Otherwise we need to call the whooooole sampler cause there is some random operation added
                     # AT THE VERY END!
                     _ = list(train_dataloader.sampler)
+
+        print("DDD")
 
         for epoch in range(epochs_trained, num_train_epochs):
             if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
