@@ -564,6 +564,7 @@ class GaudiTrainer(Trainer):
                 train_dataloader.sampler.set_epoch(epoch)
             elif hasattr(train_dataloader, "dataset") and isinstance(train_dataloader.dataset, IterableDatasetShard):
                 train_dataloader.dataset.set_epoch(epoch)
+            print("EEE")
 
             epoch_iterator = train_dataloader
 
@@ -578,13 +579,17 @@ class GaudiTrainer(Trainer):
             )
             self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
 
+            print("FFF")
+
             if epoch == epochs_trained and resume_from_checkpoint is not None and steps_trained_in_current_epoch == 0:
                 self._load_rng_state(resume_from_checkpoint)
+            print("GGG")
 
             step = -1
             for step, inputs in enumerate(epoch_iterator):
                 if args.throughput_warmup_steps > 0 and args.throughput_warmup_steps == epoch * steps_in_epoch + step:
                     start_time_after_warmup = time.time()
+                print("HHH")
 
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
