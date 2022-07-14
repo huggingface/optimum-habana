@@ -537,7 +537,12 @@ class GaudiTrainer(Trainer):
         self._globalstep_last_logged = self.state.global_step
         model.zero_grad(set_to_none=True)
 
+        if args.local_rank == 0:
+            print("STATE", self.state)
+            print("CONTROL", self.control)
+
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
+        torch.distributed.barrier()
 
         print("CCC", args.local_rank)
 
