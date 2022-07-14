@@ -626,6 +626,7 @@ class GaudiTrainer(Trainer):
                 self.current_flos += float(self.floating_point_ops(inputs))
                 if args.use_lazy_mode:
                     self.htcore.mark_step()
+                print("XXX", args.local_rank)
 
                 if (step + 1) % args.gradient_accumulation_steps == 0 or (
                     # last step in epoch but step is always smaller than gradient_accumulation_steps
@@ -673,6 +674,7 @@ class GaudiTrainer(Trainer):
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
                     if args.use_lazy_mode:
                         self.htcore.mark_step()
+                    print("YYY", args.local_rank)
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
