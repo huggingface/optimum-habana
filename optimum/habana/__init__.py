@@ -23,3 +23,4 @@ from .trainer import GaudiTrainer
 from .trainer_seq2seq import GaudiSeq2SeqTrainer
 from .training_args import GaudiTrainingArguments
 from .training_args_seq2seq import GaudiSeq2SeqTrainingArguments
+from .version import __version__
