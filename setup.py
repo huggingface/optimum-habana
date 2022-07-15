@@ -33,8 +33,14 @@ TESTS_REQUIRE = [
     "optuna",
 ]
 
+QUALITY_REQUIRES = [
+    "black",
+    "isort",
+]
+
 EXTRAS_REQUIRE = {
     "tests": TESTS_REQUIRE,
+    "quality": QUALITY_REQUIRES,
 }
 
 setup(
