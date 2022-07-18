@@ -8,6 +8,6 @@ RUN npm install npm@latest -g && \
     npm install n -g && \
     n latest
 
-RUN git clone -b documentation https://github.com/huggingface/optimum-habana.git
+RUN git clone https://github.com/huggingface/optimum-habana.git
 RUN python3 -m pip install --no-cache-dir --upgrade pip
 RUN python3 -m pip install --no-cache-dir ./optimum-habana[quality]
