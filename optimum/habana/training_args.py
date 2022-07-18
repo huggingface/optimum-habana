@@ -143,6 +143,11 @@ class GaudiTrainingArguments(TrainingArguments):
     @cached_property
     @torch_required
     def _setup_devices(self) -> "torch.device":
+        # Set the log level here for optimum.utils.logging
+        # otherwise logs are not sent in this method.
+        log_level = self.get_process_log_level()
+        logging.set_verbosity(log_level)
+
         logger.info("PyTorch: setting up devices")
         if torch.distributed.is_available() and torch.distributed.is_initialized() and self.local_rank == -1:
             logger.warning("torch.distributed process group is initialized, but local_rank == -1. ")
@@ -185,60 +190,34 @@ class GaudiTrainingArguments(TrainingArguments):
                         )
                 torch.distributed.init_process_group(backend=self.xpu_backend, rank=rank, world_size=size)
         elif self.use_habana:
-            logger.info("Habana is enabled.")
+            import habana_frameworks.torch.hpu as hthpu
+
+            if hthpu.is_available():
+                logger.info("Habana is enabled.")
+            else:
+                raise RuntimeError("No HPU is currently available.")
 
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
             else:
                 os.environ["PT_HPU_LAZY_MODE"] = "2"
                 logger.info("Enabled eager mode because use_lazy_mode=False.")
-            from habana_frameworks.torch.utils.library_loader import load_habana_module
 
-            load_habana_module()
             device = torch.device("hpu")
             self._n_gpu = 1
-            world_size = 1
-            rank = -1
+            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
-            if "WORLD_SIZE" in os.environ and "RANK" in os.environ:
-                world_size = int(os.environ["WORLD_SIZE"])
-                rank = int(os.environ["RANK"])
-                if "LOCAL_RANK" in os.environ:
-                    self.local_rank = int(os.environ["LOCAL_RANK"])
-                logger.info("Torch distributed launch used")
-            elif (
-                "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ
-                and "OMPI_COMM_WORLD_SIZE" in os.environ
-                and "OMPI_COMM_WORLD_RANK" in os.environ
-            ):
-                self.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
-                world_size = int(os.environ["OMPI_COMM_WORLD_SIZE"])
-                rank = int(os.environ["OMPI_COMM_WORLD_RANK"])
-                logger.info("MPI environment variables set")
-            else:
-                try:
-                    global mpi_comm
-                    from mpi4py import MPI
-
-                    mpi_comm = MPI.COMM_WORLD
-                    world_size = mpi_comm.Get_size()
-                    if world_size > 1:
-                        rank = mpi_comm.Get_rank()
-                        self.local_rank = rank
-                    else:
-                        raise ("Single MPI process")
-                except Exception as e:
-                    logger.info("Single node run")
+            world_size, rank, self.local_rank = initialize_distributed_hpu()
 
             if self.local_rank != -1:
-                try:
-                    import habana_frameworks.torch.core.hccl
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.core.hccl. {error.msg}."
-                    raise error
-                os.environ["ID"] = str(self.local_rank)
+                if world_size > hthpu.device_count():
+                    raise RuntimeError(
+                        f"world_size is equal to {world_size} but there are only {hthpu.device_count()} devices."
+                    )
                 torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
                 logger.info("Enabled distributed run.")
+            else:
+                logger.info("Single node run.")
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."

@@ -30,8 +30,6 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
 
-from optimum.habana.trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
-from optimum.habana.training_args import GaudiTrainingArguments
 from optimum.utils import logging
 from transformers import Trainer, __version__
 from transformers.configuration_utils import PretrainedConfig
@@ -73,6 +71,9 @@ from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
+from .modeling_utils import PRETRAINED_TO_GAUDI_REGISTRY, to_gaudi_for_accelerated_generation
+from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
+from .training_args import GaudiTrainingArguments
 
 
 if TYPE_CHECKING:
@@ -115,6 +116,11 @@ class GaudiTrainer(Trainer):
             output_dir = "tmp_trainer"
             logger.info(f"No `GaudiTrainingArguments` passed, using `output_dir={output_dir}`.")
             args = GaudiTrainingArguments(output_dir=output_dir)
+
+        # In lazy_mode, decoder or encoder-decoder architectures are slightly
+        # modified to accelerate the generation process
+        if args.use_habana and model.__class__ in PRETRAINED_TO_GAUDI_REGISTRY and model is not None:
+            model = to_gaudi_for_accelerated_generation(model)
 
         super().__init__(
             model,
@@ -440,7 +446,7 @@ class GaudiTrainer(Trainer):
         if args.gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
             if args.use_lazy_mode:
-                from optimum.habana.gradient_checkpointing import checkpoint as lazy_mode_checkpointing
+                from .gradient_checkpointing import checkpoint as lazy_mode_checkpointing
 
                 torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
 
@@ -749,15 +755,21 @@ class GaudiTrainer(Trainer):
         if self.args.should_save:
             # This block is exectuted by the main process only
             optim_dict = self.optimizer.state_dict()
+            scheduler_dict = self.lr_scheduler.state_dict()
+            if self.do_grad_scaling:
+                scaler_dict = self.scaler.state_dict()
             if self.args.use_habana:
                 # Move the state dict from HPU to CPU before saving
                 optim_dict = to_device_dtype(optim_dict, target_device=torch.device("cpu"))
+                scheduler_dict = to_device_dtype(scheduler_dict, target_device=torch.device("cpu"))
+                if self.do_grad_scaling:
+                    scaler_dict = to_device_dtype(scaler_dict, target_device=torch.device("cpu"))
             torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
             with warnings.catch_warnings(record=True) as caught_warnings:
-                torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
+                torch.save(scheduler_dict, os.path.join(output_dir, SCHEDULER_NAME))
             reissue_pt_warnings(caught_warnings)
             if self.do_grad_scaling:
-                torch.save(self.scaler.state_dict(), os.path.join(output_dir, SCALER_NAME))
+                torch.save(scaler_dict, os.path.join(output_dir, SCALER_NAME))
 
         # Determine the new best metric / best model checkpoint
         if metrics is not None and self.args.metric_for_best_model is not None:
@@ -816,18 +828,27 @@ class GaudiTrainer(Trainer):
         ):
             # Load in optimizer and scheduler states
             map_location = "cpu" if self.args.use_habana else self.args.device
+
             self.optimizer.load_state_dict(
                 torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
             )
-            # Move optimizer states to HPU
-            if self.args.use_habana:
-                to_device_dtype(self.optimizer.state.values(), target_device=torch.device("hpu"))
 
             with warnings.catch_warnings(record=True) as caught_warnings:
-                self.lr_scheduler.load_state_dict(torch.load(os.path.join(checkpoint, SCHEDULER_NAME)))
+                self.lr_scheduler.load_state_dict(
+                    torch.load(os.path.join(checkpoint, SCHEDULER_NAME), map_location=map_location)
+                )
             reissue_pt_warnings(caught_warnings)
+
             if self.do_grad_scaling and os.path.isfile(os.path.join(checkpoint, SCALER_NAME)):
-                self.scaler.load_state_dict(torch.load(os.path.join(checkpoint, SCALER_NAME)))
+                self.scaler.load_state_dict(
+                    torch.load(os.path.join(checkpoint, SCALER_NAME), map_location=map_location)
+                )
+
+            # Move optimizer state to HPU
+            if self.args.use_habana:
+                to_device_dtype(self.optimizer.state.values(), target_device=torch.device("hpu"))
+                if self.do_grad_scaling:
+                    to_device_dtype(self.scaler.state.values(), target_device=torch.device("hpu"))
 
     def evaluation_loop(
         self,

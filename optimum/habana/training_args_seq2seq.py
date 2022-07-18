@@ -15,9 +15,10 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from optimum.habana.training_args import GaudiTrainingArguments
 from optimum.utils import logging
 from transformers.utils import add_start_docstrings
+
+from .training_args import GaudiTrainingArguments
 
 
 logger = logging.get_logger(__name__)

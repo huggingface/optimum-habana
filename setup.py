@@ -30,6 +30,12 @@ TESTS_REQUIRE = [
     "psutil",
     "parameterized",
     "GitPython",
+    "optuna",
+]
+
+QUALITY_REQUIRES = [
+    "black",
+    "isort",
 ]
 
 QUALITY_REQUIRES = [
