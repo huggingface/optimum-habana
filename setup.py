@@ -36,6 +36,7 @@ TESTS_REQUIRE = [
 QUALITY_REQUIRES = [
     "black",
     "isort",
+    "hf-doc-builder",
 ]
 
 EXTRAS_REQUIRE = {
