@@ -1,4 +1,4 @@
-FROM vault.habana.ai/gaudi-docker/1.4.0/ubuntu20.04/habanalabs/pytorch-installer-1.10.2:1.4.0-442
+FROM vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
 
 # Need node to build doc HTML. Taken from https://stackoverflow.com/a/67491580
 RUN apt-get update && apt-get install -y \
