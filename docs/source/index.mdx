@@ -1,0 +1,76 @@
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+
+# Optimum Habana
+
+🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
+It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU settings for different downstream tasks.
+The current release focuses on question answering and text classification and enables users to try other models for other tasks with only a few changes.
+
+
+## What is a Habana Processing Unit (HPU)?
+
+Quote from the Hugging Face [blog post](https://huggingface.co/blog/habana):
+
+> Habana Gaudi training solutions, which power Amazon’s EC2 DL1 instances and Supermicro’s X12 Gaudi AI Training Server, deliver price/performance up to 40% lower than comparable training solutions and enable customers to train more while spending less. The integration of ten 100 Gigabit Ethernet ports onto every Gaudi processor enables system scaling from 1 to thousands of Gaudis with ease and cost-efficiency. Habana’s SynapseAI® is optimized—at inception—to enable Gaudi performance and usability, supports TensorFlow and PyTorch frameworks, with a focus on computer vision and natural language processing applications.
+
+
+## Install
+To install the latest release of this package:
+
+`pip install optimum[habana]`
+
+Optimum Habana is a fast-moving project, and you may want to install it from source:
+
+`pip install git+https://github.com/huggingface/optimum-habana.git`
+
+Last but not least, don't forget to install requirements for every example:
+
+`cd <example-folder>
+pip install -r requirements.txt`
+
+> Alternatively, you can install the package without pip as follows:
+> ```bash
+> git clone https://github.com/huggingface/optimum-habana.git
+> cd optimum-habana
+> python setup.py install
+> ```
+
+
+## Validated Models
+
+The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
+
+|            | Text Classification | Question Answering | Language Modeling  | Summarization      | Translation        | Single Card        | Multi Card         |
+|------------|:-------------------:|:------------------:|:------------------:|:------------------:|:-----------------:|:------------------:|:------------------:|
+| BERT       | ✔  | ✔ | ✗                  | ✗                  | ✗                  | ✔ | ✔ |
+| RoBERTa    | ✗                   | ✔ | ✗                  | ✗                  | ✗                  | ✔ | ✔ |
+| ALBERT     | ✗                   | ✔ | ✗                  | ✗                  | ✗                  | ✔ | ✔ |
+| DistilBERT | ✗                   | ✔ | ✗                  | ✗                  | ✗                  | ✔ | ✔ |
+| GPT2       | ✗                   | ✗                  | ✔ | ✗                  | ✗                  | ✔ | ✔ |
+| T5         | ✗                   | ✗                  | ✗                  | ✔ | ✔ | ✔ | ✔ |
+
+Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
+
+If you find any issue while using those, please open an issue or a pull request.
+
+
+## Gaudi Setup
+
+Please refer to Habana Gaudi's official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html).
+
+> Tests should be run in a Docker container based on Habana Docker images.
