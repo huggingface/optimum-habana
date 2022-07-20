@@ -1,0 +1,27 @@
+name: Check documentation build
+
+on:
+  push:
+    branches: [ main ]
+
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build_and_package:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: 'huggingface/optimum-habana'
+          path: optimum-habana
+
+      - name: Make documentation
+        run: |
+          cd optimum-habana
+          make doc BUILD_DIR=habana-doc-build
+          sudo rm -rf habana-doc-build

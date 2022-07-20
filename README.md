@@ -54,6 +54,7 @@ pip install -r requirements.txt`
 
 
 ## How to use it?
+
 🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors**.
 There are two main classes one needs to know:
 - GaudiTrainer: the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.

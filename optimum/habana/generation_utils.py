@@ -846,7 +846,6 @@ class GaudiGenerationMixin(GenerationMixin):
 
         this_peer_finished = False  # used by synced_gpus only
         while True:
-
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
@@ -1098,7 +1097,6 @@ class GaudiGenerationMixin(GenerationMixin):
         this_peer_finished = False  # used by synced_gpus only
         # auto-regressive generation
         while True:
-
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
@@ -1358,7 +1356,6 @@ class GaudiGenerationMixin(GenerationMixin):
 
         this_peer_finished = False  # used by synced_gpus only
         while True:
-
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
@@ -1749,7 +1746,6 @@ class GaudiGenerationMixin(GenerationMixin):
         lazy_mode: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
-
         r"""
         Generates sequences of token ids for models with a language modeling head using **constrained beam search
         decoding** and can be used for text-decoder, text-to-text, speech-to-text, and vision-to-text models.
