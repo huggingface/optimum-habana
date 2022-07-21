@@ -64,8 +64,10 @@ build_doc_docker_image:
 
 doc: build_doc_docker_image
 	@test -n "$(BUILD_DIR)" || (echo "BUILD_DIR is empty." ; exit 1)
+	@test -n "$(VERSION)" || (echo "VERSION is empty." ; exit 1)
 	docker run -v $(CURRENT_DIR):/doc_folder --workdir=/doc_folder doc_maker \
 	doc-builder build optimum.habana /optimum-habana/docs/source/ \
 		--build_dir $(BUILD_DIR) \
+		--version $(VERSION) \
 		--html \
 		--clean

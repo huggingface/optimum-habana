@@ -48,8 +48,8 @@ jobs:
 
       - name: Push to repositories
         run: |
-          cd optimum-habana
-          cd habana-doc-build
+          cd optimum-habana/habana-doc-build
+          sudo mv optimum.habana optimum-habana
           doc-builder push optimum-habana --doc_build_repo_id "huggingface/doc-build-dev" --token ${{ env.write_token }} --commit_msg "Updated with commit $COMMIT_SHA See: https://github.com/huggingface/optimum-habana/commit/$COMMIT_SHA" --n_retries 5
         shell: bash
 
