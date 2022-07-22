@@ -40,7 +40,7 @@ jobs:
           pip install black
           cd ..
 
-      - name: Make Habana documentation
+      - name: Make documentation
         run: |
           cd optimum-habana
           make doc BUILD_DIR=habana-doc-build VERSION=pr_$PR_NUMBER
