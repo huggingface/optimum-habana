@@ -19,59 +19,32 @@ limitations under the License.
 
 🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors**.
 There are two main classes one needs to know:
-- GaudiTrainer: the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
-- GaudiConfig: the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
+- [`GaudiTrainer`]: the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
+- [`GaudiConfig`]: the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
 
 The `GaudiTrainer` is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
 That's how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their [original counterparts](https://github.com/huggingface/transformers/tree/main/examples/pytorch).
 
-Original script:
-```python
-from transformers import Trainer, TrainingArguments
+```diff
+-from transformers import Trainer, TrainingArguments
++from optimum.habana import GaudiTrainer, GaudiTrainingArguments
 
-training_args = TrainingArguments(
-  # training arguments...
+# define the training arguments
+-training_args = TrainingArguments(
++training_args = GaudiTrainingArguments(
++  use_habana=True,
++  use_lazy_mode=True,
++  gaudi_config_name=path_to_gaudi_config,
+  ...
 )
-
-# A lot of code here
 
 # Initialize our Trainer
-trainer = Trainer(
+-trainer = Trainer(
++trainer = GaudiTrainer(
     model=model,
-    args=training_args,  # Original training arguments.
-    train_dataset=train_dataset if training_args.do_train else None,
-    eval_dataset=eval_dataset if training_args.do_eval else None,
-    compute_metrics=compute_metrics,
-    tokenizer=tokenizer,
-    data_collator=data_collator,
-)
-```
-
-
-Transformed version that can run on Gaudi:
-```python
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-
-training_args = GaudiTrainingArguments(
-  # same training arguments...
-  use_habana=True,
-  use_lazy_mode=True,  # whether to use lazy or eager mode
-  gaudi_config_name=path_to_gaudi_config,
-)
-
-# A lot of the same code as the original script here
-
-# Initialize our Trainer
-trainer = GaudiTrainer(
-    model=model,
-    # You can manually specify the Gaudi configuration to use with
-    # gaudi_config=my_gaudi_config
     args=training_args,
-    train_dataset=train_dataset if training_args.do_train else None,
-    eval_dataset=eval_dataset if training_args.do_eval else None,
-    compute_metrics=compute_metrics,
-    tokenizer=tokenizer,
-    data_collator=data_collator,
+    train_dataset=train_dataset
+    ... # other arguments
 )
 ```
 

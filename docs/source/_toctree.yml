@@ -3,4 +3,10 @@
     title: 🤗 Optimum Habana
   - local: quickstart
     title: Quickstart
+  - local: distributed
+    title: Distributed Training
+  - sections:
+    - local: trainer
+      title: Gaudi Trainer
+    title: Main Classes
   title: Optimum Habana
