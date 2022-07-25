@@ -14,8 +14,7 @@ concurrency:
 jobs:
   do-the-job:
     name: Run tests
-    needs: start-runner # required to start the main job when the runner is ready
-    runs-on: paris-dc2-hpu1 # run the job on the newly created runner
+    runs-on: paris-dc2-hpu1
     env:
       AWS_REGION: us-east-1
     steps:
