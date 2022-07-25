@@ -15,8 +15,14 @@ jobs:
   do-the-job:
     name: Run tests
     runs-on: [self-hosted, hpu]
-    env:
-      AWS_REGION: us-east-1
+    container:
+      image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
+      env:
+        HABANA_VISIBLE_DEVICES: all
+        OMPI_MCA_btl_vader_single_copy_mechanism: none
+      options: --net=host --ipc=host --cap-add=sys_nice --runtime --workdir=/root/workspace
+      volumes:
+        - $PWD:/root/workspace
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -25,18 +31,4 @@ jobs:
             docker pull vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
       - name: Run tests
         run: |
-            docker run \
-            --user $UID:$GID \
-            --volume="/etc/group:/etc/group:ro" \
-            --volume="/etc/passwd:/etc/passwd:ro" \
-            --volume="/etc/shadow:/etc/shadow:ro" \
-            -v $PWD:/root/workspace \
-            --workdir=/root/workspace \
-            --runtime=habana \
-            -e HABANA_VISIBLE_DEVICES=all \
-            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
-            --cap-add=sys_nice \
-            --net=host \
-            --ipc=host \
-            vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610 \
-            /bin/bash tests/ci/fast_tests.sh
+              /bin/bash tests/ci/fast_tests.sh
