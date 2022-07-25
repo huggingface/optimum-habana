@@ -28,28 +28,28 @@ style:
 
 # Run unit and integration tests
 fast_tests:
-	pip install .[tests]
+	pip install --user .[tests]
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
 
 # Run single-card non-regression tests
 slow_tests_1x:
-	pip install .[tests]
+	pip install --user .[tests]
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
 
 # Run multi-card non-regression tests
 slow_tests_8x:
-	pip install .[tests]
+	pip install --user .[tests]
 	python -m pytest tests/test_examples.py -v -s -k "multi_card"
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests:
-	pip install .[tests]
+	pip install --user .[tests]
 	python -m pytest tests/test_examples_match_transformers.py
 
 # Utilities to release to PyPi
 build_dist_install_tools:
-	pip install build
-	pip install twine
+	pip install --user build
+	pip install --user twine
 
 build_dist:
 	rm -fr build
