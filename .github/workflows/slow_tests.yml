@@ -1,4 +1,4 @@
-name: Non-regression tests
+name: Non-regression tests (On-Prem)
 
 on:
   workflow_dispatch:
@@ -10,46 +10,9 @@ concurrency:
   group: ${{ github.workflow }}
 
 jobs:
-  start-runner:
-    name: Start self-hosted EC2 runner
-    runs-on: ubuntu-20.04
-    env:
-      AWS_REGION: us-west-2
-      EC2_AMI_ID: ami-0f304792286419a88
-      EC2_INSTANCE_TYPE: dl1.24xlarge
-      EC2_SUBNET_ID: subnet-452c913d
-      EC2_SECURITY_GROUP: sg-0f71a90df15bcf053
-    outputs:
-      label: ${{ steps.start-ec2-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Start EC2 runner
-        id: start-ec2-runner
-        uses: philschmid/philschmid-ec2-github-runner@main
-        with:
-          mode: start
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          ec2-image-id: ${{ env.EC2_AMI_ID }}
-          ec2-instance-type: ${{ env.EC2_INSTANCE_TYPE }}
-          subnet-id: ${{ env.EC2_SUBNET_ID }}
-          security-group-id: ${{ env.EC2_SECURITY_GROUP }}
-          aws-resource-tags: > # optional, requires additional permissions
-            [
-              {"Key": "Name", "Value": "optimum-habana-ci-slow-tests"},
-              {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
-            ]
   example-diff:
     name: Test examples differences
-    needs: start-runner # required to start the main job when the runner is ready
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
+    runs-on: [self-hosted, hpu]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -72,11 +35,8 @@ jobs:
   multi-card:
     name: Test multi-card models
     needs:
-      - start-runner
       - example-diff  # run the job when the previous test job is done
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
+    runs-on: [self-hosted, hpu]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -99,12 +59,9 @@ jobs:
   single-card:
     name: Test single-card models
     needs:
-      - start-runner
       - example-diff
       - multi-card  # run the job when the previous test jobs are done
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
+    runs-on: [self-hosted, hpu] # run the job on the newly created runner
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -127,13 +84,10 @@ jobs:
   albert-xxl-single-card:
     name: Test single-card ALBERT XXL
     needs:
-      - start-runner
       - example-diff
       - multi-card
       - single-card  # run the job when the previous test jobs are done
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
+    runs-on: [self-hosted, hpu] # run the job on the newly created runner
     steps:
       - name: Checkout
         if: github.event.schedule == '0 23 * * 6'
@@ -159,29 +113,3 @@ jobs:
       - name: Warning
         if: github.event.schedule != '0 23 * * 6'
         run: echo "ALBERT XXL 1x is only tested on Saturdays."
-  stop-runner:
-    name: Stop self-hosted EC2 runner
-    needs:
-      - start-runner # required to get output from the start-runner job
-      - example-diff
-      - multi-card
-      - single-card
-      - albert-xxl-single-card
-    runs-on: ubuntu-20.04
-    env:
-      AWS_REGION: us-west-2
-    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Stop EC2 runner
-        uses: philschmid/philschmid-ec2-github-runner@main
-        with:
-          mode: stop
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          label: ${{ needs.start-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
