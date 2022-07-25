@@ -22,6 +22,10 @@ jobs:
       - name: Run tests
         run: |
             docker run \
+            --user $UID:$GID \
+            --volume="/etc/group:/etc/group:ro" \
+            --volume="/etc/passwd:/etc/passwd:ro" \
+            --volume="/etc/shadow:/etc/shadow:ro" \
             -v $PWD:/root/workspace \
             --workdir=/root/workspace \
             --runtime=habana \
@@ -46,6 +50,10 @@ jobs:
       - name: Run tests
         run: |
             docker run \
+            --user $UID:$GID \
+            --volume="/etc/group:/etc/group:ro" \
+            --volume="/etc/passwd:/etc/passwd:ro" \
+            --volume="/etc/shadow:/etc/shadow:ro" \
             -v $PWD:/root/workspace \
             --workdir=/root/workspace \
             --runtime=habana \
@@ -71,6 +79,10 @@ jobs:
       - name: Run tests
         run: |
             docker run \
+            --user $UID:$GID \
+            --volume="/etc/group:/etc/group:ro" \
+            --volume="/etc/passwd:/etc/passwd:ro" \
+            --volume="/etc/shadow:/etc/shadow:ro" \
             -v $PWD:/root/workspace \
             --workdir=/root/workspace \
             --runtime=habana \
@@ -100,6 +112,10 @@ jobs:
         if: github.event.schedule == '0 23 * * 6'
         run: |
             docker run \
+            --user $UID:$GID \
+            --volume="/etc/group:/etc/group:ro" \
+            --volume="/etc/passwd:/etc/passwd:ro" \
+            --volume="/etc/shadow:/etc/shadow:ro" \
             -v $PWD:/root/workspace \
             --workdir=/root/workspace \
             --runtime=habana \
