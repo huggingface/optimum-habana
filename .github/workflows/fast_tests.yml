@@ -14,7 +14,7 @@ concurrency:
 jobs:
   do-the-job:
     name: Run tests
-    runs-on: paris-dc2-hpu1
+    runs-on: [self-hosted, hpu]
     env:
       AWS_REGION: us-east-1
     steps:
