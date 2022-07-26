@@ -20,7 +20,7 @@ jobs:
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --net=host --ipc=host --cap-add=sys_nice --runtime --workdir=/root/workspace
+      options: --cap-add=sys_nice --runtime --workdir=/root/workspace
       volumes:
         - $PWD:/root/workspace
     steps:
