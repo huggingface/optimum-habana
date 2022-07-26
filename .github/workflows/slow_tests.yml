@@ -43,7 +43,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Run Diff
+      - name: Run Multi-Cards Tests
         run: |
           /bin/bash tests/ci/slow_tests_8x.sh
   single-card:
@@ -63,7 +63,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Run Diff
+      - name: Run Single-Card Tests
         run: |
           /bin/bash tests/ci/slow_tests_1x.sh
   albert-xxl-single-card:
@@ -85,7 +85,7 @@ jobs:
       - name: Checkout
         if: github.event.schedule == '0 23 * * 6'
         uses: actions/checkout@v2
-      - name: Run Diff
+      - name: Run Single-Card ALBERT XXL Tests
         if: github.event.schedule == '0 23 * * 6'
         run: |
           /bin/bash tests/ci/albert_xxl_1x.sh
