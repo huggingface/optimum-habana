@@ -30,7 +30,7 @@ Here is an example of how to customize [`GaudiTrainer`] to use a weighted loss (
 
 ```python
 from torch import nn
-from transformers import GaudiTrainer
+from optimum.habana import GaudiTrainer
 
 
 class CustomGaudiTrainer(GaudiTrainer):
