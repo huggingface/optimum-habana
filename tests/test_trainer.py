@@ -1031,8 +1031,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         trainer.train(resume_from_checkpoint=os.path.join(tmp_dir, "checkpoint-15"))
         (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
 
-        self.assertAlmostEqual(a, a1, delta=1e-8)
-        self.assertAlmostEqual(b, b1, delta=1e-8)
+        self.assertAlmostEqual(a, a1, delta=1e-5)
+        self.assertAlmostEqual(b, b1, delta=1e-5)
 
     # regression for this issue: https://github.com/huggingface/transformers/issues/12970
     def test_training_with_resume_from_checkpoint_false(self):

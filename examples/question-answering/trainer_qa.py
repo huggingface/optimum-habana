@@ -17,13 +17,8 @@ A subclass of `GaudiTrainer` specific to Question-Answering tasks
 """
 
 from optimum.habana.trainer import GaudiTrainer
-from transformers import Trainer, is_torch_tpu_available
+from transformers import Trainer
 from transformers.trainer_utils import PredictionOutput
-
-
-if is_torch_tpu_available():
-    import torch_xla.core.xla_model as xm
-    import torch_xla.debug.metrics as met
 
 
 class QuestionAnsweringTrainer(GaudiTrainer):

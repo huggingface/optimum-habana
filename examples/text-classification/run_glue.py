@@ -28,8 +28,7 @@ import numpy as np
 from datasets import load_dataset, load_metric
 
 import transformers
-from optimum.habana import GaudiConfig, GaudiTrainer
-from optimum.habana import GaudiTrainingArguments as TrainingArguments
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
@@ -47,7 +46,7 @@ from transformers.utils.versions import require_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.20.0")
+check_min_version("4.21.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/text-classification/requirements.txt")
 
@@ -207,7 +206,7 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
@@ -615,11 +614,6 @@ def main():
         trainer.push_to_hub(**kwargs)
     else:
         trainer.create_model_card(**kwargs)
-
-
-def _mp_fn(index):
-    # For xla_spawn (TPUs)
-    main()
 
 
 if __name__ == "__main__":
