@@ -36,7 +36,7 @@ from transformers.configuration_utils import PretrainedConfig
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.integrations import hp_params
-from transformers.modeling_utils import PreTrainedModel, unwrap_model
+from transformers.modeling_utils import ModuleUtilsMixin, PreTrainedModel, unwrap_model
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
@@ -72,7 +72,12 @@ from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
-from .modeling_utils import PRETRAINED_TO_GAUDI_REGISTRY, to_gaudi_for_accelerated_generation
+from .modeling_utils import (
+    PRETRAINED_TO_GAUDI_REGISTRY,
+    gaudi_get_extended_attention_mask,
+    gaudi_invert_attention_mask,
+    to_gaudi_for_accelerated_generation,
+)
 from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
 from .training_args import GaudiTrainingArguments
 
@@ -173,6 +178,11 @@ class GaudiTrainer(Trainer):
                             fp32_file_path=hmp_fp32_file.name,
                             isVerbose=self.gaudi_config.hmp_is_verbose,
                         )
+
+                # When HMP is enabled, replace invert_attention_mask and get_extended_attention_mask
+                # so that HMP is disabled for specific parts of the code
+                ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
+                ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
 
             if self.gaudi_config.use_fused_clip_norm:
                 try:
@@ -1340,3 +1350,43 @@ class GaudiTrainer(Trainer):
             if self.args.hub_strategy == HubStrategy.CHECKPOINT:
                 # Move back the checkpoint to its place
                 shutil.move(tmp_checkpoint, checkpoint_folder)
+
+    # def compute_loss(self, model, inputs, return_outputs=False):
+    #     """
+    #     How the loss is computed by Trainer. By default, all models return the loss in the first element.
+    #     Subclass and override for custom behavior.
+    #     """
+    #     if self.label_smoother is not None and "labels" in inputs:
+    #         labels = inputs.pop("labels")
+    #     else:
+    #         labels = None
+    #     print("INPUTS")
+    #     for key, value in inputs.items():
+    #         print(key, value.shape, value.dtype, value)
+    #     # print("LABELS", labels.shape, labels.dtype, labels)
+    #     outputs = model(**inputs)
+    #     print("OUTPUTS")
+    #     for key, value in outputs.items():
+    #         print(key, value.shape, value.dtype, value)
+    #     # Save past state if it exists
+    #     # TODO: this needs to be fixed and made cleaner later.
+    #     if self.args.past_index >= 0:
+    #         self._past = outputs[self.args.past_index]
+
+    #     if labels is not None:
+    #         if unwrap_model(model)._get_name() in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+    #             loss = self.label_smoother(outputs, labels, shift_labels=True)
+    #         else:
+    #             loss = self.label_smoother(outputs, labels)
+    #     else:
+    #         if isinstance(outputs, dict) and "loss" not in outputs:
+    #             raise ValueError(
+    #                 "The model did not return a loss from the inputs, only the following keys: "
+    #                 f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+    #             )
+    #         # We don't use .loss here since the model may return tuples instead of ModelOutput.
+    #         loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+    #     print("LOSS", loss)
+
+    #     return (loss, outputs) if return_outputs else loss
