@@ -36,7 +36,8 @@ from transformers.configuration_utils import PretrainedConfig
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.integrations import hp_params
-from transformers.modeling_utils import PreTrainedModel, unwrap_model
+from transformers.modeling_utils import ModuleUtilsMixin, PreTrainedModel, unwrap_model
+from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
@@ -71,7 +72,12 @@ from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
-from .modeling_utils import PRETRAINED_TO_GAUDI_REGISTRY, to_gaudi_for_accelerated_generation
+from .modeling_utils import (
+    PRETRAINED_TO_GAUDI_REGISTRY,
+    gaudi_get_extended_attention_mask,
+    gaudi_invert_attention_mask,
+    to_gaudi_for_accelerated_generation,
+)
 from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
 from .training_args import GaudiTrainingArguments
 
@@ -173,6 +179,11 @@ class GaudiTrainer(Trainer):
                             isVerbose=self.gaudi_config.hmp_is_verbose,
                         )
 
+                # When HMP is enabled, replace invert_attention_mask and get_extended_attention_mask
+                # so that HMP is disabled for specific parts of the code
+                ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
+                ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
+
             if self.gaudi_config.use_fused_clip_norm:
                 try:
                     from habana_frameworks.torch.hpex.normalization import FusedClipNorm
@@ -201,7 +212,7 @@ class GaudiTrainer(Trainer):
         Trainer's init through `optimizers`, or subclass and override this method in a subclass.
         """
         if self.optimizer is None:
-            decay_parameters = get_parameter_names(self.model, [torch.nn.LayerNorm])
+            decay_parameters = get_parameter_names(self.model, ALL_LAYERNORM_LAYERS)
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
 
             optimizer_grouped_parameters = []
@@ -802,10 +813,10 @@ class GaudiTrainer(Trainer):
         # not yet exist.
         os.makedirs(output_dir, exist_ok=True)
 
-        if self.args.local_rank == -1:
+        if self.args.world_size <= 1:
             torch.save(rng_states, os.path.join(output_dir, "rng_state.pth"))
         else:
-            torch.save(rng_states, os.path.join(output_dir, f"rng_state_{self.args.local_rank}.pth"))
+            torch.save(rng_states, os.path.join(output_dir, f"rng_state_{self.args.process_index}.pth"))
 
         if self.args.push_to_hub:
             self._push_from_checkpoint(output_dir)
@@ -913,7 +924,7 @@ class GaudiTrainer(Trainer):
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            inputs_decode = inputs["input_ids"] if args.include_inputs_for_metrics else None
+            inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             # Save the logits dtype since we need to convert them into floats during the process
             # They will be converted back into their original dtype right before computing metrics
@@ -1180,7 +1191,7 @@ class GaudiTrainer(Trainer):
 
         for step, inputs in enumerate(dataloader):
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            inputs_decode = inputs["input_ids"] if args.include_inputs_for_metrics else None
+            inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             if loss is not None:
                 losses = loss.repeat(batch_size)

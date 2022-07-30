@@ -1,10 +1,13 @@
-30a31,32
-> from optimum.habana import GaudiConfig, GaudiTrainer
-> from optimum.habana import GaudiTrainingArguments as TrainingArguments
-39,40d40
+30a31
+> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+39,40d39
 <     Trainer,
 <     TrainingArguments,
-235a236,242
+210c209
+<     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+---
+>     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
+235a235,241
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -12,16 +15,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-238,239c245,247
+238,239c244,246
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-512c520
+512c519
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-513a522
+513a521
 >         gaudi_config=gaudi_config,
+609,613d616
+< 
+< 
+< def _mp_fn(index):
+<     # For xla_spawn (TPUs)
+<     main()
