@@ -18,6 +18,7 @@ import torch
 from torch.utils.data import Dataset
 
 from optimum.utils import logging
+from transformers.deepspeed import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import PredictionOutput
 
 from .trainer import GaudiTrainer
@@ -32,8 +33,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         eval_dataset: Optional[Dataset] = None,
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "eval",
-        max_length: Optional[int] = None,
-        num_beams: Optional[int] = None,
+        **gen_kwargs
     ) -> Dict[str, float]:
         """
         Run evaluation and returns metrics.
@@ -42,8 +42,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         You can also subclass and override this method to inject custom behavior.
         Args:
             eval_dataset (`Dataset`, *optional*):
-                Pass a dataset if you wish to override `self.eval_dataset`. If it is an `datasets.Dataset`, columns not
-                accepted by the `model.forward()` method are automatically removed. It must implement the `__len__`
+                Pass a dataset if you wish to override `self.eval_dataset`. If it is an [`~datasets.Dataset`], columns
+                not accepted by the `model.forward()` method are automatically removed. It must implement the `__len__`
                 method.
             ignore_keys (`List[str]`, *optional*):
                 A list of keys in the output of your model (if it is a dictionary) that should be ignored when
@@ -56,12 +56,22 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             num_beams (`int`, *optional*):
                 Number of beams for beam search that will be used when predicting with the generate method. 1 means no
                 beam search.
+            gen_kwargs:
+                Additional `generate` specific kwargs.
         Returns:
             A dictionary containing the evaluation loss and the potential metrics computed from the predictions. The
             dictionary also contains the epoch number which comes from the training state.
         """
-        self._max_length = max_length if max_length is not None else self.args.generation_max_length
-        self._num_beams = num_beams if num_beams is not None else self.args.generation_num_beams
+
+        gen_kwargs = gen_kwargs.copy()
+        gen_kwargs["max_length"] = (
+            gen_kwargs["max_length"] if gen_kwargs.get("max_length") is not None else self.args.generation_max_length
+        )
+        gen_kwargs["num_beams"] = (
+            gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
+        )
+        self._gen_kwargs = gen_kwargs
+
         return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def predict(
@@ -69,8 +79,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         test_dataset: Dataset,
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "test",
-        max_length: Optional[int] = None,
-        num_beams: Optional[int] = None,
+        **gen_kwargs
     ) -> PredictionOutput:
         """
         Run prediction and returns predictions and potential metrics.
@@ -78,7 +87,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         will also return metrics, like in `evaluate()`.
         Args:
             test_dataset (`Dataset`):
-                Dataset to run the predictions on. If it is an `datasets.Dataset`, columns not accepted by the
+                Dataset to run the predictions on. If it is a [`~datasets.Dataset`], columns not accepted by the
                 `model.forward()` method are automatically removed. Has to implement the method `__len__`
             ignore_keys (`List[str]`, *optional*):
                 A list of keys in the output of your model (if it is a dictionary) that should be ignored when
@@ -91,6 +100,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             num_beams (`int`, *optional*):
                 Number of beams for beam search that will be used when predicting with the generate method. 1 means no
                 beam search.
+            gen_kwargs:
+                Additional `generate` specific kwargs.
         <Tip>
         If your predictions or labels have different sequence lengths (for instance because you're doing dynamic
         padding in a token classification task) the predictions will be padded (on the right) to allow for
@@ -102,8 +113,16 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             - metrics (`Dict[str, float]`, *optional*): The potential dictionary of metrics (if the dataset contained
               labels).
         """
-        self._max_length = max_length if max_length is not None else self.args.generation_max_length
-        self._num_beams = num_beams if num_beams is not None else self.args.generation_num_beams
+
+        gen_kwargs = gen_kwargs.copy()
+        gen_kwargs["max_length"] = (
+            gen_kwargs["max_length"] if gen_kwargs.get("max_length") is not None else self.args.generation_max_length
+        )
+        gen_kwargs["num_beams"] = (
+            gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
+        )
+        self._gen_kwargs = gen_kwargs
+
         return super().predict(test_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def prediction_step(
@@ -139,12 +158,21 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         inputs = self._prepare_inputs(inputs)
 
         # XXX: adapt synced_gpus for fairscale as well
-        gen_kwargs = {
-            "max_length": self._max_length if self._max_length is not None else self.model.config.max_length,
-            "num_beams": self._num_beams if self._num_beams is not None else self.model.config.num_beams,
-            "synced_gpus": False,  # should be True with deespeed zero3
-            "lazy_mode": self.args.use_lazy_mode,  # pad batches to max_length on-the-fly in lazy mode
-        }
+        gen_kwargs = self._gen_kwargs.copy()
+        gen_kwargs["max_length"] = (
+            gen_kwargs["max_length"] if gen_kwargs.get("max_length") is not None else self.model.config.max_length
+        )
+        gen_kwargs["num_beams"] = (
+            gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.model.config.num_beams
+        )
+        default_synced_gpus = True if is_deepspeed_zero3_enabled() else False
+        gen_kwargs["synced_gpus"] = (
+            gen_kwargs["synced_gpus"] if gen_kwargs.get("synced_gpus") is not None else default_synced_gpus
+        )
+        # pad batches to max_length on-the-fly in lazy mode
+        gen_kwargs["lazy_mode"] = (
+            gen_kwargs["lazy_mode"] if gen_kwargs.get("lazy_mode") is not None else self.args.use_lazy_mode
+        )
 
         if "attention_mask" in inputs:
             gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
