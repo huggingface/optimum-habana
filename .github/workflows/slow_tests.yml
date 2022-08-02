@@ -18,7 +18,7 @@ jobs:
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace
+      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace --rm
       volumes:
         - /opt/github-actions-runners/_work:/root/workspace
     steps:
@@ -37,7 +37,7 @@ jobs:
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace
+      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace --rm
       volumes:
         - /opt/github-actions-runners/_work:/root/workspace
     steps:
@@ -57,7 +57,7 @@ jobs:
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace
+      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace --rm
       volumes:
         - /opt/github-actions-runners/_work:/root/workspace
     steps:
@@ -78,7 +78,7 @@ jobs:
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace
+      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace --rm
       volumes:
         - /opt/github-actions-runners/_work:/root/workspace
     steps:
