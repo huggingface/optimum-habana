@@ -1,4 +1,4 @@
 #!/bin/bash
 
-pip install --upgrade pip
+pip install --user --upgrade pip
 make example_diff_tests
