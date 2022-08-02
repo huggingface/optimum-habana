@@ -34,7 +34,7 @@ TESTS_REQUIRE = [
 QUALITY_REQUIRES = [
     "black",
     "isort",
-    "hf-doc-builder",
+    "git+https://github.com/huggingface/doc-builder.git",
 ]
 
 EXTRAS_REQUIRE = {
