@@ -20,7 +20,9 @@ jobs:
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --cap-add=sys_nice --runtime=habana
+      options: --cap-add=sys_nice --runtime=habana  --workdir=/root/workspace
+      volumes:
+        - /opt/github-actions-runners/_work:/root/workspace
     steps:
       - name: Checkout
         uses: actions/checkout@v2
