@@ -28,7 +28,7 @@ style:
 
 # Run unit and integration tests
 fast_tests:
-	pip install --user .[tests]
+	python -m pip install --user .[tests]
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
 
 # Run single-card non-regression tests
