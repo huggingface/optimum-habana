@@ -21,7 +21,7 @@ limitations under the License.
 
 🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
 It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU settings for different downstream tasks.
-The current release focuses on question answering and text classification and enables users to try other models for other tasks with only a few changes.
+The list of officially supported models and tasks is available [here](https://github.com/huggingface/optimum-habana#validated-models). Users can try other models and tasks with only few changes.
 
 
 ## What is a Habana Processing Unit (HPU)?
@@ -42,8 +42,10 @@ Optimum Habana is a fast-moving project, and you may want to install it from sou
 
 Last but not least, don't forget to install requirements for every example:
 
-`cd <example-folder>
-pip install -r requirements.txt`
+```bash
+cd <example-folder>
+pip install -r requirements.txt
+```
 
 > Alternatively, you can install the package without pip as follows:
 > ```bash
