@@ -45,8 +45,30 @@ Mixed-precision training enables to compute some operations using lighter data t
 Habana Mixed Preicision (HMP) proposes to mix *fp32* and *bf16* operations.
 In order to do so, you must set `"use_habana_mixed_precision"` to `true` and `"hmp_opt_level"` to `"O1"` in the Gaudi configuration file.
 Then, you can specify which operators to compute in *bf16* with `"hmp_bf16_ops"` and which operators to compute in *fp32* with `"hmp_fp32_ops"`.
-
-The Gaudi configuration file of BERT is a good starting point for applying HMP, you can access it [here](https://huggingface.co/Habana/bert-large-uncased-whole-word-masking/blob/main/gaudi_config.json).
+If these operators are not specified, their default values are set to be the ones written in the [Gaudi configuration file of BERT](https://huggingface.co/Habana/bert-large-uncased-whole-word-masking/blob/main/gaudi_config.json), which is a good starting point for applying HMP:
+```
+"hmp_bf16_ops": [
+    "add",
+    "addmm",
+    "bmm",
+    "div",
+    "dropout",
+    "gelu",
+    "iadd",
+    "linear",
+    "layer_norm",
+    "matmul",
+    "mm",
+    "rsub",
+    "softmax",
+    "truediv"
+],
+"hmp_fp32_ops": [
+    "embedding",
+    "nll_loss",
+    "log_softmax"
+]
+```
 
 
 ## Custom Operators
