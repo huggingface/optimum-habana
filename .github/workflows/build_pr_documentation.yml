@@ -43,7 +43,7 @@ jobs:
       - name: Make documentation
         run: |
           cd optimum-habana
-          make doc BUILD_DIR=habana-doc-build VERSION=pr_$PR_NUMBER
+          make doc BUILD_DIR=habana-doc-build VERSION=pr_$PR_NUMBER COMMIT_SHA=$COMMIT_SHA
           cd ..
 
       - name: Push to repositories
