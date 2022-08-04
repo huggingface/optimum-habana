@@ -45,8 +45,8 @@ Here is a description of each configuration parameter:
 - `hmp_is_verbose` enables to decide whether to log precision decisions for each operation for debugging purposes. It is disabled by default. You can find an example of such log [here](https://docs.habana.ai/en/v1.5.0/PyTorch/PyTorch_User_Guide/PT_Mixed_Precision.html#hmp-logs).
 - `use_fused_adam` enables to decide whether to use the [custom fused implementation of the ADAM optimizer provided by Habana](https://docs.habana.ai/en/v1.5.0/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
 - `use_fused_clip_norm` enables to decide whether to use the [custom fused implementation of gradient norm clipping provided by Habana](https://docs.habana.ai/en/v1.5.0/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
-- `hmp_bf16_ops` enables to specify the Torch operations that should be computed in bf16. You can find more information about casting rules [here](https://docs.habana.ai/en/v1.5.0/PyTorch/PyTorch_User_Guide/PT_Mixed_Precision.html#basic-design-rules).
-- `hmp_fp32_ops` enables to specify the Torch operations that should be computed in fp32. You can find more information about casting rules [here](https://docs.habana.ai/en/v1.5.0/PyTorch/PyTorch_User_Guide/PT_Mixed_Precision.html#basic-design-rules).
+- `hmp_bf16_ops` enables to specify the Torch operations that should be computed in *bf16*. You can find more information about casting rules [here](https://docs.habana.ai/en/v1.5.0/PyTorch/PyTorch_User_Guide/PT_Mixed_Precision.html#basic-design-rules).
+- `hmp_fp32_ops` enables to specify the Torch operations that should be computed in *fp32*. You can find more information about casting rules [here](https://docs.habana.ai/en/v1.5.0/PyTorch/PyTorch_User_Guide/PT_Mixed_Precision.html#basic-design-rules).
 
 <Tip warning={true}>
 
