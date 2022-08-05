@@ -13,6 +13,8 @@ concurrency:
 
 jobs:
   do-the-job:
+    strategy:
+      fail-fast: false
     name: Run tests
     runs-on: self-hosted
     container:
@@ -26,6 +28,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+      - name: Create and start a virtual environment
+        run: |
+          python -m venv venv
+          source venv/bin/activate
       - name: Run tests
         run: |
-              /bin/bash tests/ci/fast_tests.sh
+          /bin/bash tests/ci/fast_tests.sh
