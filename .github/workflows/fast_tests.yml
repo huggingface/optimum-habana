@@ -2,6 +2,8 @@ name: Unit and integration tests (On-Prem)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -15,31 +17,15 @@ jobs:
       fail-fast: false
     name: Run tests
     runs-on: [self-hosted, hpu]
+    container:
+      image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
+      env:
+        HABANA_VISIBLE_DEVICES: all
+        OMPI_MCA_btl_vader_single_copy_mechanism: none
+      options: --cap-add=sys_nice --runtime=habana  --workdir=/root/workspace
     steps:
-      # - name: 'Cleanup build folder'
-      #   run: |
-      #     ls -la ./
-      #     sudo rm -rf ./* || true
-      #     sudo rm -rf ./.??* || true
-      #     ls -la ./
-      # - name: Checkout
-      #   uses: actions/checkout@v2
-      - name: Pull image
-        run: |
-          docker pull vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
-      # - name: Blabla
-      #   run: |
-      #     docker run
+      - name: Checkout
+        uses: actions/checkout@v2
       - name: Run tests
         run: |
-          docker run \
-          -v $PWD:/root/workspace \
-          --workdir=/root/workspace \
-          --runtime=habana \
-          -e HABANA_VISIBLE_DEVICES=all \
-          -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
-          --cap-add=sys_nice \
-          --net=host \
-          --ipc=host \
-          vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610 \
-          git clone https://github.com/huggingface/optimum-habana.git && cd optimum-habana && git checkout ${{ github.event.pull_request.head.sha }} && /bin/bash tests/ci/fast_tests.sh
+          /bin/bash tests/ci/fast_tests.sh
