@@ -24,6 +24,12 @@ jobs:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
       options: --cap-add=sys_nice --runtime=habana  --workdir=/root/workspace
     steps:
+      - name: 'Cleanup build folder'
+        run: |
+          ls -la ./
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+          ls -la ./
       - name: Checkout
         uses: actions/checkout@v2
       - name: Run tests
