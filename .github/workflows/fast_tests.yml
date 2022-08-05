@@ -18,6 +18,12 @@ jobs:
     name: Run tests
     runs-on: [self-hosted, hpu]
     steps:
+      - name: 'Cleanup build folder'
+        run: |
+          ls -la ./
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+          ls -la ./
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
