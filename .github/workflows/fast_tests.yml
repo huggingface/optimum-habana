@@ -29,9 +29,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Create and start a virtual environment
+        shell: bash
         run: |
           python -m venv venv
           source venv/bin/activate
       - name: Run tests
+        shell: bash
         run: |
-          /bin/bash tests/ci/fast_tests.sh
+          source venv/bin/activate
+          bash tests/ci/fast_tests.sh
