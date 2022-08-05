@@ -16,9 +16,8 @@ jobs:
     strategy:
       fail-fast: false
     name: Run tests
-    runs-on: self-hosted
+    runs-on: [self-hosted, hpu]
     container:
-      runs-on: ubuntu-20.04
       image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
       env:
         HABANA_VISIBLE_DEVICES: all
@@ -26,9 +25,9 @@ jobs:
       options: --cap-add=sys_nice --runtime=habana  --workdir=/root/workspace
       volumes:
         - /opt/github-actions-runners/_work:/root/workspace
-      steps:
-        - name: Checkout
-          uses: actions/checkout@v2
-        - name: Run tests
-          run: |
-            /bin/bash tests/ci/fast_tests.sh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Run tests
+        run: |
+          /bin/bash tests/ci/fast_tests.sh
