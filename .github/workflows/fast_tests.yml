@@ -32,8 +32,8 @@ jobs:
           ls -la ./
       - name: Checkout
         uses: actions/checkout@v2
+      - name: Check for dockerenv file
+        run: (ls /.dockerenv && echo Found dockerenv) || (echo No dockerenv)
       - name: Run tests
         run: |
           /bin/bash tests/ci/fast_tests.sh
-      - name: Check for dockerenv file
-        run: (ls /.dockerenv && echo Found dockerenv) || (echo No dockerenv)
