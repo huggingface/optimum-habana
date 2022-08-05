@@ -1,4 +1,4 @@
 #!/bin/bash
 
-python -m pip install --upgrade --user pip
+python -m pip install --upgrade pip
 make fast_tests

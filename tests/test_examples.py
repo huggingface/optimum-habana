@@ -268,7 +268,7 @@ class ExampleTesterBase(TestCase):
         if not Path(requirements_filename).exists():
             return
 
-        cmd_line = f"pip install --user -r {requirements_filename}".split()
+        cmd_line = f"pip install -r {requirements_filename}".split()
         p = subprocess.Popen(cmd_line)
         return_code = p.wait()
         self.assertEqual(return_code, 0)
