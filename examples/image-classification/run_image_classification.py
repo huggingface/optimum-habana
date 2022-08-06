@@ -35,6 +35,7 @@ from torchvision.transforms import (
 )
 
 import transformers
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from transformers import (
     MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
     AutoConfig,
@@ -45,7 +46,6 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-from optimum.habana import GaudiTrainer, GaudiTrainingArguments, GaudiConfig
 
 
 """ Fine-tuning a 🤗 Transformers model for image classification"""
@@ -277,6 +277,7 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+    torch.manual_seed(training_args.seed)
     model = AutoModelForImageClassification.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),

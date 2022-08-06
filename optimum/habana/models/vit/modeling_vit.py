@@ -1,7 +1,7 @@
 import math
-import torch
-
 from typing import Optional, Tuple, Union
+
+import torch
 
 
 def gaudi_vit_self_attention_forward(

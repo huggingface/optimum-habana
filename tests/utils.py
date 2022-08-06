@@ -37,6 +37,9 @@ MODELS_TO_TEST_MAPPING = {
     "t5": [
         ("t5-small", "Habana/t5"),
     ],
+    "vit": [
+        ("google/vit-base-patch16-224-in21k", "Habana/vit"),
+    ],
 }
 
 VALID_MODELS_FOR_QUESTION_ANSWERING = [
@@ -64,3 +67,5 @@ VALID_MODELS_FOR_LANGUAGE_MODELING = [
 ]
 
 VALID_SEQ2SEQ_MODELS = ["t5"]
+
+VALID_MODELS_FOR_IMAGE_CLASSIFICATION = ["vit"]

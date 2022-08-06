@@ -41,10 +41,11 @@ python run_image_classification.py \
     --save_strategy epoch \
     --load_best_model_at_end True \
     --save_total_limit 3 \
-    --seed 1337
-    --use_habana
-    --use_lazy_mode
-    --gaudi_config_name path_to_my_gaudi_config
+    --seed 1337 \
+    --use_habana \
+    --use_lazy_mode \
+    --gaudi_config_name Habana/vit \
+    --throughput_warmup_steps 2
 ```
 
 👀 See the results here: [nateraw/vit-base-beans](https://huggingface.co/nateraw/vit-base-beans).
@@ -77,6 +78,7 @@ In other words, you need to organize your images in subfolders, based on their c
 
 ```bash
 python run_image_classification.py \
+    --model_name_or_path google/vit-base-patch16-224-in21k \
     --train_dir <path-to-train-root> \
     --output_dir ./outputs/ \
     --remove_unused_columns False \
@@ -84,7 +86,8 @@ python run_image_classification.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
-    --gaudi_config_name path_to_my_gaudi_config
+    --gaudi_config_name Habana/vit \
+    --throughput_warmup_steps 2
 ```
 
 Internally, the script will use the [`ImageFolder`](https://huggingface.co/docs/datasets/v2.0.0/en/image_process#imagefolder) feature which will automatically turn the folders into 🤗 Dataset objects.
@@ -164,7 +167,7 @@ Here is how you would fine-tune ViT on the beans dataset using 8 HPUs:
 
 ```bash
 python ../gaudi_spawn.py \
-    -- world_size 8 --use_mpi run_image_classification.py \
+    --world_size 8 --use_mpi run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --dataset_name beans \
     --output_dir ./beans_outputs/ \
@@ -179,10 +182,11 @@ python ../gaudi_spawn.py \
     --save_strategy epoch \
     --load_best_model_at_end True \
     --save_total_limit 3 \
-    --seed 1337
-    --use_habana
-    --use_lazy_mode
-    --gaudi_config_name path_to_my_gaudi_config
+    --seed 1337 \
+    --use_habana \
+    --use_lazy_mode \
+    --gaudi_config_name Habana/vit \
+    --throughput_warmup_steps 2
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
