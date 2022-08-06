@@ -20,7 +20,7 @@ def gaudi_vit_self_attention_forward(
     query_layer = self.transpose_for_scores(mixed_query_layer)
 
     # Take the dot product between "query" and "key" to get the raw attention scores.
-    # The div has been put inside the matmul because it achieves better performance on HPU
+    # The div has been put inside the matmul because it achieves better performance on HPU.
     attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2) / math.sqrt(self.attention_head_size))
 
     # Normalize the attention scores to probabilities.

@@ -16,7 +16,7 @@ limitations under the License.
 
 # Image classification examples
 
-This directory contains a script that showcases how to fine-tune any model supported by the [`AutoModelForImageClassification` API](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForImageClassification) (such as [ViT](https://huggingface.co/docs/transformers/main/en/model_doc/vit) or [Swin Transformer](https://huggingface.co/docs/transformers/main/en/model_doc/swin)) HPUs. They can be used to fine-tune models on both [datasets from the hub](#using-datasets-from-hub) as well as on [your own custom data](#using-your-own-data).
+This directory contains a script that showcases how to fine-tune any model supported by the [`AutoModelForImageClassification` API](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForImageClassification) (such as [ViT](https://huggingface.co/docs/transformers/main/en/model_doc/vit) or [Swin Transformer](https://huggingface.co/docs/transformers/main/en/model_doc/swin)) on HPUs. They can be used to fine-tune models on both [datasets from the hub](#using-datasets-from-hub) as well as on [your own custom data](#using-your-own-data).
 
 
 ## Single-HPU training
@@ -134,7 +134,7 @@ More on this can also be found in [this blog post](https://huggingface.co/blog/i
 
 ### Sharing your model on 🤗 Hub
 
-0. If you haven't already, [sign up](https://huggingface.co/join) for a 🤗 account
+0. If you haven't already, [sign up](https://huggingface.co/join) for a 🤗 account.
 
 1. Make sure you have `git-lfs` installed and git set up.
 

@@ -1,5 +1,5 @@
 {
-    "mrpc": {
+    "beans": {
         "num_train_epochs": 5,
         "eval_batch_size": 8,
         "distribution": {
