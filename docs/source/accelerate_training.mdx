@@ -38,6 +38,13 @@ args = GaudiTrainingArguments(
 )
 ```
 
+<Tip>
+
+In lazy mode, the first couple of training iterations may be slower due to graph compilations.
+In order to not take them into account in the computation of the throughput at the end of the training, you can add the following training argument: `--throughput_warmup_steps 2`.
+
+</Tip>
+
 
 ## Mixed-Precision Training
 
