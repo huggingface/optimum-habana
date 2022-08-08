@@ -3,10 +3,18 @@
     title: 🤗 Optimum Habana
   - local: quickstart
     title: Quickstart
-  - local: distributed
-    title: Distributed Training
+  - sections:
+    - local: single_hpu
+      title: Single-HPU Training
+    - local: distributed
+      title: Distributed Training
+    - local: accelerate_training
+      title: Accelerating Training
+    title: How-To Guides
   - sections:
     - local: trainer
       title: Gaudi Trainer
+    - local: gaudi_config
+      title: Gaudi Configuration
     title: Main Classes
   title: Optimum Habana
