@@ -45,7 +45,9 @@ Mixed-precision training enables to compute some operations using lighter data t
 Habana Mixed Preicision (HMP) proposes to mix *fp32* and *bf16* operations.
 
 <Tip warning={true}>
+
 Please refer to the [list of supported PyTorch operators](https://docs.habana.ai/en/latest/PyTorch/Pytorch_Operators/Pytorch_Operators.html) beforehand to make sure the ones you are interested in are compatible with *bf16*.
+
 </Tip>
 
 In order to apply HMP, you must set `"use_habana_mixed_precision"` to `true` and `"hmp_opt_level"` to `"O1"` in the Gaudi configuration file.
