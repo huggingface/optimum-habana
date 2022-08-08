@@ -42,6 +42,7 @@ from transformers import (
     AutoFeatureExtractor,
     AutoModelForImageClassification,
     HfArgumentParser,
+    set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
@@ -221,6 +222,9 @@ def main():
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
             )
 
+    # Set seed before initializing model.
+    set_seed(training_args.seed)
+
     # Initialize our dataset and prepare it for the 'image-classification' task.
     if data_args.dataset_name is not None:
         dataset = load_dataset(
@@ -277,7 +281,6 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    torch.manual_seed(training_args.seed)
     model = AutoModelForImageClassification.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
