@@ -209,7 +209,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
             world_size, rank, self.local_rank = initialize_distributed_hpu()
 
-            if self.local_rank != -1:
+            if self.local_rank != -1 and not torch.distributed.is_initialized():
                 if world_size > hthpu.device_count():
                     raise RuntimeError(
                         f"world_size is equal to {world_size} but there are only {hthpu.device_count()} devices."
