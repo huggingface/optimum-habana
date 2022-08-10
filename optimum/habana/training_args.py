@@ -209,12 +209,13 @@ class GaudiTrainingArguments(TrainingArguments):
 
             world_size, rank, self.local_rank = initialize_distributed_hpu()
 
-            if self.local_rank != -1 and not torch.distributed.is_initialized():
+            if self.local_rank != -1:
                 if world_size > hthpu.device_count():
                     raise RuntimeError(
                         f"world_size is equal to {world_size} but there are only {hthpu.device_count()} devices."
                     )
-                torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
+                if not torch.distributed.is_initialized():
+                    torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
                 logger.info("Enabled distributed run.")
             else:
                 logger.info("Single node run.")
