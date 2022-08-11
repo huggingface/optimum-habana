@@ -216,7 +216,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     )
                 if not torch.distributed.is_initialized():
                     torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
-                logger.info("Enabled distributed run.")
+                    logger.info("Enabled distributed run.")
             else:
                 logger.info("Single node run.")
         else:
