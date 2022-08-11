@@ -91,11 +91,21 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": "Filter nan and inf losses for logging."},
     )
 
-    ddp_find_unused_parameters: bool = field(
+    ddp_find_unused_parameters: Optional[bool] = field(
         default=False,
         metadata={
             "help": (
                 "When using distributed training, the value of the flag `find_unused_parameters` passed to "
+                "`DistributedDataParallel`."
+            )
+        },
+    )
+
+    ddp_bucket_cap_mb: Optional[int] = field(
+        default=230,
+        metadata={
+            "help": (
+                "When using distributed training, the value of the flag `bucket_cap_mb` passed to "
                 "`DistributedDataParallel`."
             )
         },
