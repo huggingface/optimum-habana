@@ -91,6 +91,26 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": "Filter nan and inf losses for logging."},
     )
 
+    ddp_find_unused_parameters: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": (
+                "When using distributed training, the value of the flag `find_unused_parameters` passed to "
+                "`DistributedDataParallel`."
+            )
+        },
+    )
+
+    ddp_bucket_cap_mb: Optional[int] = field(
+        default=230,
+        metadata={
+            "help": (
+                "When using distributed training, the value of the flag `bucket_cap_mb` passed to "
+                "`DistributedDataParallel`."
+            )
+        },
+    )
+
     def __post_init__(self):
         if (self.use_lazy_mode or self.gaudi_config_name) and not self.use_habana:
             raise ValueError("--use_lazy_mode and --gaudi_config_name cannot be used without --use_habana")
@@ -214,8 +234,9 @@ class GaudiTrainingArguments(TrainingArguments):
                     raise RuntimeError(
                         f"world_size is equal to {world_size} but there are only {hthpu.device_count()} devices."
                     )
-                torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
-                logger.info("Enabled distributed run.")
+                if not torch.distributed.is_initialized():
+                    torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
+                    logger.info("Enabled distributed run.")
             else:
                 logger.info("Single node run.")
         else:
