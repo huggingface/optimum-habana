@@ -91,6 +91,16 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": "Filter nan and inf losses for logging."},
     )
 
+    ddp_find_unused_parameters: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "When using distributed training, the value of the flag `find_unused_parameters` passed to "
+                "`DistributedDataParallel`."
+            )
+        },
+    )
+
     def __post_init__(self):
         if (self.use_lazy_mode or self.gaudi_config_name) and not self.use_habana:
             raise ValueError("--use_lazy_mode and --gaudi_config_name cannot be used without --use_habana")

@@ -288,21 +288,21 @@ class GaudiTrainer(Trainer):
 
         if self.args.local_rank != -1:
             kwargs = {}
-            if self.args.ddp_find_unused_parameters is not None:
-                kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
-            elif isinstance(model, PreTrainedModel):
-                # find_unused_parameters breaks checkpointing as per
-                # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
-                kwargs["find_unused_parameters"] = not model.is_gradient_checkpointing
-            else:
-                kwargs["find_unused_parameters"] = True
+            # if self.args.ddp_find_unused_parameters is not None:
+            #     kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
+            # elif isinstance(model, PreTrainedModel):
+            #     # find_unused_parameters breaks checkpointing as per
+            #     # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
+            #     kwargs["find_unused_parameters"] = not model.is_gradient_checkpointing
+            # else:
+            #     kwargs["find_unused_parameters"] = True
 
             if self.args.ddp_bucket_cap_mb is not None:
                 kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
             if self.args.use_habana:
                 kwargs["bucket_cap_mb"] = 230
                 kwargs["gradient_as_bucket_view"] = True
-                kwargs["find_unused_parameters"] = False
+                kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
             model = torch.nn.parallel.DistributedDataParallel(
                 model,
                 device_ids=[self.args.local_rank] if self.args._n_gpu != 0 and not self.args.use_habana else None,
