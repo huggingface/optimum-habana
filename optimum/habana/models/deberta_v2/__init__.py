@@ -1,0 +1,1 @@
+from .modeling_deberta_v2 import GaudiDebertaV2ForQuestionAnswering, GaudiDebertaV2ForSequenceClassification

@@ -17,6 +17,7 @@
 #  limitations under the License.
 
 from .gaudi_configuration import GaudiConfig
+from .models.deberta_v2 import GaudiDebertaV2ForQuestionAnswering, GaudiDebertaV2ForSequenceClassification
 from .models.gpt2 import GaudiGPT2LMHeadModel
 from .models.t5 import GaudiT5ForConditionalGeneration
 from .trainer import GaudiTrainer

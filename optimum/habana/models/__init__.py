@@ -1,1 +1,1 @@
-from . import gpt2, t5
+from . import deberta_v2, gpt2, t5
