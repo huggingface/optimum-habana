@@ -162,11 +162,11 @@ gaudi_config = GaudiConfig.from_pretrained(
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
 |            | Text Classification | Question Answering | Language Modeling  | Summarization      | Translation        | Single Card        | Multi Card         |
-|------------|:-------------------:|:------------------:|:------------------:|:------------------:|:-----------------:|:------------------:|:------------------:|
-| BERT       | :heavy_check_mark:  | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
-| RoBERTa    | ✗                   | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
-| ALBERT     | ✗                   | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
-| DistilBERT | ✗                   | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
+|------------|:-------------------:|:------------------:|:-----------------:|:------------------:|:------------------:|:-----------------:|:------------------:|
+| BERT       | :heavy_check_mark:  | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
+| RoBERTa    | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
+| ALBERT     | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
+| DistilBERT | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
 | GPT2       | ✗                   | ✗                  | :heavy_check_mark: | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
 | T5         | ✗                   | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
 
