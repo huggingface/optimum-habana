@@ -28,15 +28,15 @@ Here we show how to fine-tune a Vision Transformer (`ViT`) on the [beans](https:
 ```bash
 python run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
-    --dataset_name beans \
-    --output_dir ./beans_outputs/ \
+    --dataset_name cifar10 \
+    --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
     --do_train \
     --do_eval \
     --learning_rate 2e-5 \
     --num_train_epochs 5 \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
+    --per_device_train_batch_size 64 \
+    --per_device_eval_batch_size 64 \
     --evaluation_strategy epoch \
     --save_strategy epoch \
     --load_best_model_at_end True \
@@ -80,7 +80,7 @@ In other words, you need to organize your images in subfolders, based on their c
 python run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
     --train_dir <path-to-train-root> \
-    --output_dir ./outputs/ \
+    --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
     --do_train \
     --do_eval \
@@ -169,15 +169,15 @@ Here is how you would fine-tune ViT on the beans dataset using 8 HPUs:
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_image_classification.py \
     --model_name_or_path google/vit-base-patch16-224-in21k \
-    --dataset_name beans \
-    --output_dir ./beans_outputs/ \
+    --dataset_name cifar10 \
+    --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
     --do_train \
     --do_eval \
     --learning_rate 2e-5 \
     --num_train_epochs 5 \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
+    --per_device_train_batch_size 64 \
+    --per_device_eval_batch_size 64 \
     --evaluation_strategy epoch \
     --save_strategy epoch \
     --load_best_model_at_end True \
