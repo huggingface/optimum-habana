@@ -22,5 +22,21 @@
                 ]
             }
         }
+    },
+    "wikitext": {
+        "num_train_epochs": 3,
+        "eval_batch_size": 8,
+        "distribution": {
+            "multi_card": {
+                "learning_rate": 5e-5,
+                "train_batch_size": 8,
+                "perplexity": 3.4669,
+                "train_runtime": 56.5798,
+                "extra_arguments": [
+                    "--dataset_config_name wikitext-2-raw-v1",
+                    "--ddp_find_unused_parameters"
+                ]
+            }
+        }
     }
 }

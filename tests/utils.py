@@ -58,7 +58,7 @@ VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION = [
 VALID_MODELS_FOR_LANGUAGE_MODELING = [
     "gpt2",
     # "bert",
-    # "roberta",
+    "roberta",
     # "albert",
     # "distilbert",
 ]
