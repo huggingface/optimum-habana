@@ -13,8 +13,6 @@ jobs:
   example-diff:
     name: Test examples differences
     runs-on: [self-hosted, hpu]
-    strategy:
-      fail-fast: false
     container:
       image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
       env:
@@ -30,11 +28,9 @@ jobs:
           /bin/bash tests/ci/example_diff_tests.sh
   multi-card:
     name: Test multi-card models
-    needs:
-      - example-diff  # run the job when the previous test job is done
+    if: ${{ always() }}
+    needs: [example-diff]
     runs-on: [self-hosted, hpu]
-    strategy:
-      fail-fast: false
     container:
       image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
       env:
@@ -50,12 +46,9 @@ jobs:
           /bin/bash tests/ci/slow_tests_8x.sh
   single-card:
     name: Test single-card models
-    needs:
-      - example-diff
-      - multi-card  # run the job when the previous test jobs are done
+    if: ${{ always() }}
+    needs: [example-diff, multi-card]
     runs-on: [self-hosted, hpu] # run the job on the newly created runner
-    strategy:
-      fail-fast: false
     container:
       image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
       env:
@@ -71,10 +64,8 @@ jobs:
           /bin/bash tests/ci/slow_tests_1x.sh
   albert-xxl-single-card:
     name: Test single-card ALBERT XXL
-    needs:
-      - example-diff
-      - multi-card
-      - single-card  # run the job when the previous test jobs are done
+    if: ${{ always() }}
+    needs: [example-diff, multi-card, single-card]
     runs-on: [self-hosted, hpu] # run the job on the newly created runner
     container:
       image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
