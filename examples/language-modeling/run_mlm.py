@@ -41,7 +41,6 @@ from transformers import (
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     HfArgumentParser,
-    Trainer,
     is_torch_tpu_available,
     set_seed,
 )

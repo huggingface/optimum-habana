@@ -2,13 +2,14 @@
 < 
 35a35
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-45d44
+44,45d43
+<     Trainer,
 <     TrainingArguments,
-219c218
+219c217
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-244a244,250
+244a243,249
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -16,22 +17,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-247,248c253,255
+247,248c252,254
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-250d256
+250d255
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-541c547
+541c546
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-542a549
+542a548
 >         gaudi_config=gaudi_config,
-604,608d610
+604,608d609
 < 
 < 
 < def _mp_fn(index):
