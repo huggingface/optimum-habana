@@ -26,6 +26,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Run Diff
         run: |
+          export HOME=/root
           /bin/bash tests/ci/example_diff_tests.sh
   multi-card:
     name: Test multi-card models
