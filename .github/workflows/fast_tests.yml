@@ -26,7 +26,6 @@ jobs:
     steps:
       - name: Delete cache
         run: |
-          rm -rf /__w/optimum-habana
           rm -rf /github/home/*
       - name: Checkout
         uses: actions/checkout@v2
