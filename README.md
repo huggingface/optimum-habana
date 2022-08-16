@@ -21,7 +21,7 @@ limitations under the License.
 
 🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
 It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU settings for different downstream tasks.
-The current release focuses on question answering and text classification and enables users to try other models for other tasks with only a few changes.
+The list of officially validated models and tasks is available [here](https://github.com/huggingface/optimum-habana#validated-models). Users can try other models and tasks with only few changes.
 
 
 ## What is a Habana Processing Unit (HPU)?
@@ -42,8 +42,10 @@ Optimum Habana is a fast-moving project, and you may want to install it from sou
 
 Last but not least, don't forget to install requirements for every example:
 
-`cd <example-folder>
-pip install -r requirements.txt`
+```bash
+cd <example-folder>
+pip install -r requirements.txt
+```
 
 > Alternatively, you can install the package without pip as follows:
 > ```bash
@@ -159,14 +161,15 @@ gaudi_config = GaudiConfig.from_pretrained(
 ## Validated Models
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
-|            | Text Classification | Question Answering | Language Modeling  | Summarization      | Translation        | Single Card        | Multi Card         |
-|------------|:-------------------:|:------------------:|:------------------:|:------------------:|:-----------------:|:------------------:|:------------------:|
-| BERT       | :heavy_check_mark:  | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
-| RoBERTa    | ✗                   | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
-| ALBERT     | ✗                   | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
-| DistilBERT | ✗                   | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
-| GPT2       | ✗                   | ✗                  | :heavy_check_mark: | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: |
-| T5         | ✗                   | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+|            | Text Classification | Question Answering | Language Modeling  | Summarization      | Translation        | Image Classification | Single Card        | Multi Card         |
+|------------|:-------------------:|:------------------:|:------------------:|:------------------:|:-----------------:|:--------------------:|:------------------:|:------------------:|
+| BERT       | :heavy_check_mark:  | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | ✗                    | :heavy_check_mark: | :heavy_check_mark: |
+| RoBERTa    | ✗                   | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | ✗                    | :heavy_check_mark: | :heavy_check_mark: |
+| ALBERT     | ✗                   | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | ✗                    | :heavy_check_mark: | :heavy_check_mark: |
+| DistilBERT | ✗                   | :heavy_check_mark: | ✗                  | ✗                  | ✗                  | ✗                    | :heavy_check_mark: | :heavy_check_mark: |
+| GPT2       | ✗                   | ✗                  | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | :heavy_check_mark: | :heavy_check_mark: |
+| T5         | ✗                   | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: | ✗                    | :heavy_check_mark: | :heavy_check_mark: |
+| ViT        | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | :heavy_check_mark:   | :heavy_check_mark: | :heavy_check_mark: |
 
 Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 

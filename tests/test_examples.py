@@ -26,6 +26,7 @@ from unittest import TestCase
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_CAUSAL_LM_MAPPING,
+    MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
@@ -34,6 +35,7 @@ from transformers.testing_utils import slow
 
 from .utils import (
     MODELS_TO_TEST_MAPPING,
+    VALID_MODELS_FOR_IMAGE_CLASSIFICATION,
     VALID_MODELS_FOR_LANGUAGE_MODELING,
     VALID_MODELS_FOR_QUESTION_ANSWERING,
     VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION,
@@ -97,6 +99,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
         VALID_SEQ2SEQ_MODELS,
     ),
+    "run_image_classification": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
+        VALID_MODELS_FOR_IMAGE_CLASSIFICATION,
+    ),
 }
 
 
@@ -117,7 +124,7 @@ class ExampleTestMeta(type):
             test_albert_xxl_1x = ("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])
             if model_name != "albert-xxlarge-v1" or multi_card or test_albert_xxl_1x:
                 attrs[
-                    f"test_{example_name}_{model_name}_{'multi_card' if multi_card else 'single_card'}"
+                    f"test_{example_name}_{model_name.split('/')[-1]}_{'multi_card' if multi_card else 'single_card'}"
                 ] = cls._create_test(model_name, gaudi_config_name, multi_card)
         attrs["EXAMPLE_NAME"] = example_name
         return super().__new__(cls, name, bases, attrs)
@@ -149,7 +156,9 @@ class ExampleTestMeta(type):
 
             self._install_requirements(example_script.parent / "requirements.txt")
 
-            path_to_baseline = BASELINE_DIRECTORY / Path(model_name.replace("-", "_")).with_suffix(".json")
+            path_to_baseline = BASELINE_DIRECTORY / Path(model_name.split("/")[-1].replace("-", "_")).with_suffix(
+                ".json"
+            )
             with path_to_baseline.open("r") as json_file:
                 baseline = json.load(json_file)[self.TASK_NAME]
 
@@ -209,6 +218,7 @@ class ExampleTesterBase(TestCase):
     DATASET_PARAMETER_NAME = "dataset_name"
     REGRESSION_METRICS = {
         "eval_f1": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
+        "eval_accuracy": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
         "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "train_runtime": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
@@ -331,3 +341,15 @@ class MultiCardSummarizationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
 ):
     TASK_NAME = "cnn_dailymail"
+
+
+class ImageClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification"
+):
+    TASK_NAME = "beans"
+
+
+class MultiCardImageClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification", multi_card=True
+):
+    TASK_NAME = "beans"
