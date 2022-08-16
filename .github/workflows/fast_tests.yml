@@ -12,13 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  clean:
-    name: Clean temporary files
-    runs-on: [self-hosted, hpu]
-    steps:
-      - name: Delete cache
-        run: |
-          rm -rf /opt/github-actions-runner/_work/_temp
   do-the-job:
     strategy:
       fail-fast: false
@@ -31,6 +24,11 @@ jobs:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
       options: --cap-add=sys_nice --runtime=habana
     steps:
+      - name: Delete cache
+        run: |
+          rm -rf /github/home/*
+          echo HERE
+          ll /github/home
       - name: Checkout
         uses: actions/checkout@v2
       - name: Run tests
