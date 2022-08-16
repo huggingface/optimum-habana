@@ -28,7 +28,7 @@ jobs:
         run: |
           rm -rf /github/home/*
           echo HERE
-          ll /github/home
+          ls -al /github/home
       - name: Checkout
         uses: actions/checkout@v2
       - name: Run tests
