@@ -60,8 +60,7 @@ python run_glue.py \
 
 ### Multi-card Training
 
-Here is how you would fine-tune the BERT large model (with whole word masking) on the text classification MRPC task using the `run_glue`
-script, with 8 HPUs:
+Here is how you would fine-tune the BERT large model (with whole word masking) on the text classification MRPC task using the `run_glue` script, with 8 HPUs:
 
 ```bash
 python ../gaudi_spawn.py \
