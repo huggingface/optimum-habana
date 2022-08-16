@@ -13,14 +13,14 @@ jobs:
   example-diff:
     name: Test examples differences
     runs-on: [self-hosted, hpu]
+    strategy:
+      fail-fast: false
     container:
       image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace --rm
-      volumes:
-        - /opt/github-actions-runners/_work:/root/workspace
+      options: --cap-add=sys_nice --runtime=habana
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -33,19 +33,20 @@ jobs:
     needs:
       - example-diff  # run the job when the previous test job is done
     runs-on: [self-hosted, hpu]
+    strategy:
+      fail-fast: false
     container:
       image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace --rm
-      volumes:
-        - /opt/github-actions-runners/_work:/root/workspace
+      options: --cap-add=sys_nice --runtime=habana
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Run Multi-Cards Tests
         run: |
+          export HOME=/root
           /bin/bash tests/ci/slow_tests_8x.sh
   single-card:
     name: Test single-card models
@@ -53,19 +54,20 @@ jobs:
       - example-diff
       - multi-card  # run the job when the previous test jobs are done
     runs-on: [self-hosted, hpu] # run the job on the newly created runner
+    strategy:
+      fail-fast: false
     container:
       image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace --rm
-      volumes:
-        - /opt/github-actions-runners/_work:/root/workspace
+      options: --cap-add=sys_nice --runtime=habana
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Run Single-Card Tests
         run: |
+          export HOME=/root
           /bin/bash tests/ci/slow_tests_1x.sh
   albert-xxl-single-card:
     name: Test single-card ALBERT XXL
@@ -79,9 +81,7 @@ jobs:
       env:
         HABANA_VISIBLE_DEVICES: all
         OMPI_MCA_btl_vader_single_copy_mechanism: none
-      options: --cap-add=sys_nice --runtime=habana --workdir=/root/workspace --rm
-      volumes:
-        - /opt/github-actions-runners/_work:/root/workspace
+      options: --cap-add=sys_nice --runtime=habana
     steps:
       - name: Checkout
         if: github.event.schedule == '0 23 * * 6'
@@ -89,6 +89,7 @@ jobs:
       - name: Run Single-Card ALBERT XXL Tests
         if: github.event.schedule == '0 23 * * 6'
         run: |
+          export HOME=/root
           /bin/bash tests/ci/albert_xxl_1x.sh
       - name: Warning
         if: github.event.schedule != '0 23 * * 6'
