@@ -1,1 +1,1 @@
-from . import gpt2, t5
+from . import gpt2, t5, vit

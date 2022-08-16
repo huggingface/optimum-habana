@@ -1,0 +1,36 @@
+{
+    "beans": {
+        "num_train_epochs": 5,
+        "eval_batch_size": 8,
+        "distribution": {
+            "single_card": {
+                "learning_rate": 2e-5,
+                "train_batch_size": 8,
+                "eval_accuracy": 0.985,
+                "train_runtime": 92.8927,
+                "extra_arguments": [
+                    "--remove_unused_columns False",
+                    "--evaluation_strategy epoch",
+                    "--save_strategy epoch",
+                    "--load_best_model_at_end True",
+                    "--save_total_limit 3",
+                    "--seed 1337"
+                ]
+            },
+            "multi_card": {
+                "learning_rate": 2e-5,
+                "train_batch_size": 8,
+                "eval_accuracy": 0.985,
+                "train_runtime": 50.8835,
+                "extra_arguments": [
+                    "--remove_unused_columns False",
+                    "--evaluation_strategy epoch",
+                    "--save_strategy epoch",
+                    "--load_best_model_at_end True",
+                    "--save_total_limit 3",
+                    "--seed 1337"
+                ]
+            }
+        }
+    }
+}
