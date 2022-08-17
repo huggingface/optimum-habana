@@ -71,3 +71,8 @@ doc: build_doc_docker_image
 		--version $(VERSION) \
 		--html \
 		--clean
+
+clean:
+	find . -name "habana_log.livealloc.log_*" -type f -delete
+	find . -name .lock -type f -delete
+	find . -name .graph_dumps -type d -delete
