@@ -1,4 +1,4 @@
-name: check_code_quality
+name: Check code quality
 
 on:
   push:
@@ -43,7 +43,7 @@ jobs:
     - name: Check style with black
       run: |
         source venv/bin/activate
-        black --check .
+        black --check --preview .
     - name: Check style with isort
       run: |
         source venv/bin/activate
