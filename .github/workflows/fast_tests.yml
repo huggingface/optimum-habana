@@ -2,8 +2,6 @@ name: Unit and integration tests
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
 
