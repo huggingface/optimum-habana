@@ -7,7 +7,7 @@
                 "learning_rate": 5e-5,
                 "train_batch_size": 8,
                 "eval_f1": 85.4623,
-                "train_runtime": 1271.3292,
+                "train_runtime": 1611.9473,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -16,7 +16,7 @@
                 "learning_rate": 5e-5,
                 "train_batch_size": 8,
                 "eval_f1": 85.447,
-                "train_runtime": 264.8974,
+                "train_runtime": 306.348,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]

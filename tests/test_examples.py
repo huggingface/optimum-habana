@@ -296,7 +296,7 @@ class ExampleTesterBase(TestCase):
             if metric_name in baseline:
                 number_asserted_metrics += 1
                 assert_function, threshold_factor = assert_function_and_threshold
-                assert_function(self, results[metric_name], threshold_factor * baseline[metric_name])
+                assert_function(self, results[metric_name], threshold_factor * baseline[metric_name], msg=f"for metric {metric_name}.")
         self.assertGreaterEqual(
             number_asserted_metrics,
             2,

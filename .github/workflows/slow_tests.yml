@@ -1,4 +1,4 @@
-name: Non-regression tests (On-Prem)
+name: Non-regression tests (on-prem)
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   example-diff:
-    name: Test examples differences
+    name: Test example differences
     runs-on: [self-hosted, hpu]
     container:
       image: vault.habana.ai/gaudi-docker/1.5.0/ubuntu20.04/habanalabs/pytorch-installer-1.11.0:1.5.0-610
@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Run Diff
+      - name: Check diff between examples of Transformers and Optimum Habana
         run: |
           export HOME=/root
           /bin/bash tests/ci/example_diff_tests.sh
@@ -40,7 +40,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Run Multi-Cards Tests
+      - name: Run multi-card tests
         run: |
           export HOME=/root
           /bin/bash tests/ci/slow_tests_8x.sh
@@ -58,7 +58,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Run Single-Card Tests
+      - name: Run single-card tests
         run: |
           export HOME=/root
           /bin/bash tests/ci/slow_tests_1x.sh
@@ -77,7 +77,7 @@ jobs:
       - name: Checkout
         if: github.event.schedule == '0 23 * * 6'
         uses: actions/checkout@v2
-      - name: Run Single-Card ALBERT XXL Tests
+      - name: Run single-card ALBERT XXL test
         if: github.event.schedule == '0 23 * * 6'
         run: |
           export HOME=/root
