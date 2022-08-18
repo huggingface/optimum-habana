@@ -13,6 +13,9 @@
 #  limitations under the License.
 SHELL := /bin/bash
 CURRENT_DIR = $(shell pwd)
+DEFAULT_CLONE_URL := https://github.com/huggingface/optimum-habana.git
+# If CLONE_URL is empty, revert to DEFAULT_CLONE_URL
+REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
 
 .PHONY:	style test
@@ -60,7 +63,7 @@ pypi_upload: build_dist
 	python -m twine upload dist/*
 
 build_doc_docker_image:
-	docker build -t doc_maker --build-arg commit_sha=$(COMMIT_SHA_SUBPACKAGE) --build-arg clone_url=$(CLONE_URL) ./docs
+	docker build -t doc_maker --build-arg commit_sha=$(COMMIT_SHA_SUBPACKAGE) --build-arg clone_url=$(REAL_CLONE_URL) ./docs
 
 doc: build_doc_docker_image
 	@test -n "$(BUILD_DIR)" || (echo "BUILD_DIR is empty." ; exit 1)
