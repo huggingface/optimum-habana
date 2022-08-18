@@ -36,13 +36,7 @@ from transformers.configuration_utils import PretrainedConfig
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.integrations import hp_params
-from transformers.modeling_utils import ModuleUtilsMixin, PreTrainedModel, unwrap_model
-from transformers.models.albert.modeling_albert import (  # TODO: change how tweaked classes/functions are managed
-    AlbertModel,
-)
-from transformers.models.vit.modeling_vit import (  # TODO: change how tweaked classes/functions are managed
-    ViTSelfAttention,
-)
+from transformers.modeling_utils import PreTrainedModel, unwrap_model
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
@@ -78,14 +72,7 @@ from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
-from .modeling_utils import (
-    PRETRAINED_TO_GAUDI_REGISTRY,
-    gaudi_albert_forward,
-    gaudi_get_extended_attention_mask,
-    gaudi_invert_attention_mask,
-    to_gaudi_for_accelerated_generation,
-)
-from .models.vit import gaudi_vit_self_attention_forward  # TODO: change how tweaked classes/functions are managed
+from .modeling_utils import adapt_transformers_to_gaudi
 from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
 from .training_args import GaudiTrainingArguments
 
@@ -130,15 +117,6 @@ class GaudiTrainer(Trainer):
             output_dir = "tmp_trainer"
             logger.info(f"No `GaudiTrainingArguments` passed, using `output_dir={output_dir}`.")
             args = GaudiTrainingArguments(output_dir=output_dir)
-
-        # TODO: change how tweaked classes/functions are managed
-        ViTSelfAttention.forward = gaudi_vit_self_attention_forward
-
-        # In lazy_mode, decoder or encoder-decoder architectures are slightly
-        # modified to accelerate the generation process
-        # TODO: change how tweaked classes/functions are managed
-        if args.use_habana and model.__class__ in PRETRAINED_TO_GAUDI_REGISTRY and model is not None:
-            model = to_gaudi_for_accelerated_generation(model)
 
         super().__init__(
             model,
@@ -191,15 +169,6 @@ class GaudiTrainer(Trainer):
                             isVerbose=self.gaudi_config.hmp_is_verbose,
                         )
 
-                # TODO: change how tweaked classes/functions are managed
-                # When HMP is enabled, replace invert_attention_mask and get_extended_attention_mask
-                # so that HMP is disabled for specific parts of the code
-                ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
-                ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
-                # AlbertModel.forward does not rely on get_extended_attention_mask so it also needs
-                # to be replaced when using HMP
-                AlbertModel.forward = gaudi_albert_forward
-
             if self.gaudi_config.use_fused_clip_norm:
                 try:
                     from habana_frameworks.torch.hpex.normalization import FusedClipNorm
@@ -220,6 +189,9 @@ class GaudiTrainer(Trainer):
         # transformers.utils.logging
         log_level = args.get_process_log_level()
         logging.set_verbosity(log_level)
+
+        # Some methods needs to be tweaked to optimally run on Gaudi
+        adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision)
 
     def create_optimizer(self):
         """
