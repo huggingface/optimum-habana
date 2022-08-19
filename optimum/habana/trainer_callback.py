@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Callbacks to use with the Trainer class and customize the training loop.
+Callbacks to use with the GaudiTrainer class to customize the training loop.
 """
 import numpy as np
 from tqdm.auto import tqdm
@@ -24,7 +24,7 @@ from transformers.trainer_callback import ProgressCallback
 
 class GaudiProgressCallback(ProgressCallback):
     """
-    Built on top of [`ProgressCallback`] to display live memory consumption.
+    Built on top of [`ProgressCallback`] to display live memory consumption on Gaudi.
     """
 
     def on_train_begin(self, args, state, control, **kwargs):
