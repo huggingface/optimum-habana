@@ -45,7 +45,7 @@ from transformers.models.vit.modeling_vit import (  # TODO: change how tweaked c
 )
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-from transformers.trainer_callback import TrainerCallback, TrainerState
+from transformers.trainer_callback import ProgressCallback, TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
     DistributedTensorGatherer,
     IterableDatasetShard,
@@ -86,6 +86,7 @@ from .modeling_utils import (
     to_gaudi_for_accelerated_generation,
 )
 from .models.vit import gaudi_vit_self_attention_forward  # TODO: change how tweaked classes/functions are managed
+from .trainer_callback import GaudiProgressCallback
 from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
 from .training_args import GaudiTrainingArguments
 
@@ -213,6 +214,10 @@ class GaudiTrainer(Trainer):
                     self.model.parameters(),
                     self.args.max_grad_norm,
                 )
+        if self.args.use_habana and self.args.gaudi_memory_stats:
+            # Replace ProgressCallback by GaudiProgressCallback
+            self.remove_callback(ProgressCallback)
+            self.add_callback(GaudiProgressCallback)
 
         # Set the correct log level depending on the node
         # Already done in super().init() but we have to do it again

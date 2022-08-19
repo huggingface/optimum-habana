@@ -79,6 +79,18 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    gaudi_memory_stats: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to print memory statistics during training. If True, the following metrics will be displayed:"
+                " 1) Current memory consumption ('mem');"
+                " 2) Maximum memory consumption ('max');"
+                " 3) Total memory on the device ('total')."
+            )
+        },
+    )
+
     # Override the default value of epsilon to be consistent with Habana FusedAdamW
     adam_epsilon: float = field(
         default=1e-6,
