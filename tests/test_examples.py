@@ -27,6 +27,7 @@ from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_CAUSAL_LM_MAPPING,
     MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
+    MODEL_FOR_MASKED_LM_MAPPING,
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
@@ -103,6 +104,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
         VALID_MODELS_FOR_IMAGE_CLASSIFICATION,
+    ),
+    "run_mlm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_MASKED_LM_MAPPING,
+        VALID_MODELS_FOR_LANGUAGE_MODELING,
     ),
 }
 
@@ -332,11 +338,11 @@ class MultiCardQuestionAnsweringExampleTester(
     TASK_NAME = "squad"
 
 
-class LanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
+class CausalLanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
     TASK_NAME = "wikitext"
 
 
-class MultiCardLanguageModelingExampleTester(
+class MultiCardCausalLanguageModelingExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm", multi_card=True
 ):
     TASK_NAME = "wikitext"
@@ -358,3 +364,9 @@ class MultiCardImageClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification", multi_card=True
 ):
     TASK_NAME = "beans"
+
+
+class MultiCardMaskedLanguageModelingExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_mlm", multi_card=True
+):
+    TASK_NAME = "wikitext"
