@@ -225,20 +225,34 @@ class GaudiTrainingArguments(TrainingArguments):
 
             device = torch.device("hpu")
             self._n_gpu = 1
-            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
-            world_size, rank, self.local_rank = initialize_distributed_hpu()
+            if self.deepspeed:
+                # deepspeed inits torch.distributed internally
+                from transformers.deepspeed import is_deepspeed_available
 
-            if self.local_rank != -1:
-                if world_size > hthpu.device_count():
-                    raise RuntimeError(
-                        f"world_size is equal to {world_size} but there are only {hthpu.device_count()} devices."
-                    )
-                if not torch.distributed.is_initialized():
-                    torch.distributed.init_process_group(backend="hccl", rank=self.local_rank, world_size=world_size)
-                    logger.info("Enabled distributed run.")
+                if not is_deepspeed_available():
+                    raise ImportError("--deepspeed requires deepspeed: `pip install deepspeed`.")
+                import deepspeed
+
+                deepspeed.init_distributed(dist_backend="hccl")
+                logger.info("DeepSpeed is enabled.")
             else:
-                logger.info("Single node run.")
+                from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+
+                world_size, rank, self.local_rank = initialize_distributed_hpu()
+
+                if self.local_rank != -1:
+                    if world_size > hthpu.device_count():
+                        raise RuntimeError(
+                            f"world_size is equal to {world_size} but there are only {hthpu.device_count()} devices."
+                        )
+                    if not torch.distributed.is_initialized():
+                        torch.distributed.init_process_group(
+                            backend="hccl", rank=self.local_rank, world_size=world_size
+                        )
+                        logger.info("Enabled distributed run.")
+                else:
+                    logger.info("Single node run.")
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
