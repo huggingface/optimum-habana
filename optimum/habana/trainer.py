@@ -288,6 +288,10 @@ class GaudiTrainer(Trainer):
             dtype = torch.bfloat16 if self.use_cpu_amp else torch.float32
             model = self.ipex_optimize_model(model, training, dtype=dtype)
 
+        # already initialized its own DDP and AMP
+        if self.deepspeed:
+            return self.deepspeed
+
         # train/eval could be run multiple-times - if already wrapped, don't re-wrap it again
         if unwrap_model(model) is not model:
             return model
@@ -456,7 +460,17 @@ class GaudiTrainer(Trainer):
         if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:
             debug_overflow = DebugUnderflowOverflow(self.model)  # noqa
 
-        self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+        if args.deepspeed:
+            deepspeed_engine, optimizer, lr_scheduler = deepspeed_init(
+                self, num_training_steps=max_steps, resume_from_checkpoint=resume_from_checkpoint
+            )
+            self.model = deepspeed_engine.module
+            self.model_wrapped = deepspeed_engine
+            self.deepspeed = deepspeed_engine
+            self.optimizer = optimizer
+            self.lr_scheduler = lr_scheduler
+        else:
+            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
         self.state = TrainerState()
         self.state.is_hyper_param_search = trial is not None
@@ -632,13 +646,19 @@ class GaudiTrainer(Trainer):
                 if args.use_lazy_mode:
                     self.htcore.mark_step()
 
+                # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
+                if self.deepspeed:
+                    self.deepspeed.step()
+
                 if (step + 1) % args.gradient_accumulation_steps == 0 or (
                     # last step in epoch but step is always smaller than gradient_accumulation_steps
                     steps_in_epoch <= args.gradient_accumulation_steps
                     and (step + 1) == steps_in_epoch
                 ):
                     # Gradient clipping
-                    if args.max_grad_norm is not None and args.max_grad_norm > 0:
+                    if args.max_grad_norm is not None and args.max_grad_norm > 0 and not self.deepspeed:
+                        # deepspeed does its own clipping
+
                         if hasattr(self.optimizer, "clip_grad_norm"):
                             # Some optimizers (like the sharded optimizer) have a specific way to do gradient clipping
                             self.optimizer.clip_grad_norm(args.max_grad_norm)
@@ -660,7 +680,9 @@ class GaudiTrainer(Trainer):
 
                     # Optimizer step
                     optimizer_was_run = True
-                    if (
+                    if self.deepspeed:
+                        pass  # called outside the loop
+                    elif (
                         args.use_habana
                         and self.gaudi_config.use_habana_mixed_precision
                         and not (self.gaudi_config.use_fused_adam)
@@ -670,7 +692,7 @@ class GaudiTrainer(Trainer):
                     else:
                         self.optimizer.step()
 
-                    if optimizer_was_run:
+                    if optimizer_was_run and not self.deepspeed:
                         self.lr_scheduler.step()
 
                     model.zero_grad(set_to_none=True)
@@ -769,9 +791,14 @@ class GaudiTrainer(Trainer):
 
         output_dir = os.path.join(run_dir, checkpoint_folder)
         self.save_model(output_dir, _internal_call=True)
+        if self.deepspeed:
+            # under zero3 model file itself doesn't get saved since it's bogus! Unless deepspeed
+            # config `stage3_gather_16bit_weights_on_model_save` is True
+            self.deepspeed.save_checkpoint(output_dir)
 
         # Save optimizer and scheduler
-        if self.args.should_save:
+        if self.args.should_save and not self.deepspeed:
+            # deepspeed.save_checkpoint above saves model/optim/sched
             # This block is exectuted by the main process only
             optim_dict = self.optimizer.state_dict()
             scheduler_dict = self.lr_scheduler.state_dict()
@@ -842,6 +869,10 @@ class GaudiTrainer(Trainer):
         if checkpoint is None:
             return
 
+        if self.deepspeed:
+            # deepspeed loads optimizer/lr_scheduler together with the model in deepspeed_init
+            return
+
         if os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) and os.path.isfile(
             os.path.join(checkpoint, SCHEDULER_NAME)
         ):
@@ -884,6 +915,17 @@ class GaudiTrainer(Trainer):
         args = self.args
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
+
+        # if eval is called w/o train init deepspeed here
+        if args.deepspeed and not self.deepspeed:
+            # XXX: eval doesn't have `resume_from_checkpoint` arg but we should be able to do eval
+            # from the checkpoint eventually
+            deepspeed_engine, _, _ = deepspeed_init(
+                self, num_training_steps=0, resume_from_checkpoint=None, inference=True
+            )
+            self.model = deepspeed_engine.module
+            self.model_wrapped = deepspeed_engine
+            self.deepspeed = deepspeed_engine
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
@@ -1165,6 +1207,20 @@ class GaudiTrainer(Trainer):
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
 
+        # if eval is called w/o train init deepspeed here
+        if args.deepspeed and not self.deepspeed:
+            # XXX: eval doesn't have `resume_from_checkpoint` arg but we should be able to do eval
+            # from the checkpoint eventually
+            deepspeed_engine, _, _ = deepspeed_init(self, num_training_steps=0, resume_from_checkpoint=None)
+            self.model = deepspeed_engine.module
+            self.model_wrapped = deepspeed_engine
+            self.deepspeed = deepspeed_engine
+            # XXX: we don't need optim/sched for inference, but this needs to be sorted out, since
+            # for example the Z3-optimizer is a must for zero3 to work even for inference - what we
+            # don't need is the deepspeed basic optimizer which is self.optimizer.optimizer
+            deepspeed_engine.optimizer.optimizer = None
+            deepspeed_engine.lr_scheduler = None
+
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
         batch_size = dataloader.batch_size
@@ -1279,7 +1335,33 @@ class GaudiTrainer(Trainer):
         if output_dir is None:
             output_dir = self.args.output_dir
 
-        if self.args.should_save:
+        if self.deepspeed:
+            # this takes care of everything as long as we aren't under zero3
+            if self.args.should_save:
+                self._save(output_dir)
+
+            if is_deepspeed_zero3_enabled():
+                # It's too complicated to try to override different places where the weights dump gets
+                # saved, so since under zero3 the file is bogus, simply delete it. The user should
+                # either user deepspeed checkpoint to resume or to recover full weights use
+                # zero_to_fp32.py stored in the checkpoint.
+                if self.args.should_save:
+                    file = os.path.join(output_dir, WEIGHTS_NAME)
+                    if os.path.isfile(file):
+                        # logger.info(f"deepspeed zero3: removing {file}, see zero_to_fp32.py to recover weights")
+                        os.remove(file)
+
+                # now save the real model if stage3_gather_16bit_weights_on_model_save=True
+                # if false it will not be saved.
+                # This must be called on all ranks
+                if not self.deepspeed.save_16bit_model(output_dir, WEIGHTS_NAME):
+                    logger.warning(
+                        "deepspeed.save_16bit_model didn't save the model, since"
+                        " stage3_gather_16bit_weights_on_model_save=false. Saving the full checkpoint instead, use"
+                        " zero_to_fp32.py to recover weights"
+                    )
+                    self.deepspeed.save_checkpoint(output_dir)
+        elif self.args.should_save:
             self._save(output_dir)
 
         # Push to the Hub when `save_model` is called by the user.
