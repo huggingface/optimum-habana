@@ -37,7 +37,10 @@ QUALITY_REQUIRES = [
     "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
 ]
 
-DEEPSPEED_REQUIRES = ["deepspeed @ git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0"]
+DEEPSPEED_REQUIRES = [
+    "deepspeed @ git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0",
+    "accelerate",
+]
 
 EXTRAS_REQUIRE = {
     "tests": TESTS_REQUIRE,

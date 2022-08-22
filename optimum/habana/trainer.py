@@ -35,6 +35,7 @@ from transformers import Trainer, __version__
 from transformers.configuration_utils import PretrainedConfig
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
+from transformers.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations import hp_params
 from transformers.modeling_utils import ModuleUtilsMixin, PreTrainedModel, unwrap_model
 from transformers.models.albert.modeling_albert import (  # TODO: change how tweaked classes/functions are managed
@@ -77,6 +78,7 @@ from transformers.trainer_utils import (
 from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
+from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import (
     PRETRAINED_TO_GAUDI_REGISTRY,
@@ -563,7 +565,12 @@ class GaudiTrainer(Trainer):
         # _total_loss_scalar is updated everytime .item() has to be called on tr_loss and stores the sum of all losses
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
-        model.zero_grad(set_to_none=True)
+
+        # set_to_none is not implemented for some optimizers
+        try:
+            model.zero_grad(set_to_none=True)
+        except TypeError:
+            model.zero_grad()
 
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
@@ -695,7 +702,12 @@ class GaudiTrainer(Trainer):
                     if optimizer_was_run and not self.deepspeed:
                         self.lr_scheduler.step()
 
-                    model.zero_grad(set_to_none=True)
+                    # set_to_none is not implemented for some optimizers
+                    try:
+                        model.zero_grad(set_to_none=True)
+                    except TypeError:
+                        model.zero_grad()
+
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
                     if args.use_lazy_mode:
