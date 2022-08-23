@@ -461,7 +461,7 @@ class GaudiGenerationMixin(GenerationMixin):
             max_length=max_length, max_time=max_time, stopping_criteria=stopping_criteria
         )
 
-        # In lazy mode, imprt Haban torch to be able to add mark_step()
+        # In lazy mode, import Habana torch to be able to add mark_step()
         if lazy_mode:
             import habana_frameworks.torch.core as htcore
 
