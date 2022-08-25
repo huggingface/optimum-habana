@@ -20,8 +20,8 @@
             "multi_card": {
                 "learning_rate": 2e-5,
                 "train_batch_size": 8,
-                "eval_accuracy": 0.9699,
-                "train_runtime": 55.2972,
+                "eval_accuracy": 0.9774,
+                "train_runtime": 55.6244,
                 "extra_arguments": [
                     "--remove_unused_columns False",
                     "--evaluation_strategy epoch",

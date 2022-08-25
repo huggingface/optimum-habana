@@ -15,8 +15,8 @@
             "multi_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 12,
-                "eval_f1": 94.4686,
-                "train_runtime": 722.5256,
+                "eval_f1": 94.6277,
+                "train_runtime": 724.7578,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -30,8 +30,8 @@
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 8,
-                "perplexity": 2.7696,
-                "train_runtime": 119.2703,
+                "perplexity": 2.7612,
+                "train_runtime": 128.3589,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--ddp_find_unused_parameters"

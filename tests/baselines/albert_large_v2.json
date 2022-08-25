@@ -15,8 +15,8 @@
             "multi_card": {
                 "learning_rate": 6e-5,
                 "train_batch_size": 32,
-                "eval_f1": 92.0032,
-                "train_runtime": 586.76,
+                "eval_f1": 92.1164,
+                "train_runtime": 597.0415,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
