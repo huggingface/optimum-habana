@@ -434,8 +434,7 @@ class GaudiTrainer(Trainer):
                 from habana_frameworks.torch.hpex.normalization import FusedClipNorm
             except ImportError as error:
                 error.msg = (
-                    "Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'."
-                    f" {error.msg}."
+                    f"Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'. {error.msg}."
                 )
                 raise error
             self.FusedNorm = FusedClipNorm(
