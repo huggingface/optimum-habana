@@ -7,7 +7,7 @@
                 "learning_rate": 5e-5,
                 "train_batch_size": 4,
                 "perplexity": 21.0141,
-                "train_runtime": 802.3276,
+                "train_runtime": 707.0076,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1"
                 ]

@@ -6,8 +6,8 @@
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 24,
-                "eval_f1": 88.1726,
-                "train_runtime": 1222.6694,
+                "eval_f1": 88.0778,
+                "train_runtime": 1218.9293,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -30,8 +30,8 @@
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 32,
-                "eval_f1": 0.9005,
-                "train_runtime": 50.6568,
+                "eval_f1": 0.9008,
+                "train_runtime": 53.0406,
                 "extra_arguments": [
                     "--max_seq_length 128"
                 ]
