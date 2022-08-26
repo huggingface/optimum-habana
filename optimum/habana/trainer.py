@@ -169,19 +169,12 @@ class GaudiTrainer(Trainer):
                             isVerbose=self.gaudi_config.hmp_is_verbose,
                         )
 
-            if self.gaudi_config.use_fused_clip_norm:
-                try:
-                    from habana_frameworks.torch.hpex.normalization import FusedClipNorm
-                except ImportError as error:
-                    error.msg = (
-                        "Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'."
-                        f" {error.msg}."
-                    )
-                    raise error
-                self.FusedNorm = FusedClipNorm(
-                    self.model.parameters(),
-                    self.args.max_grad_norm,
-                )
+            try:
+                from habana_frameworks.torch.hpu import random as hpu_random
+            except ImportError as error:
+                error.msg = f"Could not import habana_frameworks.torch.hpu.random. {error.msg}."
+                raise error
+            self.hpu_random = hpu_random
 
         # Set the correct log level depending on the node
         # Already done in super().init() but we have to do it again
@@ -189,6 +182,8 @@ class GaudiTrainer(Trainer):
         # transformers.utils.logging
         log_level = args.get_process_log_level()
         logging.set_verbosity(log_level)
+        logging.enable_default_handler()
+        logging.enable_explicit_format()
 
         # Some methods needs to be tweaked to optimally run on Gaudi
         adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision)
@@ -340,21 +335,6 @@ class GaudiTrainer(Trainer):
             model_reloaded = True
             # Reinitializes optimizer and scheduler
             self.optimizer, self.lr_scheduler = None, None
-            # Reinitialize Habana fused clip norm to avoid inconsistencies
-            # If not done, test_model_init in test_trainer.py will fail
-            if args.use_habana and self.gaudi_config.use_fused_clip_norm:
-                try:
-                    from habana_frameworks.torch.hpex.normalization import FusedClipNorm
-                except ImportError as error:
-                    error.msg = (
-                        "Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'."
-                        f" {error.msg}."
-                    )
-                    raise error
-                self.FusedNorm = FusedClipNorm(
-                    self.model.parameters(),
-                    self.args.max_grad_norm,
-                )
 
         # Load potential model checkpoint
         if isinstance(resume_from_checkpoint, bool) and resume_from_checkpoint:
@@ -374,6 +354,7 @@ class GaudiTrainer(Trainer):
         inner_training_loop = find_executable_batch_size(
             self._inner_training_loop, self._train_batch_size, args.auto_find_batch_size
         )
+
         return inner_training_loop(
             args=args,
             resume_from_checkpoint=resume_from_checkpoint,
@@ -449,6 +430,19 @@ class GaudiTrainer(Trainer):
 
         # Check if saved optimizer or scheduler states exist
         self._load_optimizer_and_scheduler(resume_from_checkpoint)
+
+        if self.gaudi_config.use_fused_clip_norm:
+            try:
+                from habana_frameworks.torch.hpex.normalization import FusedClipNorm
+            except ImportError as error:
+                error.msg = (
+                    f"Could not import 'FusedClipNorm' from 'habana_frameworks.torch.hpex.normalization'. {error.msg}."
+                )
+                raise error
+            self.FusedNorm = FusedClipNorm(
+                model.parameters(),
+                args.max_grad_norm,
+            )
 
         # important: at this point:
         # self.model         is the Transformers Model
@@ -712,6 +706,45 @@ class GaudiTrainer(Trainer):
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
 
+    def _load_rng_state(self, checkpoint):
+        # Load RNG states from `checkpoint`
+        if checkpoint is None:
+            return
+
+        if self.args.world_size > 1:
+            process_index = self.args.process_index
+            rng_file = os.path.join(checkpoint, f"rng_state_{process_index}.pth")
+            if not os.path.isfile(rng_file):
+                logger.info(
+                    f"Didn't find an RNG file for process {process_index}, if you are resuming a training that "
+                    "wasn't launched in a distributed fashion, reproducibility is not guaranteed."
+                )
+                return
+        else:
+            rng_file = os.path.join(checkpoint, "rng_state.pth")
+            if not os.path.isfile(rng_file):
+                logger.info(
+                    "Didn't find an RNG file, if you are resuming a training that was launched in a distributed "
+                    "fashion, reproducibility is not guaranteed."
+                )
+                return
+
+        checkpoint_rng_state = torch.load(rng_file)
+        random.setstate(checkpoint_rng_state["python"])
+        np.random.set_state(checkpoint_rng_state["numpy"])
+        torch.random.set_rng_state(checkpoint_rng_state["cpu"])
+        if self.args.use_habana:
+            if self.args.local_rank != -1:
+                self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
+            else:
+                try:
+                    self.hpu_random.set_rng_state_all(checkpoint_rng_state["hpu"])
+                except Exception as e:
+                    logger.info(
+                        f"Didn't manage to set back the RNG states of the HPU because of the following error:\n {e}"
+                        "\nThis won't yield the same results as if the training had not been interrupted."
+                    )
+
     def _save_checkpoint(self, model, trial, metrics=None):
         # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
         # want to save except FullyShardedDDP.
@@ -788,6 +821,13 @@ class GaudiTrainer(Trainer):
             "numpy": np.random.get_state(),
             "cpu": torch.random.get_rng_state(),
         }
+
+        if self.args.use_habana:
+            if self.args.local_rank == -1:
+                # In non distributed, we save the global HPU RNG state
+                rng_states["hpu"] = self.hpu_random.get_rng_state_all()
+            else:
+                rng_states["hpu"] = self.hpu_random.get_rng_state()
 
         # A process can arrive here before the process 0 has a chance to save the model, in which case output_dir may
         # not yet exist.
