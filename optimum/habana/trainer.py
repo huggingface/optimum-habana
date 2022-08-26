@@ -182,6 +182,8 @@ class GaudiTrainer(Trainer):
         # transformers.utils.logging
         log_level = args.get_process_log_level()
         logging.set_verbosity(log_level)
+        logging.enable_default_handler()
+        logging.enable_explicit_format()
 
         # Some methods needs to be tweaked to optimally run on Gaudi
         adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision)
