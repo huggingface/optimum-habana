@@ -20,6 +20,7 @@ limitations under the License.
 In particular, you can use the two following ZeRO configurations that have been validated to be fully functioning with Gaudi:
 - ZeRO-1, which partitions the optimizer states across processes.
 - ZeRO-2, which additionnally partitions the gradients across processes so that each process retains only the gradients corresponding to its portion of the optimizer states.
+
 These configurations also enable you to train your model in *bf16* precision.
 
 You can find more information about DeepSpeed Gaudi integration [here](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/DeepSpeed_User_Guide.html).
@@ -31,6 +32,7 @@ This can be done in 3 steps:
 1. A DeepSpeed configuration has to be defined.
 2. The `deepspeed` training argument enables to specify the path to the DeepSpeed configuration.
 3. The `deepspeed` launcher must be used to run your script.
+
 These steps are detailed below.
 A comprehensive guide about how to use DeepSpeed with the Transformers Trainer is also available [here](https://huggingface.co/docs/transformers/main_classes/deepspeed).
 
@@ -80,7 +82,7 @@ training_args = GaudiTrainingArguments(
     # my training arguments
     use_habana=True,
     use_lazy_mode=True,
-    gaudi_config_name=parth_to_my_gaudi_config,
+    gaudi_config_name=path_to_my_gaudi_config,
     deepspeed=path_to_my_deepspeed_config,
 )
 ```

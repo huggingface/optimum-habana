@@ -270,10 +270,11 @@ class GaudiTrainingArguments(TrainingArguments):
         if isinstance(self.debug, str):
             self.debug = [DebugOption(s) for s in self.debug.split()]
 
+        # This call to self.device is necessary to call _setup_devices so that
+        # torch.distributed is initialized
+        device_is_hpu = self.device.type == "hpu"
         if self.deepspeed:
-            # This call to self.device is necessary to call _setup_devices so that
-            # torch.distributed is initialized
-            if self.device.type != "hpu":
+            if not device_is_hpu:
                 raise ValueError("This version of DeepSpeed must be run on HPUs.")
 
             # - must be run very last in arg parsing, since it will use a lot of these settings.
