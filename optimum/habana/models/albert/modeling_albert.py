@@ -2,7 +2,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 
-from habana_frameworks.torch.hpex import hmp
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 
 
@@ -52,11 +51,10 @@ def gaudi_albert_forward(
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
     extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-    # HMP is disabled because (1.0 - encoder_extended_attention_mask) may be converted into bf16
-    # while torch.finfo(self.dtype).min is the min value of fp32, which leads to NaNs
-    with hmp.disable_casts():
-        extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
-        extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(self.dtype).min
+    # torch.finfo must take the dtype of encoder_extended_attention_mask
+    extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # bf16 compatibility
+    extended_attention_mask = 1.0 - extended_attention_mask
+    extended_attention_mask = extended_attention_mask * torch.finfo(extended_attention_mask.dtype).min
     head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
     embedding_output = self.embeddings(

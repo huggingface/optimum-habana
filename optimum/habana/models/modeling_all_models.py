@@ -2,7 +2,6 @@ from typing import Tuple
 
 import torch
 
-from habana_frameworks.torch.hpex import hmp
 from transformers.modeling_utils import ModuleUtilsMixin
 
 
@@ -21,11 +20,12 @@ def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> t
     # /transformer/transformer_layers.py#L270
     # encoder_extended_attention_mask = (encoder_extended_attention_mask ==
     # encoder_extended_attention_mask.transpose(-1, -2))
-    # HMP is disabled because (1.0 - encoder_extended_attention_mask) may be converted into bf16
-    # while torch.finfo(self.dtype).min is the min value of fp32, which leads to NaNs
-    with hmp.disable_casts():
-        encoder_extended_attention_mask = encoder_extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
-        encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * torch.finfo(self.dtype).min
+    # torch.finfo must take the dtype of encoder_extended_attention_mask
+    encoder_extended_attention_mask = encoder_extended_attention_mask.to(dtype=self.dtype)  # bf16 compatibility
+    encoder_extended_attention_mask = 1.0 - encoder_extended_attention_mask
+    encoder_extended_attention_mask = (
+        encoder_extended_attention_mask * torch.finfo(encoder_extended_attention_mask.dtype).min
+    )
 
     return encoder_extended_attention_mask
 
@@ -71,10 +71,9 @@ def gaudi_get_extended_attention_mask(
     # positions we want to attend and -10000.0 for masked positions.
     # Since we are adding it to the raw scores before the softmax, this is
     # effectively the same as removing these entirely.
-    # HMP is disabled because (1.0 - encoder_extended_attention_mask) may be converted into bf16
-    # while torch.finfo(self.dtype).min is the min value of fp32, which leads to NaNs
-    with hmp.disable_casts():
-        extended_attention_mask = extended_attention_mask.to(dtype=dtype)  # fp16 compatibility
-        extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(dtype).min
+    # torch.finfo must take the dtype of encoder_extended_attention_mask
+    extended_attention_mask = extended_attention_mask.to(dtype=dtype)  # bf16 compatibility
+    extended_attention_mask = 1.0 - extended_attention_mask
+    extended_attention_mask = extended_attention_mask * torch.finfo(extended_attention_mask.dtype).min
 
     return extended_attention_mask
