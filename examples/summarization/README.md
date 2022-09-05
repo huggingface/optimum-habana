@@ -36,8 +36,8 @@ python run_summarization.py \
     --dataset_config "3.0.0" \
     --source_prefix "summarize: " \
     --output_dir /tmp/tst-summarization \
-    --per_device_train_batch_size=4 \
-    --per_device_eval_batch_size=4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --overwrite_output_dir \
     --predict_with_generate \
     --use_habana \
@@ -68,8 +68,8 @@ python run_summarization.py \
     --source_prefix "summarize: " \
     --output_dir /tmp/tst-summarization \
     --overwrite_output_dir \
-    --per_device_train_batch_size=4 \
-    --per_device_eval_batch_size=4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \

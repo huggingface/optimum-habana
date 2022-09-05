@@ -23,7 +23,7 @@ This directory contains a script that showcases how to fine-tune any model suppo
 
 ### Using datasets from Hub
 
-Here we show how to fine-tune a Vision Transformer (`ViT`) on the [beans](https://huggingface.co/datasets/beans) dataset, to classify the disease type of bean leaves.
+Here we show how to fine-tune a Vision Transformer (`ViT`) on Cifar10:
 
 ```bash
 python run_image_classification.py \
@@ -47,8 +47,6 @@ python run_image_classification.py \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2
 ```
-
-👀 See the results here: [nateraw/vit-base-beans](https://huggingface.co/nateraw/vit-base-beans).
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
@@ -163,7 +161,7 @@ python run_image_classification.py \
 
 ## Multi-HPU training
 
-Here is how you would fine-tune ViT on the beans dataset using 8 HPUs:
+Here is how you would fine-tune ViT on Cifar10 using 8 HPUs:
 
 ```bash
 python ../gaudi_spawn.py \
@@ -194,7 +192,7 @@ python ../gaudi_spawn.py \
 
 ## Using DeepSpeed
 
-Similarly to multi-HPU training, here is how you would fine-tune ViT on the beans dataset using 8 HPUs with DeepSpeed:
+Similarly to multi-HPU training, here is how you would fine-tune ViT on Cifar10 using 8 HPUs with DeepSpeed:
 
 ```bash
 python ../gaudi_spawn.py \

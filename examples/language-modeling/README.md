@@ -183,7 +183,7 @@ python run_clm.py \
 
 ## Using DeepSpeed
 
-Multi-card examples can be simpply adapted to be run with DeepSpeed. Here is the CLM example with GPT-2:
+Multi-card examples can be simply adapted to be run with DeepSpeed. Here is the CLM example with GPT-2:
 
 ```bash
 python ../gaudi_spawn.py \
