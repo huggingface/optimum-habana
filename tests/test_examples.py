@@ -123,7 +123,7 @@ class ExampleTestMeta(type):
 
     @staticmethod
     def to_test(model_name: str, multi_card: bool, deepspeed: bool):
-        if model_name not in ["albert-xxlarge-v1", "gpt2-xl"]:
+        if model_name not in ["albert-xxlarge-v1", "gpt2-xl"] and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed

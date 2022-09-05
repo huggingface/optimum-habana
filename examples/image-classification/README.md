@@ -190,3 +190,32 @@ python ../gaudi_spawn.py \
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
+
+
+## Using DeepSpeed
+
+Similarly to multi-HPU training, here is how you would fine-tune ViT on the beans dataset using 8 HPUs with DeepSpeed:
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_image_classification.py \
+    --model_name_or_path google/vit-base-patch16-224-in21k \
+    --dataset_name cifar10 \
+    --output_dir /tmp/outputs/ \
+    --remove_unused_columns False \
+    --do_train \
+    --do_eval \
+    --learning_rate 2e-5 \
+    --num_train_epochs 5 \
+    --per_device_train_batch_size 64 \
+    --per_device_eval_batch_size 64 \
+    --use_habana \
+    --use_lazy_mode \
+    --gaudi_config_name path_to_my_gaudi_config \
+    --throughput_warmup_steps 2 \
+    --deepspeed path_to_my_deepspeed_config
+```
+
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+
+> If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.

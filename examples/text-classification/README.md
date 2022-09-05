@@ -82,3 +82,32 @@ python ../gaudi_spawn.py \
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
+
+
+### Using DeepSpeed
+
+Similarly to multi-card training, here is how you would fine-tune the BERT large model (with whole word masking) on the text classification MRPC task using DeepSpeed with 8 HPUs:
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_glue.py \
+    --model_name_or_path bert-large-uncased-whole-word-masking \
+    --gaudi_config_name gaudi_config_name_or_path \
+    --task_name mrpc \
+    --do_train \
+    --do_eval \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 8 \
+    --learning_rate 3e-5 \
+    --num_train_epochs 3 \
+    --max_seq_length 128 \
+    --output_dir /tmp/mrpc_output/ \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 2 \
+    --deepspeed path_to_my_deepspeed_config
+```
+
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+
+> If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.

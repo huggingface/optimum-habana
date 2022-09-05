@@ -36,6 +36,19 @@ where `--argX` is an argument of the script to run in a distributed way.
 Examples are given for question answering [here](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/README.md#multi-card-training) and for text classification [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification#multi-card-training).
 
 
+## DeepSpeed
+
+All the PyTorch scripts in this repository work out of the box with DeepSpeed. To launch one of them on _n_ HPUs, use the following command:
+
+```bash
+python gaudi_spawn.py \
+    --world_size number_of_hpu_you_have --use_deepspeed \
+    path_to_script.py --args1 --args2 ... --argsN \
+    --deepspeed path_to_my_deepspeed_config
+```
+where `--argX` is an argument of the script to run with DeepSpeed.
+
+
 ## Loading from a Tensorflow/Flax checkpoint file instead of a PyTorch model
 
 If a model also has Tensorflow or Flax checkpoints, you can load them instead of a PyTorch checkpoint by specifying `from_tf=True` or `from_flax=True` in the model instantiation.

@@ -21,7 +21,7 @@ In particular, you can use the two following ZeRO configurations that have been 
 - ZeRO-1, which partitions the optimizer states across processes.
 - ZeRO-2, which additionnally partitions the gradients across processes so that each process retains only the gradients corresponding to its portion of the optimizer states.
 
-These configurations also enable you to train your model in *bf16* precision.
+These configurations are fully compatible with Habana Mixed Precision and can thus be used to train your model in *bf16* precision.
 
 You can find more information about DeepSpeed Gaudi integration [here](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/DeepSpeed_User_Guide.html).
 
@@ -92,9 +92,36 @@ This argument both indicates that DeepSpeed should be used and points to your De
 
 ## Launching your script
 
-Finally, you can run your script as follows:
+Finally, there are two possible ways to launch your script:
+
+1. Using the [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) script:
+
 ```bash
-deepspeed --num_nodes 1 --num_gpus 8 --no_local_rank path_to_my_training_script args
+python gaudi_spawn.py \
+    --world_size number_of_hpu_you_have --use_deepspeed \
+    path_to_script.py --args1 --args2 ... --argsN \
+    --deepspeed path_to_deepspeed_config
+```
+where `--argX` is an argument of the script to run with DeepSpeed.
+
+2. Using the [`~distributed.DistributedRunner`] directly in code:
+
+```python
+from optimum.habana.distributed import DistributedRunner
+from optimum.utils import logging
+
+world_size=8 # Number of HPUs to use (1 or 8)
+
+# define distributed runner
+distributed_runner = DistributedRunner(
+    command_list=["scripts/train.py --args1 --args2 ... --argsN --deepspeed path_to_deepspeed_config"],
+    world_size=world_size,
+    use_deepspeed=True,
+    multi_hls=False,
+)
+
+# start job
+ret_code = distributed_runner.run()
 ```
 
 <Tip warning={true}>
