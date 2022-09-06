@@ -25,6 +25,15 @@ These configurations are fully compatible with Habana Mixed Precision and can th
 
 You can find more information about DeepSpeed Gaudi integration [here](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/DeepSpeed_User_Guide.html).
 
+
+# Setup
+
+In order to use DeepSpeed on Gaudi, you need to install the package with:
+```
+pip install optimum[habana-deepspeed]
+```
+
+
 # Using DeepSpeed with Optimum Habana
 
 The [`GaudiTrainer`] allows to use DeepSpeed as easily as the [Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer).
