@@ -179,3 +179,29 @@ python run_clm.py \
 ```
 
 <!-- This feature is only available in `run_clm.py` and `run_mlm.py`. -->
+
+
+## Using DeepSpeed
+
+Multi-card examples can be simply adapted to be run with DeepSpeed. Here is the CLM example with GPT-2:
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --model_name_or_path gpt2 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name path_to_my_gaudi_config \
+    --use_habana \
+    --use_lazy_mode \
+    --gradient_checkpointing \
+    --throughput_warmup_steps 2 \
+    --deepspeed path_to_my_deepspeed_config
+```
+
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
