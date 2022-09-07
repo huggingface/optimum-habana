@@ -163,6 +163,29 @@ python ../gaudi_spawn.py \
 ```
 
 
+# Pretraining
+
+You can easily train a model from scratch by replacing `--model_name_or_path my_model_name` by `--config_name my_model_name --tokenizer_name my_model_name`.
+
+For example with GPT2:
+```bash
+python run_clm.py \
+    --config_name gpt2 \
+    --tokenizer_name gpt2 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 2
+```
+
+
 ## Creating a model on the fly
 
 When training a model from scratch, configuration values may be overridden with the help of `--config_overrides`:
@@ -205,3 +228,22 @@ python ../gaudi_spawn.py \
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+Here is a DeepSpeed configuration you can use to train your models on Gaudi:
+```json
+{
+    "steps_per_print": 64,
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": "auto",
+    "gradient_accumulation_steps": "auto",
+    "bf16": {
+        "enabled": true
+    },
+    "gradient_clipping": 1.0,
+    "zero_optimization": {
+        "stage": 2,
+        "overlap_comm": false,
+        "reduce_scatter": false,
+        "contiguous_gradients": false
+    }
+}
+```

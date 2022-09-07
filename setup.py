@@ -53,7 +53,7 @@ setup(
     version=__version__,
     description=(
         "Optimum Habana is the interface between the Hugging Face Transformers library and Habana Gaudi Processor"
-        " (HPU). It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU"
+        " (HPU). It provides a set of tools enabling easy model loading and training on single- and multi-HPU"
         " settings for different downstream tasks."
     ),
     long_description=open("README.md", "r", encoding="utf-8").read(),

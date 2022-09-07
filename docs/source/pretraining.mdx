@@ -1,0 +1,44 @@
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+
+# Pretraining a model with Optimum Habana
+
+Pretraining a model can be done as easily as fine-tuning it.
+
+For fine-tuning, you instantiate the model as follows:
+```python
+from transformers import AutoModelForXXX
+
+model = AutoModelForXXX.from_pretrained(model_name)
+```
+with XXX the task to perform, such as `ImageClassification` for example.
+
+In the case of pretraining, the model is instantiated from a configuration and not from a pretrained checkpoint:
+```python
+from transformers import AutoConfig, AutoModelForXXX
+
+config = AutoConfig.from_pretrained(config_name)
+model = AutoModelForXXX.from_config(config)
+```
+
+<Tip warning={true}>
+
+For some models, you may need to specify `ddp_find_unused_parameters=True` in your training arguments to perform pretraining.
+
+</Tip>
+
+You can see an example of pretraining in [this blog post](https://huggingface.co/blog/pretraining-bert).

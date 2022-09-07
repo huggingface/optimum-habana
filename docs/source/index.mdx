@@ -17,7 +17,7 @@ limitations under the License.
 
 # 🤗 Optimum Habana
 
-🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html). It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU settings for different downstream tasks.
+🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html). It provides a set of tools enabling easy model loading and training on single- and multi-HPU settings for different downstream tasks.
 The list of officially validated models and tasks is available [here](validated-models). Users can try other models and tasks with only few changes.
 
 ## What is a Habana Processing Unit (HPU)?
@@ -39,6 +39,11 @@ pip install optimum[habana]
 Run the following command if you want to use DeepSpeed on HPUs:
 ```bash
 pip install optimum[habana-deepspeed]
+```
+
+If Optimum Habana is already installed, you can just install Habana DeepSpeed with:
+```
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0
 ```
 
 </Tip>
@@ -81,6 +86,7 @@ The following model architectures, tasks and device distributions have been vali
 | GPT2       | ❌                  | ❌                 | ✅                 | ❌            | ❌          | ❌                   | ✅          | ✅         | ✅        |
 | T5         | ❌                  | ❌                 | ❌                 | ✅            | ✅          | ❌                   | ✅          | ✅         | ✅        |
 | ViT        | ❌                  | ❌                 | ❌                 | ❌            | ❌          | ✅                   | ✅          | ✅         | ✅        |
+| Swin       | ❌                  | ❌                 | ❌                 | ❌            | ❌          | ✅                   | ✅          | ✅         | ✅        |
 
 Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to this [section](quickstart) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 
