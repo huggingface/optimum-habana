@@ -163,7 +163,7 @@ python ../gaudi_spawn.py \
 ```
 
 
-# Pretraining
+## Pretraining
 
 You can easily train a model from scratch by replacing `--model_name_or_path my_model_name` by `--config_name my_model_name --tokenizer_name my_model_name`.
 
