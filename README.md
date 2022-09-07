@@ -34,26 +34,23 @@ Quote from the Hugging Face [blog post](https://huggingface.co/blog/habana):
 ## Install
 To install the latest release of this package:
 
-`pip install optimum[habana]`
+```bash
+pip install optimum[habana]
+```
 
 > Run the following command if you want to use DeepSpeed on HPUs:
 >```bash
 >pip install optimum[habana-deepspeed]
 >```
 >If Optimum Habana is already installed, you can just install Habana DeepSpeed with:
->```
+>```bash
 >pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0
 >```
 
 Optimum Habana is a fast-moving project, and you may want to install it from source:
 
-`pip install git+https://github.com/huggingface/optimum-habana.git`
-
-Last but not least, don't forget to install requirements for every example:
-
-```bash
-cd <example-folder>
-pip install -r requirements.txt
+```
+pip install git+https://github.com/huggingface/optimum-habana.git
 ```
 
 > Alternatively, you can install the package without pip as follows:
@@ -62,6 +59,13 @@ pip install -r requirements.txt
 > cd optimum-habana
 > python setup.py install
 > ```
+
+Last but not least, don't forget to install requirements for every example:
+
+```bash
+cd <example-folder>
+pip install -r requirements.txt
+```
 
 
 ## How to use it?

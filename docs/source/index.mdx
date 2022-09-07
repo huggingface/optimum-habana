@@ -30,7 +30,7 @@ Quote from the Hugging Face [blog post](https://huggingface.co/blog/habana):
 ## Install
 To install the latest release of this package:
 
-```
+```bash
 pip install optimum[habana]
 ```
 
@@ -42,7 +42,7 @@ pip install optimum[habana-deepspeed]
 ```
 
 If Optimum Habana is already installed, you can just install Habana DeepSpeed with:
-```
+```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0
 ```
 
@@ -50,15 +50,8 @@ pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0
 
 Optimum Habana is a fast-moving project, and you may want to install it from source:
 
-```
-pip install git+https://github.com/huggingface/optimum-habana.git
-```
-
-Last but not least, don't forget to install requirements for every example:
-
 ```bash
-cd <example-folder>
-pip install -r requirements.txt
+pip install git+https://github.com/huggingface/optimum-habana.git
 ```
 
 <Tip>
@@ -71,6 +64,13 @@ python setup.py install
 ```
 
 </Tip>
+
+Last but not least, don't forget to install requirements for every example:
+
+```bash
+cd <example-folder>
+pip install -r requirements.txt
+```
 
 
 ## Validated Models
