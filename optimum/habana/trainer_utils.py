@@ -14,10 +14,12 @@
 # limitations under the License.
 
 import time
-from typing import Any, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 import torch
+
+from habana_frameworks.torch.hpu import memory_stats
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -130,3 +132,34 @@ def convert_into_dtypes(
         return tuple(convert_into_dtypes(preds_tensor, dtypes[i]) for i, preds_tensor in enumerate(preds))
     else:
         raise TypeError(f"preds should be of type np.ndarray or tuple, got {type(preds)} which is not supported")
+
+
+def to_gb_rounded(mem: float) -> float:
+    """
+    Rounds and converts to GB.
+
+    Args:
+        mem (float): memory in bytes
+
+    Returns:
+        float: memory in GB rounded to the second decimal
+    """
+    return np.round(mem / 1024**3, 2)
+
+
+def update_hpu_memory_stats(logs: Dict[str, float]):
+    """
+    Returns memory stats of HPU as a string to be printed.
+
+    Args:
+        logs (Dict[str, float]): logs to update
+    """
+    mem_stats = memory_stats()
+
+    mem_dict = {
+        "memory_allocated (GB)": to_gb_rounded(mem_stats["InUse"]),
+        "max_memory_allocated (GB)": to_gb_rounded(mem_stats["MaxInUse"]),
+        "total_memory_available (GB)": to_gb_rounded(mem_stats["Limit"]),
+    }
+
+    logs.update(mem_dict)

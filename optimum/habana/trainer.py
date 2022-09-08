@@ -75,7 +75,7 @@ from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
-from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
+from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype, update_hpu_memory_stats
 from .training_args import GaudiTrainingArguments
 
 
@@ -1464,3 +1464,52 @@ class GaudiTrainer(Trainer):
             if self.args.hub_strategy == HubStrategy.CHECKPOINT:
                 # Move back the checkpoint to its place
                 shutil.move(tmp_checkpoint, checkpoint_folder)
+
+    def log(self, logs: Dict[str, float]) -> None:
+        """
+        Log `logs` on the various objects watching training.
+        Subclass and override this method to inject custom behavior.
+        Args:
+            logs (`Dict[str, float]`):
+                The values to log.
+        """
+        if self.state.epoch is not None:
+            logs["epoch"] = round(self.state.epoch, 2)
+
+        update_hpu_memory_stats(logs)
+
+        output = {**logs, **{"step": self.state.global_step}}
+        self.state.log_history.append(output)
+        self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
+
+    def estimate_memory_usage(self, batch_sizes: List = [1, 2, 4, 8, 16, 32, 64]):
+        if self.args.use_habana:
+            from habana_frameworks.torch.hpu import memory_stats
+            original_max_steps = self.args.max_steps
+            original_output_dir = self.args.output_dir
+            original_logging_strategy = self.args.logging_strategy
+
+            original_log_level = self.args.get_process_log_level()
+
+            self.args.max_steps = 5
+            self.args.logging_strategy = "no"
+
+            for batch_size in batch_sizes:
+                with tempfile.TemporaryDirectory() as tmp_dir_name:
+                    self.args.output_dir = tmp_dir_name
+
+                    logging.set_verbosity(logging.ERROR)
+                    self.train()
+                    logging.set_verbosity(original_log_level)
+
+                    mem_stats = memory_stats()
+                    max_allocated_memory = mem_stats["MaxInUse"] / 1024**3
+                    total_memory = mem_stats["Limit"] / 1024**3
+                    logger.info(f"batch_size = {batch_size}: max_allocated_memory = {max_allocated_memory}GB, total_memory = {total_memory}GB")
+
+            self.args.max_steps = original_max_steps
+            self.args.output_dir = original_output_dir
+            self.args.logging_strategy = original_logging_strategy
+        else:
+            logger.warning("Can estimate memory usage only for HPUs.")
+

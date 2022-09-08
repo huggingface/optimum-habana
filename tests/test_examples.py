@@ -302,7 +302,6 @@ class ExampleTesterBase(TestCase):
             "--use_habana",
             "--use_lazy_mode",
             "--throughput_warmup_steps 2",
-            "--gaudi_memory_stats",
         ]
 
         if extra_command_line_arguments is not None:
