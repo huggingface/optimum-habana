@@ -1051,83 +1051,92 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         trainer.train(resume_from_checkpoint=False)
 
-    # TODO: enable this test when the HPU RNG API is accessible
-    # def test_resume_training_with_gradient_accumulation(self):
-    #     # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
-    #     # save_steps, the checkpoint will resume training at epoch 2 or more (so the data seen by the model
-    #     # won't be the same since the training dataloader is shuffled).
+    def test_resume_training_with_gradient_accumulation(self):
+        # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
+        # save_steps, the checkpoint will resume training at epoch 2 or more (so the data seen by the model
+        # won't be the same since the training dataloader is shuffled).
 
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         trainer = get_regression_trainer(
-    #             output_dir=tmpdir,
-    #             train_len=128,
-    #             gradient_accumulation_steps=2,
-    #             per_device_train_batch_size=4,
-    #             save_steps=5,
-    #             learning_rate=0.1,
-    #         )
-    #         trainer.train()
-    #         (a, b) = trainer.model.a.item(), trainer.model.b.item()
-    #         state = dataclasses.asdict(trainer.state)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(
+                output_dir=tmpdir,
+                train_len=128,
+                gradient_accumulation_steps=2,
+                per_device_train_batch_size=4,
+                save_steps=5,
+                learning_rate=0.1,
+            )
+            # Disable FusedClipNorm because it makes this test fail
+            # TODO: investigate why
+            trainer.gaudi_config.use_fused_clip_norm = False
+            trainer.train()
+            (a, b) = trainer.model.a.item(), trainer.model.b.item()
+            state = dataclasses.asdict(trainer.state)
 
-    #         checkpoint = os.path.join(tmpdir, "checkpoint-5")
+            checkpoint = os.path.join(tmpdir, "checkpoint-5")
 
-    #         # Reinitialize trainer
-    #         trainer = get_regression_trainer(
-    #             output_dir=tmpdir,
-    #             train_len=128,
-    #             gradient_accumulation_steps=2,
-    #             per_device_train_batch_size=4,
-    #             save_steps=5,
-    #             learning_rate=0.1,
-    #         )
+            # Reinitialize trainer
+            trainer = get_regression_trainer(
+                output_dir=tmpdir,
+                train_len=128,
+                gradient_accumulation_steps=2,
+                per_device_train_batch_size=4,
+                save_steps=5,
+                learning_rate=0.1,
+            )
+            # Disable FusedClipNorm because it makes this test fail
+            # TODO: investigate why
+            trainer.gaudi_config.use_fused_clip_norm = False
+            trainer.train(resume_from_checkpoint=checkpoint)
+            (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
+            state1 = dataclasses.asdict(trainer.state)
 
-    #         trainer.train(resume_from_checkpoint=checkpoint)
-    #         (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
-    #         state1 = dataclasses.asdict(trainer.state)
-    #         self.assertEqual(a, a1)
-    #         self.assertEqual(b, b1)
-    #         self.check_trainer_state_are_the_same(state, state1)
+            self.assertEqual(a, a1)
+            self.assertEqual(b, b1)
+            self.check_trainer_state_are_the_same(state, state1)
 
-    # TODO: enable this test when the HPU RNG API is accessible
-    # def test_resume_training_with_frozen_params(self):
-    #     # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
-    #     # save_steps, the checkpoint will resume training at epoch 2 or more (so the data seen by the model
-    #     # won't be the same since the training dataloader is shuffled).
+    def test_resume_training_with_frozen_params(self):
+        # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
+        # save_steps, the checkpoint will resume training at epoch 2 or more (so the data seen by the model
+        # won't be the same since the training dataloader is shuffled).
 
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         trainer = get_regression_trainer(
-    #             output_dir=tmpdir,
-    #             train_len=128,
-    #             per_device_train_batch_size=4,
-    #             save_steps=5,
-    #             learning_rate=0.1,
-    #         )
-    #         trainer.model.a.requires_grad_(False)
-    #         trainer.train()
-    #         (a, b) = trainer.model.a.item(), trainer.model.b.item()
-    #         state = dataclasses.asdict(trainer.state)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(
+                output_dir=tmpdir,
+                train_len=128,
+                per_device_train_batch_size=4,
+                save_steps=5,
+                learning_rate=0.1,
+            )
+            trainer.model.a.requires_grad_(False)
+            # Disable FusedClipNorm because it makes this test fail
+            # TODO: investigate why
+            trainer.gaudi_config.use_fused_clip_norm = False
+            trainer.train()
+            (a, b) = trainer.model.a.item(), trainer.model.b.item()
+            state = dataclasses.asdict(trainer.state)
 
-    #         checkpoint = os.path.join(tmpdir, "checkpoint-5")
+            checkpoint = os.path.join(tmpdir, "checkpoint-5")
 
-    #         # Reinitialize trainer
-    #         trainer = get_regression_trainer(
-    #             output_dir=tmpdir,
-    #             train_len=128,
-    #             per_device_train_batch_size=4,
-    #             save_steps=5,
-    #             learning_rate=0.1,
-    #         )
-    #         trainer.model.a.requires_grad_(False)
+            # Reinitialize trainer
+            trainer = get_regression_trainer(
+                output_dir=tmpdir,
+                train_len=128,
+                per_device_train_batch_size=4,
+                save_steps=5,
+                learning_rate=0.1,
+            )
+            trainer.model.a.requires_grad_(False)
+            # Disable FusedClipNorm because it makes this test fail
+            # TODO: investigate why
+            trainer.gaudi_config.use_fused_clip_norm = False
+            trainer.train(resume_from_checkpoint=checkpoint)
+            self.assertFalse(trainer.model.a.requires_grad)
+            (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
+            state1 = dataclasses.asdict(trainer.state)
 
-    #         trainer.train(resume_from_checkpoint=checkpoint)
-
-    #         self.assertFalse(trainer.model.a.requires_grad)
-    #         (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
-    #         state1 = dataclasses.asdict(trainer.state)
-    #         self.assertEqual(a, a1)
-    #         self.assertEqual(b, b1)
-    #         self.check_trainer_state_are_the_same(state, state1)
+            self.assertEqual(a, a1)
+            self.assertEqual(b, b1)
+            self.check_trainer_state_are_the_same(state, state1)
 
     def test_load_best_model_at_end(self):
         total = int(self.n_epochs * 64 / self.batch_size)

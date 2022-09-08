@@ -27,6 +27,7 @@ from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_CAUSAL_LM_MAPPING,
     MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
+    MODEL_FOR_MASKED_LM_MAPPING,
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
@@ -35,8 +36,9 @@ from transformers.testing_utils import slow
 
 from .utils import (
     MODELS_TO_TEST_MAPPING,
+    VALID_MODELS_FOR_CAUSAL_LANGUAGE_MODELING,
     VALID_MODELS_FOR_IMAGE_CLASSIFICATION,
-    VALID_MODELS_FOR_LANGUAGE_MODELING,
+    VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING,
     VALID_MODELS_FOR_QUESTION_ANSWERING,
     VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION,
     VALID_SEQ2SEQ_MODELS,
@@ -92,7 +94,7 @@ _SCRIPT_TO_MODEL_MAPPING = {
     "run_clm": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
-        VALID_MODELS_FOR_LANGUAGE_MODELING,
+        VALID_MODELS_FOR_CAUSAL_LANGUAGE_MODELING,
     ),
     "run_summarization": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
@@ -104,6 +106,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
         VALID_MODELS_FOR_IMAGE_CLASSIFICATION,
     ),
+    "run_mlm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_MASKED_LM_MAPPING,
+        VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING,
+    ),
 }
 
 
@@ -114,29 +121,49 @@ class ExampleTestMeta(type):
     models.
     """
 
-    def __new__(cls, name, bases, attrs, example_name=None, multi_card=False):
+    @staticmethod
+    def to_test(model_name: str, multi_card: bool, deepspeed: bool):
+        if model_name not in ["albert-xxlarge-v1", "gpt2-xl"] and not deepspeed:
+            return True
+        elif model_name == "gpt2-xl" and deepspeed:
+            # GPT2-XL is tested only with DeepSpeed
+            return True
+        elif model_name == "albert-xxlarge-v1":
+            if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
+                # ALBERT XXL 1X is tested only if the required flag is present because it takes long
+                return True
+
+        return False
+
+    def __new__(cls, name, bases, attrs, example_name=None, multi_card=False, deepspeed=False):
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
                 raise AttributeError(f"Could not create class because no model was found for example {example_name}")
         for model_name, gaudi_config_name in models_to_test:
-            # Conditional statement to filter out ALBERT XXL 1x if env variable RUN_ALBERT_XXL_1X is not true
-            test_albert_xxl_1x = ("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])
-            if model_name != "albert-xxlarge-v1" or multi_card or test_albert_xxl_1x:
-                attrs[
-                    f"test_{example_name}_{model_name.split('/')[-1]}_{'multi_card' if multi_card else 'single_card'}"
-                ] = cls._create_test(model_name, gaudi_config_name, multi_card)
+            if cls.to_test(model_name, multi_card, deepspeed):
+                distribution = "single_card"
+                if multi_card:
+                    distribution = "multi_card"
+                elif deepspeed:
+                    distribution = "deepspeed"
+                attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
+                    model_name, gaudi_config_name, multi_card, deepspeed
+                )
         attrs["EXAMPLE_NAME"] = example_name
         return super().__new__(cls, name, bases, attrs)
 
     @classmethod
-    def _create_test(cls, model_name: str, gaudi_config_name: str, multi_card: bool = False) -> Callable[[], None]:
+    def _create_test(
+        cls, model_name: str, gaudi_config_name: str, multi_card: bool = False, deepspeed: bool = False
+    ) -> Callable[[], None]:
         """
         Create a test function that runs an example for a specific (model_name, gaudi_config_name) pair.
         Args:
             model_name (str): the model_name_or_path.
             gaudi_config_name (str): the gaudi config name.
             multi_card (bool): whether it is a distributed run or not.
+            deepspeed (bool): whether deepspeed should be used or not.
         Returns:
             The test function that runs the example.
         """
@@ -162,11 +189,16 @@ class ExampleTestMeta(type):
             with path_to_baseline.open("r") as json_file:
                 baseline = json.load(json_file)[self.TASK_NAME]
 
-            distribution = "multi_card" if multi_card else "single_card"
+            distribution = "single_card"
+            if multi_card:
+                distribution = "multi_card"
+            elif deepspeed:
+                distribution = "deepspeed"
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
                     multi_card,
+                    deepspeed,
                     example_script,
                     model_name,
                     gaudi_config_name,
@@ -227,6 +259,7 @@ class ExampleTesterBase(TestCase):
     def _create_command_line(
         self,
         multi_card: bool,
+        deepspeed: bool,
         script: Path,
         model_name: str,
         gaudi_config_name: str,
@@ -245,6 +278,13 @@ class ExampleTesterBase(TestCase):
             cmd_line.append(f"{script.parent.parent / 'gaudi_spawn.py'}")
             cmd_line.append("--world_size 8")
             cmd_line.append("--use_mpi")
+        elif deepspeed:
+            cmd_line = [
+                "deepspeed",
+                "--num_nodes 1",
+                "--num_gpus 8",
+                "--no_local_rank",
+            ]
 
         cmd_line += [
             f"{script}",
@@ -333,12 +373,18 @@ class MultiCardQuestionAnsweringExampleTester(
     TASK_NAME = "squad"
 
 
-class LanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
+class CausalLanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
     TASK_NAME = "wikitext"
 
 
-class MultiCardLanguageModelingExampleTester(
+class MultiCardCausalLanguageModelingExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm", multi_card=True
+):
+    TASK_NAME = "wikitext"
+
+
+class DeepspeedCausalLanguageModelingExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm", deepspeed=True
 ):
     TASK_NAME = "wikitext"
 
@@ -359,3 +405,9 @@ class MultiCardImageClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification", multi_card=True
 ):
     TASK_NAME = "beans"
+
+
+class MultiCardMaskedLanguageModelingExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_mlm", multi_card=True
+):
+    TASK_NAME = "wikitext"

@@ -8,6 +8,8 @@
       title: Single-HPU Training
     - local: distributed
       title: Distributed Training
+    - local: deepspeed
+      title: DeepSpeed
     - local: accelerate_training
       title: Accelerating Training
     title: How-To Guides

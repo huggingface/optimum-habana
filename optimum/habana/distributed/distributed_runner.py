@@ -36,6 +36,7 @@ class DistributedRunner:
         command_list=[],
         world_size=1,
         use_mpi=False,
+        use_deepspeed=False,
         use_env=False,
         map_by="socket",
         multi_hls=False,
@@ -57,6 +58,9 @@ class DistributedRunner:
             # Multi-node training
             if self.__multi_hls:
                 self.create_multi_hls_setup()
+            elif use_deepspeed:
+                # Single-node multi-card training with DeepSpeed
+                self.create_single_hls_setup_deepspeed()
             elif use_mpi:
                 # Single-node multi-card training with MPI
                 self.__model_env_vars["MASTER_ADDR"] = "localhost"
@@ -124,7 +128,7 @@ class DistributedRunner:
 
     def create_single_hls_setup_mpirun(self):
         """
-        Single-node multi-cards configuration setup for mpirun.
+        Single-node multi-card configuration setup for mpirun.
         """
 
         self.setup_config_env()
@@ -134,9 +138,16 @@ class DistributedRunner:
             f" --allow-run-as-root {sys.executable} "
         )
 
+    def create_single_hls_setup_deepspeed(self):
+        """
+        Single-node multi-card configuration setup for DeepSpeed.
+        """
+
+        self.__interpreter = f"deepspeed --num_nodes 1 --num_gpus {self.__world_size} --no_local_rank "
+
     def create_single_hls_setup(self):
         """
-        Single-node multi-cards configuration setup.
+        Single-node multi-card configuration setup.
         """
 
         use_env_param = "--use_env" if self.__use_env else ""

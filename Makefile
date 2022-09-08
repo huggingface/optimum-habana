@@ -44,6 +44,11 @@ slow_tests_8x:
 	python -m pip install .[tests]
 	python -m pytest tests/test_examples.py -v -s -k "multi_card"
 
+# Run DeepSpeed non-regression tests
+slow_tests_deepspeed:
+	python -m pip install .[tests,deepspeed]
+	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
+
 # Check if examples are up to date with the Transformers library
 example_diff_tests:
 	python -m pip install .[tests]

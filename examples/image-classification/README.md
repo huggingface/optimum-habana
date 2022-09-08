@@ -23,7 +23,7 @@ This directory contains a script that showcases how to fine-tune any model suppo
 
 ### Using datasets from Hub
 
-Here we show how to fine-tune a Vision Transformer (`ViT`) on the [beans](https://huggingface.co/datasets/beans) dataset, to classify the disease type of bean leaves.
+Here we show how to fine-tune a Vision Transformer (`ViT`) on Cifar10:
 
 ```bash
 python run_image_classification.py \
@@ -47,8 +47,6 @@ python run_image_classification.py \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2
 ```
-
-👀 See the results here: [nateraw/vit-base-beans](https://huggingface.co/nateraw/vit-base-beans).
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
@@ -163,7 +161,7 @@ python run_image_classification.py \
 
 ## Multi-HPU training
 
-Here is how you would fine-tune ViT on the beans dataset using 8 HPUs:
+Here is how you would fine-tune ViT on Cifar10 using 8 HPUs:
 
 ```bash
 python ../gaudi_spawn.py \
@@ -188,5 +186,34 @@ python ../gaudi_spawn.py \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2
 ```
+
+> If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
+
+
+## Using DeepSpeed
+
+Similarly to multi-HPU training, here is how you would fine-tune ViT on Cifar10 using 8 HPUs with DeepSpeed:
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_image_classification.py \
+    --model_name_or_path google/vit-base-patch16-224-in21k \
+    --dataset_name cifar10 \
+    --output_dir /tmp/outputs/ \
+    --remove_unused_columns False \
+    --do_train \
+    --do_eval \
+    --learning_rate 2e-5 \
+    --num_train_epochs 5 \
+    --per_device_train_batch_size 64 \
+    --per_device_eval_batch_size 64 \
+    --use_habana \
+    --use_lazy_mode \
+    --gaudi_config_name path_to_my_gaudi_config \
+    --throughput_warmup_steps 2 \
+    --deepspeed path_to_my_deepspeed_config
+```
+
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.

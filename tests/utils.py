@@ -33,6 +33,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "gpt2": [
         ("gpt2", "Habana/gpt2"),
+        ("gpt2-xl", "tests/configs/gaudi_config_deepspeed_test.json"),
     ],
     "t5": [
         ("t5-small", "Habana/t5"),
@@ -57,15 +58,16 @@ VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION = [
     # "distilbert",
 ]
 
-# Only GPT2 is officially supported for language modeling
-VALID_MODELS_FOR_LANGUAGE_MODELING = [
-    "gpt2",
-    # "bert",
-    # "roberta",
-    # "albert",
-    # "distilbert",
-]
+VALID_MODELS_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2"]
 
 VALID_SEQ2SEQ_MODELS = ["t5"]
 
 VALID_MODELS_FOR_IMAGE_CLASSIFICATION = ["vit"]
+
+# Only RoBERTa is tested in CI for MLM
+VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING = [
+    # "bert",
+    "roberta",
+    # "albert",
+    # "distilbert",
+]
