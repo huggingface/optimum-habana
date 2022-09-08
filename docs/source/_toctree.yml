@@ -13,7 +13,7 @@
     - local: accelerate_training
       title: Accelerating Training
     - local: pretraining
-      title: Pretraining a Model
+      title: Pretraining Transformers
     title: How-To Guides
   - sections:
     - local: trainer
