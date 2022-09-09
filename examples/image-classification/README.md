@@ -207,6 +207,11 @@ python ../gaudi_spawn.py \
     --num_train_epochs 5 \
     --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 64 \
+    --evaluation_strategy epoch \
+    --save_strategy epoch \
+    --load_best_model_at_end True \
+    --save_total_limit 3 \
+    --seed 1337 \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name path_to_my_gaudi_config \
