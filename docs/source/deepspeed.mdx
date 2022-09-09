@@ -29,8 +29,13 @@ You can find more information about DeepSpeed Gaudi integration [here](https://d
 # Setup
 
 In order to use DeepSpeed on Gaudi, you need to install the package with:
-```
+```bash
 pip install optimum[habana-deepspeed]
+```
+
+If Optimum Habana is already installed, you can just install Habana DeepSpeed with:
+```bash
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0
 ```
 
 

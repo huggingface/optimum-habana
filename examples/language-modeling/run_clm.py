@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Fine-tuning the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
-Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
+Training the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
+Here is the full list of checkpoints on the hub that can be trained by this script:
 https://huggingface.co/models?filter=text-generation
 """
 # You can also adapt this script on your own causal language modeling task. Pointers for this are left as comments.
@@ -71,7 +71,8 @@ class ModelArguments:
         default=None,
         metadata={
             "help": (
-                "The model checkpoint for weights initialization.Don't set if you want to train a model from scratch."
+                "The model checkpoint for weights initialization. Don't set it if you want to train a model from"
+                " scratch."
             )
         },
     )
