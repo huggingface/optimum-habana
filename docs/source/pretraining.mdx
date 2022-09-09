@@ -18,11 +18,12 @@ limitations under the License.
 # Pretraining Transformers with Optimum Habana
 
 Pretraining a model from Transformers, like BERT, is as easy as fine-tuning it.
-The model should be instantiated from a configuration with `.from_config` and not from a pretrained checkpoint with `.from_pretrained`:
+The model should be instantiated from a configuration with `.from_config` and not from a pretrained checkpoint with `.from_pretrained`.
+Here is how it should look like with GPT2 for instance:
 ```python
 from transformers import AutoConfig, AutoModelForXXX
 
-config = AutoConfig.from_pretrained(model_name)
+config = AutoConfig.from_pretrained("gpt2")
 model = AutoModelForXXX.from_config(config)
 ```
 with XXX the task to perform, such as `ImageClassification` for example.
@@ -33,7 +34,7 @@ For some models, you may need to specify `ddp_find_unused_parameters=True` in yo
 
 </Tip>
 
-Here is a working example where BERT is pretrained for masked language modeling:
+The following is a working example where BERT is pretrained for masked language modeling:
 ```python
 from datasets import load_dataset
 from optimum.habana import GaudiTrainer, GaudiTrainingArguments
