@@ -38,11 +38,7 @@ To install the latest release of this package:
 pip install optimum[habana]
 ```
 
-> Run the following command if you want to use DeepSpeed on HPUs:
->```bash
->pip install optimum[habana-deepspeed]
->```
->If Optimum Habana is already installed, you can just install Habana DeepSpeed with:
+> To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
 >pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0
 >```
