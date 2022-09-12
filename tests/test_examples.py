@@ -388,12 +388,6 @@ class DeepspeedCausalLanguageModelingExampleTester(
     TASK_NAME = "wikitext"
 
 
-class MultiCardSummarizationExampleTester(
-    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
-):
-    TASK_NAME = "cnn_dailymail"
-
-
 class ImageClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification"
 ):
@@ -410,3 +404,9 @@ class MultiCardMaskedLanguageModelingExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_mlm", multi_card=True
 ):
     TASK_NAME = "wikitext"
+
+
+class MultiCardSummarizationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
+):
+    TASK_NAME = "cnn_dailymail"
