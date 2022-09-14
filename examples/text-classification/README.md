@@ -92,7 +92,7 @@ Similarly to multi-card training, here is how you would fine-tune the BERT large
 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_glue.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
-    --gaudi_config_name gaudi_config_name_or_path \
+    --gaudi_config_name Habana/deepspeed \
     --task_name mrpc \
     --do_train \
     --do_eval \

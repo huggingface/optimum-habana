@@ -183,7 +183,7 @@ python ../gaudi_spawn.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
-    --gaudi_config_name path_to_my_gaudi_config \
+    --gaudi_config_name Habana/deepspeed \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \

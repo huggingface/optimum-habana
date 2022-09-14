@@ -92,10 +92,17 @@ training_args = GaudiTrainingArguments(
     # my training arguments
     use_habana=True,
     use_lazy_mode=True,
-    gaudi_config_name=path_to_my_gaudi_config,
+    gaudi_config_name="Habana/deepspeed",
     deepspeed=path_to_my_deepspeed_config,
 )
 ```
+
+<Tip>
+
+We recommend to use the [*Habana/deepspeed*](https://huggingface.co/Habana/deepspeed) Gaudi configuration.
+It is compatible with all models.
+
+</Tip>
 
 This argument both indicates that DeepSpeed should be used and points to your DeepSpeed configuration.
 
