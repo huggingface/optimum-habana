@@ -148,7 +148,7 @@ class GaudiTrainer(Trainer):
                     raise error
                 self.htcore = htcore
 
-            if self.gaudi_config.use_habana_mixed_precision:
+            if self.gaudi_config.use_habana_mixed_precision and not self.args.deepspeed:
                 try:
                     from habana_frameworks.torch.hpex import hmp
                 except ImportError as error:

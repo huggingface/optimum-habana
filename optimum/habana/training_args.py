@@ -408,6 +408,9 @@ class GaudiTrainingArguments(TrainingArguments):
             self._n_gpu = 1
 
             if self.deepspeed:
+                # os.environ["PT_HPU_USE_PT_STORE_SYNC"] = "false"
+                # os.environ["MAX_WAIT_ATTEMPTS"] = "100"
+
                 # deepspeed inits torch.distributed internally
                 from transformers.deepspeed import is_deepspeed_available
 
