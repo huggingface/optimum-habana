@@ -48,9 +48,6 @@ python gaudi_spawn.py \
 ```
 where `--argX` is an argument of the script to run with DeepSpeed.
 
-> We recommend to use the [*Habana/deepspeed*](https://huggingface.co/Habana/deepspeed) Gaudi configuration with `--gaudi_config_name Habana/deepspeed`.
-> It is compatible with all models.
-
 
 ## Loading from a Tensorflow/Flax checkpoint file instead of a PyTorch model
 

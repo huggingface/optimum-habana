@@ -33,7 +33,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "gpt2": [
         ("gpt2", "Habana/gpt2"),
-        ("gpt2-xl", "Habana/deepspeed"),
+        ("gpt2-xl", "Habana/gpt2"),
     ],
     "t5": [
         ("t5-small", "Habana/t5"),

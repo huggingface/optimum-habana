@@ -148,7 +148,13 @@ class GaudiTrainer(Trainer):
                     raise error
                 self.htcore = htcore
 
-            if self.gaudi_config.use_habana_mixed_precision and not self.args.deepspeed:
+            if self.args.deepspeed:
+                # Habana's fused ADAM is not compatible with DeepSpeed yet
+                self.gaudi_config.use_fused_adam = False
+                # HMP must be set to True when using DeepSpeed
+                self.gaudi_config.use_habana_mixed_precision = True
+
+            if self.gaudi_config.use_habana_mixed_precision:
                 try:
                     from habana_frameworks.torch.hpex import hmp
                 except ImportError as error:
