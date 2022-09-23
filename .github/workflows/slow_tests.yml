@@ -71,7 +71,7 @@ jobs:
             /bin/bash tests/ci/example_diff_tests.sh
   deepspeed:
     name: Test DeepSpeed models
-    if: ${{ always() }}
+    if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
       - example-diff  # run the job when the previous test job is done
@@ -99,7 +99,7 @@ jobs:
             /bin/bash tests/ci/slow_tests_deepspeed.sh
   multi-card:
     name: Test multi-card models
-    if: ${{ always() }}
+    if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
       - example-diff
@@ -128,7 +128,7 @@ jobs:
             /bin/bash tests/ci/slow_tests_8x.sh
   single-card:
     name: Test single-card models
-    if: ${{ always() }}
+    if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
       - example-diff
@@ -158,7 +158,7 @@ jobs:
             /bin/bash tests/ci/slow_tests_1x.sh
   albert-xxl-single-card:
     name: Test single-card ALBERT XXL
-    if: ${{ always() }}
+    if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
       - example-diff
