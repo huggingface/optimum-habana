@@ -219,7 +219,7 @@ python ../gaudi_spawn.py \
     --do_train \
     --do_eval \
     --output_dir /tmp/test-clm \
-    --gaudi_config_name path_to_my_gaudi_config \
+    --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
     --gradient_checkpointing \

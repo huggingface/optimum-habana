@@ -1,7 +1,0 @@
-{
-    "use_habana_mixed_precision": true,
-    "hmp_opt_level": "O1",
-    "hmp_is_verbose": false,
-    "use_fused_adam": false,
-    "use_fused_clip_norm": true
-}
