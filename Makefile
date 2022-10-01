@@ -47,7 +47,7 @@ slow_tests_8x:
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed:
 	python -m pip install .[tests]
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 # Check if examples are up to date with the Transformers library

@@ -214,7 +214,7 @@ python ../gaudi_spawn.py \
     --seed 1337 \
     --use_habana \
     --use_lazy_mode \
-    --gaudi_config_name path_to_my_gaudi_config \
+    --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2 \
     --deepspeed path_to_my_deepspeed_config
 ```
