@@ -66,6 +66,8 @@ pip install -r requirements.txt
 
 ## How to use it?
 
+### Quick Start
+
 🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors**.
 There are two main classes one needs to know:
 - [GaudiTrainer](https://huggingface.co/docs/optimum/main/en/habana_trainer): the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
@@ -165,6 +167,11 @@ gaudi_config = GaudiConfig.from_pretrained(
     use_auth_token=True if model_args.use_auth_token else None,
 )
 ```
+
+
+### Documentation
+
+Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana_index) for more advanced usage.
 
 
 ## Validated Models
