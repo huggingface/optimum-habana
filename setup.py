@@ -13,7 +13,7 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.21, <4.22",
+    "transformers >= 4.22, <4.23",
     "optimum",
     "torch",
     "accelerate",
@@ -32,7 +32,7 @@ TESTS_REQUIRE = [
 QUALITY_REQUIRES = [
     "black",
     "isort",
-    "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
+    "hf_doc_builder",
 ]
 
 EXTRAS_REQUIRE = {
