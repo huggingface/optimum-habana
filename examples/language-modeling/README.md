@@ -194,7 +194,15 @@ When training a model from scratch, configuration values may be overridden with 
 python run_clm.py \
     --model_type gpt2 \
     --tokenizer_name gpt2 \
-    --config_overrides="n_embd=1024,n_head=16,n_layer=48,n_positions=102" \
+    --config_overrides="n_embd=1024,n_head=16,n_layer=48,n_positions=1024" \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --do_train \
+    --do_eval \
+    --gradient_checkpointing \
+    --output_dir /tmp/test-clm \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name Habana/gpt2 \
