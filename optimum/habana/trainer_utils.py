@@ -147,12 +147,15 @@ def to_gb_rounded(mem: float) -> float:
     return np.round(mem / 1024**3, 2)
 
 
-def update_hpu_memory_stats(logs: Dict[str, float]):
+def get_hpu_memory_stats() -> Dict[str, float]:
     """
-    Returns memory stats of HPU as a string to be printed.
+    Returns memory stats of HPU as a dictionary:
+    - current memory allocated (GB)
+    - maximum memory allocated (GB)
+    - total memory available (GB)
 
-    Args:
-        logs (Dict[str, float]): logs to update
+    Returns:
+        Dict[str, float]: memory stats.
     """
     mem_stats = memory_stats()
 
@@ -162,4 +165,4 @@ def update_hpu_memory_stats(logs: Dict[str, float]):
         "total_memory_available (GB)": to_gb_rounded(mem_stats["Limit"]),
     }
 
-    logs.update(mem_dict)
+    return mem_dict

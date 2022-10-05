@@ -71,11 +71,12 @@ from transformers.trainer_utils import (
 )
 from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
+from transformers.utils import logging as transformers_logging
 
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
-from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype, update_hpu_memory_stats
+from .trainer_utils import convert_into_dtypes, get_dtype, get_hpu_memory_stats, speed_metrics, to_device_dtype
 from .training_args import GaudiTrainingArguments
 
 
@@ -299,6 +300,7 @@ class GaudiTrainer(Trainer):
         resume_from_checkpoint: Optional[Union[str, bool]] = None,
         trial: Union["optuna.Trial", Dict[str, Any]] = None,
         ignore_keys_for_eval: Optional[List[str]] = None,
+        memory_usage_estimation: bool = False,
         **kwargs,
     ):
         """
@@ -373,10 +375,17 @@ class GaudiTrainer(Trainer):
             resume_from_checkpoint=resume_from_checkpoint,
             trial=trial,
             ignore_keys_for_eval=ignore_keys_for_eval,
+            memory_usage_estimation=memory_usage_estimation,
         )
 
     def _inner_training_loop(
-        self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
+        self,
+        batch_size=None,
+        args=None,
+        resume_from_checkpoint=None,
+        trial=None,
+        ignore_keys_for_eval=None,
+        memory_usage_estimation=False,
     ):
         self._train_batch_size = batch_size
         # Data loader and number of training steps
@@ -741,7 +750,8 @@ class GaudiTrainer(Trainer):
 
         self._memory_tracker.stop_and_update_metrics(metrics)
 
-        self.log(metrics)
+        if not memory_usage_estimation:
+            self.log(metrics)
 
         self.control = self.callback_handler.on_train_end(args, self.state, self.control)
 
@@ -1524,39 +1534,9 @@ class GaudiTrainer(Trainer):
         if self.state.epoch is not None:
             logs["epoch"] = round(self.state.epoch, 2)
 
-        update_hpu_memory_stats(logs)
+        mem_stats = get_hpu_memory_stats()
+        logs.update(mem_stats)
 
         output = {**logs, **{"step": self.state.global_step}}
         self.state.log_history.append(output)
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
-
-    def estimate_memory_usage(self, batch_sizes: List = [1, 2, 4, 8, 16, 32, 64]):
-        if self.args.use_habana:
-            from habana_frameworks.torch.hpu import memory_stats
-            original_max_steps = self.args.max_steps
-            original_output_dir = self.args.output_dir
-            original_logging_strategy = self.args.logging_strategy
-
-            original_log_level = self.args.get_process_log_level()
-
-            self.args.max_steps = 5
-            self.args.logging_strategy = "no"
-
-            for batch_size in batch_sizes:
-                with tempfile.TemporaryDirectory() as tmp_dir_name:
-                    self.args.output_dir = tmp_dir_name
-
-                    logging.set_verbosity(logging.ERROR)
-                    self.train()
-                    logging.set_verbosity(original_log_level)
-
-                    mem_stats = memory_stats()
-                    max_allocated_memory = mem_stats["MaxInUse"] / 1024**3
-                    total_memory = mem_stats["Limit"] / 1024**3
-                    logger.info(f"batch_size = {batch_size}: max_allocated_memory = {max_allocated_memory}GB, total_memory = {total_memory}GB")
-
-            self.args.max_steps = original_max_steps
-            self.args.output_dir = original_output_dir
-            self.args.logging_strategy = original_logging_strategy
-        else:
-            logger.warning("Can estimate memory usage only for HPUs.")

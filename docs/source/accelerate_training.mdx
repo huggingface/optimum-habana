@@ -111,10 +111,10 @@ It can be used by specifying `"use_fused_clip_norm": true` in the Gaudi configur
 
 ## Tracking Memory Usage
 
-You can pass the argument `gaudi_memory_stats=True` to display live memory statistics in the trainer's progress bar:
-- `mem` refers to the *current* memory consumption,
-- `max` refers to the *maximum* memory consumption reached during the run,
-- `total` refers to the *total* memory on the device.
+Live memory statistics are displayed every `logging_steps` (default is 500) steps:
+- `memory_allocated (GB)` refers to the *current* memory consumption in GB,
+- `max_memory_allocated (GB)` refers to the *maximum* memory consumption reached during the run in GB,
+- `total_memory_available (GB)` refers to the *total* memory available on the device in GB.
 
 These metrics can help you to adjust the batch size of your runs.
 
