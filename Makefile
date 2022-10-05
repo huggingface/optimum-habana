@@ -46,7 +46,8 @@ slow_tests_8x:
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed:
-	python -m pip install .[tests,deepspeed]
+	python -m pip install .[tests]
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 # Check if examples are up to date with the Transformers library
@@ -77,6 +78,7 @@ doc: build_doc_docker_image
 	doc-builder build optimum.habana /optimum-habana/docs/source/ \
 		--build_dir $(BUILD_DIR) \
 		--version $(VERSION) \
+		--version_tag_suffix "" \
 		--html \
 		--clean
 

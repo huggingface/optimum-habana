@@ -148,6 +148,12 @@ class GaudiTrainer(Trainer):
                     raise error
                 self.htcore = htcore
 
+            if self.args.deepspeed:
+                # Habana's fused ADAM is not compatible with DeepSpeed yet
+                self.gaudi_config.use_fused_adam = False
+                # HMP must be set to True when using DeepSpeed
+                self.gaudi_config.use_habana_mixed_precision = True
+
             if self.gaudi_config.use_habana_mixed_precision:
                 try:
                     from habana_frameworks.torch.hpex import hmp
@@ -331,6 +337,7 @@ class GaudiTrainer(Trainer):
             raise TypeError(f"train() received got unexpected keyword arguments: {', '.join(list(kwargs.keys()))}.")
         # This might change the seed so needs to run first.
         self._hp_search_setup(trial)
+        self._train_batch_size = self.args.train_batch_size
 
         # Model re-init
         model_reloaded = False
@@ -1089,13 +1096,15 @@ class GaudiTrainer(Trainer):
             num_samples = len(eval_dataset)
         # The instance check is weird and does not actually check for the type, but whether the dataset has the right
         # methods. Therefore we need to make sure it also has the attribute.
-        elif isinstance(eval_dataset, IterableDatasetShard) and hasattr(eval_dataset, "num_examples"):
+        elif isinstance(eval_dataset, IterableDatasetShard) and getattr(eval_dataset, "num_examples", 0) > 0:
             num_samples = eval_dataset.num_examples
         else:
             if has_length(dataloader):
                 num_samples = self.num_examples(dataloader)
             else:  # both len(dataloader.dataset) and len(dataloader) fail
                 num_samples = observed_num_examples
+        if num_samples == 0 and observed_num_examples > 0:
+            num_samples = observed_num_examples
 
         # Number of losses has been rounded to a multiple of batch_size and in a distributed training, the number of
         # samplers has been rounded to a multiple of batch_size, so we truncate.
@@ -1465,6 +1474,45 @@ class GaudiTrainer(Trainer):
                 # Move back the checkpoint to its place
                 shutil.move(tmp_checkpoint, checkpoint_folder)
 
+    def _load_best_model(self):
+        logger.info(f"Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).")
+        best_model_path = os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME)
+        model = self.model
+        if os.path.exists(best_model_path):
+            # TODO: uncomment the code below when Habana DeepSpeed >= 0.6.5
+            # if self.deepspeed:
+
+            #     if self.model_wrapped is not None:
+            #         # this removes the pre-hooks from the previous engine
+            #         self.model_wrapped.destroy()
+            #         self.model_wrapped = None
+
+            #     # temp hack until Deepspeed fixes the problem with resume from an existing engine that did some stepping
+            #     deepspeed_engine, optimizer, lr_scheduler = deepspeed_init(
+            #         self,
+            #         num_training_steps=self.args.max_steps,
+            #         resume_from_checkpoint=self.state.best_model_checkpoint,
+            #     )
+            #     self.model = deepspeed_engine.module
+            #     self.model_wrapped = deepspeed_engine
+            #     self.deepspeed = deepspeed_engine
+            #     self.optimizer = optimizer
+            #     self.lr_scheduler = lr_scheduler
+            # else:
+            # We load the model state dict on the CPU to avoid an OOM error.
+            state_dict = torch.load(best_model_path, map_location="cpu")
+            # If the model is on the GPU, it still works!
+            load_result = model.load_state_dict(state_dict, strict=False)
+            self._issue_warnings_after_load(load_result)
+        elif os.path.exists(os.path.join(self.state.best_model_checkpoint, WEIGHTS_INDEX_NAME)):
+            load_result = load_sharded_checkpoint(model, self.state.best_model_checkpoint, strict=False)
+            self._issue_warnings_after_load(load_result)
+        else:
+            logger.warning(
+                f"Could not locate the best model at {best_model_path}, if you are running a distributed training "
+                "on multiple nodes, you should activate `--save_on_each_node`."
+            )
+
     def log(self, logs: Dict[str, float]) -> None:
         """
         Log `logs` on the various objects watching training.
@@ -1512,4 +1560,3 @@ class GaudiTrainer(Trainer):
             self.args.logging_strategy = original_logging_strategy
         else:
             logger.warning("Can estimate memory usage only for HPUs.")
-

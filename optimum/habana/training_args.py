@@ -366,11 +366,17 @@ class GaudiTrainingArguments(TrainingArguments):
                         "CPU distributed training backend is not properly set. "
                         "Please set '--xpu_backend' to either 'mpi' or 'ccl'."
                     )
-                if self.xpu_backend == "ccl" and int(os.environ.get("CCL_WORKER_COUNT", 0)) < 1:
-                    raise ValueError(
-                        "CPU distributed training backend is ccl. but CCL_WORKER_COUNT is not correctly set. "
-                        "Please use like 'export CCL_WORKER_COUNT = 1' to set."
-                    )
+                if self.xpu_backend == "ccl":
+                    requires_backends(self, "oneccl_bind_pt")
+                    if ccl_version >= "1.12":
+                        import oneccl_bindings_for_pytorch  # noqa: F401
+                    else:
+                        import torch_ccl  # noqa: F401
+                    if int(os.environ.get("CCL_WORKER_COUNT", 0)) < 1:
+                        raise ValueError(
+                            "CPU distributed training backend is ccl. but CCL_WORKER_COUNT is not correctly set. "
+                            "Please use like 'export CCL_WORKER_COUNT = 1' to set."
+                        )
 
                 # Try to get launch configuration from environment variables set by MPI launcher - works for Intel MPI, OpenMPI and MVAPICH
                 rank = get_int_from_env(["RANK", "PMI_RANK", "OMPI_COMM_WORLD_RANK", "MV2_COMM_WORLD_RANK"], 0)
@@ -389,7 +395,24 @@ class GaudiTrainingArguments(TrainingArguments):
                             "Looks like distributed multinode run but MASTER_ADDR env not set, "
                             "please try exporting rank 0's hostname as MASTER_ADDR"
                         )
-                torch.distributed.init_process_group(backend=self.xpu_backend, rank=rank, world_size=size)
+                if (
+                    torch.get_num_threads() == 1
+                    and get_int_from_env(["OMP_NUM_THREADS", "MKL_NUM_THREADS"], 0) == 0
+                    and is_psutil_available()
+                ):
+                    import psutil
+
+                    num_cpu_threads_per_process = int(psutil.cpu_count(logical=False) / local_size)
+                    if num_cpu_threads_per_process == 0:
+                        num_cpu_threads_per_process = 1
+                    torch.set_num_threads(num_cpu_threads_per_process)
+                    logger.info(
+                        f"num_cpu_threads_per_process unset, we set it at {num_cpu_threads_per_process} to improve oob"
+                        " performance."
+                    )
+                torch.distributed.init_process_group(
+                    backend=self.xpu_backend, rank=rank, world_size=size, timeout=self.ddp_timeout_delta
+                )
         elif self.use_habana:
             import habana_frameworks.torch.hpu as hthpu
 

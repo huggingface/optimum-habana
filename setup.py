@@ -15,12 +15,8 @@ except Exception as error:
 INSTALL_REQUIRES = [
     "transformers >= 4.20.0",
     "optimum",
-    "datasets",
-    "tokenizers",
     "torch",
-    "sentencepiece",
-    "scipy",
-    "pillow",
+    "accelerate",
 ]
 
 TESTS_REQUIRE = [
@@ -29,6 +25,8 @@ TESTS_REQUIRE = [
     "parameterized",
     "GitPython",
     "optuna",
+    "sentencepiece",
+    "datasets",
 ]
 
 QUALITY_REQUIRES = [
@@ -37,15 +35,9 @@ QUALITY_REQUIRES = [
     "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
 ]
 
-DEEPSPEED_REQUIRES = [
-    "deepspeed @ git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0",
-    "accelerate",
-]
-
 EXTRAS_REQUIRE = {
     "tests": TESTS_REQUIRE,
     "quality": QUALITY_REQUIRES,
-    "deepspeed": DEEPSPEED_REQUIRES,
 }
 
 setup(
@@ -53,7 +45,7 @@ setup(
     version=__version__,
     description=(
         "Optimum Habana is the interface between the Hugging Face Transformers library and Habana Gaudi Processor"
-        " (HPU). It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU"
+        " (HPU). It provides a set of tools enabling easy model loading and training on single- and multi-HPU"
         " settings for different downstream tasks."
     ),
     long_description=open("README.md", "r", encoding="utf-8").read(),
