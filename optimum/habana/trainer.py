@@ -149,8 +149,6 @@ class GaudiTrainer(Trainer):
                 self.htcore = htcore
 
             if self.args.deepspeed:
-                # Habana's fused ADAM is not compatible with DeepSpeed yet
-                self.gaudi_config.use_fused_adam = False
                 # HMP must be set to True when using DeepSpeed
                 self.gaudi_config.use_habana_mixed_precision = True
 
@@ -224,13 +222,23 @@ class GaudiTrainer(Trainer):
                     )
 
             if self.gaudi_config.use_fused_adam and self.args.use_habana:
-                try:
-                    from habana_frameworks.torch.hpex.optimizers import FusedAdamW
-                except ImportError as error:
-                    error.msg = (
-                        f"Could not import 'FusedAdamW' from 'habana_frameworks.torch.hpex.optimizers'. {error.msg}."
-                    )
-                    raise error
+                if self.args.deepspeed:
+                    # Import a specific version of Habana fused AdamW when using DeepSpeed
+                    try:
+                        from habana_frameworks.torch.hpex.optimizers.distributed import FusedAdamW
+                    except ImportError as error:
+                        error.msg = (
+                            f"Could not import 'FusedAdamW' from 'habana_frameworks.torch.hpex.optimizers.distributed'. {error.msg}."
+                        )
+                        raise error
+                else:
+                    try:
+                        from habana_frameworks.torch.hpex.optimizers import FusedAdamW
+                    except ImportError as error:
+                        error.msg = (
+                            f"Could not import 'FusedAdamW' from 'habana_frameworks.torch.hpex.optimizers'. {error.msg}."
+                        )
+                        raise error
                 optimizer_cls = FusedAdamW
                 optimizer_kwargs = {
                     "lr": self.args.learning_rate,
