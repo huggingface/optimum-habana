@@ -71,7 +71,6 @@ from transformers.trainer_utils import (
 )
 from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
-from transformers.utils import logging as transformers_logging
 
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
@@ -300,7 +299,6 @@ class GaudiTrainer(Trainer):
         resume_from_checkpoint: Optional[Union[str, bool]] = None,
         trial: Union["optuna.Trial", Dict[str, Any]] = None,
         ignore_keys_for_eval: Optional[List[str]] = None,
-        memory_usage_estimation: bool = False,
         **kwargs,
     ):
         """
@@ -375,7 +373,6 @@ class GaudiTrainer(Trainer):
             resume_from_checkpoint=resume_from_checkpoint,
             trial=trial,
             ignore_keys_for_eval=ignore_keys_for_eval,
-            memory_usage_estimation=memory_usage_estimation,
         )
 
     def _inner_training_loop(
@@ -385,7 +382,6 @@ class GaudiTrainer(Trainer):
         resume_from_checkpoint=None,
         trial=None,
         ignore_keys_for_eval=None,
-        memory_usage_estimation=False,
     ):
         self._train_batch_size = batch_size
         # Data loader and number of training steps
@@ -750,8 +746,7 @@ class GaudiTrainer(Trainer):
 
         self._memory_tracker.stop_and_update_metrics(metrics)
 
-        if not memory_usage_estimation:
-            self.log(metrics)
+        self.log(metrics)
 
         self.control = self.callback_handler.on_train_end(args, self.state, self.control)
 
