@@ -963,7 +963,7 @@ class GaudiTrainer(Trainer):
             self.model_wrapped = deepspeed_engine
             self.deepspeed = deepspeed_engine
 
-        model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+        model = self._wrap_model(self.model.to(dtype=torch.float32, device="hpu"), training=False, dataloader=dataloader)
 
         batch_size = self.args.eval_batch_size
 
