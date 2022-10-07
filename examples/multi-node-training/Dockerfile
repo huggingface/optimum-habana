@@ -10,11 +10,11 @@ RUN apt-get update && apt-get install -y pdsh && \
     ln -s /opt/amazon/efa/lib64 /opt/amazon/efa/lib && \
     LIBFABRIC_ROOT=/opt/amazon/efa make
 
- RUN git clone https://github.com/huggingface/optimum-habana.git && \
-    cd optimum-habana && \
+ RUN git clone https://github.com/huggingface/optimum-habana.git /root/optimum-habana && \
+    cd /root/optimum-habana && \
     git checkout multi_node && \
     pip install . \
     pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1 && \
     cd examples/language-modeling && pip install -r requirements.txt
 
-COPY .deepspeed_env optimum-habana/examples/language-modeling
+COPY .deepspeed_env /root/optimum-habana/examples/language-modeling
