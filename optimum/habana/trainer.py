@@ -1542,8 +1542,8 @@ class GaudiTrainer(Trainer):
         Subclass and override for custom behavior.
         """
         # print("INPUTS")
-        for key, value in inputs.items():
-            print(key, value.dtype)
+        # for key, value in inputs.items():
+        #     print(key, value.dtype)
         if self.label_smoother is not None and "labels" in inputs:
             labels = inputs.pop("labels")
         else:
@@ -1568,6 +1568,6 @@ class GaudiTrainer(Trainer):
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
-        # print("LOSS", loss, loss.dtype)
+        print("LOSS", loss, loss.dtype)
 
         return (loss, outputs) if return_outputs else loss
