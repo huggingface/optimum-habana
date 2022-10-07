@@ -437,6 +437,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 if not is_deepspeed_available():
                     raise ImportError("--deepspeed requires deepspeed: `pip install deepspeed`.")
                 import deepspeed
+                import habana_frameworks.torch.distributed.hccl
 
                 deepspeed.init_distributed(dist_backend="hccl")
                 logger.info("DeepSpeed is enabled.")

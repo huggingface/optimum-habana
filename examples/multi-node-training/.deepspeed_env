@@ -1,0 +1,4 @@
+HCCL_OVER_TCP=0
+HCCL_OVER_OFI=1
+HCCL_SOCKET_IFNAME=eth0
+LD_LIBRARY_PATH=/root/hccl_ofi_wrapper:/opt/amazon/openmpi/lib:/opt/amazon/efa/lib
