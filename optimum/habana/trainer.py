@@ -835,10 +835,10 @@ class GaudiTrainer(Trainer):
                 scaler_dict = self.scaler.state_dict()
             if self.args.use_habana:
                 # Move the state dict from HPU to CPU before saving
-                optim_dict = to_device_dtype(optim_dict, target_device=torch.device("cpu"))
-                scheduler_dict = to_device_dtype(scheduler_dict, target_device=torch.device("cpu"))
+                to_device_dtype(optim_dict, target_device=torch.device("cpu"))
+                to_device_dtype(scheduler_dict, target_device=torch.device("cpu"))
                 if self.do_grad_scaling:
-                    scaler_dict = to_device_dtype(scaler_dict, target_device=torch.device("cpu"))
+                    to_device_dtype(scaler_dict, target_device=torch.device("cpu"))
             torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
             with warnings.catch_warnings(record=True) as caught_warnings:
                 torch.save(scheduler_dict, os.path.join(output_dir, SCHEDULER_NAME))
@@ -1011,6 +1011,7 @@ class GaudiTrainer(Trainer):
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
             # print("LOSS", loss, loss.dtype)
+            to_device_dtype(loss, target_dtype=torch.float32)
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             # Save the logits dtype since we need to convert them into floats during the process
@@ -1022,7 +1023,7 @@ class GaudiTrainer(Trainer):
             if loss is not None:
                 losses = self._nested_gather(loss.repeat(batch_size))
                 losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
-                print("LOSSES HOST", losses_host)
+                # print("LOSSES HOST", losses_host)
             if labels is not None:
                 labels = self._pad_across_processes(labels)
                 labels = self._nested_gather(labels)
@@ -1037,7 +1038,7 @@ class GaudiTrainer(Trainer):
                 )
             if logits is not None:
                 if args.use_habana and logits_dtype != "float32":
-                    logits = to_device_dtype(logits, target_dtype=torch.float32)
+                    to_device_dtype(logits, target_dtype=torch.float32)
                 logits = self._pad_across_processes(logits)
                 logits = self._nested_gather(logits)
                 if self.preprocess_logits_for_metrics is not None:
@@ -1053,7 +1054,7 @@ class GaudiTrainer(Trainer):
                     all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
                 if preds_host is not None:
                     if args.use_habana and logits_dtype != "float32":
-                        preds_host = to_device_dtype(preds_host, target_dtype=torch.float32)
+                        to_device_dtype(preds_host, target_dtype=torch.float32)
                     logits = nested_numpify(preds_host)
                     all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
                 if inputs_host is not None:
@@ -1088,7 +1089,7 @@ class GaudiTrainer(Trainer):
             all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
         if preds_host is not None:
             if args.use_habana and logits_dtype != "float32":
-                preds_host = to_device_dtype(preds_host, target_dtype=torch.float32)
+                to_device_dtype(preds_host, target_dtype=torch.float32)
             logits = nested_numpify(preds_host)
             all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
         if inputs_host is not None:
@@ -1420,7 +1421,7 @@ class GaudiTrainer(Trainer):
             state_dict = self.model.state_dict()
         if state_dict and self.args.use_habana:
             # state_dict items have to be saved on the CPU
-            state_dict = to_device_dtype(state_dict, target_device=torch.device("cpu"))
+            to_device_dtype(state_dict, target_device=torch.device("cpu"))
 
         # Save a trained model and configuration using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
