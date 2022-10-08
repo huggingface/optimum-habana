@@ -153,6 +153,10 @@ class GaudiTrainer(Trainer):
                 self.gaudi_config.use_fused_adam = False
                 # HMP must be set to True when using DeepSpeed
                 self.gaudi_config.use_habana_mixed_precision = True
+                def numpy_detached(self):
+                    return numpy_func(self.detach())
+                numpy_func = getattr(torch.Tensor, 'numpy')
+                setattr(torch.Tensor, 'numpy', numpy_detached)
 
             if self.gaudi_config.use_habana_mixed_precision:
                 try:
@@ -1010,8 +1014,8 @@ class GaudiTrainer(Trainer):
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            if args.use_lazy_mode:
-                self.htcore.mark_step()
+            # if args.use_lazy_mode:
+            #     self.htcore.mark_step()
             # print("LOSS", loss, loss.dtype)
             # loss = to_device_dtype(loss, target_dtype=torch.float32)
             # print("LOSS", loss, loss.dtype)
