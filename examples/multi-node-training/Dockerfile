@@ -32,5 +32,6 @@ COPY .deepspeed_env "${OPTIMUM_HABANA_WS}"/examples/language-modeling
 COPY hostfile "${OPTIMUM_HABANA_WS}"/examples/language-modeling
 
 CMD ssh-keygen -t rsa -b 4096 -N '' -f ~/.ssh/id_rsa && \
+   chmod 600 ~/.ssh/id_rsa && \
    cat ~/.ssh/id_rsa.pub > ~/.ssh/authorized_keys && \
    /bin/bash
