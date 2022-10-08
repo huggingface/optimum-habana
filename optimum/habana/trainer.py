@@ -1083,6 +1083,7 @@ class GaudiTrainer(Trainer):
         # Gather all remaining tensors and put them back on the CPU
         if losses_host is not None:
             losses = nested_numpify(losses_host)
+            print("LOSSES", losses)
             all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
         if preds_host is not None:
             if args.use_habana and logits_dtype != "float32":
