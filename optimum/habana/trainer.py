@@ -1012,6 +1012,7 @@ class GaudiTrainer(Trainer):
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
             # print("LOSS", loss, loss.dtype)
             loss = to_device_dtype(loss, target_dtype=torch.float32)
+            print("LOSS", loss, loss.dtype)
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             # Save the logits dtype since we need to convert them into floats during the process
