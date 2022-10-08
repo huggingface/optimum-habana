@@ -31,4 +31,4 @@ COPY .deepspeed_env "${OPTIMUM_HABANA_WS}"/examples/language-modeling
 # List of all nodes with their IP address and number of devices
 COPY hostfile "${OPTIMUM_HABANA_WS}"/examples/language-modeling
 
-CMD ssh-keygen -t rsa -b 4096 -N '' && /bin/bash
+CMD ssh-keygen -t rsa -b 4096 -N '' -f ~/.ssh/id_rsa && /bin/bash
