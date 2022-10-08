@@ -1010,7 +1010,7 @@ class GaudiTrainer(Trainer):
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            print("LOSS", loss, loss.dtype)
+            # print("LOSS", loss, loss.dtype)
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             # Save the logits dtype since we need to convert them into floats during the process
@@ -1048,6 +1048,7 @@ class GaudiTrainer(Trainer):
             if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
                 if losses_host is not None:
                     losses = nested_numpify(losses_host)
+                    print("LOSSES", losses)
                     all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
                 if preds_host is not None:
                     if args.use_habana and logits_dtype != "float32":
