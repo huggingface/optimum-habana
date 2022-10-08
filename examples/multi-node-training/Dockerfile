@@ -11,6 +11,12 @@ RUN git clone "https://github.com/HabanaAI/hccl_ofi_wrapper.git" "${OFI_WRAPPER_
    ln -s /opt/amazon/efa/lib64 /opt/amazon/efa/lib && \
    LIBFABRIC_ROOT=/opt/amazon/efa make
 
+# Docker ssh port setup
+RUN sed -i 's/#Port 22/Port 3022/g' /etc/ssh/sshd_config && \
+   sed -i 's/#   Port 22/    Port 3022/g' /etc/ssh/ssh_config && \
+   sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+   service ssh restart
+
 # Installs Optimum Habana and Habana's fork of DeepSpeed
 ARG OPTIMUM_HABANA_WS="/root/optimum-habana"
 RUN git clone https://github.com/huggingface/optimum-habana.git "${OPTIMUM_HABANA_WS}" && \
@@ -24,3 +30,5 @@ COPY .deepspeed_env "${OPTIMUM_HABANA_WS}"/examples/language-modeling
 
 # List of all nodes with their IP address and number of devices
 COPY hostfile "${OPTIMUM_HABANA_WS}"/examples/language-modeling
+
+CMD ssh-keygen -t rsa -b 4096 -N ''
