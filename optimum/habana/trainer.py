@@ -953,6 +953,7 @@ class GaudiTrainer(Trainer):
         Works both with or without labels.
         """
         torch.distributed.barrier()
+        print("HERE", args.local_process_index, args.process_index, args.world_size)
 
         args = self.args
 
