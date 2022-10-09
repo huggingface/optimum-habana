@@ -952,8 +952,8 @@ class GaudiTrainer(Trainer):
         Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
         Works both with or without labels.
         """
-        torch.distributed.barrier()
-        print("HERE", self.args.local_process_index, self.args.process_index, self.args.world_size)
+        # torch.distributed.barrier()
+        # print("HERE", self.args.local_process_index, self.args.process_index, self.args.world_size)
 
         args = self.args
 
@@ -1017,6 +1017,7 @@ class GaudiTrainer(Trainer):
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+            to_device_dtype(loss, target_device="cpu")
             # if args.use_lazy_mode:
             #     self.htcore.mark_step()
             # print("LOSS", loss, loss.dtype)
