@@ -1014,11 +1014,9 @@ class GaudiTrainer(Trainer):
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            print("WORLD SIZE", args.world_size)
             if args.world_size > 8:
-                print("HERE")
+                # Multi-node training
                 # Hack: moving the loss tensor to CPU prevents weird precision issues
-                # when doing multi-node training
                 to_device_dtype(loss, target_device="cpu")
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
