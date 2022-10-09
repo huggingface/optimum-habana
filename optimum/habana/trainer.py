@@ -152,7 +152,7 @@ class GaudiTrainer(Trainer):
                 # Habana's fused ADAM is not compatible with DeepSpeed yet
                 self.gaudi_config.use_fused_adam = False
                 # HMP must be set to True when using DeepSpeed
-                self.gaudi_config.use_habana_mixed_precision = True
+                self.gaudi_config.use_habana_mixed_precision = False
                 # def numpy_detached(self):
                 #     return numpy_func(self.detach())
                 # numpy_func = getattr(torch.Tensor, 'numpy')
@@ -953,7 +953,7 @@ class GaudiTrainer(Trainer):
         Works both with or without labels.
         """
         torch.distributed.barrier()
-        print("HERE", args.local_process_index, args.process_index, args.world_size)
+        print("HERE", self.args.local_process_index, self.args.process_index, self.args.world_size)
 
         args = self.args
 
