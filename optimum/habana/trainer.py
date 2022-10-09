@@ -1014,7 +1014,7 @@ class GaudiTrainer(Trainer):
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            print("DEEPSPEED", self.deepspeed.args.nnodes)
+            print("DEEPSPEED", self.hf_deepspeed_config_orig)
             # Hack: moving the loss tensor to CPU
             to_device_dtype(loss, target_device="cpu")
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
