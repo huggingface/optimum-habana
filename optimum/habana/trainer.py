@@ -1014,9 +1014,12 @@ class GaudiTrainer(Trainer):
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            print("DEEPSPEED", self.hf_deepspeed_config_orig.config)
-            # Hack: moving the loss tensor to CPU
-            to_device_dtype(loss, target_device="cpu")
+            print("WORLD SIZE", args.world_size)
+            if args.world_size > 8:
+                print("HERE")
+                # Hack: moving the loss tensor to CPU prevents weird precision issues
+                # when doing multi-node training
+                to_device_dtype(loss, target_device="cpu")
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             # Save the logits dtype since we need to convert them into floats during the process
