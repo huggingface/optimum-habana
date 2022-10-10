@@ -952,8 +952,11 @@ class GaudiTrainer(Trainer):
         Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
         Works both with or without labels.
         """
-        torch.distributed.barrier()
         args = self.args
+
+        if args.world_size > 1:
+            # Make sure all processes start evaluation at the same time
+            torch.distributed.barrier()
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
 
