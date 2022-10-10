@@ -18,7 +18,7 @@ limitations under the License.
 # 🤗 Optimum Habana
 
 🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html). It provides a set of tools enabling easy model loading and training on single- and multi-HPU settings for different downstream tasks.
-The list of officially validated models and tasks is available [here](validated-models). Users can try other models and tasks with only few changes.
+The list of officially validated models and tasks is available [here](https://huggingface.co/docs/optimum/main/en/habana_index#validated-models). Users can try other models and tasks with only few changes.
 
 ## What is a Habana Processing Unit (HPU)?
 
@@ -38,7 +38,7 @@ pip install optimum[habana]
 
 To use DeepSpeed on HPUs, you also need to run the following command:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
 ```
 
 </Tip>
@@ -95,5 +95,7 @@ Please refer to Habana Gaudi's official [installation guide](https://docs.habana
 <Tip>
 
 Tests should be run in a Docker container based on Habana Docker images.
+
+The current version has been validated for SynapseAI 1.6.
 
 </Tip>

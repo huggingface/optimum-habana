@@ -70,11 +70,6 @@ class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
         self.fill_match("scheduler.params.warmup_max_lr", args.learning_rate, "learning_rate")
         # total_num_steps - will get set in trainer_config_finalize
 
-        gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
-        self.fill_match(
-            "bf16.enabled", gaudi_config.use_habana_mixed_precision, "gaudi_config.use_habana_mixed_precision"
-        )
-
         # deepspeed's default mode is fp16 unless there is a config that says differently
         if self.is_true("bf16.enabled"):
             self._dtype = torch.bfloat16

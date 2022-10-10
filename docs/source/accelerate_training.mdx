@@ -17,7 +17,7 @@ limitations under the License.
 # Accelerating Training
 
 Gaudi offers several possibilities to make training faster.
-They are all compatible with each other and can be coupled with [distributed training](distributed).
+They are all compatible with each other and can be coupled with [distributed training](https://huggingface.co/docs/optimum/main/en/habana_distributed).
 
 
 ## Lazy Mode
@@ -107,3 +107,21 @@ The default value of *epsilon* is `1e-6` for the Habana fused ADAM optimizer, wh
 
 Habana provides a [custom gradient norm clipping implementation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
 It can be used by specifying `"use_fused_clip_norm": true` in the Gaudi configuration file.
+
+
+## Tracking Memory Usage
+
+Live memory statistics are displayed every `logging_steps` (default is 500) steps:
+- `memory_allocated (GB)` refers to the *current* memory consumption in GB,
+- `max_memory_allocated (GB)` refers to the *maximum* memory consumption reached during the run in GB,
+- `total_memory_available (GB)` refers to the *total* memory available on the device in GB.
+
+These metrics can help you to adjust the batch size of your runs.
+
+<Tip warning={true}>
+
+In distributed mode, memory stats are communicated only by the main process.
+
+</Tip>
+
+You can take a look at [Habana Gaudi's official documentation](https://docs.habana.ai/en/latest/PyTorch/PyTorch_User_Guide/Python_Packages.html#memory-stats-apis) for more information about the memory stats API.

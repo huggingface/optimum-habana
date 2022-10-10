@@ -15,7 +15,7 @@ limitations under the License.
 
 # Examples
 
-This folder contains actively maintained examples of use of 🤗 Optimum Habana for question answering and text classification.
+This folder contains actively maintained examples of use of 🤗 Optimum Habana for various ML tasks.
 
 Other [examples](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library can be adapted the same way to enable deployment on Gaudi processors. This simply consists in:
 - replacing the `Trainer` from 🤗 Transformers by the `GaudiTrainer` from 🤗 Optimum Habana,

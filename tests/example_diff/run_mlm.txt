@@ -1,15 +1,20 @@
-18d17
+17,19c17,18
+< Fine-tuning the library models for masked language modeling (BERT, ALBERT, RoBERTa...) on a text file or a dataset.
 < 
-35a35
+< Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
+---
+> Training the library models for masked language modeling (BERT, ALBERT, RoBERTa...) on a text file or a dataset.
+> Here is the full list of checkpoints on the hub that can be trained by this script:
+36a36
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-44,45d43
+45,46d44
 <     Trainer,
 <     TrainingArguments,
-219c217
+220c218
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-244a243,249
+245a244,250
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -17,22 +22,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-247,248c252,254
+248,249c253,255
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-250d255
+251d256
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-541c546
+542c547
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-542a548
+543a549
 >         gaudi_config=gaudi_config,
-604,608d609
+605,609d610
 < 
 < 
 < def _mp_fn(index):

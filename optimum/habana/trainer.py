@@ -75,7 +75,7 @@ from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
-from .trainer_utils import convert_into_dtypes, get_dtype, speed_metrics, to_device_dtype
+from .trainer_utils import convert_into_dtypes, get_dtype, get_hpu_memory_stats, speed_metrics, to_device_dtype
 from .training_args import GaudiTrainingArguments
 
 
@@ -147,6 +147,12 @@ class GaudiTrainer(Trainer):
                     error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
                     raise error
                 self.htcore = htcore
+
+            if self.args.deepspeed:
+                # Habana's fused ADAM is not compatible with DeepSpeed yet
+                self.gaudi_config.use_fused_adam = False
+                # HMP must be set to True when using DeepSpeed
+                self.gaudi_config.use_habana_mixed_precision = True
 
             if self.gaudi_config.use_habana_mixed_precision:
                 try:
@@ -331,6 +337,7 @@ class GaudiTrainer(Trainer):
             raise TypeError(f"train() received got unexpected keyword arguments: {', '.join(list(kwargs.keys()))}.")
         # This might change the seed so needs to run first.
         self._hp_search_setup(trial)
+        self._train_batch_size = self.args.train_batch_size
 
         # Model re-init
         model_reloaded = False
@@ -369,7 +376,12 @@ class GaudiTrainer(Trainer):
         )
 
     def _inner_training_loop(
-        self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
+        self,
+        batch_size=None,
+        args=None,
+        resume_from_checkpoint=None,
+        trial=None,
+        ignore_keys_for_eval=None,
     ):
         self._train_batch_size = batch_size
         # Data loader and number of training steps
@@ -1089,13 +1101,15 @@ class GaudiTrainer(Trainer):
             num_samples = len(eval_dataset)
         # The instance check is weird and does not actually check for the type, but whether the dataset has the right
         # methods. Therefore we need to make sure it also has the attribute.
-        elif isinstance(eval_dataset, IterableDatasetShard) and hasattr(eval_dataset, "num_examples"):
+        elif isinstance(eval_dataset, IterableDatasetShard) and getattr(eval_dataset, "num_examples", 0) > 0:
             num_samples = eval_dataset.num_examples
         else:
             if has_length(dataloader):
                 num_samples = self.num_examples(dataloader)
             else:  # both len(dataloader.dataset) and len(dataloader) fail
                 num_samples = observed_num_examples
+        if num_samples == 0 and observed_num_examples > 0:
+            num_samples = observed_num_examples
 
         # Number of losses has been rounded to a multiple of batch_size and in a distributed training, the number of
         # samplers has been rounded to a multiple of batch_size, so we truncate.
@@ -1503,3 +1517,21 @@ class GaudiTrainer(Trainer):
                 f"Could not locate the best model at {best_model_path}, if you are running a distributed training "
                 "on multiple nodes, you should activate `--save_on_each_node`."
             )
+
+    def log(self, logs: Dict[str, float]) -> None:
+        """
+        Log `logs` on the various objects watching training.
+        Subclass and override this method to inject custom behavior.
+        Args:
+            logs (`Dict[str, float]`):
+                The values to log.
+        """
+        if self.state.epoch is not None:
+            logs["epoch"] = round(self.state.epoch, 2)
+
+        mem_stats = get_hpu_memory_stats()
+        logs.update(mem_stats)
+
+        output = {**logs, **{"step": self.state.global_step}}
+        self.state.log_history.append(output)
+        self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)

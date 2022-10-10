@@ -2,22 +2,22 @@
 < # Copyright 2021 The HuggingFace Team. All rights reserved.
 ---
 > # Copyright 2022 The HuggingFace Team. All rights reserved.
-33a34
+34a35
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-44,45c45
+45,46c46
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
 ---
 >     default_data_collator,
-202c202
+203c203
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-298c298
+299c299
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-322a323,329
+323a324,330
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -25,7 +25,7 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-325,326c332,334
+326,327c333,335
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
@@ -49,13 +49,13 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-637c648
+634c645
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-638a650
+635a647
 >         gaudi_config=gaudi_config,
-727,731d738
+724,728d735
 < 
 < 
 < def _mp_fn(index):

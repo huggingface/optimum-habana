@@ -15,12 +15,7 @@ except Exception as error:
 INSTALL_REQUIRES = [
     "transformers >= 4.20.0",
     "optimum",
-    "datasets",
-    "tokenizers",
     "torch",
-    "sentencepiece",
-    "scipy",
-    "pillow",
     "accelerate",
 ]
 
@@ -30,6 +25,8 @@ TESTS_REQUIRE = [
     "parameterized",
     "GitPython",
     "optuna",
+    "sentencepiece",
+    "datasets",
 ]
 
 QUALITY_REQUIRES = [

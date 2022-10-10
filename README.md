@@ -40,7 +40,7 @@ pip install optimum[habana]
 
 > To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.0
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
 >```
 
 Optimum Habana is a fast-moving project, and you may want to install it from source:
@@ -66,12 +66,14 @@ pip install -r requirements.txt
 
 ## How to use it?
 
+### Quick Start
+
 🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors**.
 There are two main classes one needs to know:
-- GaudiTrainer: the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
-- GaudiConfig: the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
+- [GaudiTrainer](https://huggingface.co/docs/optimum/main/en/habana_trainer): the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
+- [GaudiConfig](https://huggingface.co/docs/optimum/main/en/habana_gaudi_config): the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
 
-The `GaudiTrainer` is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
+The [GaudiTrainer](https://huggingface.co/docs/optimum/main/en/habana_trainer) is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
 That's how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their [original counterparts](https://github.com/huggingface/transformers/tree/main/examples/pytorch).
 
 Original script:
@@ -167,6 +169,11 @@ gaudi_config = GaudiConfig.from_pretrained(
 ```
 
 
+### Documentation
+
+Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana_index) for more advanced usage.
+
+
 ## Validated Models
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
@@ -191,3 +198,5 @@ If you find any issue while using those, please open an issue or a pull request.
 Please refer to Habana Gaudi's official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html).
 
 > Tests should be run in a Docker container based on Habana Docker images.
+>
+> The current version has been validated for SynapseAI 1.6.
