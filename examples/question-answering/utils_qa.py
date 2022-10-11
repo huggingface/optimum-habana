@@ -218,8 +218,7 @@ def postprocess_qa_predictions(
         ]
 
     # If we have an output_dir, let's save all those dicts.
-    if output_dir is not None and self.is_world_process_zero():
-        # output_dir should only be accessed on the main node
+    if output_dir is not None:
         if not os.path.isdir(output_dir):
             raise EnvironmentError(f"{output_dir} is not a directory.")
 
@@ -412,8 +411,7 @@ def postprocess_qa_predictions_with_beam_search(
         ]
 
     # If we have an output_dir, let's save all those dicts.
-    if output_dir is not None and self.is_world_process_zero():
-        # output_dir should only be accessed on the main node
+    if output_dir is not None:
         if not os.path.isdir(output_dir):
             raise EnvironmentError(f"{output_dir} is not a directory.")
 
