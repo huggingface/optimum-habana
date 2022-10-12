@@ -20,7 +20,7 @@
             "multi_card": {
                 "learning_rate": 2e-5,
                 "train_batch_size": 8,
-                "eval_accuracy": 0.9774,
+                "eval_accuracy": 0.985,
                 "train_runtime": 55.6244,
                 "extra_arguments": [
                     "--remove_unused_columns False",
@@ -28,7 +28,7 @@
                     "--save_strategy epoch",
                     "--load_best_model_at_end True",
                     "--save_total_limit 3",
-                    "--seed 1337"
+                    "--seed 42"
                 ]
             }
         }
