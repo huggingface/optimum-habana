@@ -587,8 +587,7 @@ def main():
             n_best_size=data_args.n_best_size,
             max_answer_length=data_args.max_answer_length,
             null_score_diff_threshold=data_args.null_score_diff_threshold,
-            # output_dir should only be accessed on the main node
-            output_dir=training_args.output_dir if training_args.process_index == 0 else None,
+            output_dir=training_args.output_dir,
             log_level=log_level,
             prefix=stage,
         )
