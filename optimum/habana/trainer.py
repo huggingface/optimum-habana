@@ -1252,6 +1252,10 @@ class GaudiTrainer(Trainer):
         """
         args = self.args
 
+        if args.world_size > 1:
+            # Make sure all processes start prediction at the same time
+            torch.distributed.barrier()
+
         if not has_length(dataloader):
             raise ValueError("dataloader must implement a working __len__")
 
@@ -1305,6 +1309,10 @@ class GaudiTrainer(Trainer):
 
         for step, inputs in enumerate(dataloader):
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+            if args.world_size > 8:
+                # Multi-node training
+                # Hack: moving the loss tensor to CPU prevents weird precision issues
+                to_device_dtype(loss, target_device="cpu")
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             if loss is not None:
