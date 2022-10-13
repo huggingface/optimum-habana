@@ -28,7 +28,7 @@
 >     trainer = GaudiTrainer(
 514a522
 >         gaudi_config=gaudi_config,
-610,614d617
+614,618d621
 < 
 < 
 < def _mp_fn(index):

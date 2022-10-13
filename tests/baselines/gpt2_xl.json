@@ -12,6 +12,7 @@
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--gradient_accumulation 8",
                     "--gradient_checkpointing",
+                    "--use_cache False",
                     "--deepspeed tests/configs/deepspeed_zero_2.json"
                 ]
             }
