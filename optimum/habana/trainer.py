@@ -622,9 +622,6 @@ class GaudiTrainer(Trainer):
                 else:
                     tr_loss_step = self.training_step(model, inputs)
 
-                if args.use_lazy_mode:
-                    self.htcore.mark_step()
-
                 if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
                     # if loss is nan or inf simply add the average of previous logged losses
                     tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
@@ -632,12 +629,12 @@ class GaudiTrainer(Trainer):
                     tr_loss += tr_loss_step
 
                 self.current_flos += float(self.floating_point_ops(inputs))
+                if args.use_lazy_mode:
+                    self.htcore.mark_step()
 
                 # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
                 if self.deepspeed:
                     self.deepspeed.step()
-                    if args.use_lazy_mode:
-                        self.htcore.mark_step()
 
                 if (step + 1) % args.gradient_accumulation_steps == 0 or (
                     # last step in epoch but step is always smaller than gradient_accumulation_steps
@@ -692,7 +689,7 @@ class GaudiTrainer(Trainer):
 
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
-                    if args.use_lazy_mode and not self.deepspeed:
+                    if args.use_lazy_mode:
                         self.htcore.mark_step()
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
@@ -1589,7 +1586,7 @@ class GaudiTrainer(Trainer):
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
         elif self.deepspeed:
-            # print("PLOP")
+            # print("PLOP", self.args.process_index)
             # loss gets scaled under gradient_accumulation_steps in deepspeed
             loss = self.deepspeed.backward(loss)
         else:
