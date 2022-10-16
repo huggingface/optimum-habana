@@ -635,6 +635,8 @@ class GaudiTrainer(Trainer):
                 # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
                 if self.deepspeed:
                     self.deepspeed.step()
+                    if args.use_lazy_mode:
+                        self.htcore.mark_step()
 
                 if (step + 1) % args.gradient_accumulation_steps == 0 or (
                     # last step in epoch but step is always smaller than gradient_accumulation_steps
@@ -689,7 +691,7 @@ class GaudiTrainer(Trainer):
 
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
-                    if args.use_lazy_mode:
+                    if args.use_lazy_mode and not self.deepspeed:
                         self.htcore.mark_step()
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
