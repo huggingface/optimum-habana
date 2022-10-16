@@ -1572,7 +1572,9 @@ class GaudiTrainer(Trainer):
         model.train()
         inputs = self._prepare_inputs(inputs)
 
+        print("111", self.args.process_index, time.time())
         loss = self.compute_loss(model, inputs)
+        print("222", self.args.process_index, time.time())
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -1584,6 +1586,7 @@ class GaudiTrainer(Trainer):
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
         elif self.deepspeed:
+            print("PLOP")
             # loss gets scaled under gradient_accumulation_steps in deepspeed
             loss = self.deepspeed.backward(loss)
         else:
