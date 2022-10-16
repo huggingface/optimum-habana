@@ -592,7 +592,7 @@ class GaudiTrainer(Trainer):
 
             step = -1
             for step, inputs in enumerate(epoch_iterator):
-                print("BEGINNING step", self.args.process_index, time.time())
+                # print("BEGINNING step", self.args.process_index, time.time())
                 if args.throughput_warmup_steps > 0 and args.throughput_warmup_steps == epoch * steps_in_epoch + step:
                     start_time_after_warmup = time.time()
 
@@ -622,6 +622,9 @@ class GaudiTrainer(Trainer):
                 else:
                     tr_loss_step = self.training_step(model, inputs)
 
+                if args.use_lazy_mode:
+                    self.htcore.mark_step()
+
                 if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
                     # if loss is nan or inf simply add the average of previous logged losses
                     tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
@@ -629,8 +632,6 @@ class GaudiTrainer(Trainer):
                     tr_loss += tr_loss_step
 
                 self.current_flos += float(self.floating_point_ops(inputs))
-                if args.use_lazy_mode:
-                    self.htcore.mark_step()
 
                 # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
                 if self.deepspeed:
@@ -699,7 +700,7 @@ class GaudiTrainer(Trainer):
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
 
-                print("END step", self.args.process_index, time.time())
+                # print("END step", self.args.process_index, time.time())
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
@@ -1574,9 +1575,9 @@ class GaudiTrainer(Trainer):
         model.train()
         inputs = self._prepare_inputs(inputs)
 
-        print("111", self.args.process_index, time.time())
+        # print("111", self.args.process_index, time.time())
         loss = self.compute_loss(model, inputs)
-        print("222", self.args.process_index, time.time())
+        # print("222", self.args.process_index, time.time())
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -1588,12 +1589,12 @@ class GaudiTrainer(Trainer):
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
         elif self.deepspeed:
-            print("PLOP")
+            # print("PLOP")
             # loss gets scaled under gradient_accumulation_steps in deepspeed
             loss = self.deepspeed.backward(loss)
         else:
             loss.backward()
 
-        print("HERE", self.args.process_index, time.time())
+        # print("HERE", self.args.process_index, time.time())
 
         return loss.detach()
