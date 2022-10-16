@@ -592,6 +592,7 @@ class GaudiTrainer(Trainer):
 
             step = -1
             for step, inputs in enumerate(epoch_iterator):
+                print("BEGINNING step", self.args.process_index)
                 if args.throughput_warmup_steps > 0 and args.throughput_warmup_steps == epoch * steps_in_epoch + step:
                     start_time_after_warmup = time.time()
 
@@ -695,6 +696,8 @@ class GaudiTrainer(Trainer):
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
+
+                print("END step", self.args.process_index)
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
