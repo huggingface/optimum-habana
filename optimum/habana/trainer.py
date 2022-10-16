@@ -701,6 +701,8 @@ class GaudiTrainer(Trainer):
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
+                else:
+                    torch.distributed.barrier()
             if step < 0:
                 logger.warning(
                     "There seems to be not a single sample in your epoch_iterator, stopping training at step"
