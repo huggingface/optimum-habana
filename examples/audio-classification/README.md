@@ -16,58 +16,50 @@ limitations under the License.
 
 # Audio classification examples
 
-The following examples showcase how to fine-tune `Wav2Vec2` for audio classification using PyTorch.
+The following examples showcase how to fine-tune `Wav2Vec2` for audio classification on Habana Gaudi.
 
-Speech recognition models that have been pretrained in unsupervised fashion on audio data alone,
+<!-- Speech recognition models that have been pretrained in unsupervised fashion on audio data alone,
 *e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html),
 [HuBERT](https://huggingface.co/transformers/main/model_doc/hubert.html),
 [XLSR-Wav2Vec2](https://huggingface.co/transformers/main/model_doc/xlsr_wav2vec2.html), have shown to require only
-very little annotated data to yield good performance on speech classification datasets.
+very little annotated data to yield good performance on speech classification datasets. -->
 
-## Single-GPU
+## Single-HPU
 
-The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset.
+The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset on a single HPU.
 
 ```bash
 python run_audio_classification.py \
     --model_name_or_path facebook/wav2vec2-base \
     --dataset_name superb \
     --dataset_config_name ks \
-    --output_dir wav2vec2-base-ft-keyword-spotting \
+    --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
     --overwrite_output_dir \
     --remove_unused_columns False \
     --do_train \
     --do_eval \
-    --fp16 \
     --learning_rate 3e-5 \
     --max_length_seconds 1 \
     --attention_mask False \
     --warmup_ratio 0.1 \
     --num_train_epochs 5 \
-    --per_device_train_batch_size 32 \
-    --gradient_accumulation_steps 4 \
-    --per_device_eval_batch_size 32 \
+    --per_device_train_batch_size 128 \
+    --per_device_eval_batch_size 128 \
     --dataloader_num_workers 4 \
-    --logging_strategy steps \
-    --logging_steps 10 \
-    --evaluation_strategy epoch \
-    --save_strategy epoch \
-    --load_best_model_at_end True \
-    --metric_for_best_model accuracy \
-    --save_total_limit 3 \
-    --seed 0 \
-    --push_to_hub
+    --use_habana \
+    --use_lazy_mode \
+    --gaudi_config_name Habana/wav2vec2 \
+    --throughput_warmup_steps 2
 ```
 
-On a single V100 GPU (16GB), this script should run in ~14 minutes and yield accuracy of **98.26%**.
-
-👀 See the results here: [anton-l/wav2vec2-base-ft-keyword-spotting](https://huggingface.co/anton-l/wav2vec2-base-ft-keyword-spotting)
+On a single HPU, this script should run in ~x minutes and yield accuracy of **x%**.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
-## Multi-GPU
 
-The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) for 🌎 **Language Identification** on the [CommonLanguage dataset](https://huggingface.co/datasets/anton-l/common_language).
+## Multi-HPU
+
+The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) for 🌎 **Language Identification** on the [CommonLanguage dataset](https://huggingface.co/datasets/anton-l/common_language) on 8 HPUs.
 
 ```bash
 python ../gaudi_spawn.py \
@@ -104,9 +96,8 @@ python ../gaudi_spawn.py \
     --throughput_warmup_steps 2
 ```
 
-On 4 V100 GPUs (16GB), this script should run in ~1 hour and yield accuracy of **79.45%**.
+On 8 HPUs, this script should run in ~x hour and yield accuracy of **x%**.
 
-👀 See the results here: [anton-l/wav2vec2-base-lang-id](https://huggingface.co/anton-l/wav2vec2-base-lang-id)
 
 ## Sharing your model on 🤗 Hub
 
@@ -142,10 +133,7 @@ It has been verified that the script works for the following datasets:
 - [SUPERB Keyword Spotting](https://huggingface.co/datasets/superb#ks)
 - [Common Language](https://huggingface.co/datasets/common_language)
 
-| Dataset | Pretrained Model | # transformer layers | Accuracy on eval | GPU setup | Training time | Fine-tuned Model & Logs |
+| Dataset | Pretrained Model | # transformer layers | Accuracy on eval | # HPU | Training time | Throughput |
 |---------|------------------|----------------------|------------------|-----------|---------------|--------------------------|
-| Keyword Spotting | [ntu-spml/distilhubert](https://huggingface.co/ntu-spml/distilhubert) | 2 | 0.9706 | 1 V100 GPU | 11min  | [here](https://huggingface.co/anton-l/distilhubert-ft-keyword-spotting) |
-| Keyword Spotting | [facebook/wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) | 12 | 0.9826 | 1 V100 GPU | 14min  | [here](https://huggingface.co/anton-l/wav2vec2-base-ft-keyword-spotting) |
-| Keyword Spotting | [facebook/hubert-base-ls960](https://huggingface.co/facebook/hubert-base-ls960) | 12 | 0.9819 | 1 V100 GPU | 14min  | [here](https://huggingface.co/anton-l/hubert-base-ft-keyword-spotting) |
-| Keyword Spotting | [asapp/sew-mid-100k](https://huggingface.co/asapp/sew-mid-100k) | 24 | 0.9757 | 1 V100 GPU | 15min  | [here](https://huggingface.co/anton-l/sew-mid-100k-ft-keyword-spotting) |
-| Common Language | [facebook/wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) | 12 | 0.7945 | 4 V100 GPUs | 1h10m  | [here](https://huggingface.co/anton-l/wav2vec2-base-lang-id) |
+| Keyword Spotting | [facebook/wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) | 12 | 0.9826 | 1 | 14min  |  |
+| Common Language | [facebook/wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) | 12 | 0.7945 | 8 | 1h10m  |  |

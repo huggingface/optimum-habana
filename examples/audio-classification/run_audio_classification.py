@@ -277,9 +277,6 @@ def main():
 
     # Max input length
     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
-    print("MAX LENGTH", max_length)
-    print("SAMPLING RATE", feature_extractor.sampling_rate)
-    print("ARGS MAX LENGTH", data_args.max_length_seconds)
 
     def train_transforms(batch):
         """Apply train_transforms across a batch."""
@@ -309,7 +306,7 @@ def main():
             wav = audio["array"]
             preprocessed_audio = feature_extractor(
                 wav,
-                max_length=max_length,
+                max_length=max_length*2,
                 sampling_rate=feature_extractor.sampling_rate,
                 padding="max_length",
                 truncation=True,
