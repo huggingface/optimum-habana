@@ -17,60 +17,10 @@ limitations under the License.
 
 # 🤗 Optimum Habana
 
-🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html). It provides a set of tools enabling easy model loading and training on single- and multi-HPU settings for different downstream tasks.
-The list of officially validated models and tasks is available [here](https://huggingface.co/docs/optimum/main/en/habana_index#validated-models). Users can try other models and tasks with only few changes.
-
-## What is a Habana Processing Unit (HPU)?
-
-Quote from the Hugging Face [blog post](https://huggingface.co/blog/habana):
-
-> Habana Gaudi training solutions, which power Amazon's EC2 DL1 instances and Supermicro's X12 Gaudi AI Training Server, deliver price/performance up to 40% lower than comparable training solutions and enable customers to train more while spending less. The integration of ten 100 Gigabit Ethernet ports onto every Gaudi processor enables system scaling from 1 to thousands of Gaudis with ease and cost-efficiency. Habana’s SynapseAI® is optimized—at inception—to enable Gaudi performance and usability, supports TensorFlow and PyTorch frameworks, with a focus on computer vision and natural language processing applications.
+🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html). It provides a set of tools that enable simple model loading and training on single- and multi-HPU settings for various downstream tasks.
 
 
-## Install
-To install the latest release of this package:
-
-```bash
-pip install optimum[habana]
-```
-
-<Tip>
-
-To use DeepSpeed on HPUs, you also need to run the following command:
-```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
-```
-
-</Tip>
-
-Optimum Habana is a fast-moving project, and you may want to install it from source:
-
-```bash
-pip install git+https://github.com/huggingface/optimum-habana.git
-```
-
-<Tip>
-
-Alternatively, you can install the package without pip as follows:
-```bash
-git clone https://github.com/huggingface/optimum-habana.git
-cd optimum-habana
-python setup.py install
-```
-
-</Tip>
-
-Last but not least, don't forget to install requirements for every example:
-
-```bash
-cd <example-folder>
-pip install -r requirements.txt
-```
-
-
-## Validated Models
-
-The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
+The table below shows which model architectures, tasks and device distributions are currently supported for 🤗 Optimum Habana:
 
 |            | Text Classification | Question Answering | Language Modeling  | Summarization | Translation | Image Classification | Single Card | Multi Card | DeepSpeed |
 |------------|:-------------------:|:------------------:|:------------------:|:-------------:|:-----------:|:--------------------:|:-----------:|:----------:|:---------:|
@@ -83,19 +33,26 @@ The following model architectures, tasks and device distributions have been vali
 | ViT        | ❌                  | ❌                 | ❌                 | ❌            | ❌          | ✅                   | ✅          | ✅         | ✅        |
 | Swin       | ❌                  | ❌                 | ❌                 | ❌            | ❌          | ✅                   | ✅          | ✅         | ✅        |
 
-Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to this [section](quickstart) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
-
-If you find any issue while using those, please open an issue or a pull request in the [Github repository of the project](https://github.com/huggingface/optimum-habana).
+Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to the [Quickstart](./quickstart) for examples on using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 
 
-## Gaudi Setup
-
-Please refer to Habana Gaudi's official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html).
-
-<Tip>
-
-Tests should be run in a Docker container based on Habana Docker images.
-
-The current version has been validated for SynapseAI 1.6.
-
-</Tip>
+<div class="mt-10">
+  <div class="w-full flex flex-col space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-y-4 md:gap-x-5">
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./tutorials/accelerate_training"
+      ><div class="w-full text-center bg-gradient-to-br from-blue-400 to-blue-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Tutorials</div>
+      <p class="text-gray-700">Learn the basics and become familiar with training transformers on HPUs with 🤗 Optimum. Start here if you are using 🤗 Optimum Habana for the first time!</p>
+    </a>
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./usage_guides/single_hpu"
+      ><div class="w-full text-center bg-gradient-to-br from-indigo-400 to-indigo-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">How-to guides</div>
+      <p class="text-gray-700">Practical guides to help you achieve a specific goal. Take a look at these guides to learn how to use 🤗 Optimum Habana to solve real-world problems.</p>
+    </a>
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./concept_guides/hpu"
+      ><div class="w-full text-center bg-gradient-to-br from-pink-400 to-pink-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Conceptual guides</div>
+      <p class="text-gray-700">High-level explanations for building a better understanding about important topics such as HPUs.</p>
+   </a>
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./package_reference/trainer"
+      ><div class="w-full text-center bg-gradient-to-br from-purple-400 to-purple-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Reference</div>
+      <p class="text-gray-700">Technical descriptions of how the Habana classes and methods of 🤗 Optimum Habana work.</p>
+    </a>
+  </div>
+</div>
