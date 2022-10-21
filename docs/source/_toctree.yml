@@ -28,5 +28,7 @@
       title: Gaudi Trainer
     - local: package_reference/gaudi_config
       title: Gaudi Configuration
+    - local: package_reference/distributed_runner
+      title: Distributed Runner
     title: Reference
   title: Optimum Habana
