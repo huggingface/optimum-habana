@@ -365,9 +365,6 @@ class GaudiTrainer(Trainer):
         if resume_from_checkpoint is not None:
             self._load_from_checkpoint(resume_from_checkpoint)
 
-        # Make sure weights are tied in PyTorch
-        self.model.tie_weights()
-
         # If model was re-initialized, put it on the right device and update self.model_wrapped
         if model_reloaded:
             if self.place_model_on_device:
@@ -1545,3 +1542,9 @@ class GaudiTrainer(Trainer):
         output = {**logs, **{"step": self.state.global_step}}
         self.state.log_history.append(output)
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
+
+    def _move_model_to_device(self, model, device):
+        model = model.to(device)
+        # Moving a model to HPU disconnects the tied weights, so we have to retie them.
+        if self.args.use_habana and hasattr(model, "tie_weights"):
+            model.tie_weights()
