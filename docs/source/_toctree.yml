@@ -1,10 +1,10 @@
 - sections:
   - local: index
     title: 🤗 Optimum Habana
-  - local: quickstart
-    title: Quickstart
   - local: installation
     title: Installation
+  - local: quickstart
+    title: Quickstart
   - sections:
     - local: tutorials/accelerate_training
       title: Accelerating Training
