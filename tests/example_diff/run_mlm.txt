@@ -7,14 +7,15 @@
 > Here is the full list of checkpoints on the hub that can be trained by this script:
 36a36
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-45,46d44
+45,47d44
 <     Trainer,
 <     TrainingArguments,
-220c218
+<     is_torch_tpu_available,
+220c217
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-245a244,250
+245a243,249
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -22,22 +23,30 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-248,249c253,255
+248,249c252,254
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-251d256
+251d255
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-542c547
+542c546
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-543a549
+543a548
 >         gaudi_config=gaudi_config,
-605,609d610
+549,552c554,555
+<         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
+<         preprocess_logits_for_metrics=preprocess_logits_for_metrics
+<         if training_args.do_eval and not is_torch_tpu_available()
+<         else None,
+---
+>         compute_metrics=compute_metrics if training_args.do_eval else None,
+>         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
+605,609d607
 < 
 < 
 < def _mp_fn(index):
