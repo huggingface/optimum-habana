@@ -158,7 +158,6 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name Habana/roberta-base \
-    --ddp_find_unused_parameters \
     --throughput_warmup_steps 2
 ```
 

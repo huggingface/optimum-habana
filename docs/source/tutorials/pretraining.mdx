@@ -28,12 +28,6 @@ model = AutoModelForXXX.from_config(config)
 ```
 with XXX the task to perform, such as `ImageClassification` for example.
 
-<Tip warning={true}>
-
-For some models, you may need to specify `ddp_find_unused_parameters=True` in your training arguments to perform pretraining.
-
-</Tip>
-
 The following is a working example where BERT is pretrained for masked language modeling:
 ```python
 from datasets import load_dataset

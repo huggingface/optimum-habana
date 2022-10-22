@@ -33,8 +33,7 @@
                 "perplexity": 3.4785,
                 "train_runtime": 61.6658,
                 "extra_arguments": [
-                    "--dataset_config_name wikitext-2-raw-v1",
-                    "--ddp_find_unused_parameters"
+                    "--dataset_config_name wikitext-2-raw-v1"
                 ]
             }
         }

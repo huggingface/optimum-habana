@@ -132,7 +132,7 @@ class DataTrainingArguments:
         metadata={
             "help": (
                 "Whether to pad all samples to `max_seq_length`. If False, will pad the samples dynamically when"
-                " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
+                " batching to the maximum length in the batch (which can be faster on GPU but will be slower on HPU)."
             )
         },
     )
