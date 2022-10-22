@@ -196,6 +196,10 @@ class GaudiTrainer(Trainer):
         # Some methods needs to be tweaked to optimally run on Gaudi
         adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision)
 
+        # Suppress PyTorch autocast warnings with Wav2Vec2
+        # This is a bug in PyTorch
+        warnings.filterwarnings('ignore', message='User provided device_type of \'cuda\', but CUDA is not available. Disabling')
+
     def create_optimizer(self):
         """
         Setup the optimizer.

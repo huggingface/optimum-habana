@@ -306,7 +306,7 @@ def main():
             wav = audio["array"]
             preprocessed_audio = feature_extractor(
                 wav,
-                max_length=max_length*2,
+                max_length=max_length,
                 sampling_rate=feature_extractor.sampling_rate,
                 padding="max_length",
                 truncation=True,

@@ -18,11 +18,9 @@ limitations under the License.
 
 The following examples showcase how to fine-tune `Wav2Vec2` for audio classification on Habana Gaudi.
 
-<!-- Speech recognition models that have been pretrained in unsupervised fashion on audio data alone,
-*e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html),
-[HuBERT](https://huggingface.co/transformers/main/model_doc/hubert.html),
-[XLSR-Wav2Vec2](https://huggingface.co/transformers/main/model_doc/xlsr_wav2vec2.html), have shown to require only
-very little annotated data to yield good performance on speech classification datasets. -->
+Speech recognition models that have been pretrained in unsupervised fashion on audio data alone,
+*e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html) or [XLSR-Wav2Vec2](https://huggingface.co/transformers/main/model_doc/xlsr_wav2vec2.html), have shown to require only
+very little annotated data to yield good performance on speech classification datasets.
 
 ## Single-HPU
 
@@ -43,16 +41,17 @@ python run_audio_classification.py \
     --attention_mask False \
     --warmup_ratio 0.1 \
     --num_train_epochs 5 \
-    --per_device_train_batch_size 128 \
-    --per_device_eval_batch_size 128 \
+    --per_device_train_batch_size 256 \
+    --per_device_eval_batch_size 256 \
     --dataloader_num_workers 4 \
+    --seed 27 \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2
 ```
 
-On a single HPU, this script should run in ~x minutes and yield accuracy of **x%**.
+On a single HPU, this script should run in ~13 minutes and yield accuracy of **98.18%**.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
@@ -73,23 +72,17 @@ python ../gaudi_spawn.py \
     --remove_unused_columns False \
     --do_train \
     --do_eval \
-    --learning_rate 3e-5 \
+    --learning_rate 3e-4 \
     --max_length_seconds 16 \
     --attention_mask False \
     --warmup_ratio 0.1 \
     --num_train_epochs 10 \
-    --per_device_train_batch_size 8 \
-    --gradient_accumulation_steps 4 \
-    --per_device_eval_batch_size 1 \
+    --per_device_train_batch_size 16 \
+    --per_device_eval_batch_size 32 \
     --dataloader_num_workers 8 \
-    --logging_strategy steps \
-    --logging_steps 10 \
-    --evaluation_strategy epoch \
-    --save_strategy epoch \
-    --load_best_model_at_end True \
-    --metric_for_best_model accuracy \
-    --save_total_limit 3 \
     --seed 0 \
+    --logging_strategy epoch \
+    --adam_epsilon 1e-8 \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name Habana/wav2vec2 \
@@ -124,16 +117,3 @@ python run_audio_classification.py \
     --hub_model_id <username/model_id> \
     ...
 ```
-
-### Examples
-
-The following table shows a couple of demonstration fine-tuning runs.
-It has been verified that the script works for the following datasets:
-
-- [SUPERB Keyword Spotting](https://huggingface.co/datasets/superb#ks)
-- [Common Language](https://huggingface.co/datasets/common_language)
-
-| Dataset | Pretrained Model | # transformer layers | Accuracy on eval | # HPU | Training time | Throughput |
-|---------|------------------|----------------------|------------------|-----------|---------------|--------------------------|
-| Keyword Spotting | [facebook/wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) | 12 | 0.9826 | 1 | 14min  |  |
-| Common Language | [facebook/wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) | 12 | 0.7945 | 8 | 1h10m  |  |
