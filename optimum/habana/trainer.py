@@ -154,28 +154,28 @@ class GaudiTrainer(Trainer):
                 # HMP must be set to True when using DeepSpeed
                 self.gaudi_config.use_habana_mixed_precision = False
 
-            if self.gaudi_config.use_habana_mixed_precision:
-                try:
-                    from habana_frameworks.torch.hpex import hmp
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-                    raise error
-                self.hmp = hmp
+            # if self.gaudi_config.use_habana_mixed_precision:
+            #     try:
+            #         from habana_frameworks.torch.hpex import hmp
+            #     except ImportError as error:
+            #         error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
+            #         raise error
+            #     self.hmp = hmp
 
-                # Open temporary files to mixed-precision write ops
-                with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                    with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                        # hmp.convert needs ops to be written in text files
-                        self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                            hmp_bf16_file.name,
-                            hmp_fp32_file.name,
-                        )
-                        self.hmp.convert(
-                            opt_level=self.gaudi_config.hmp_opt_level,
-                            bf16_file_path=hmp_bf16_file.name,
-                            fp32_file_path=hmp_fp32_file.name,
-                            isVerbose=self.gaudi_config.hmp_is_verbose,
-                        )
+            #     # Open temporary files to mixed-precision write ops
+            #     with tempfile.NamedTemporaryFile() as hmp_bf16_file:
+            #         with tempfile.NamedTemporaryFile() as hmp_fp32_file:
+            #             # hmp.convert needs ops to be written in text files
+            #             self.gaudi_config.write_bf16_fp32_ops_to_text_files(
+            #                 hmp_bf16_file.name,
+            #                 hmp_fp32_file.name,
+            #             )
+            #             self.hmp.convert(
+            #                 opt_level=self.gaudi_config.hmp_opt_level,
+            #                 bf16_file_path=hmp_bf16_file.name,
+            #                 fp32_file_path=hmp_fp32_file.name,
+            #                 isVerbose=self.gaudi_config.hmp_is_verbose,
+            #             )
 
             try:
                 from habana_frameworks.torch.hpu import random as hpu_random
@@ -656,8 +656,8 @@ class GaudiTrainer(Trainer):
                         else:
                             # Revert to normal clipping otherwise
                             if args.use_habana and self.gaudi_config.use_habana_mixed_precision:
-                                with self.hmp.disable_casts():
-                                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                                # with self.hmp.disable_casts():
+                                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                             else:
                                 torch.nn.utils.clip_grad_norm_(
                                     model.parameters(),
@@ -673,8 +673,8 @@ class GaudiTrainer(Trainer):
                         and self.gaudi_config.use_habana_mixed_precision
                         and not (self.gaudi_config.use_fused_adam)
                     ):
-                        with self.hmp.disable_casts():
-                            self.optimizer.step()
+                        # with self.hmp.disable_casts():
+                        self.optimizer.step()
                     else:
                         self.optimizer.step()
 
