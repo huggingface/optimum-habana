@@ -198,7 +198,9 @@ class GaudiTrainer(Trainer):
 
         # Suppress PyTorch autocast warnings with Wav2Vec2
         # This is a bug in PyTorch
-        warnings.filterwarnings('ignore', message='User provided device_type of \'cuda\', but CUDA is not available. Disabling')
+        warnings.filterwarnings(
+            "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
+        )
 
     def create_optimizer(self):
         """
@@ -621,8 +623,6 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                # print("AAA")
-
                 if (
                     ((step + 1) % args.gradient_accumulation_steps != 0)
                     and args.local_rank != -1
@@ -634,8 +634,6 @@ class GaudiTrainer(Trainer):
                 else:
                     tr_loss_step = self.training_step(model, inputs)
 
-                # print("ZZZ")
-
                 if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
                     # if loss is nan or inf simply add the average of previous logged losses
                     tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
@@ -645,8 +643,6 @@ class GaudiTrainer(Trainer):
                 self.current_flos += float(self.floating_point_ops(inputs))
                 if args.use_lazy_mode:
                     self.htcore.mark_step()
-
-                # print("BBB")
 
                 # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
                 if self.deepspeed:
@@ -715,7 +711,6 @@ class GaudiTrainer(Trainer):
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
-                # print("CCC")
             if step < 0:
                 logger.warning(
                     "There seems to be not a single sample in your epoch_iterator, stopping training at step"
