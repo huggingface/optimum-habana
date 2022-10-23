@@ -152,30 +152,30 @@ class GaudiTrainer(Trainer):
                 # Habana's fused ADAM is not compatible with DeepSpeed yet
                 self.gaudi_config.use_fused_adam = False
                 # HMP must be set to True when using DeepSpeed
-                self.gaudi_config.use_habana_mixed_precision = False
+                self.gaudi_config.use_habana_mixed_precision = True
 
-            # if self.gaudi_config.use_habana_mixed_precision:
-            #     try:
-            #         from habana_frameworks.torch.hpex import hmp
-            #     except ImportError as error:
-            #         error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-            #         raise error
-            #     self.hmp = hmp
+            if self.gaudi_config.use_habana_mixed_precision:
+                try:
+                    from habana_frameworks.torch.hpex import hmp
+                except ImportError as error:
+                    error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
+                    raise error
+                self.hmp = hmp
 
-            #     # Open temporary files to mixed-precision write ops
-            #     with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-            #         with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-            #             # hmp.convert needs ops to be written in text files
-            #             self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-            #                 hmp_bf16_file.name,
-            #                 hmp_fp32_file.name,
-            #             )
-            #             self.hmp.convert(
-            #                 opt_level=self.gaudi_config.hmp_opt_level,
-            #                 bf16_file_path=hmp_bf16_file.name,
-            #                 fp32_file_path=hmp_fp32_file.name,
-            #                 isVerbose=self.gaudi_config.hmp_is_verbose,
-            #             )
+                # Open temporary files to mixed-precision write ops
+                with tempfile.NamedTemporaryFile() as hmp_bf16_file:
+                    with tempfile.NamedTemporaryFile() as hmp_fp32_file:
+                        # hmp.convert needs ops to be written in text files
+                        self.gaudi_config.write_bf16_fp32_ops_to_text_files(
+                            hmp_bf16_file.name,
+                            hmp_fp32_file.name,
+                        )
+                        self.hmp.convert(
+                            opt_level=self.gaudi_config.hmp_opt_level,
+                            bf16_file_path=hmp_bf16_file.name,
+                            fp32_file_path=hmp_fp32_file.name,
+                            isVerbose=self.gaudi_config.hmp_is_verbose,
+                        )
 
             try:
                 from habana_frameworks.torch.hpu import random as hpu_random
@@ -195,6 +195,12 @@ class GaudiTrainer(Trainer):
 
         # Some methods needs to be tweaked to optimally run on Gaudi
         adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision)
+
+        # Suppress PyTorch autocast warnings with Wav2Vec2
+        # This is a bug in PyTorch
+        warnings.filterwarnings(
+            "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
+        )
 
     def create_optimizer(self):
         """
@@ -279,7 +285,14 @@ class GaudiTrainer(Trainer):
         if self.args.local_rank != -1:
             kwargs = {}
 
-            kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
+            if self.args.ddp_find_unused_parameters is not None:
+                kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
+            elif isinstance(model, PreTrainedModel):
+                # find_unused_parameters breaks checkpointing as per
+                # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
+                kwargs["find_unused_parameters"] = not model.is_gradient_checkpointing
+            else:
+                kwargs["find_unused_parameters"] = True
             kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
 
             if self.args.use_habana:
@@ -592,7 +605,6 @@ class GaudiTrainer(Trainer):
 
             step = -1
             for step, inputs in enumerate(epoch_iterator):
-                # print("BEGINNING step", self.args.process_index, time.time())
                 if args.throughput_warmup_steps > 0 and args.throughput_warmup_steps == epoch * steps_in_epoch + step:
                     start_time_after_warmup = time.time()
 
@@ -656,8 +668,8 @@ class GaudiTrainer(Trainer):
                         else:
                             # Revert to normal clipping otherwise
                             if args.use_habana and self.gaudi_config.use_habana_mixed_precision:
-                                # with self.hmp.disable_casts():
-                                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                                with self.hmp.disable_casts():
+                                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                             else:
                                 torch.nn.utils.clip_grad_norm_(
                                     model.parameters(),
@@ -673,8 +685,8 @@ class GaudiTrainer(Trainer):
                         and self.gaudi_config.use_habana_mixed_precision
                         and not (self.gaudi_config.use_fused_adam)
                     ):
-                        # with self.hmp.disable_casts():
-                        self.optimizer.step()
+                        with self.hmp.disable_casts():
+                            self.optimizer.step()
                     else:
                         self.optimizer.step()
 
@@ -696,8 +708,6 @@ class GaudiTrainer(Trainer):
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
-
-                # print("END step", self.args.process_index, time.time())
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
@@ -953,10 +963,6 @@ class GaudiTrainer(Trainer):
         """
         args = self.args
 
-        if args.world_size > 1:
-            # Make sure all processes start evaluation at the same time
-            torch.distributed.barrier()
-
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
 
         # if eval is called w/o train init deepspeed here
@@ -1017,10 +1023,6 @@ class GaudiTrainer(Trainer):
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            if args.world_size > 8:
-                # Multi-node training
-                # Hack: moving the loss tensor to CPU prevents weird precision issues
-                to_device_dtype(loss, target_device="cpu")
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             # Save the logits dtype since we need to convert them into floats during the process
@@ -1251,10 +1253,6 @@ class GaudiTrainer(Trainer):
         """
         args = self.args
 
-        if args.world_size > 1:
-            # Make sure all processes start prediction at the same time
-            torch.distributed.barrier()
-
         if not has_length(dataloader):
             raise ValueError("dataloader must implement a working __len__")
 
@@ -1308,10 +1306,6 @@ class GaudiTrainer(Trainer):
 
         for step, inputs in enumerate(dataloader):
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            if args.world_size > 8:
-                # Multi-node training
-                # Hack: moving the loss tensor to CPU prevents weird precision issues
-                to_device_dtype(loss, target_device="cpu")
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             if loss is not None:
@@ -1555,43 +1549,8 @@ class GaudiTrainer(Trainer):
         self.state.log_history.append(output)
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
 
-    def training_step(self, model: torch.nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
-        """
-        Perform a training step on a batch of inputs.
-        Subclass and override to inject custom behavior.
-        Args:
-            model (`nn.Module`):
-                The model to train.
-            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
-                The inputs and targets of the model.
-                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
-                argument `labels`. Check your model's documentation for all accepted arguments.
-        Return:
-            `torch.Tensor`: The tensor with training loss on this batch.
-        """
-        model.train()
-        inputs = self._prepare_inputs(inputs)
-
-        # print("111", self.args.process_index, time.time())
-        loss = self.compute_loss(model, inputs)
-        # print("222", self.args.process_index, time.time())
-
-        if self.args.n_gpu > 1:
-            loss = loss.mean()  # mean() to average on multi-gpu parallel training
-
-        if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
-            # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
-            loss = loss / self.args.gradient_accumulation_steps
-
-        if self.do_grad_scaling:
-            self.scaler.scale(loss).backward()
-        elif self.deepspeed:
-            # print("PLOP", self.args.process_index)
-            # loss gets scaled under gradient_accumulation_steps in deepspeed
-            loss = self.deepspeed.backward(loss)
-        else:
-            loss.backward()
-
-        # print("HERE", self.args.process_index, time.time())
-
-        return loss.detach()
+    def _move_model_to_device(self, model, device):
+        model = model.to(device)
+        # Moving a model to HPU disconnects the tied weights, so we have to retie them.
+        if self.args.use_habana and hasattr(model, "tie_weights"):
+            model.tie_weights()

@@ -112,8 +112,8 @@ def deepspeed_init(trainer, num_training_steps, resume_from_checkpoint=None, inf
 
     # TODO: temporary workaround
     # To remove when it is solved, see https://github.com/HabanaAI/Model-References/blob/17fbab7ceebca15b1560ffb2c4e15a3888bb5f33/PyTorch/nlp/pretraining/deepspeed-bert/run_pretraining.py#L527
-    # if trainer.gaudi_config.use_habana_mixed_precision:
-    model.to(dtype=torch.bfloat16, device="hpu")
+    if trainer.gaudi_config.use_habana_mixed_precision:
+        model.to(dtype=torch.bfloat16, device="hpu")
 
     if inference:
         # only Z3 makes sense for the inference
