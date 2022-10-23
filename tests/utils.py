@@ -41,6 +41,9 @@ MODELS_TO_TEST_MAPPING = {
     "vit": [
         ("google/vit-base-patch16-224-in21k", "Habana/vit"),
     ],
+    "wav2vec2": [
+        ("facebook/wav2vec2-base", "Habana/wav2vec2"),
+    ],
 }
 
 VALID_MODELS_FOR_QUESTION_ANSWERING = [
@@ -50,7 +53,7 @@ VALID_MODELS_FOR_QUESTION_ANSWERING = [
     "distilbert",
 ]
 
-# Only BERT is officially supported for sequence classification
+# Only BERT has been officially validated for sequence classification
 VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION = [
     "bert",
     # "roberta",
@@ -71,3 +74,5 @@ VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING = [
     # "albert",
     # "distilbert",
 ]
+
+VALID_MODELS_FOR_AUDIO_CLASSIFICATION = ["wav2vec2"]

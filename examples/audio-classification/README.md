@@ -19,7 +19,7 @@ limitations under the License.
 The following examples showcase how to fine-tune `Wav2Vec2` for audio classification on Habana Gaudi.
 
 Speech recognition models that have been pretrained in unsupervised fashion on audio data alone,
-*e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html) or [XLSR-Wav2Vec2](https://huggingface.co/transformers/main/model_doc/xlsr_wav2vec2.html), have shown to require only
+*e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html), have shown to require only
 very little annotated data to yield good performance on speech classification datasets.
 
 ## Single-HPU
@@ -73,7 +73,7 @@ python ../gaudi_spawn.py \
     --do_train \
     --do_eval \
     --learning_rate 3e-4 \
-    --max_length_seconds 16 \
+    --max_length_seconds 8 \
     --attention_mask False \
     --warmup_ratio 0.1 \
     --num_train_epochs 10 \
@@ -81,15 +81,13 @@ python ../gaudi_spawn.py \
     --per_device_eval_batch_size 32 \
     --dataloader_num_workers 8 \
     --seed 0 \
-    --logging_strategy epoch \
-    --adam_epsilon 1e-8 \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2
 ```
 
-On 8 HPUs, this script should run in ~x hour and yield accuracy of **x%**.
+On 8 HPUs, this script should run in ~12 minutes and yield accuracy of **79.82%**.
 
 
 ## Sharing your model on 🤗 Hub
