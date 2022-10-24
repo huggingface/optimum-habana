@@ -8,7 +8,6 @@ RUN apt-get update && apt-get install -y pdsh && \
 ARG OFI_WRAPPER_WS="/root/hccl_ofi_wrapper"
 RUN git clone "https://github.com/HabanaAI/hccl_ofi_wrapper.git" "${OFI_WRAPPER_WS}" && \
    cd "${OFI_WRAPPER_WS}" && \
-   ln -s /opt/amazon/efa/lib64 /opt/amazon/efa/lib && \
    LIBFABRIC_ROOT=/opt/amazon/efa make
 
 # Docker ssh port setup
