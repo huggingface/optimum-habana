@@ -93,6 +93,17 @@ OPTIMIZER_NAME = "optimizer.pt"
 SCHEDULER_NAME = "scheduler.pt"
 SCALER_NAME = "scaler.pt"
 
+# return neg number if unset, pos number (>0) indicates max number of steps
+import os
+dynamic_detect_datasetsize = int(os.getenv('DYNAMIC_DETECT_DATASETSIZE', '-1'))
+if dynamic_detect_datasetsize > 0:
+    try:
+        from dataset_dynamicity.analyse_dataloader import data_dynamicity, const_shape_dataloader
+        from auto_detect_recompilation.detect_recompilation_auto import detect_recompilation_auto_model, detect_recompilation_auto_optimizer
+    except:
+        print('Add model_garden/internal/PyTorch/tools/detect_recompile path to PYTHONPATH')
+        raise
+
 
 class GaudiTrainer(Trainer):
     """
@@ -393,6 +404,12 @@ class GaudiTrainer(Trainer):
         self._train_batch_size = batch_size
         # Data loader and number of training steps
         train_dataloader = self.get_train_dataloader()
+        import pdb; pdb.set_trace()
+        if dynamic_detect_datasetsize > 0:
+            data_dynamicity(train_dataloader)
+            dataloader = const_shape_dataloader(dataloader, dynamic_detect_datasetsize)
+            data_dynamicity(dataloader)
+
 
         # Setting up training control variables:
         # number of training epochs: num_train_epochs
@@ -1545,6 +1562,8 @@ class GaudiTrainer(Trainer):
 
     def _move_model_to_device(self, model, device):
         model = model.to(device)
+        if dynamic_detect_datasetsize > 0:
+            model = detect_recompilation_auto_model(model, mark_step=True, verbose=False)
         # Moving a model to HPU disconnects the tied weights, so we have to retie them.
         if self.args.use_habana and hasattr(model, "tie_weights"):
             model.tie_weights()
