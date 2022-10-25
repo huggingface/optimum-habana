@@ -404,11 +404,10 @@ class GaudiTrainer(Trainer):
         self._train_batch_size = batch_size
         # Data loader and number of training steps
         train_dataloader = self.get_train_dataloader()
-        import pdb; pdb.set_trace()
         if dynamic_detect_datasetsize > 0:
             data_dynamicity(train_dataloader)
-            dataloader = const_shape_dataloader(dataloader, dynamic_detect_datasetsize)
-            data_dynamicity(dataloader)
+            train_dataloader = const_shape_dataloader(train_dataloader, dynamic_detect_datasetsize)
+            data_dynamicity(train_dataloader)
 
 
         # Setting up training control variables:
