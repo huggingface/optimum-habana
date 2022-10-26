@@ -27,6 +27,7 @@ from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,
     MODEL_FOR_CAUSAL_LM_MAPPING,
+    MODEL_FOR_CTC_MAPPING,
     MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
@@ -43,6 +44,7 @@ from .utils import (
     VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING,
     VALID_MODELS_FOR_QUESTION_ANSWERING,
     VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION,
+    VALID_MODELS_FOR_SPEECH_RECOGNITION,
     VALID_SEQ2SEQ_MODELS,
 )
 
@@ -117,6 +119,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,
         VALID_MODELS_FOR_AUDIO_CLASSIFICATION,
+    ),
+    "run_speech_recognition_ctc": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CTC_MAPPING,
+        VALID_MODELS_FOR_SPEECH_RECOGNITION,
     ),
 }
 
@@ -261,6 +268,7 @@ class ExampleTesterBase(TestCase):
         "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
         "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "train_runtime": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
+        "eval_wer": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
     }
 
     def _create_command_line(
@@ -417,6 +425,12 @@ class MultiCardAudioClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_audio_classification", multi_card=True
 ):
     TASK_NAME = "common_language"
+
+
+# class MultiCardSpeechRecognitionExampleTester(
+#     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
+# ):
+#     TASK_NAME = "librispeech_asr"
 
 
 class MultiCardSummarizationExampleTester(
