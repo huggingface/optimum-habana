@@ -405,6 +405,7 @@ class GaudiTrainer(Trainer):
         # Data loader and number of training steps
         train_dataloader = self.get_train_dataloader()
         if dynamic_detect_datasetsize > 0:
+            print('Dynamicity of train dataset:')
             data_dynamicity(train_dataloader)
             train_dataloader = const_shape_dataloader(train_dataloader, dynamic_detect_datasetsize)
             data_dynamicity(train_dataloader)
@@ -971,6 +972,11 @@ class GaudiTrainer(Trainer):
         Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
         Works both with or without labels.
         """
+        if dynamic_detect_datasetsize > 0:
+            print('Dynamicity of eval dataset:')
+            data_dynamicity(dataloader)
+            dataloader = const_shape_dataloader(dataloader, dynamic_detect_datasetsize)
+            data_dynamicity(dataloader)
         args = self.args
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
@@ -1261,6 +1267,11 @@ class GaudiTrainer(Trainer):
         Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
         Works both with or without labels.
         """
+        if dynamic_detect_datasetsize > 0:
+            print('Dynamicity of prediction dataset:')
+            data_dynamicity(dataloader)
+            dataloader = const_shape_dataloader(dataloader, dynamic_detect_datasetsize)
+            data_dynamicity(dataloader)
         args = self.args
 
         if not has_length(dataloader):
