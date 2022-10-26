@@ -282,8 +282,8 @@ class GaudiTrainer(Trainer):
             kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
             if self.args.ddp_find_unused_parameters and self.args.gradient_checkpointing:
                 logger.warning(
-                    "ddp_find_unused_parameters and gradient_checkpointing are both True,"
-                    "which may lead to an error: https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021"
+                    "ddp_find_unused_parameters and gradient_checkpointing are both True,which may lead to an error:"
+                    " https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021"
                 )
             kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
 
