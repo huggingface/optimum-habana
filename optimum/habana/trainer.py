@@ -1562,7 +1562,7 @@ class GaudiTrainer(Trainer):
     def _move_model_to_device(self, model, device):
         model = model.to(device)
         if dynamic_detect_datasetsize > 0:
-            model = detect_recompilation_auto_model(model, mark_step=True, verbose=False)
+            model = detect_recompilation_auto_model(model, mark_step=False, verbose=False, fwdonly=True)
         # Moving a model to HPU disconnects the tied weights, so we have to retie them.
         if self.args.use_habana and hasattr(model, "tie_weights"):
             model.tie_weights()
