@@ -279,14 +279,12 @@ class GaudiTrainer(Trainer):
         if self.args.local_rank != -1:
             kwargs = {}
 
-            if self.args.ddp_find_unused_parameters is not None:
-                kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
-            elif isinstance(model, PreTrainedModel):
-                # find_unused_parameters breaks checkpointing as per
-                # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
-                kwargs["find_unused_parameters"] = not model.is_gradient_checkpointing
-            else:
-                kwargs["find_unused_parameters"] = True
+            kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
+            if self.args.ddp_find_unused_parameters and self.args.gradient_checkpointing:
+                logger.warning(
+                    "ddp_find_unused_parameters and gradient_checkpointing are both True,"
+                    "wich may lead to an error: https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021"
+                )
             kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
 
             if self.args.use_habana:
