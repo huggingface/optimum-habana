@@ -50,13 +50,27 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-287a271,273
+284,286c267,279
+<     raw_datasets = raw_datasets.cast_column(
+<         data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
+<     )
+---
+>     dataset_sampling_rate = next(iter(raw_datasets.values())).features[data_args.audio_column_name].sampling_rate
+>     if dataset_sampling_rate != feature_extractor.sampling_rate:
+>         raise RuntimeError(
+>             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
+>             f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
+>             " support it on HPUs yet."
+>         )
+>         raw_datasets = raw_datasets.cast_column(
+>             data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
+>         )
+> 
 >     # Max input length
 >     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
+290a284
 > 
-290a277
-> 
-295,296c282,289
+295,296c289,296
 <             output_batch["input_values"].append(wav)
 <         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
 ---
@@ -68,11 +82,11 @@
 >                 truncation=True,
 >             )
 >             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-297a291
+297a298
 >         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
-302a297
+302a304
 > 
-305,306c300,307
+305,306c307,314
 <             output_batch["input_values"].append(wav)
 <         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
 ---
@@ -84,11 +98,11 @@
 >                 truncation=True,
 >             )
 >             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-307a309
+307a316
 >         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
-369c371
+369c378
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-370a373
+370a380
 >         gaudi_config=gaudi_config,

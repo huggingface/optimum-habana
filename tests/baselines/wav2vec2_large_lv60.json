@@ -6,8 +6,8 @@
             "multi_card": {
                 "learning_rate": 3e-4,
                 "train_batch_size": 4,
-                "eval_wer": 0.0448,
-                "train_runtime": 2901.5869,
+                "eval_wer": 0.0458,
+                "train_runtime": 2867.0015,
                 "extra_arguments": [
                     "--dataset_config_name clean",
                     "--train_split_name train.100",

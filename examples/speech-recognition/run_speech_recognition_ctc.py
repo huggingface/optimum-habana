@@ -597,6 +597,11 @@ def main():
     # make sure that dataset decodes audio with correct sampling rate
     dataset_sampling_rate = next(iter(raw_datasets.values())).features[data_args.audio_column_name].sampling_rate
     if dataset_sampling_rate != feature_extractor.sampling_rate:
+        raise RuntimeError(
+            f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
+            f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
+            " support it on HPUs yet."
+        )
         raw_datasets = raw_datasets.cast_column(
             data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
         )

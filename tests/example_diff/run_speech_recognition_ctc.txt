@@ -23,7 +23,13 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-694c699,703
+594a600,604
+>         raise RuntimeError(
+>             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
+>             f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
+>             " support it on HPUs yet."
+>         )
+694c704,708
 <     data_collator = DataCollatorCTCWithPadding(processor=processor)
 ---
 >     data_collator = DataCollatorCTCWithPadding(
@@ -31,11 +37,11 @@
 >         pad_to_multiple_of=int(max_input_length),
 >         pad_to_multiple_of_labels=500,
 >     )
-697c706
+697c711
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-698a708
+698a713
 >         gaudi_config=gaudi_config,
-711d720
+711d725
 < 

@@ -82,6 +82,9 @@ python run_speech_recognition_ctc.py \
 
 On a single HPU, this script should run in *ca.* 1 hour 20 minutes and yield a CTC loss of **0.39** and word error rate of **0.35**.
 
+> If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
+> Resampling with the `datasets` library is not supported on HPUs yet.
+
 ### Multi-GPU CTC
 
 The following command shows how to fine-tune [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html) on [Librispeech](https://huggingface.co/datasets/librispeech_asr) using 8 HPUs.
@@ -114,7 +117,57 @@ python ../gaudi_spawn.py \
     --throughput_warmup_steps 2
 ```
 
-On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **0.0615** and word error rate of **0.0448**.
+On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **0.0613** and word error rate of **0.0458**.
+
+> If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
+> Resampling with the `datasets` library is not supported on HPUs yet.
+
+
+## DeepSpeed
+
+> You need to install DeepSpeed with:
+> ```bash
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
+> ```
+
+DeepSpeed can be used with almost the same command as for a multi-card run:
+- `use_mpi` should be replaced by `use_deepspeed`,
+- an additional `--deepspeed path_to_my_deepspeed config` argument should be provided, for instance `--deepspeed ../../tests/configs/deepspeed_zero_2.json`.
+
+For example:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_speech_recognition_ctc.py \
+    --dataset_name librispeech_asr \
+    --model_name_or_path facebook/wav2vec2-large-lv60 \
+    --dataset_config_name clean \
+    --train_split_name train.100 \
+    --eval_split_name validation \
+    --output_dir /tmp/wav2vec2-librispeech-clean-100h-demo-dist \
+    --preprocessing_num_workers 64 \
+    --overwrite_output_dir \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 8 \
+    --learning_rate 3e-4 \
+    --warmup_steps 500 \
+    --text_column_name text \
+    --layerdrop 0.0 \
+    --freeze_feature_encoder \
+    --chars_to_ignore '",?.!-;:\"“%‘”"' \
+    --do_train \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --gaudi_config_name Habana/wav2vec2 \
+    --throughput_warmup_steps 2\
+    --deepspeed ../../tests/configs/deepspeed_zero_2.json
+```
+
+[The documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) provides more information about how to use DeepSpeed within Optimum Habana.
+
+> If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
+> Resampling with the `datasets` library is not supported on HPUs yet.
 
 
 <!-- ### Multi GPU CTC with Dataset Streaming
