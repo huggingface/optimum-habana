@@ -31,12 +31,11 @@ limitations under the License.
 
 The script [`run_speech_recognition_ctc.py`](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition/run_speech_recognition_ctc.py) can be used to fine-tune any pretrained [Connectionist Temporal Classification Model](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForCTC) for automatic speech recognition on one of the [official speech recognition datasets](https://huggingface.co/datasets?task_ids=task_ids:automatic-speech-recognition) or a custom dataset.
 
-Speech recognition models that have been pretrained in unsupervised fashion on audio data alone, *e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html), have shown to require only
-very little annotated data to yield good performance on automatic speech recognition datasets.
+Speech recognition models that have been pretrained in unsupervised fashion on audio data alone, *e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html), have shown to require only very little annotated data to yield good performance on automatic speech recognition datasets.
 
-In the script [`run_speech_recognition_ctc`], we first create a vocabulary from all unique characters of both the training data and evaluation data. Then, we preprocesses the speech recognition dataset, which includes correct resampling, normalization and padding. Finally, the pretrained speech recognition model is fine-tuned on the annotated speech recognition datasets using CTC loss.
+In the script [`run_speech_recognition_ctc`](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition/run_speech_recognition_ctc.py), we first create a vocabulary from all unique characters of both the training data and evaluation data. Then, we preprocess the speech recognition dataset, which includes correct resampling, normalization and padding. Finally, the pretrained speech recognition model is fine-tuned on the annotated speech recognition datasets using CTC loss.
 
----
+<!-- ---
 **NOTE**
 
 If you encounter problems with data preprocessing by setting `--preprocessing_num_workers` > 1,
@@ -48,11 +47,11 @@ OMP_NUM_THREADS=1 python run_speech_recognition_ctc ...
 
 If the environment variable is not set, the training script might freeze, *i.e.* see: https://github.com/pytorch/audio/issues/1021#issuecomment-726915239
 
----
+--- -->
 
 ### Single-HPU CTC
 
-The following command shows how to fine-tune [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html) on [Librispeech](https://huggingface.co/datasets/librispeech_asr) using a single HPU.
+The following command shows how to fine-tune [wav2vec2-large-lv60](https://huggingface.co/facebook/wav2vec2-large-lv60) on [Librispeech](https://huggingface.co/datasets/librispeech_asr) using a single HPU.
 
 ```bash
 python run_speech_recognition_ctc.py \
@@ -87,7 +86,7 @@ On a single HPU, this script should run in *ca.* 1 hour 20 minutes and yield a C
 
 ### Multi-GPU CTC
 
-The following command shows how to fine-tune [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html) on [Librispeech](https://huggingface.co/datasets/librispeech_asr) using 8 HPUs.
+The following command shows how to fine-tune [wav2vec2-large-lv60](https://huggingface.co/facebook/wav2vec2-large-lv60) on [Librispeech](https://huggingface.co/datasets/librispeech_asr) using 8 HPUs.
 
 ```bash
 python ../gaudi_spawn.py \
