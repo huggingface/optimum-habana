@@ -41,7 +41,7 @@ It runs in 63 minutes with BERT-large.
 ```bash
 python run_qa.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
-  --gaudi_config_name gaudi_config_name_or_path \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --dataset_name squad \
   --do_train \
   --do_eval \
@@ -72,7 +72,7 @@ Here is how you would fine-tune the BERT large model (with whole word masking) o
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_qa.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
-    --gaudi_config_name gaudi_config_name_or_path \
+    --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
     --dataset_name squad \
     --do_train \
     --do_eval \

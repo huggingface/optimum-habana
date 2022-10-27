@@ -41,7 +41,7 @@ The following example fine-tunes BERT Large (lazy mode) on the `mrpc` dataset ho
 ```bash
 python run_glue.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
-  --gaudi_config_name gaudi_config_name_or_path \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --task_name mrpc \
   --do_train \
   --do_eval \
@@ -66,7 +66,7 @@ Here is how you would fine-tune the BERT large model (with whole word masking) o
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_glue.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
-    --gaudi_config_name gaudi_config_name_or_path \
+    --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
     --task_name mrpc \
     --do_train \
     --do_eval \
