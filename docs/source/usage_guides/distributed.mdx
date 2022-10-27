@@ -18,7 +18,7 @@ limitations under the License.
 
 As models get bigger, parallelism has emerged as a strategy for training larger models on limited hardware and accelerating training speed by several orders of magnitude.
 
-All the [PyTorch examples](https://github.com/huggingface/optimum-habana/tree/main/examples) and the [`GaudiTrainer`](https://huggingface.co/docs/optimum/main/en/habana_trainer) script work out of the box with distributed training.
+All the [PyTorch examples](https://github.com/huggingface/optimum-habana/tree/main/examples) and the [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) script work out of the box with distributed training.
 There are two ways of launching them:
 
 1. Using the [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) script:
@@ -31,7 +31,7 @@ python gaudi_spawn.py \
 where `--argX` is an argument of the script to run in a distributed way.
 Examples are given for question answering [here](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/README.md#multi-card-training) and for text classification [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification#multi-card-training).
 
-2. Using the [`DistributedRunner`](https://huggingface.co/docs/optimum/main/en/habana_distributed#optimum.habana.distributed.DistributedRunner) directly in code:
+2. Using the [`DistributedRunner`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) directly in code:
 
 ```python
 from optimum.habana.distributed import DistributedRunner

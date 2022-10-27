@@ -37,7 +37,7 @@ pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
 
 # Using DeepSpeed with Optimum Habana
 
-The [`GaudiTrainer`](https://huggingface.co/docs/optimum/main/en/habana_trainer) allows to use DeepSpeed as easily as the [Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer).
+The [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) allows to use DeepSpeed as easily as the [Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer).
 This can be done in 3 steps:
 1. A DeepSpeed configuration has to be defined.
 2. The `deepspeed` training argument enables to specify the path to the DeepSpeed configuration.
@@ -114,7 +114,7 @@ python gaudi_spawn.py \
 ```
 where `--argX` is an argument of the script to run with DeepSpeed.
 
-2. Using the [`DistributedRunner`](https://huggingface.co/docs/optimum/main/en/habana_distributed#optimum.habana.distributed.DistributedRunner) directly in code:
+2. Using the [`DistributedRunner`](https://huggingface.co/docs/optimum/habana/package_reference/distributed_runner) directly in code:
 
 ```python
 from optimum.habana.distributed import DistributedRunner
