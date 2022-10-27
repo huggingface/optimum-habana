@@ -64,7 +64,7 @@ python run_speech_recognition_ctc.py \
     --preprocessing_num_workers="64" \
     --overwrite_output_dir \
     --num_train_epochs="3" \
-    --per_device_train_batch_size="8" \
+    --per_device_train_batch_size="4" \
     --learning_rate="3e-4" \
     --warmup_steps="500" \
     --text_column_name="text" \
