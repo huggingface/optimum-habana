@@ -53,9 +53,6 @@ On a single HPU, this script should run in ~13 minutes and yield accuracy of **9
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
-> If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
-> Resampling with the `datasets` library is not supported on HPUs yet.
-
 
 ## Multi-HPU
 
@@ -91,9 +88,6 @@ python ../gaudi_spawn.py \
 On 8 HPUs, this script should run in ~12 minutes and yield accuracy of **80.38%**.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
-
-> If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
-> Resampling with the `datasets` library is not supported on HPUs yet.
 
 
 ## DeepSpeed
@@ -139,9 +133,6 @@ python ../gaudi_spawn.py \
 [The documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) provides more information about how to use DeepSpeed within Optimum Habana.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
-
-> If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
-> Resampling with the `datasets` library is not supported on HPUs yet.
 
 
 ## Sharing your model on 🤗 Hub
