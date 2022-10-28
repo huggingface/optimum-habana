@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 import time
 from typing import Any, Dict, List, Tuple, Union
 
@@ -20,6 +21,8 @@ import numpy as np
 import torch
 
 from habana_frameworks.torch.hpu import memory_stats
+from habana_frameworks.torch.hpu import random as hpu_random
+from transformers.utils import is_torch_available
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -166,3 +169,16 @@ def get_hpu_memory_stats() -> Dict[str, float]:
     }
 
     return mem_dict
+
+
+def set_seed(seed: int):
+    """
+    Helper function for reproducible behavior to set the seed in `random`, `numpy` and `torch`.
+    Args:
+        seed (`int`): The seed to set.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    if is_torch_available():
+        torch.manual_seed(seed)
+        hpu_random.manual_seed_all(seed)

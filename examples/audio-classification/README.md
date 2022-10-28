@@ -77,7 +77,6 @@ python ../gaudi_spawn.py \
     --num_train_epochs 10 \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 32 \
-    --dataloader_num_workers 8 \
     --seed 0 \
     --use_habana \
     --use_lazy_mode \
@@ -85,7 +84,7 @@ python ../gaudi_spawn.py \
     --throughput_warmup_steps 2
 ```
 
-On 8 HPUs, this script should run in ~12 minutes and yield accuracy of **80.38%**.
+On 8 HPUs, this script should run in ~12 minutes and yield accuracy of **80.49%**.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
@@ -121,7 +120,6 @@ python ../gaudi_spawn.py \
     --num_train_epochs 10 \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 32 \
-    --dataloader_num_workers 8 \
     --seed 0 \
     --use_habana \
     --use_lazy_mode \
