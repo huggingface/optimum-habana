@@ -79,7 +79,7 @@ python run_speech_recognition_ctc.py \
     --throughput_warmup_steps="2"
 ```
 
-On a single HPU, this script should run in *ca.* 1 hour 20 minutes and yield a CTC loss of **0.39** and word error rate of **0.35**.
+On a single HPU, this script should run in *ca.* 6 hours and yield a CTC loss of **0.059** and word error rate of **0.0423**.
 
 > If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
 > Resampling with the `datasets` library is not supported on HPUs yet.
