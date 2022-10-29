@@ -426,31 +426,27 @@ class GaudiTrainingArguments(TrainingArguments):
             device = torch.device("hpu")
             self._n_gpu = 1
 
+            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+
+            world_size, rank, self.local_rank = initialize_distributed_hpu()
+
             if self.deepspeed:
                 # deepspeed inits torch.distributed internally
                 from transformers.deepspeed import is_deepspeed_available
 
                 if not is_deepspeed_available():
-                    raise ImportError("--deepspeed requires deepspeed: `pip install deepspeed`.")
+                    raise ImportError(
+                        "--deepspeed requires deepspeed: `pip install"
+                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1`."
+                    )
                 import deepspeed
-                import habana_frameworks.torch.distributed.hccl
 
                 deepspeed.init_distributed(dist_backend="hccl")
                 logger.info("DeepSpeed is enabled.")
             else:
-                from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
-
-                world_size, rank, self.local_rank = initialize_distributed_hpu()
-
                 if self.local_rank != -1:
-                    if world_size > hthpu.device_count():
-                        raise RuntimeError(
-                            f"world_size is equal to {world_size} but there are only {hthpu.device_count()} devices."
-                        )
                     if not torch.distributed.is_initialized():
-                        torch.distributed.init_process_group(
-                            backend="hccl", rank=self.local_rank, world_size=world_size
-                        )
+                        torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
                         logger.info("Enabled distributed run.")
                 else:
                     logger.info("Single node run.")
