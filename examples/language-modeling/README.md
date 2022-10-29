@@ -234,7 +234,7 @@ python ../gaudi_spawn.py \
     --deepspeed path_to_my_deepspeed_config
 ```
 
-You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
 Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```json
 {
