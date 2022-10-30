@@ -16,6 +16,10 @@
 <     TrainingArguments,
 47d44
 <     is_torch_tpu_available,
+57c54
+< check_min_version("4.24.0.dev0")
+---
+> check_min_version("4.23.0")
 78c75,76
 <                 "The model checkpoint for weights initialization.Don't set if you want to train a model from scratch."
 ---

@@ -11,6 +11,10 @@
 <     Trainer,
 <     TrainingArguments,
 <     is_torch_tpu_available,
+56c53
+< check_min_version("4.24.0.dev0")
+---
+> check_min_version("4.23.0")
 220c217
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---

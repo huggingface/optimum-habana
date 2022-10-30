@@ -3,6 +3,10 @@
 44,45d44
 <     Trainer,
 <     TrainingArguments,
+58c57
+< check_min_version("4.24.0.dev0")
+---
+> check_min_version("4.23.0")
 171c170
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---

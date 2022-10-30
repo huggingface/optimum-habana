@@ -35,24 +35,20 @@ fast_tests:
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
 
 # Run single-card non-regression tests
-slow_tests_1x:
-	python -m pip install .[tests]
+slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
 
 # Run multi-card non-regression tests
-slow_tests_8x:
-	python -m pip install .[tests]
+slow_tests_8x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "multi_card"
 
 # Run DeepSpeed non-regression tests
-slow_tests_deepspeed:
-	python -m pip install .[tests]
+slow_tests_deepspeed: test_installs
 	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 # Check if examples are up to date with the Transformers library
-example_diff_tests:
-	python -m pip install .[tests]
+example_diff_tests: test_installs
 	python -m pytest tests/test_examples_match_transformers.py
 
 # Utilities to release to PyPi
@@ -86,3 +82,7 @@ clean:
 	find . -name "habana_log.livealloc.log_*" -type f -delete
 	find . -name .lock -type f -delete
 	find . -name .graph_dumps -type d -delete
+
+test_installs:
+	python -m pip install .[tests]
+	python -m pip install git+https://github.com/huggingface/transformers.git
