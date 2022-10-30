@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [ main ]
+    paths:
+      - "optimum/**.py"
+      - "tests/**.py"
+      - "setup.py"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
