@@ -1,8 +1,10 @@
-37a38
+37a38,39
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-44,45d44
+> from optimum.habana.trainer_utils import set_seed
+44,46d45
 <     Trainer,
 <     TrainingArguments,
+<     set_seed,
 171c170
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---

@@ -1,8 +1,11 @@
-32a33
+32a33,34
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-44,45d44
+> from optimum.habana.trainer_utils import set_seed
+44,45d45
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
+47d46
+<     set_seed,
 171c170
 <                 "efficient on GPU but very bad for TPU."
 ---

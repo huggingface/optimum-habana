@@ -1,8 +1,11 @@
-34a35
+34a35,36
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-42,43d42
+> from optimum.habana.trainer_utils import set_seed
+42,43d43
 <     Trainer,
 <     TrainingArguments,
+45d44
+<     set_seed,
 140d138
 < 
 373c371
