@@ -1,4 +1,4 @@
-31,39c31,32
+31,39c31,33
 < from transformers import (
 <     AutoConfig,
 <     AutoFeatureExtractor,
@@ -10,12 +10,13 @@
 < )
 ---
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-> from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser, set_seed
-164,166d156
+> from optimum.habana.trainer_utils import set_seed
+> from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser
+164,166d157
 <     freeze_feature_extractor: Optional[bool] = field(
 <         default=None, metadata={"help": "Whether to freeze the feature extractor layers of the model."}
 <     )
-172,186d161
+172,186d162
 <     def __post_init__(self):
 <         if not self.freeze_feature_extractor and self.freeze_feature_encoder:
 <             warnings.warn(
@@ -31,11 +32,11 @@
 <                 "Only make use of `--freeze_feature_encoder`."
 <             )
 < 
-193c168
+193c169
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-217a193,199
+217a194,200
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -43,34 +44,20 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-220,221c202,204
+220,221c203,205
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu} "
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-284,286c267,279
-<     raw_datasets = raw_datasets.cast_column(
-<         data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
-<     )
----
->     dataset_sampling_rate = next(iter(raw_datasets.values())).features[data_args.audio_column_name].sampling_rate
->     if dataset_sampling_rate != feature_extractor.sampling_rate:
->         raise RuntimeError(
->             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
->             f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
->             " support it on HPUs yet."
->         )
->         raw_datasets = raw_datasets.cast_column(
->             data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
->         )
-> 
+287a272,274
 >     # Max input length
 >     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
-290a284
 > 
-295,296c289,296
+290a278
+> 
+295,296c283,290
 <             output_batch["input_values"].append(wav)
 <         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
 ---
@@ -82,11 +69,11 @@
 >                 truncation=True,
 >             )
 >             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-297a298
+297a292
 >         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
-302a304
+302a298
 > 
-305,306c307,314
+305,306c301,308
 <             output_batch["input_values"].append(wav)
 <         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
 ---
@@ -98,11 +85,11 @@
 >                 truncation=True,
 >             )
 >             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-307a316
+307a310
 >         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
-369c378
+369c372
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-370a380
+370a374
 >         gaudi_config=gaudi_config,
