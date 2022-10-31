@@ -1246,7 +1246,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         )
         gaudi_config = get_gaudi_config()
         trainer = GaudiTrainer(model, gaudi_config=gaudi_config, train_dataset=data, args=train_args)
-        with self.assertLogs("optimum.habana.trainer", level="WARNING") as logs:
+        with self.assertLogs("optimum.habana.transformers.trainer", level="WARNING") as logs:
             trainer.train()
         self.assertIn(f"stopping training at step {available_steps}!", logs.output[0])
 
