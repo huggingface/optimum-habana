@@ -27,6 +27,7 @@ from transformers.generation_stopping_criteria import StoppingCriteriaList, vali
 from transformers.generation_utils import (
     BeamSampleOutput,
     BeamSearchOutput,
+    ContrastiveSearchOutput,
     GenerateOutput,
     GenerationMixin,
     GreedySearchOutput,
