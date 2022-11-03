@@ -202,9 +202,9 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             torch.distributed.barrier()
 
         with torch.no_grad():
-            with self.compute_loss_context_manager():
-                outputs = model(**inputs)
             if has_labels:
+                with self.compute_loss_context_manager():
+                    outputs = model(**inputs)
                 if self.label_smoother is not None:
                     loss = self.label_smoother(outputs, inputs["labels"]).mean().detach()
                 else:
