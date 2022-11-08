@@ -16,5 +16,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from .transformers import GaudiConfig, GaudiTrainer, GaudiSeq2SeqTrainer, GaudiTrainingArguments, GaudiSeq2SeqTrainingArguments
+from .transformers import (
+    GaudiConfig,
+    GaudiSeq2SeqTrainer,
+    GaudiSeq2SeqTrainingArguments,
+    GaudiTrainer,
+    GaudiTrainingArguments,
+)
 from .version import __version__
