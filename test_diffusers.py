@@ -22,13 +22,13 @@ generator = GaudiStableDiffusionPipeline.from_pretrained(
 )
 
 outputs = generator(
-    ["An image of a squirrel in Picasso style", "Sunset in Hollywood"],
+    ["An image of a squirrel in Picasso style"],
     num_images_per_prompt=4,
-    batch_size=1,
-    num_inference_steps=50,
-    height=512,
-    width=512,
+    batch_size=2,
+    num_inference_steps=4,
+    height=16,
+    width=16,
 )
 
-for i, image in enumerate(outputs.images):
-    image.save(f"image_{i+1}.png")
+# for i, image in enumerate(outputs.images):
+#     image.save(f"image_{i+1}.png")

@@ -174,6 +174,41 @@ gaudi_config = GaudiConfig.from_pretrained(
 Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
 
 
+## Stable Diffusion
+
+You can generate images from prompts using Stable Diffusion on Gaudi as follows:
+```python
+from optimum.habana import GaudiConfig
+from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+from optimum.habana.diffusers.schedulers import GaudiPNDMScheduler
+
+
+gaudi_config = GaudiConfig(
+    use_habana_mixed_precision=False,
+)
+
+model_name = "CompVis/stable-diffusion-v1-4"
+scheduler = GaudiPNDMScheduler.from_config(model_name, subfolder="scheduler")
+
+generator = GaudiStableDiffusionPipeline.from_pretrained(
+    model_name,
+    use_habana=True,
+    use_lazy_mode=False,
+    gaudi_config=gaudi_config,
+    scheduler=scheduler,
+)
+
+outputs = generator(
+    ["An image of a squirrel in Picasso style"],
+    num_images_per_prompt=4,
+    batch_size=2,
+    num_inference_steps=4,
+    height=16,
+    width=16,
+)
+```
+
+
 ## Validated Models
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
