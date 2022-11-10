@@ -27,6 +27,8 @@ from transformers.generation_stopping_criteria import StoppingCriteriaList, vali
 from transformers.generation_utils import (
     BeamSampleOutput,
     BeamSearchOutput,
+    ContrastiveSearchOutput,
+    GenerateOutput,
     GenerationMixin,
     GreedySearchOutput,
     SampleOutput,
@@ -55,6 +57,7 @@ class GaudiGenerationMixin(GenerationMixin):
         early_stopping: Optional[bool] = None,
         num_beams: Optional[int] = None,
         temperature: Optional[float] = None,
+        penalty_alpha: Optional[float] = None,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
         typical_p: Optional[float] = None,
@@ -75,9 +78,9 @@ class GaudiGenerationMixin(GenerationMixin):
         num_beam_groups: Optional[int] = None,
         diversity_penalty: Optional[float] = None,
         prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], List[int]]] = None,
-        logits_processor: Optional[LogitsProcessorList] = LogitsProcessorList(),
+        logits_processor: Optional[LogitsProcessorList] = None,
         renormalize_logits: Optional[bool] = None,
-        stopping_criteria: Optional[StoppingCriteriaList] = StoppingCriteriaList(),
+        stopping_criteria: Optional[StoppingCriteriaList] = None,
         constraints: Optional[List[Constraint]] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
@@ -90,15 +93,17 @@ class GaudiGenerationMixin(GenerationMixin):
         exponential_decay_length_penalty: Optional[Tuple[int, float]] = None,
         suppress_tokens: Optional[List[int]] = None,
         begin_suppress_tokens: Optional[List[int]] = None,
-        forced_decoder_ids: Optional[List[int]] = None,
+        forced_decoder_ids: Optional[List[List[int]]] = None,
         lazy_mode: Optional[bool] = False,
         **model_kwargs,
-    ) -> Union[GreedySearchOutput, SampleOutput, BeamSearchOutput, BeamSampleOutput, torch.LongTensor]:
+    ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
         Generates sequences of token ids for models with a language modeling head. The method supports the following
         generation methods for text-decoder, text-to-text, speech-to-text, and vision-to-text models:
             - *greedy decoding* by calling [`~generation_utils.GenerationMixin.greedy_search`] if `num_beams=1` and
               `do_sample=False`.
+            - *contrastive search* by calling [`~generation_utils.GenerationMixin.contrastive_search`] if
+              `penalty_alpha>0.` and `top_k>1`.
             - *multinomial sampling* by calling [`~generation_utils.GenerationMixin.sample`] if `num_beams=1` and
               `do_sample=True`.
             - *beam-search decoding* by calling [`~generation_utils.GenerationMixin.beam_search`] if `num_beams>1` and
@@ -139,6 +144,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of beams for beam search. 1 means no beam search.
             temperature (`float`, *optional*, defaults to `model.config.temperature` or 1.0 if the config does not set any value):
                 The value used to module the next token probabilities.
+            penalty_alpha (`float`, *optional*, defaults to `model.config.penalty_alpha` or None if the config does not set any value):
+                The values balance the model confidence and the degeneration penalty in contrastive search decoding.
             top_k (`int`, *optional*, defaults to `model.config.top_k` or 50 if the config does not set any value):
                 The number of highest probability vocabulary tokens to keep for top-k-filtering.
             top_p (`float`, *optional*, defaults to `model.config.top_p` or 1.0 if the config does not set any value):
@@ -207,7 +214,7 @@ class GaudiGenerationMixin(GenerationMixin):
                  Custom logits processors that complement the default logits processors built from arguments and a
                  model's config. If a logit processor is passed that is already created with the arguments or a model's
                  config an error is thrown. This feature is intended for advanced users.
-            renormalize_logits: (`bool`, *optional*, defaults to `False`):
+            renormalize_logits (`bool`, *optional*, defaults to `False`):
                 Whether to renormalize the logits after applying all the logits processors or warpers (including the
                 custom ones). It's highly recommended to set this flag to `True` as the search algorithms suppose the
                 score logits are normalized but some logit processors or warpers break the normalization.
@@ -249,8 +256,10 @@ class GaudiGenerationMixin(GenerationMixin):
             begin_suppress_tokens  (`List[int]`, *optional*, defaults to `model.config.begin_suppress_tokens`):
                 A list of tokens that will be supressed at the begining of the generation. The `SupressBeginTokens`
                 logit processor will set their log probs to `-inf` so that they are not sampled.
-            forced_decoder_ids (`List[int]`, *optional*, defaults to `model.config.forced_decoder_ids`):
-                A list of tokens that will be forced as beginning tokens, before sampling.
+            forced_decoder_ids (`List[List[int]]`, *optional*, defaults to `model.config.forced_decoder_ids`):
+                A list of pairs of integers which indicates a mapping from generation indices to token indices that
+                will be forced before sampling. For example, `[[1, 123]]` means the second generated token will always
+                be a token of index 123.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode)
 
@@ -325,6 +334,8 @@ class GaudiGenerationMixin(GenerationMixin):
         num_return_sequences = (
             num_return_sequences if num_return_sequences is not None else self.config.num_return_sequences
         )
+        logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
+        stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
 
         pad_token_id = pad_token_id if pad_token_id is not None else self.config.pad_token_id
         eos_token_id = eos_token_id if eos_token_id is not None else self.config.eos_token_id
@@ -437,25 +448,62 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # 6. determine generation mode
         is_constraint_gen_mode = constraints is not None or force_words_ids is not None
+
+        is_contrastive_search_gen_mode = (
+            top_k is not None and top_k > 1 and do_sample is False and penalty_alpha is not None and penalty_alpha > 0
+        )
+
         is_greedy_gen_mode = (
-            (num_beams == 1) and (num_beam_groups == 1) and do_sample is False and not is_constraint_gen_mode
+            (num_beams == 1)
+            and (num_beam_groups == 1)
+            and do_sample is False
+            and not is_constraint_gen_mode
+            and not is_contrastive_search_gen_mode
         )
         is_sample_gen_mode = (
-            (num_beams == 1) and (num_beam_groups == 1) and do_sample is True and not is_constraint_gen_mode
+            (num_beams == 1)
+            and (num_beam_groups == 1)
+            and do_sample is True
+            and not is_constraint_gen_mode
+            and not is_contrastive_search_gen_mode
         )
         is_beam_gen_mode = (
-            (num_beams > 1) and (num_beam_groups == 1) and do_sample is False and not is_constraint_gen_mode
+            (num_beams > 1)
+            and (num_beam_groups == 1)
+            and do_sample is False
+            and not is_constraint_gen_mode
+            and not is_contrastive_search_gen_mode
         )
         is_beam_sample_gen_mode = (
-            (num_beams > 1) and (num_beam_groups == 1) and do_sample is True and not is_constraint_gen_mode
+            (num_beams > 1)
+            and (num_beam_groups == 1)
+            and do_sample is True
+            and not is_constraint_gen_mode
+            and not is_contrastive_search_gen_mode
         )
-        is_group_beam_gen_mode = (num_beams > 1) and (num_beam_groups > 1) and not is_constraint_gen_mode
+        is_group_beam_gen_mode = (
+            (num_beams > 1)
+            and (num_beam_groups > 1)
+            and not is_constraint_gen_mode
+            and not is_contrastive_search_gen_mode
+        )
 
         if num_beam_groups > num_beams:
             raise ValueError("`num_beam_groups` has to be smaller or equal to `num_beams`")
         if is_group_beam_gen_mode and do_sample is True:
             raise ValueError(
                 "Diverse beam search cannot be used in sampling mode. Make sure that `do_sample` is set to `False`."
+            )
+
+        if self.device.type != input_ids.device.type:
+            warnings.warn(
+                "You are calling .generate() with the `input_ids` being on a device type different"
+                f" than your model's device. `input_ids` is on {input_ids.device.type}, whereas the model"
+                f" is on {self.device.type}. You may experience unexpected behaviors or slower generation."
+                " Please make sure that you have put `input_ids` to the"
+                f" correct device by calling for example input_ids = input_ids.to('{self.device.type}') before"
+                " running `.generate()`.",
+                UserWarning,
             )
 
         # 7. prepare distribution pre_processing samplers
@@ -513,6 +561,26 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                **model_kwargs,
+            )
+
+        elif is_contrastive_search_gen_mode:
+            if num_return_sequences > 1:
+                raise ValueError(
+                    f"num_return_sequences has to be 1, but is {num_return_sequences} when doing contrastive search."
+                )
+
+            return self.contrastive_search(
+                input_ids,
+                top_k=top_k,
+                penalty_alpha=penalty_alpha,
+                logits_processor=logits_processor,
+                stopping_criteria=stopping_criteria,
+                pad_token_id=pad_token_id,
+                eos_token_id=eos_token_id,
+                output_scores=output_scores,
+                return_dict_in_generate=return_dict_in_generate,
+                synced_gpus=synced_gpus,
                 **model_kwargs,
             )
 
@@ -755,6 +823,98 @@ class GaudiGenerationMixin(GenerationMixin):
                 lazy_mode=lazy_mode,
                 **model_kwargs,
             )
+
+    @torch.no_grad()
+    def contrastive_search(
+        self,
+        input_ids: torch.LongTensor,
+        top_k: Optional[int] = 1,
+        penalty_alpha: Optional[float] = 0,
+        logits_processor: Optional[LogitsProcessorList] = None,
+        logits_warper: Optional[LogitsProcessorList] = None,
+        stopping_criteria: Optional[StoppingCriteriaList] = None,
+        pad_token_id: Optional[int] = None,
+        eos_token_id: Optional[int] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        output_scores: Optional[bool] = None,
+        return_dict_in_generate: Optional[bool] = None,
+        synced_gpus: Optional[bool] = False,
+        **model_kwargs,
+    ) -> Union[ContrastiveSearchOutput, torch.LongTensor]:
+        r"""
+        Generates sequences of token ids for models with a language modeling head using **contrastive search** and can
+        be used for text-decoder, text-to-text, speech-to-text, and vision-to-text models.
+
+        Parameters:
+            input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
+                The sequence used as a prompt for the generation.
+            top_k (`int`, *optional*, defaults to 1):
+                The size of the candidate set that is used to re-rank for contrastive search
+            penalty_alpha (`float`, *optional*, defaults to 0):
+                The degeneration penalty for contrastive search; activate when it is larger than 0
+            logits_processor (`LogitsProcessorList`, *optional*):
+                An instance of [`LogitsProcessorList`]. List of instances of class derived from [`LogitsProcessor`]
+                used to modify the prediction scores of the language modeling head applied at each generation step.
+            logits_warper (`LogitsProcessorList`, *optional*):
+                An instance of [`LogitsProcessorList`]. List of instances of class derived from [`LogitsWarper`] used
+                to warp the prediction score distribution of the language modeling head applied before multinomial
+                sampling at each generation step.
+            stopping_criteria (`StoppingCriteriaList`, *optional*):
+                An instance of [`StoppingCriteriaList`]. List of instances of class derived from [`StoppingCriteria`]
+                used to tell if the generation loop should stop.
+            pad_token_id (`int`, *optional*):
+                The id of the *padding* token.
+            eos_token_id (`int`, *optional*):
+                The id of the *end-of-sequence* token.
+            output_attentions (`bool`, *optional*, defaults to `False`):
+                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
+                returned tensors for more details.
+            output_hidden_states (`bool`, *optional*, defaults to `False`):
+                Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
+                for more details.
+            output_scores (`bool`, *optional*, defaults to `False`):
+                Whether or not to return the prediction scores. See `scores` under returned tensors for more details.
+            return_dict_in_generate (`bool`, *optional*, defaults to `False`):
+                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
+            synced_gpus (`bool`, *optional*, defaults to `False`):
+                Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
+            model_kwargs:
+                Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
+                If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
+
+        Return:
+            [`~generation_utils.ContrastiveSearchDecoderOnlyOutput`],
+            [`~generation_utils.ContrastiveSearchEncoderDecoderOutput`] or `torch.LongTensor`: A `torch.LongTensor`
+            containing the generated tokens (default behaviour) or a
+            [`~generation_utils.ContrastiveSearchDecoderOnlyOutput`] if `model.config.is_encoder_decoder=False` and
+            `return_dict_in_generate=True` or a [`~generation_utils.ContrastiveSearchEncoderDecoderOutput`] if
+            `model.config.is_encoder_decoder=True`.
+
+        Examples:
+        ```python
+        >>> from transformers import (
+        ...     AutoTokenizer,
+        ...     AutoModelForCausalLM,
+        ...     StoppingCriteriaList,
+        ...     MaxLengthCriteria,
+        ... )
+
+        >>> tokenizer = AutoTokenizer.from_pretrained("facebook/opt-125m")
+        >>> model = AutoModelForCausalLM.from_pretrained("facebook/opt-125m")
+        >>> # set pad_token_id to eos_token_id because GPT2 does not have a PAD token
+        >>> model.config.pad_token_id = model.config.eos_token_id
+        >>> input_prompt = "DeepMind Company is"
+        >>> input_ids = tokenizer(input_prompt, return_tensors="pt")
+        >>> stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=64)])
+        >>> outputs = model.contrastive_search(
+        ...     **input_ids, penalty_alpha=0.6, top_k=4, stopping_criteria=stopping_criteria
+        ... )
+        >>> tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        ['DeepMind Company is a company that focuses on the development and commercialization of artificial intelligence (AI). DeepMind’s mission is to help people understand and solve problems that are difficult to solve in the world today.\n\nIn this post, we talk about the benefits of deep learning in business and how it']
+        ```"""
+
+        raise NotImplementedError("Contrastive search is not supported by optimum-habana yet.")
 
     def greedy_search(
         self,

@@ -34,6 +34,7 @@ from datasets import load_dataset
 import evaluate
 import transformers
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.trainer_utils import set_seed
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
@@ -42,7 +43,6 @@ from transformers import (
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     HfArgumentParser,
-    set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
@@ -50,7 +50,7 @@ from transformers.utils.versions import require_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.23.0")
+check_min_version("4.24.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 

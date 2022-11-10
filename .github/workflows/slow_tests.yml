@@ -3,8 +3,8 @@ name: Non-regression tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 23 * * 0-5'  # every Sunday to Friday at 1am CET
-    - cron: '0 23 * * 6'  # every Saturday at 1am CET
+    - cron: '0 21 * * 0-5'  # every Sunday to Friday at 11pm CET
+    - cron: '0 21 * * 6'  # every Saturday at 1am CET
 
 concurrency:
   group: ${{ github.workflow }}
@@ -170,14 +170,14 @@ jobs:
       AWS_REGION: us-west-2
     steps:
       - name: Checkout
-        if: github.event.schedule == '0 23 * * 6'
+        if: github.event.schedule == '0 21 * * 6'
         uses: actions/checkout@v2
       - name: Pull image
-        if: github.event.schedule == '0 23 * * 6'
+        if: github.event.schedule == '0 21 * * 6'
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.6.1/ubuntu20.04/habanalabs/pytorch-installer-1.12.0:latest
       - name: Run test
-        if: github.event.schedule == '0 23 * * 6'
+        if: github.event.schedule == '0 21 * * 6'
         run: |
             docker run \
             -v $PWD:/root/workspace \
@@ -191,7 +191,7 @@ jobs:
             vault.habana.ai/gaudi-docker/1.6.1/ubuntu20.04/habanalabs/pytorch-installer-1.12.0:latest \
             /bin/bash tests/ci/albert_xxl_1x.sh
       - name: Warning
-        if: github.event.schedule != '0 23 * * 6'
+        if: github.event.schedule != '0 21 * * 6'
         run: echo "ALBERT XXL 1x is only tested on Saturdays."
   stop-runner:
     name: Stop self-hosted EC2 runner

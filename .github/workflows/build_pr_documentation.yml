@@ -3,6 +3,9 @@ name: Build PR documentation
 on:
   pull_request:
     branches: [ main ]
+    paths:
+      - "optimum/**.py"
+      - "docs/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}

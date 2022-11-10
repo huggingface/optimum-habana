@@ -9,13 +9,15 @@
 ---
 > Training the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
-36a36
+36a36,37
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-44,45d43
+> from optimum.habana.trainer_utils import set_seed
+44,45d44
 <     Trainer,
 <     TrainingArguments,
-47d44
+47,48d45
 <     is_torch_tpu_available,
+<     set_seed,
 78c75,76
 <                 "The model checkpoint for weights initialization.Don't set if you want to train a model from scratch."
 ---
