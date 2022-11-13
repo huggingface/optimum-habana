@@ -1499,7 +1499,7 @@ class GaudiTrainer(Trainer):
         best_model_path = os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME)
         model = self.model
         if os.path.exists(best_model_path):
-            # TODO: uncomment the code below when Habana DeepSpeed >= 0.6.5
+            # TODO: the code below does not work with Habana DeepSpeed
             # if self.deepspeed:
 
             #     if self.model_wrapped is not None:
