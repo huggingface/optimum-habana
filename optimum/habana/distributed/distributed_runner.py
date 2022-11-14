@@ -20,7 +20,9 @@ import os
 import subprocess
 import sys
 
+from pathlib import Path
 from optimum.utils import logging
+from typing import List
 
 
 logger = logging.get_logger(__name__)
@@ -33,13 +35,14 @@ class DistributedRunner:
 
     def __init__(
         self,
-        command_list=[],
-        world_size=1,
-        use_mpi=False,
-        use_deepspeed=False,
-        use_env=False,
-        map_by="socket",
-        multi_hls=False,
+        command_list: List = [],
+        world_size: int = 1,
+        use_mpi: bool = False,
+        use_deepspeed: bool = False,
+        use_env: bool = False,
+        map_by: bool = "socket",
+        multi_hls: bool = False,
+        hostfile: Path = None
     ):
         self.__commands = command_list
         self.__world_size = world_size
