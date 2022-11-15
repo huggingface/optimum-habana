@@ -40,6 +40,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             Whether to use Gaudi (`True`) or CPU (`False`).
         use_lazy_mode (bool):
             Whether to use lazy (`True`) or eager (`False`) mode.
+        use_hpu_graphs (bool):
+            Whether to use HPU graphs or not.
         gaudi_config (Union[str, [`GaudiConfig`]]):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
@@ -49,6 +51,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         self,
         use_habana: bool,
         use_lazy_mode: bool,
+        use_hpu_graphs: bool,
         gaudi_config: Union[str, GaudiConfig],
     ):
         super().__init__()
@@ -56,12 +59,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         self.use_habana = use_habana
         if use_habana:
             self.use_lazy_mode = use_lazy_mode
-            import habana_frameworks.torch.hpu as hthpu
-
-            if hthpu.is_available():
-                logger.info("Habana is enabled.")
-            else:
-                raise RuntimeError("No HPU is currently available.")
+            self.use_hpu_graphs = use_hpu_graphs
 
             if use_lazy_mode:
                 logger.info("Enabled lazy mode.")

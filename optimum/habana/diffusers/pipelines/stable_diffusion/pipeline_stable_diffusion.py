@@ -33,6 +33,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         self,
         use_habana: bool,
         use_lazy_mode: bool,
+        use_hpu_graphs: bool,
         gaudi_config: Union[str, GaudiConfig],
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
@@ -98,6 +99,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         super().__init__(
             use_habana,
             use_lazy_mode,
+            use_hpu_graphs,
             gaudi_config,
         )
 
@@ -353,6 +355,9 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimized to move all timesteps to correct device beforehand
         timesteps_tensor = self.scheduler.timesteps.to(self.device)
+        # if self.use_habana:
+        #     if self.use_lazy_mode or self.use_hpu_graphs:
+        timesteps_tensor = torch.roll(timesteps_tensor, shifts=1, dims=0)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -372,8 +377,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             extra_step_kwargs["generator"] = generator
 
         # Split into batches
-        text_embeddings_batches = list(torch.split(text_embeddings, batch_factor * batch_size))
-        latents_batches = list(torch.split(latents, batch_size))
+        text_embeddings_batches = torch.stack(list(torch.split(text_embeddings, batch_factor * batch_size)))
+        latents_batches = torch.stack(list(torch.split(latents, batch_size)))
 
         outputs = {
             "images": [],
@@ -384,22 +389,41 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
 
         # Main loop
         for j in self.progress_bar(range(num_batches)):
-            if j == 0:
-                # Keep a copy of the scheduler in its initial state to reset it later
-                scheduler_copy = copy.deepcopy(self.scheduler)
-            else:
-                # Reset the scheduler
-                self.scheduler = copy.deepcopy(scheduler_copy)
+            # if j == 0:
+            #     # Keep a copy of the scheduler in its initial state to reset it later
+            #     scheduler_copy = copy.deepcopy(self.scheduler)
+            # else:
+            #     # Reset the scheduler
+            #     self.scheduler = copy.deepcopy(scheduler_copy)
 
-            for i, t in enumerate(timesteps_tensor):
+            latents_batch = latents_batches[0]
+            latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
+            text_embeddings_batch = text_embeddings_batches[0]
+            text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
+
+            # # HPU
+            # timestep_list = []
+            # for timestep in timesteps_tensor:
+            #     timestep_list.append(torch.full((batch_size,), timestep, device=self.device, dtype=timestep.dtype))
+
+            for i in range(num_inference_steps):
+                timesteps_tensor = torch.roll(timesteps_tensor, shifts=-1, dims=0)
+                timestep = timesteps_tensor[0]
+
+                # capture = False
+                # if self.use_hpu_graphs:
+                #     capture = True
+                #     if i >= 2:
+                #         capture = False
+
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents_batches[j]] * 2) if do_classifier_free_guidance else latents_batches[j]
-                )
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = torch.cat([latents_batch] * 2) if do_classifier_free_guidance else latents_batch
+                # latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_batches[j]).sample
+                noise_pred = self.unet(
+                    latent_model_input, timestep, encoder_hidden_states=text_embeddings_batch
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -407,8 +431,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents_batches[j] = self.scheduler.step(
-                    noise_pred, t, latents_batches[j], **extra_step_kwargs
+                latents_batch = self.scheduler.step(
+                    noise_pred, timestep, latents_batch, **extra_step_kwargs
                 ).prev_sample
 
                 if self.use_lazy_mode:
@@ -416,13 +440,18 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
 
                 # call the callback, if provided
                 if callback is not None and i % callback_steps == 0:
-                    callback(i, t, latents_batches[j])
+                    callback(i, timestep, latents_batch)
 
-            latents_batches[j] = 1 / 0.18215 * latents_batches[j]
-            image = self.vae.decode(latents_batches[j]).sample
+            latents_batch = 1 / 0.18215 * latents_batch
+            image = self.vae.decode(latents_batch).sample
 
             image = (image / 2 + 0.5).clamp(0, 1)
             outputs["images"].append(image)
+
+            self.scheduler.reset_timestep_dependent_params()
+
+            if self.use_lazy_mode:
+                self.htcore.mark_step()
 
         duration = time.time() - t0
         logger.info(
