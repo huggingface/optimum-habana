@@ -48,6 +48,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         gaudi_config (Union[str, [`GaudiConfig`]]):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
+        log_level (int):
+            The numeric level of the logging event.
     """
 
     def __init__(
@@ -56,8 +58,17 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         use_lazy_mode: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
+        log_level: int = logging.INFO,
     ):
         super().__init__()
+
+        # Set the correct log level depending on the node
+        # Already done in super().init() but we have to do it again
+        # because we use optimum.utils.logging here and not
+        # diffusers.utils.logging
+        logging.set_verbosity(log_level)
+        logging.enable_default_handler()
+        logging.enable_explicit_format()
 
         # Lazy mode, HPU graphs and Gaudi configuration should be off if not using HPU
         self.use_habana = use_habana
@@ -65,14 +76,19 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         self.use_hpu_graphs = False if not use_habana else use_hpu_graphs
         self.gaudi_config = None if not use_habana else gaudi_config
 
+        if self.use_lazy_mode and self.use_hpu_graphs:
+            raise ValueError("`use_lazy_mode` and `use_hpu_graphs` cannot be both True.")
+
         if self.use_habana:
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
+            elif self.use_hpu_graphs:
+                logger.info("Enabled HPU graphs.")
             else:
                 os.environ["PT_HPU_LAZY_MODE"] = "2"
                 logger.info("Enabled eager mode because use_lazy_mode=False.")
 
-            device = torch.device("hpu")
+            self._device = torch.device("hpu")
 
             if isinstance(gaudi_config, str):
                 # Config from the Hub
@@ -86,8 +102,11 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 )
 
             if self.use_hpu_graphs:
-                import habana_frameworks.torch as ht
-
+                try:
+                    import habana_frameworks.torch as ht
+                except ImportError as error:
+                    error.msg = f"Could not import habana_frameworks.torch. {error.msg}."
+                    raise error
                 self.ht = ht
                 self.hpu_graph = ht.hpu.HPUGraph()
                 self.hpu_stream = ht.hpu.Stream()
@@ -125,18 +144,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                         )
         else:
             logger.info("Running on CPU.")
-            device = torch.device("cpu")
-
-        self.to(device)
-
-        # Set the correct log level depending on the node
-        # Already done in super().init() but we have to do it again
-        # because we use optimum.utils.logging here and not
-        # diffusers.utils.logging
-        # log_level = args.get_process_log_level()
-        logging.set_verbosity(logging.INFO)
-        logging.enable_default_handler()
-        logging.enable_explicit_format()
+            self._device = torch.device("cpu")
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         """

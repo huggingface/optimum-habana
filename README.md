@@ -19,8 +19,8 @@ limitations under the License.
 
 # Optimum Habana
 
-🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
-It provides a set of tools enabling easy model loading and training on single- and multi-HPU settings for different downstream tasks.
+🤗 Optimum Habana is the interface between the 🤗 Transformers and Diffusers libraries and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
+It provides a set of tools enabling easy model loading, training and inference on single- and multi-HPU settings for different downstream tasks.
 The list of officially validated models and tasks is available [here](https://github.com/huggingface/optimum-habana#validated-models). Users can try other models and tasks with only few changes.
 
 
@@ -169,44 +169,46 @@ gaudi_config = GaudiConfig.from_pretrained(
 ```
 
 
-### Documentation
-
-Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
-
-
-## Stable Diffusion
+### Stable Diffusion
 
 You can generate images from prompts using Stable Diffusion on Gaudi as follows:
 ```python
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import GaudiStableDiffusionPipeline
-from optimum.habana.diffusers.schedulers import GaudiPNDMScheduler
+from optimum.habana.diffusers.schedulers import GaudiDDIMScheduler
+from optimum.habana.transformers.trainer_utils import set_seed
 
 
-gaudi_config = GaudiConfig(
-    use_habana_mixed_precision=False,
-)
+set_seed(27)
 
 model_name = "CompVis/stable-diffusion-v1-4"
-scheduler = GaudiPNDMScheduler.from_config(model_name, subfolder="scheduler")
+scheduler = GaudiDDIMScheduler.from_config(model_name, subfolder="scheduler")
 
 generator = GaudiStableDiffusionPipeline.from_pretrained(
     model_name,
+    scheduler=scheduler,
     use_habana=True,
     use_lazy_mode=False,
-    gaudi_config=gaudi_config,
-    scheduler=scheduler,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
 )
 
 outputs = generator(
     ["An image of a squirrel in Picasso style"],
-    num_images_per_prompt=4,
-    batch_size=2,
-    num_inference_steps=4,
-    height=16,
-    width=16,
+    num_images_per_prompt=16,
+    batch_size=4,
 )
+
+generator.save_pretrained("my_pipeline")
+
+for i, image in enumerate(outputs.images):
+    image.save(f"image_{i+1}.png")
 ```
+
+
+### Documentation
+
+Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
 
 
 ## Validated Models

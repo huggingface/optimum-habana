@@ -66,7 +66,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
-        # use_hpu_graphs: bool = False,
     ):
         super().__init__(
             num_train_timesteps,
@@ -211,9 +210,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
             # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
             device = model_output.device if torch.is_tensor(model_output) else "cpu"
             # torch.randn is broken on HPU so running it on CPU
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator, device="cpu").to(
-                device
-            )
+            noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu").to(device)
 
             prev_sample = prev_sample + variance ** (0.5) * eta * noise
 

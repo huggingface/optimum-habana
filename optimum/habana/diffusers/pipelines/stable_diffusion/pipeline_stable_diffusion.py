@@ -48,6 +48,13 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
     ):
+        super().__init__(
+            use_habana,
+            use_lazy_mode,
+            use_hpu_graphs,
+            gaudi_config,
+        )
+
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
@@ -95,28 +102,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-        super().__init__(
-            use_habana,
-            use_lazy_mode,
-            use_hpu_graphs,
-            gaudi_config,
-        )
-
-    # def enable_xformers_memory_efficient_attention(self):
-    #     r"""
-    #     Enable memory efficient attention as implemented in xformers.
-    #     When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
-    #     time. Speed up at training time is not guaranteed.
-    #     Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
-    #     is used.
-    #     """
-    #     self.unet.set_use_memory_efficient_attention_xformers(True)
-
-    # def disable_xformers_memory_efficient_attention(self):
-    #     r"""
-    #     Disable memory efficient attention as implemented in xformers.
-    #     """
-    #     self.unet.set_use_memory_efficient_attention_xformers(False)
+        self.to(self._device)
 
     @torch.no_grad()
     def __call__(
@@ -243,7 +229,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        batch_factor = 1
+        uncond_embeddings = None
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
             uncond_tokens: List[str]
@@ -280,12 +266,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
             uncond_embeddings = uncond_embeddings.view(num_prompts * num_images_per_prompt, seq_len, -1)
 
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-            batch_factor = 2
-
         # get the initial random noise unless the user supplied it
 
         # Unlike in other pipelines, latents need to be generated in the target device
@@ -296,11 +276,9 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         if latents is None:
             if self.device.type == "hpu":
                 # torch.randn is broken on HPU so running it on CPU
-                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
-                    self.device
-                )
+                latents = torch.randn(latents_shape, device="cpu", dtype=latents_dtype).to(self.device)
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+                latents = torch.randn(latents_shape, device=self.device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
@@ -326,13 +304,45 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
+        # accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        # if accepts_generator:
+        #     extra_step_kwargs["generator"] = generator
 
         # Split into batches
-        text_embeddings_batches = torch.stack(list(torch.split(text_embeddings, batch_factor * batch_size)))
-        latents_batches = torch.stack(list(torch.split(latents, batch_size)))
+        text_embeddings_batches = list(torch.split(text_embeddings, batch_size))
+        if uncond_embeddings is not None:
+            uncond_embeddings_batches = list(torch.split(uncond_embeddings, batch_size))
+        latents_batches = list(torch.split(latents, batch_size))
+        # If the last batch has less samples than batch_size, pad it with dummy samples
+        num_dummy_samples = 0
+        if latents_batches[-1].shape[0] < batch_size:
+            num_dummy_samples = batch_size - latents_batches[-1].shape[0]
+            # Pad latents_batches
+            sequence_to_stack = (latents_batches[-1],) + tuple(
+                torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            latents_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad text_embeddings_batches
+            sequence_to_stack = (text_embeddings_batches[-1],) + tuple(
+                torch.zeros_like(text_embeddings_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            text_embeddings_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad uncond_embeddings_batches if necessary
+            if uncond_embeddings is not None:
+                sequence_to_stack = (uncond_embeddings_batches[-1],) + tuple(
+                    torch.zeros_like(uncond_embeddings_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                uncond_embeddings_batches[-1] = torch.vstack(sequence_to_stack)
+        latents_batches = torch.stack(latents_batches)
+        if uncond_embeddings is not None:
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            for i, (uncond_embeddings_batch, text_embeddings_batch) in enumerate(
+                zip(uncond_embeddings_batches, text_embeddings_batches[:])
+            ):
+                text_embeddings_batches[i] = torch.cat([uncond_embeddings_batch, text_embeddings_batch])
+        text_embeddings_batches = torch.stack(text_embeddings_batches)
 
         outputs = {
             "images": [],
@@ -340,6 +350,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         }
 
         t0 = time.time()
+        t1 = t0
 
         # Main loop
         for j in self.progress_bar(range(num_batches)):
@@ -399,11 +410,15 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
 
         t2 = time.time()
         duration = t2 - t0
-        if self.use_lazy_mode:
+        if self.use_lazy_mode or self.use_hpu_graphs:
             throughput = (num_images_per_prompt * num_prompts - 2 * batch_size) / (t2 - t1)
         else:
-            throughput = num_images_per_prompt * num_prompts / duration
+            throughput = (num_images_per_prompt * num_prompts + num_dummy_samples) / duration
         logger.info(f"Runtime: {duration} seconds, throughput: {throughput} samples/s.")
+
+        # Remove dummy generations if needed
+        if num_dummy_samples > 0:
+            outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
 
         # Process generated images
         for i, image in enumerate(outputs["images"][:]):
@@ -428,7 +443,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 image = self.numpy_to_pil(image)
 
             outputs["images"] += image
-            outputs["has_nsfw_concept"] += has_nsfw_concept
+            if has_nsfw_concept is not None:
+                outputs["has_nsfw_concept"] += has_nsfw_concept
+            else:
+                outputs["has_nsfw_concept"] = None
 
         if not return_dict:
             return (outputs["images"], outputs["has_nsfw_concept"])
@@ -438,22 +456,22 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             nsfw_content_detected=outputs["has_nsfw_concept"],
         )
 
-    @torch.no_grad
+    @torch.no_grad()
     def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, capture):
         if self.use_hpu_graphs:
             return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture)
         else:
             return self.unet(latent_model_input, timestep, encoder_hidden_states).sample
 
-    @torch.no_grad
+    @torch.no_grad()
     def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, capture):
         if capture:
-            self.static_inputs = [latent_model_input, timestep, encoder_hidden_states]
+            self.static_inputs = [latent_model_input, timestep, encoder_hidden_states, False]
             with self.ht.hpu.stream(self.hpu_stream):
                 self.hpu_graph.capture_begin()
 
                 self.static_outputs = self.unet(
-                    self.static_inputs[0], self.static_inputs[1], self.static_inputs[2], return_dict=False
+                    self.static_inputs[0], self.static_inputs[1], self.static_inputs[2], self.static_inputs[3]
                 )[0]
 
                 self.hpu_graph.capture_end()
