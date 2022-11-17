@@ -1,7 +1,5 @@
 import copy
 import inspect
-import os
-import tempfile
 import time
 from math import ceil
 from typing import Callable, List, Optional, Union
@@ -18,6 +16,7 @@ from diffusers.schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
+from diffusers.utils import deprecate
 from optimum.utils import logging
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
@@ -31,10 +30,6 @@ logger = logging.get_logger(__name__)
 class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
     def __init__(
         self,
-        use_habana: bool,
-        use_lazy_mode: bool,
-        use_hpu_graphs: bool,
-        gaudi_config: Union[str, GaudiConfig],
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
@@ -48,6 +43,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         ],
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
+        use_habana: bool = False,
+        use_lazy_mode: bool = False,
+        use_hpu_graphs: bool = False,
+        gaudi_config: Union[str, GaudiConfig] = None,
     ):
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
@@ -118,48 +117,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
     #     Disable memory efficient attention as implemented in xformers.
     #     """
     #     self.unet.set_use_memory_efficient_attention_xformers(False)
-
-    # def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
-    #     r"""
-    #     Enable sliced attention computation.
-    #     When this option is enabled, the attention module will split the input tensor in slices, to compute attention
-    #     in several steps. This is useful to save some memory in exchange for a small speed decrease.
-    #     Args:
-    #         slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
-    #             When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-    #             a number is provided, uses as many slices as `attention_head_dim // slice_size`. In this case,
-    #             `attention_head_dim` must be a multiple of `slice_size`.
-    #     """
-    #     if slice_size == "auto":
-    #         # half the attention head size is usually a good trade-off between
-    #         # speed and memory
-    #         slice_size = self.unet.config.attention_head_dim // 2
-    #     self.unet.set_attention_slice(slice_size)
-
-    # def disable_attention_slicing(self):
-    #     r"""
-    #     Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
-    #     back to computing attention in one step.
-    #     """
-    #     # set slice_size = `None` to disable `attention slicing`
-    #     self.enable_attention_slicing(None)
-
-    # def enable_sequential_cpu_offload(self):
-    #     r"""
-    #     Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-    #     text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-    #     `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-    #     """
-    #     if is_accelerate_available():
-    #         from accelerate import cpu_offload
-    #     else:
-    #         raise ImportError("Please install accelerate via `pip install accelerate`")
-
-    #     device = torch.device("cuda")
-
-    #     for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
-    #         if cpu_offloaded_model is not None:
-    #             cpu_offload(cpu_offloaded_model, device)
 
     @torch.no_grad()
     def __call__(
@@ -355,9 +312,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimized to move all timesteps to correct device beforehand
         timesteps_tensor = self.scheduler.timesteps.to(self.device)
-        # if self.use_habana:
-        #     if self.use_lazy_mode or self.use_hpu_graphs:
-        timesteps_tensor = torch.roll(timesteps_tensor, shifts=1, dims=0)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -380,6 +334,12 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         text_embeddings_batches = torch.stack(list(torch.split(text_embeddings, batch_factor * batch_size)))
         latents_batches = torch.stack(list(torch.split(latents, batch_size)))
 
+        if self.use_hpu_graphs != self.scheduler.use_hpu_graphs:
+            raise ValueError(
+                f"self.use_hpu_graphs (got {self.use_hpu_graphs} and self.scheduler.use_hpu_graphs (got"
+                f" {self.scheduler.use_hpu_graphs} should be equal.))"
+            )
+
         outputs = {
             "images": [],
             "has_nsfw_concept": [],
@@ -396,25 +356,19 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             #     # Reset the scheduler
             #     self.scheduler = copy.deepcopy(scheduler_copy)
 
+            if j == 2:
+                t1 = time.time()
+
             latents_batch = latents_batches[0]
             latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
             text_embeddings_batch = text_embeddings_batches[0]
             text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
 
-            # # HPU
-            # timestep_list = []
-            # for timestep in timesteps_tensor:
-            #     timestep_list.append(torch.full((batch_size,), timestep, device=self.device, dtype=timestep.dtype))
-
             for i in range(num_inference_steps):
-                timesteps_tensor = torch.roll(timesteps_tensor, shifts=-1, dims=0)
                 timestep = timesteps_tensor[0]
+                timesteps_tensor = torch.roll(timesteps_tensor, shifts=-1, dims=0)
 
-                # capture = False
-                # if self.use_hpu_graphs:
-                #     capture = True
-                #     if i >= 2:
-                #         capture = False
+                capture = True if self.use_hpu_graphs and i < 2 else False
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents_batch] * 2) if do_classifier_free_guidance else latents_batch
@@ -431,9 +385,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents_batch = self.scheduler.step(
-                    noise_pred, timestep, latents_batch, **extra_step_kwargs
-                ).prev_sample
+                latents_batch = self.scheduler.step(noise_pred, latents_batch, **extra_step_kwargs).prev_sample
 
                 if self.use_lazy_mode:
                     self.htcore.mark_step()
@@ -453,10 +405,13 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             if self.use_lazy_mode:
                 self.htcore.mark_step()
 
-        duration = time.time() - t0
-        logger.info(
-            f"Runtime: {duration} seconds, throughput: {num_images_per_prompt*num_prompts/duration} samples/s."
-        )
+        t2 = time.time()
+        duration = t2 - t0
+        if self.use_lazy_mode:
+            throughput = (num_images_per_prompt * num_prompts - 2 * batch_size) / (t2 - t1)
+        else:
+            throughput = num_images_per_prompt * num_prompts / duration
+        logger.info(f"Runtime: {duration} seconds, throughput: {throughput} samples/s.")
 
         # Process generated images
         for i, image in enumerate(outputs["images"][:]):

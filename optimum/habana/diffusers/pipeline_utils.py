@@ -15,12 +15,15 @@
 # limitations under the License.
 
 import copy
+import importlib
 import os
+import tempfile
 from typing import Union
 
 import torch
 
 from diffusers import DiffusionPipeline
+from diffusers.pipeline_utils import LOADABLE_CLASSES
 from optimum.utils import logging
 
 from ..transformers.gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
@@ -49,19 +52,21 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        use_habana: bool,
-        use_lazy_mode: bool,
-        use_hpu_graphs: bool,
-        gaudi_config: Union[str, GaudiConfig],
+        use_habana: bool = False,
+        use_lazy_mode: bool = False,
+        use_hpu_graphs: bool = False,
+        gaudi_config: Union[str, GaudiConfig] = None,
     ):
         super().__init__()
 
+        # Lazy mode, HPU graphs and Gaudi configuration should be off if not using HPU
         self.use_habana = use_habana
-        if use_habana:
-            self.use_lazy_mode = use_lazy_mode
-            self.use_hpu_graphs = use_hpu_graphs
+        self.use_lazy_mode = False if not use_habana else use_lazy_mode
+        self.use_hpu_graphs = False if not use_habana else use_hpu_graphs
+        self.gaudi_config = None if not use_habana else gaudi_config
 
-            if use_lazy_mode:
+        if self.use_habana:
+            if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
             else:
                 os.environ["PT_HPU_LAZY_MODE"] = "2"
@@ -80,7 +85,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     f"`gaudi_config` must be a string or a GaudiConfig object but is {type(gaudi_config)}."
                 )
 
-            if use_lazy_mode:
+            if self.use_lazy_mode:
                 try:
                     import habana_frameworks.torch.core as htcore
                 except ImportError as error:
@@ -110,15 +115,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                             fp32_file_path=hmp_fp32_file.name,
                             isVerbose=self.gaudi_config.hmp_is_verbose,
                         )
-
-                # Move params of PNDMScheduler to HPU
-                if hasattr(self.scheduler, "betas") and self.scheduler.betas.device.type != "hpu":
-                    self.scheduler.betas.to(device)
-                if (
-                    hasattr(self.scheduler, "final_alpha_cumprod")
-                    and self.scheduler.final_alpha_cumprod.device.type != "hpu"
-                ):
-                    self.scheduler.final_alpha_cumprod.to(device)
         else:
             logger.info("Running on CPU.")
             device = torch.device("cpu")

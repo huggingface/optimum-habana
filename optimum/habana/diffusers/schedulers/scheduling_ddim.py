@@ -15,18 +15,14 @@
 # DISCLAIMER: This code is strongly influenced by https://github.com/pesser/pytorch_diffusion
 # and https://github.com/hojonathanho/diffusion
 
-import math
-from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 
-from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.configuration_utils import register_to_config
 from diffusers.schedulers import DDIMScheduler
-from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput, betas_for_alpha_bar
-from diffusers.schedulers.scheduling_utils import SchedulerMixin
-from diffusers.utils import BaseOutput
+from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
 
 
 class GaudiDDIMScheduler(DDIMScheduler):
@@ -70,43 +66,24 @@ class GaudiDDIMScheduler(DDIMScheduler):
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
-        use_hpu_graph: bool = False,
+        use_hpu_graphs: bool = False,
     ):
-        if trained_betas is not None:
-            self.betas = torch.from_numpy(trained_betas)
-        elif beta_schedule == "linear":
-            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
-        elif beta_schedule == "scaled_linear":
-            # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
-        elif beta_schedule == "squaredcos_cap_v2":
-            # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(num_train_timesteps)
-        else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+        super().__init__(
+            num_train_timesteps,
+            beta_start,
+            beta_end,
+            beta_schedule,
+            trained_betas,
+            clip_sample,
+            set_alpha_to_one,
+            steps_offset,
+        )
 
-        self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-
-        # At every step in ddim, we are looking into the previous alphas_cumprod
-        # For the final step, there is no previous alphas_cumprod because we are already at 0
-        # `set_alpha_to_one` decides whether we set this parameter simply to one or
-        # whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
-
-        # standard deviation of the initial noise distribution
-        self.init_noise_sigma = 1.0
-
-        # setable values
-        self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
-
-        self.use_hpu_graph = use_hpu_graph
-        if use_hpu_graph:
+        self.use_hpu_graphs = use_hpu_graphs
+        if use_hpu_graphs:
             import habana_frameworks.torch as ht
 
+            self.ht = ht
             self.hpu_graph = ht.hpu.HPUGraph()
             self.hpu_stream = ht.hpu.Stream()
             self.static_inputs = list()
@@ -170,7 +147,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: int,
         sample: torch.FloatTensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
@@ -182,7 +158,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
         process from the learned model outputs (most often the predicted noise).
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             eta (`float`): weight of noise for added noise in diffusion step.
@@ -214,14 +189,10 @@ class GaudiDDIMScheduler(DDIMScheduler):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
-        # prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        # Done in self.get_params() below
 
         # 2. compute alphas, betas
-        # alpha_prod_t = self.alphas_cumprod[timestep]
-        # alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
-
         alpha_prod_t, alpha_prod_t_prev, variance = self.get_params()
-
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
@@ -234,7 +205,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
-        # variance = self._get_variance(timestep, prev_timestep)
         std_dev_t = eta * variance ** (0.5)
 
         if use_clipped_model_output:
@@ -250,8 +220,10 @@ class GaudiDDIMScheduler(DDIMScheduler):
         if eta > 0:
             # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
             device = model_output.device if torch.is_tensor(model_output) else "cpu"
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
-            # variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
+            # torch.randn is broken on HPU so running it on CPU
+            noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator, device="cpu").to(
+                device
+            )
 
             prev_sample = prev_sample + variance ** (0.5) * eta * noise
 
