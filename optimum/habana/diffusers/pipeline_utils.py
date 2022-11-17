@@ -85,7 +85,15 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     f"`gaudi_config` must be a string or a GaudiConfig object but is {type(gaudi_config)}."
                 )
 
-            if self.use_lazy_mode:
+            if self.use_hpu_graphs:
+                import habana_frameworks.torch as ht
+
+                self.ht = ht
+                self.hpu_graph = ht.hpu.HPUGraph()
+                self.hpu_stream = ht.hpu.Stream()
+                self.static_inputs = list()
+                self.static_outputs = None
+            elif self.use_lazy_mode:
                 try:
                     import habana_frameworks.torch.core as htcore
                 except ImportError as error:

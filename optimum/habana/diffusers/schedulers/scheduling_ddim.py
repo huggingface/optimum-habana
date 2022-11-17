@@ -66,7 +66,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
-        use_hpu_graphs: bool = False,
+        # use_hpu_graphs: bool = False,
     ):
         super().__init__(
             num_train_timesteps,
@@ -78,16 +78,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
             set_alpha_to_one,
             steps_offset,
         )
-
-        self.use_hpu_graphs = use_hpu_graphs
-        if use_hpu_graphs:
-            import habana_frameworks.torch as ht
-
-            self.ht = ht
-            self.hpu_graph = ht.hpu.HPUGraph()
-            self.hpu_stream = ht.hpu.Stream()
-            self.static_inputs = list()
-            self.static_outputs = None
 
         self.reset_timestep_dependent_params()
 

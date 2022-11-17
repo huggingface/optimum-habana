@@ -334,12 +334,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         text_embeddings_batches = torch.stack(list(torch.split(text_embeddings, batch_factor * batch_size)))
         latents_batches = torch.stack(list(torch.split(latents, batch_size)))
 
-        if self.use_hpu_graphs != self.scheduler.use_hpu_graphs:
-            raise ValueError(
-                f"self.use_hpu_graphs (got {self.use_hpu_graphs} and self.scheduler.use_hpu_graphs (got"
-                f" {self.scheduler.use_hpu_graphs} should be equal.))"
-            )
-
         outputs = {
             "images": [],
             "has_nsfw_concept": [],
@@ -375,9 +369,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 # latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
 
                 # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input, timestep, encoder_hidden_states=text_embeddings_batch
-                ).sample
+                noise_pred = self.unet_hpu(latent_model_input, timestep, text_embeddings_batch, capture)
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -445,3 +437,31 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             images=outputs["images"],
             nsfw_content_detected=outputs["has_nsfw_concept"],
         )
+
+    @torch.no_grad
+    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, capture):
+        if self.use_hpu_graphs:
+            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture)
+        else:
+            return self.unet(latent_model_input, timestep, encoder_hidden_states).sample
+
+    @torch.no_grad
+    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, capture):
+        if capture:
+            self.static_inputs = [latent_model_input, timestep, encoder_hidden_states]
+            with self.ht.hpu.stream(self.hpu_stream):
+                self.hpu_graph.capture_begin()
+
+                self.static_outputs = self.unet(
+                    self.static_inputs[0], self.static_inputs[1], self.static_inputs[2], return_dict=False
+                )[0]
+
+                self.hpu_graph.capture_end()
+        self.static_inputs[0].copy_(latent_model_input)
+        self.static_inputs[1].copy_(timestep)
+        self.static_inputs[2].copy_(encoder_hidden_states)
+        self.ht.core.mark_step()
+        self.ht.core.hpu.default_stream().synchronize()
+        self.hpu_graph.replay()
+
+        return self.static_outputs
