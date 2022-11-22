@@ -6,6 +6,8 @@ on:
     paths:
       - "optimum/**.py"
       - "docs/**"
+      - ".github/workflows/build_pr_documentation.yml"
+      - ".github/workflows/delete_doc_comment.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
