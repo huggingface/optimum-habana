@@ -18,18 +18,42 @@ import copy
 import importlib
 import os
 import tempfile
-from typing import Union
+from typing import Optional, Union
 
 import torch
 
 from diffusers import DiffusionPipeline
-from diffusers.pipeline_utils import LOADABLE_CLASSES
 from optimum.utils import logging
 
 from ..transformers.gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 
 
 logger = logging.get_logger(__name__)
+
+
+GAUDI_LOADABLE_CLASSES = {
+    "diffusers": {
+        "ModelMixin": ["save_pretrained", "from_pretrained"],
+        "SchedulerMixin": ["save_pretrained", "from_pretrained"],
+        "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
+        "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
+    },
+    "transformers": {
+        "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
+        "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
+        "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
+        "ProcessorMixin": ["save_pretrained", "from_pretrained"],
+        "ImageProcessingMixin": ["save_pretrained", "from_pretrained"],
+    },
+    "optimum.habana.diffusers.schedulers": {
+        "GaudiDDIMScheduler": ["save_pretrained", "from_pretrained"],
+    },
+}
+
+GAUDI_ALL_IMPORTABLE_CLASSES = {}
+for library in GAUDI_LOADABLE_CLASSES:
+    GAUDI_ALL_IMPORTABLE_CLASSES.update(GAUDI_LOADABLE_CLASSES[library])
 
 
 class GaudiDiffusionPipeline(DiffusionPipeline):
@@ -48,8 +72,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         gaudi_config (Union[str, [`GaudiConfig`]]):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
-        log_level (int):
-            The numeric level of the logging event.
     """
 
     def __init__(
@@ -61,14 +83,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         log_level: int = logging.INFO,
     ):
         super().__init__()
-
-        # Set the correct log level depending on the node
-        # Already done in super().init() but we have to do it again
-        # because we use optimum.utils.logging here and not
-        # diffusers.utils.logging
-        logging.set_verbosity(log_level)
-        logging.enable_default_handler()
-        logging.enable_explicit_format()
 
         # Lazy mode, HPU graphs and Gaudi configuration should be off if not using HPU
         self.use_habana = use_habana
@@ -146,6 +160,41 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             logger.info("Running on CPU.")
             self._device = torch.device("cpu")
 
+    def register_modules(self, **kwargs):
+        # import it here to avoid circular import
+        from diffusers import pipelines
+
+        for name, module in kwargs.items():
+            # retrieve library
+            if module is None:
+                register_dict = {name: (None, None)}
+            else:
+                library = module.__module__.split(".")[0]
+                if library == "optimum":
+                    library = "optimum.habana.diffusers.schedulers"
+
+                # check if the module is a pipeline module
+                pipeline_dir = module.__module__.split(".")[-2] if len(module.__module__.split(".")) > 2 else None
+                path = module.__module__.split(".")
+                is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+
+                # if library is not in GAUDI_LOADABLE_CLASSES, then it is a custom module.
+                # Or if it's a pipeline module, then the module is inside the pipeline
+                # folder so we set the library to module name.
+                if library not in GAUDI_LOADABLE_CLASSES or is_pipeline_module:
+                    library = pipeline_dir
+
+                # retrieve class_name
+                class_name = module.__class__.__name__
+
+                register_dict = {name: (library, class_name)}
+
+            # save model index config
+            self.register_to_config(**register_dict)
+
+            # set models
+            setattr(self, name, module)
+
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
@@ -173,13 +222,13 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             model_cls = sub_model.__class__
 
             save_method_name = None
-            # search for the model's base class in LOADABLE_CLASSES
-            for library_name, library_classes in LOADABLE_CLASSES.items():
+            # search for the model's base class in GAUDI_LOADABLE_CLASSES
+            for library_name, library_classes in GAUDI_LOADABLE_CLASSES.items():
                 library = importlib.import_module(library_name)
                 for base_class, save_load_methods in library_classes.items():
-                    class_candidate = getattr(library, base_class)
-                    if issubclass(model_cls, class_candidate):
-                        # if we found a suitable base class in LOADABLE_CLASSES then grab its save method
+                    class_candidate = getattr(library, base_class, None)
+                    if class_candidate is not None and issubclass(model_cls, class_candidate):
+                        # if we found a suitable base class in GAUDI_LOADABLE_CLASSES then grab its save method
                         save_method_name = save_load_methods[0]
                         break
                 if save_method_name is not None:
@@ -187,3 +236,25 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
             save_method = getattr(sub_model, save_method_name)
             save_method(os.path.join(save_directory, pipeline_component_name))
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+        # Set the correct log level depending on the node
+        # Already done in super().init() but we have to do it again
+        # because we use optimum.utils.logging here and not
+        # diffusers.utils.logging
+        log_level = kwargs.pop("log_level", logging.INFO)
+        logging.set_verbosity(log_level)
+        logging.enable_default_handler()
+        logging.enable_explicit_format()
+
+        # Import diffusers.pipeline_utils to override the values of LOADABLE_CLASSES and ALL_IMPORTABLE_CLASSES
+        import diffusers.pipeline_utils
+
+        diffusers.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
+        diffusers.pipeline_utils.ALL_IMPORTABLE_CLASSES = GAUDI_ALL_IMPORTABLE_CLASSES
+
+        return super().from_pretrained(
+            pretrained_model_name_or_path,
+            **kwargs,
+        )

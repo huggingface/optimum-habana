@@ -1,3 +1,17 @@
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
 import inspect
 import time
@@ -11,6 +25,7 @@ from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.schedulers import (
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
@@ -40,6 +55,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             LMSDiscreteScheduler,
             EulerDiscreteScheduler,
             EulerAncestralDiscreteScheduler,
+            DPMSolverMultistepScheduler,
         ],
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
@@ -83,7 +99,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             scheduler._internal_dict = FrozenDict(new_config)
 
         if safety_checker is None:
-            logger.warn(
+            logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
                 " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
                 " results in services or applications open to the public. Both the diffusers team and Hugging Face"
@@ -103,6 +119,234 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         )
 
         self.to(self._device)
+
+    @property
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+            return self.device
+        for module in self.unet.modules():
+            if (
+                hasattr(module, "_hf_hook")
+                and hasattr(module._hf_hook, "execution_device")
+                and module._hf_hook.execution_device is not None
+            ):
+                return torch.device(module._hf_hook.execution_device)
+        return self.device
+
+    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+        Args:
+            prompt (`str` or `list(int)`):
+                prompt to be encoded
+            device: (`torch.device`):
+                torch device
+            num_images_per_prompt (`int`):
+                number of images that should be generated per prompt
+            do_classifier_free_guidance (`bool`):
+                whether to use classifier free guidance or not
+            negative_prompt (`str` or `List[str]`):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
+        """
+        num_prompts = len(prompt) if isinstance(prompt, list) else 1
+
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="max_length", return_tensors="pt").input_ids
+
+        if not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+
+        if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            attention_mask = text_inputs.attention_mask.to(device)
+        else:
+            attention_mask = None
+
+        text_embeddings = self.text_encoder(
+            text_input_ids.to(device),
+            attention_mask=attention_mask,
+        )
+        text_embeddings = text_embeddings[0]
+
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        bs_embed, seq_len, _ = text_embeddings.shape
+        text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
+        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+
+        # get unconditional embeddings for classifier free guidance
+        uncond_embeddings = None
+        if do_classifier_free_guidance:
+            uncond_tokens: List[str]
+            if negative_prompt is None:
+                uncond_tokens = [""] * num_prompts
+            elif type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif isinstance(negative_prompt, str):
+                uncond_tokens = [negative_prompt]
+            elif num_prompts != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has {len(negative_prompt)} elements, but `prompt`:"
+                    f" {prompt} has {num_prompts}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+            else:
+                uncond_tokens = negative_prompt
+
+            max_length = text_input_ids.shape[-1]
+            uncond_input = self.tokenizer(
+                uncond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+                attention_mask = uncond_input.attention_mask.to(device)
+            else:
+                attention_mask = None
+
+            uncond_embeddings = self.text_encoder(
+                uncond_input.input_ids.to(device),
+                attention_mask=attention_mask,
+            )
+            uncond_embeddings = uncond_embeddings[0]
+
+            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+            seq_len = uncond_embeddings.shape[1]
+            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
+            uncond_embeddings = uncond_embeddings.view(num_prompts * num_images_per_prompt, seq_len, -1)
+
+        return text_embeddings, uncond_embeddings
+
+    def run_safety_checker(self, image, device, dtype):
+        if self.safety_checker is not None:
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+            )
+        else:
+            has_nsfw_concept = None
+        return image, has_nsfw_concept
+
+    def decode_latents(self, latents):
+        latents = 1 / 0.18215 * latents
+        image = self.vae.decode(latents).sample
+        image = (image / 2 + 0.5).clamp(0, 1)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        return image
+
+    def prepare_extra_step_kwargs(self, generator, eta):
+        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
+        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
+        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # and should be between [0, 1]
+
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        extra_step_kwargs = {}
+        if accepts_eta:
+            extra_step_kwargs["eta"] = eta
+
+        # check if the scheduler accepts generator
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        if accepts_generator:
+            extra_step_kwargs["generator"] = generator
+        return extra_step_kwargs
+
+    def check_inputs(self, prompt, height, width, callback_steps):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
+    def prepare_latents(self, num_images, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        shape = (num_images, num_channels_latents, height // 8, width // 8)
+        if latents is None:
+            if self.device.type == "hpu":
+                # torch.randn is broken on HPU so running it on CPU
+                latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype).to(self.device)
+            else:
+                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            if latents.shape != shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+            latents = latents.to(device)
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
+        return latents
+
+    @classmethod
+    def _split_inputs_into_batches(cls, batch_size, latents, text_embeddings, uncond_embeddings):
+        # Use torch.split to generate num_batches batches of size batch_size
+        latents_batches = list(torch.split(latents, batch_size))
+        text_embeddings_batches = list(torch.split(text_embeddings, batch_size))
+        if uncond_embeddings is not None:
+            uncond_embeddings_batches = list(torch.split(uncond_embeddings, batch_size))
+
+        # If the last batch has less samples than batch_size, pad it with dummy samples
+        num_dummy_samples = 0
+        if latents_batches[-1].shape[0] < batch_size:
+            num_dummy_samples = batch_size - latents_batches[-1].shape[0]
+            # Pad latents_batches
+            sequence_to_stack = (latents_batches[-1],) + tuple(
+                torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            latents_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad text_embeddings_batches
+            sequence_to_stack = (text_embeddings_batches[-1],) + tuple(
+                torch.zeros_like(text_embeddings_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            text_embeddings_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad uncond_embeddings_batches if necessary
+            if uncond_embeddings is not None:
+                sequence_to_stack = (uncond_embeddings_batches[-1],) + tuple(
+                    torch.zeros_like(uncond_embeddings_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                uncond_embeddings_batches[-1] = torch.vstack(sequence_to_stack)
+
+        # Stack batches in the same tensor
+        latents_batches = torch.stack(latents_batches)
+        if uncond_embeddings is not None:
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            for i, (uncond_embeddings_batch, text_embeddings_batch) in enumerate(
+                zip(uncond_embeddings_batches, text_embeddings_batches[:])
+            ):
+                text_embeddings_batches[i] = torch.cat([uncond_embeddings_batch, text_embeddings_batch])
+        text_embeddings_batches = torch.stack(text_embeddings_batches)
+
+        return latents_batches, text_embeddings_batches, num_dummy_samples
 
     @torch.no_grad()
     def __call__(
@@ -158,7 +402,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             latents (`torch.FloatTensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor will ge generated randomly.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -178,189 +422,70 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        if isinstance(prompt, str):
-            num_prompts = 1
-        elif isinstance(prompt, list):
-            num_prompts = len(prompt)
-        else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(prompt, height, width, callback_steps)
+
+        # 2. Define call parameters
+        num_prompts = 1 if isinstance(prompt, str) else len(prompt)
         num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
         logger.info(
             f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
             f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
         )
-
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
-
-        # get prompt text embeddings
-        text_inputs = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-
-        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
+        if num_batches < 3:
             logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+                "In lazy mode or with HPU graphs, the first two iterations are slower so it is recommended to feed"
+                " more batches to make the most of it."
             )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
-
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        bs_embed, seq_len, _ = text_embeddings.shape
-        text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
-        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
-
+        device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        uncond_embeddings = None
-        # get unconditional embeddings for classifier free guidance
-        if do_classifier_free_guidance:
-            uncond_tokens: List[str]
-            if negative_prompt is None:
-                uncond_tokens = [""] * num_prompts
-            elif type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
-            elif num_prompts != len(negative_prompt):
-                raise ValueError(
-                    f"`negative_prompt`: {negative_prompt} has {len(negative_prompt)} elements, but `prompt`:"
-                    f" {prompt} has {num_prompts}. Please make sure that passed `negative_prompt` matches"
-                    " the size of `prompt`."
-                )
-            else:
-                uncond_tokens = negative_prompt
 
-            max_length = text_input_ids.shape[-1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
+        # 3. Encode input prompt
+        text_embeddings, uncond_embeddings = self._encode_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
 
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(num_prompts * num_images_per_prompt, seq_len, -1)
+        # 4. Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device="cpu")
+        timesteps = self.scheduler.timesteps.to(device)
 
-        # get the initial random noise unless the user supplied it
+        # 5. Prepare latent variables
+        num_channels_latents = self.unet.in_channels
+        latents = self.prepare_latents(
+            num_prompts * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            text_embeddings.dtype,
+            device,
+            generator,
+            latents,
+        )
 
-        # Unlike in other pipelines, latents need to be generated in the target device
-        # for 1-to-1 results reproducibility with the CompVis implementation.
-        # However this currently doesn't work in `mps`.
-        latents_shape = (num_prompts * num_images_per_prompt, self.unet.in_channels, height // 8, width // 8)
-        latents_dtype = text_embeddings.dtype
-        if latents is None:
-            if self.device.type == "hpu":
-                # torch.randn is broken on HPU so running it on CPU
-                latents = torch.randn(latents_shape, device="cpu", dtype=latents_dtype).to(self.device)
-            else:
-                latents = torch.randn(latents_shape, device=self.device, dtype=latents_dtype)
-        else:
-            if latents.shape != latents_shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(self.device)
+        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # set timesteps
-        self.scheduler.set_timesteps(num_inference_steps)
-
-        # Some schedulers like PNDM have timesteps as arrays
-        # It's more optimized to move all timesteps to correct device beforehand
-        timesteps_tensor = self.scheduler.timesteps.to(self.device)
-
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
-
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
-
-        # check if the scheduler accepts generator
-        # accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        # if accepts_generator:
-        #     extra_step_kwargs["generator"] = generator
-
-        # Split into batches
-        text_embeddings_batches = list(torch.split(text_embeddings, batch_size))
-        if uncond_embeddings is not None:
-            uncond_embeddings_batches = list(torch.split(uncond_embeddings, batch_size))
-        latents_batches = list(torch.split(latents, batch_size))
-        # If the last batch has less samples than batch_size, pad it with dummy samples
-        num_dummy_samples = 0
-        if latents_batches[-1].shape[0] < batch_size:
-            num_dummy_samples = batch_size - latents_batches[-1].shape[0]
-            # Pad latents_batches
-            sequence_to_stack = (latents_batches[-1],) + tuple(
-                torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
-            )
-            latents_batches[-1] = torch.vstack(sequence_to_stack)
-            # Pad text_embeddings_batches
-            sequence_to_stack = (text_embeddings_batches[-1],) + tuple(
-                torch.zeros_like(text_embeddings_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
-            )
-            text_embeddings_batches[-1] = torch.vstack(sequence_to_stack)
-            # Pad uncond_embeddings_batches if necessary
-            if uncond_embeddings is not None:
-                sequence_to_stack = (uncond_embeddings_batches[-1],) + tuple(
-                    torch.zeros_like(uncond_embeddings_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
-                )
-                uncond_embeddings_batches[-1] = torch.vstack(sequence_to_stack)
-        latents_batches = torch.stack(latents_batches)
-        if uncond_embeddings is not None:
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            for i, (uncond_embeddings_batch, text_embeddings_batch) in enumerate(
-                zip(uncond_embeddings_batches, text_embeddings_batches[:])
-            ):
-                text_embeddings_batches[i] = torch.cat([uncond_embeddings_batch, text_embeddings_batch])
-        text_embeddings_batches = torch.stack(text_embeddings_batches)
+        # 7. Split into batches (HPU-specific step)
+        latents_batches, text_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
+            batch_size,
+            latents,
+            text_embeddings,
+            uncond_embeddings,
+        )
 
         outputs = {
             "images": [],
             "has_nsfw_concept": [],
         }
-
         t0 = time.time()
         t1 = t0
 
-        # Main loop
+        # 8. Denoising loop
         for j in self.progress_bar(range(num_batches)):
-            # if j == 0:
-            #     # Keep a copy of the scheduler in its initial state to reset it later
-            #     scheduler_copy = copy.deepcopy(self.scheduler)
-            # else:
-            #     # Reset the scheduler
-            #     self.scheduler = copy.deepcopy(scheduler_copy)
-
             if j == 2:
                 t1 = time.time()
 
@@ -370,8 +495,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
 
             for i in range(num_inference_steps):
-                timestep = timesteps_tensor[0]
-                timesteps_tensor = torch.roll(timesteps_tensor, shifts=-1, dims=0)
+                timestep = timesteps[0]
+                timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
                 capture = True if self.use_hpu_graphs and i < 2 else False
 
@@ -397,10 +522,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 if callback is not None and i % callback_steps == 0:
                     callback(i, timestep, latents_batch)
 
-            latents_batch = 1 / 0.18215 * latents_batch
-            image = self.vae.decode(latents_batch).sample
-
-            image = (image / 2 + 0.5).clamp(0, 1)
+            # 8. Post-processing
+            image = self.decode_latents(latents_batch)
             outputs["images"].append(image)
 
             self.scheduler.reset_timestep_dependent_params()
@@ -410,10 +533,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
 
         t2 = time.time()
         duration = t2 - t0
-        if self.use_lazy_mode or self.use_hpu_graphs:
-            throughput = (num_images_per_prompt * num_prompts - 2 * batch_size) / (t2 - t1)
+        if (self.use_lazy_mode or self.use_hpu_graphs) and num_batches > 2:
+            throughput = ((num_batches - 2) * batch_size) / (t2 - t1)
         else:
-            throughput = (num_images_per_prompt * num_prompts + num_dummy_samples) / duration
+            throughput = num_batches * batch_size / duration
         logger.info(f"Runtime: {duration} seconds, throughput: {throughput} samples/s.")
 
         # Remove dummy generations if needed
@@ -422,27 +545,19 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
 
         # Process generated images
         for i, image in enumerate(outputs["images"][:]):
-            # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
-            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-
-            if self.safety_checker is not None:
-                # Run the safety checker and void images if NSFW
-                safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
-                    self.device
-                )
-                image, has_nsfw_concept = self.safety_checker(
-                    images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
-                )
-            else:
-                has_nsfw_concept = None
+            # 9. Run safety checker
+            image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
             if i == 0:
                 outputs["images"].clear()
 
+            # 10. Convert to PIL
             if output_type == "pil":
                 image = self.numpy_to_pil(image)
+                outputs["images"] += image
+            else:
+                outputs["images"] += [*image]
 
-            outputs["images"] += image
             if has_nsfw_concept is not None:
                 outputs["has_nsfw_concept"] += has_nsfw_concept
             else:

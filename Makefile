@@ -34,6 +34,13 @@ fast_tests:
 	python -m pip install .[tests]
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
 
+# Run unit and integration tests related to Diffusers
+fast_tests_diffusers:
+	python -m pip install .[tests]
+	python -m pytest tests/test_diffusers.py
+	python -m pytest tests/test_diffusers.py -k "test_stable_diffusion_lazy_mode"
+	python -m pytest tests/test_diffusers.py -k "test_stable_diffusion_hpu_graphs"
+
 # Run single-card non-regression tests
 slow_tests_1x:
 	python -m pip install .[tests]

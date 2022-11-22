@@ -27,13 +27,8 @@ from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
 
 class GaudiDDIMScheduler(DDIMScheduler):
     """
-    Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
-    diffusion probabilistic models (DDPMs) with non-Markovian guidance.
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
-    For more details, see the original paper: https://arxiv.org/abs/2010.02502
+    Extends [Diffusers' DDIMScheduler](https://huggingface.co/docs/diffusers/api/schedulers#diffusers.DDIMScheduler) to run optimally on Gaudi.
+
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
         beta_start (`float`): the starting `beta` value of inference.
@@ -140,6 +135,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
         generator=None,
+        variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         """
@@ -155,6 +151,9 @@ class GaudiDDIMScheduler(DDIMScheduler):
                 `self.config.clip_sample` is `True`. If no clipping has happened, "corrected" `model_output` would
                 coincide with the one provided as input and `use_clipped_model_output` will have not effect.
             generator: random number generator.
+            variance_noise (`torch.FloatTensor`): instead of generating noise for the variance using `generator`, we
+                can directly provide the noise for the variance itself. This is useful for methods such as
+                CycleDiffusion. (https://arxiv.org/abs/2210.05559)
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
         Returns:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
@@ -208,11 +207,22 @@ class GaudiDDIMScheduler(DDIMScheduler):
 
         if eta > 0:
             # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
-            device = model_output.device if torch.is_tensor(model_output) else "cpu"
-            # torch.randn is broken on HPU so running it on CPU
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu").to(device)
+            device = model_output.device
+            if variance_noise is not None and generator is not None:
+                raise ValueError(
+                    "Cannot pass both generator and variance_noise. Please make sure that either `generator` or"
+                    " `variance_noise` stays `None`."
+                )
 
-            prev_sample = prev_sample + variance ** (0.5) * eta * noise
+            if variance_noise is None:
+                # torch.randn is broken on HPU so running it on CPU
+                variance_noise = torch.randn(
+                    model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator
+                )
+                if device.type == "hpu":
+                    variance_noise = variance_noise.to(device)
+
+            prev_sample = prev_sample + variance ** (0.5) * eta * variance_noise
 
         if not return_dict:
             return (prev_sample,)
