@@ -285,8 +285,20 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             image_slice = image[-3:, -3:, -1]
             image_from_tuple_slice = image_from_tuple[-3:, -3:, -1]
 
-            self.assertEqual(image.shape, (128, 128, 3))
-            expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
+            self.assertEqual(image.shape, (64, 64, 3))
+            expected_slice = np.array(
+                [
+                    0.5643956661224365,
+                    0.6017904281616211,
+                    0.4799129366874695,
+                    0.5267305374145508,
+                    0.5584856271743774,
+                    0.46413588523864746,
+                    0.5159522294998169,
+                    0.4963662028312683,
+                    0.47919973731040955,
+                ]
+            )
 
             self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
             self.assertLess(np.abs(image_from_tuple_slice.flatten() - expected_slice).max(), 1e-2)
@@ -402,14 +414,14 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
 
         self.assertEqual(len(images), 1)
-        self.assertEqual(images[0].shape, (128, 128, 3))
+        self.assertEqual(images[0].shape, (64, 64, 3))
 
         # Test num_images_per_prompt=1 (default) for several prompts
         num_prompts = 3
         images = sd_pipe([prompt] * num_prompts, num_inference_steps=2, output_type="np").images
 
         self.assertEqual(len(images), num_prompts)
-        self.assertEqual(images[-1].shape, (128, 128, 3))
+        self.assertEqual(images[-1].shape, (64, 64, 3))
 
         # Test num_images_per_prompt for single prompt
         num_images_per_prompt = 2
@@ -418,7 +430,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ).images
 
         self.assertEqual(len(images), num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (128, 128, 3))
+        self.assertEqual(images[-1].shape, (64, 64, 3))
 
         # Test num_images_per_prompt for several prompts
         num_prompts = 2
@@ -430,7 +442,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (128, 128, 3))
+        self.assertEqual(images[-1].shape, (64, 64, 3))
 
     def test_stable_diffusion_batch_sizes(self):
         unet = self.dummy_cond_unet
@@ -469,7 +481,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ).images
 
         self.assertEqual(len(images), num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (128, 128, 3))
+        self.assertEqual(images[-1].shape, (64, 64, 3))
 
         # Same test for several prompts
         num_prompts = 3
@@ -482,7 +494,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (128, 128, 3))
+        self.assertEqual(images[-1].shape, (64, 64, 3))
 
         # Test batch_size when it is not a divider of the toal number of generated images for a single prompt
         num_images_per_prompt = 7
@@ -495,7 +507,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ).images
 
         self.assertEqual(len(images), num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (128, 128, 3))
+        self.assertEqual(images[-1].shape, (64, 64, 3))
 
         # Same test for several prompts
         num_prompts = 2
@@ -508,7 +520,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
-        self.assertEqual(images[-1].shape, (128, 128, 3))
+        self.assertEqual(images[-1].shape, (64, 64, 3))
 
     def test_stable_diffusion_bf16(self):
         """Test that stable diffusion works with bf16"""
@@ -538,7 +550,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images[0]
 
-        self.assertEqual(image.shape, (128, 128, 3))
+        self.assertEqual(image.shape, (64, 64, 3))
 
     def test_stable_diffusion_lazy_mode(self):
         # Skip this test if PT_HPU_LAZY_MODE=2
@@ -581,7 +593,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ).images
 
         self.assertEqual(len(images), 10)
-        self.assertEqual(images[-1].shape, (128, 128, 3))
+        self.assertEqual(images[-1].shape, (64, 64, 3))
 
     def test_stable_diffusion_hpu_graphs(self):
         # Skip this test if PT_HPU_LAZY_MODE=2
@@ -624,4 +636,4 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ).images
 
         self.assertEqual(len(images), 10)
-        self.assertEqual(images[-1].shape, (128, 128, 3))
+        self.assertEqual(images[-1].shape, (64, 64, 3))

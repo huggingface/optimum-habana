@@ -61,6 +61,8 @@ class GaudiDDIMScheduler(DDIMScheduler):
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
+        prediction_type: str = "epsilon",
+        **kwargs,
     ):
         super().__init__(
             num_train_timesteps,
@@ -71,6 +73,8 @@ class GaudiDDIMScheduler(DDIMScheduler):
             clip_sample,
             set_alpha_to_one,
             steps_offset,
+            prediction_type,
+            **kwargs,
         )
 
         self.reset_timestep_dependent_params()
@@ -185,7 +189,19 @@ class GaudiDDIMScheduler(DDIMScheduler):
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        if self.config.prediction_type == "epsilon":
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        elif self.config.prediction_type == "sample":
+            pred_original_sample = model_output
+        elif self.config.prediction_type == "v_prediction":
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
+            # predict V
+            model_output = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
+                " `v_prediction`"
+            )
 
         # 4. Clip "predicted x_0"
         if self.config.clip_sample:

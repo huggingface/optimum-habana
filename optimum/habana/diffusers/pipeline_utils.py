@@ -213,12 +213,19 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         model_index_dict.pop("_diffusers_version")
         model_index_dict.pop("_module", None)
 
+        expected_modules, optional_kwargs = self._get_signature_keys(self)
+
+        def is_saveable_module(name, value):
+            if name not in expected_modules:
+                return False
+            if name in self._optional_components and value[0] is None:
+                return False
+            return True
+
+        model_index_dict = {k: v for k, v in model_index_dict.items() if is_saveable_module(k, v)}
+
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
-            if sub_model is None:
-                # edge case for saving a pipeline with safety_checker=None
-                continue
-
             model_cls = sub_model.__class__
 
             save_method_name = None
