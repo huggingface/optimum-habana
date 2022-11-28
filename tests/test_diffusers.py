@@ -8,11 +8,16 @@ import pytest
 import torch
 
 from diffusers import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+from diffusers.utils import load_numpy
 from habana_frameworks.torch.hpex import hmp
 from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiDiffusionPipeline, GaudiStableDiffusionPipeline
-from optimum.habana.diffusers.schedulers import GaudiDDIMScheduler
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline, GaudiStableDiffusionPipeline
+from optimum.habana.utils import set_seed
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers.testing_utils import slow
+
+
+THROUGHPUT_BASELINE = 0.229
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -637,3 +642,60 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
+
+    @slow
+    def test_no_throughput_regression(self):
+        prompts = [
+            "An image of a squirrel in Picasso style",
+            "High quality photo of an astronaut riding a horse in space",
+        ]
+        num_images_per_prompt = 11
+        batch_size = 4
+        model_name = "CompVis/stable-diffusion-v1-4"
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            use_habana=True,
+            use_lazy_mode=False,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
+        )
+        set_seed(27)
+        outputs = pipeline(
+            prompt=prompts,
+            num_images_per_prompt=num_images_per_prompt,
+            batch_size=batch_size,
+        )
+        self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
+        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE)
+
+    @slow
+    def test_no_generation_regression(self):
+        model_name = "CompVis/stable-diffusion-v1-4"
+        # fp32
+        with hmp.disable_casts():
+            scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+            pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+                model_name,
+                scheduler=scheduler,
+                safety_checker=None,
+                use_habana=True,
+                use_lazy_mode=False,
+                use_hpu_graphs=True,
+                gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+            )
+            set_seed(27)
+            outputs = pipeline(
+                prompt="An image of a squirrel in Picasso style",
+                output_type="np",
+            )
+
+            expected_slice = np.array(
+                [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
+            )
+            image = outputs.images[0]
+
+            self.assertEqual(image.shape, (512, 512, 3))
+            self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)

@@ -18,7 +18,6 @@ INSTALL_REQUIRES = [
     "torch",
     "accelerate",
     "diffusers",
-    "ftfy",
 ]
 
 TESTS_REQUIRE = [

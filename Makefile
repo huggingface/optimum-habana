@@ -57,6 +57,12 @@ slow_tests_deepspeed:
 	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
+slow_tests_diffusers:
+	python -m pip install .[tests]
+	python -m pip install ftfy
+	python -m pytest tests/test_diffusers.py -v -s -k "test_no_throughput_regression"
+	python -m pytest tests/test_diffusers.py -v -s -k "test_no_generation_regression"
+
 # Check if examples are up to date with the Transformers library
 example_diff_tests:
 	python -m pip install .[tests]

@@ -33,7 +33,7 @@ import evaluate
 import transformers
 from filelock import FileLock
 from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-from optimum.habana.trainer_utils import set_seed
+from optimum.habana.utils import set_seed
 from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,

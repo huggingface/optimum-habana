@@ -100,7 +100,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 logger.info("Enabled HPU graphs.")
             else:
                 os.environ["PT_HPU_LAZY_MODE"] = "2"
-                logger.info("Enabled eager mode because use_lazy_mode=False.")
+                logger.info("Enabled eager mode because use_lazy_mode=False and use_hpu_graphs=False.")
 
             self._device = torch.device("hpu")
 

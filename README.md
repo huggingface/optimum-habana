@@ -68,7 +68,10 @@ pip install -r requirements.txt
 
 ### Quick Start
 
-🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors**.
+🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers and 🤗 Diffusers user while leveraging the complete power of Gaudi processors**.
+
+#### Transformers Interface
+
 There are two main classes one needs to know:
 - [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer): the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
 - [GaudiConfig](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config): the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
@@ -169,40 +172,36 @@ gaudi_config = GaudiConfig.from_pretrained(
 ```
 
 
-### Stable Diffusion
+#### Diffusers Interface
 
-You can generate images from prompts using Stable Diffusion on Gaudi as follows:
-```python
-from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiStableDiffusionPipeline
-from optimum.habana.diffusers.schedulers import GaudiDDIMScheduler
-from optimum.habana.transformers.trainer_utils import set_seed
+You can generate images from prompts using Stable Diffusion on Gaudi using the [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline) class and the [`GaudiDDIMScheduler`] that have been both optimized for HPUs. Here is how to use them and the differences with the 🤗 Diffusers library:
 
+```diff
+- from diffusers import DDIMScheduler, StableDiffusionPipeline
++ from optimum.habana import GaudiConfig
++ from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
-set_seed(27)
 
 model_name = "CompVis/stable-diffusion-v1-4"
-scheduler = GaudiDDIMScheduler.from_config(model_name, subfolder="scheduler")
 
-generator = GaudiStableDiffusionPipeline.from_pretrained(
+- scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
++ scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+- pipeline = StableDiffusionPipeline.from_pretrained(
++ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
     model_name,
     scheduler=scheduler,
-    use_habana=True,
-    use_lazy_mode=False,
-    use_hpu_graphs=True,
-    gaudi_config="Habana/stable-diffusion",
++   use_habana=True,
++   use_lazy_mode=False,
++   use_hpu_graphs=True,
++   gaudi_config="Habana/stable-diffusion",
 )
 
 outputs = generator(
     ["An image of a squirrel in Picasso style"],
     num_images_per_prompt=16,
-    batch_size=4,
++   batch_size=4,
 )
-
-generator.save_pretrained("my_pipeline")
-
-for i, image in enumerate(outputs.images):
-    image.save(f"image_{i+1}.png")
 ```
 
 
@@ -214,17 +213,18 @@ Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/
 ## Validated Models
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
-|            | Text Classification | Question Answering | Language Modeling  | Summarization      | Translation        | Image Classification | Audio Classification | Speech Recognition | Single Card        | Multi Card         | DeepSpeed          |
+|                  | Text Classification | Question Answering | Language Modeling  | Summarization      | Translation        | Image Classification | Audio Classification | Speech Recognition | Single Card        | Multi Card         | DeepSpeed          |
 |------------|:-------------------:|:------------------:|:------------------:|:------------------:|:-----------------:|:--------------------:|:--------------------:|:------------------:|:------------------:|:-----------------:|:------------------:|
-| BERT       | :heavy_check_mark:  | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| RoBERTa    | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| ALBERT     | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| DistilBERT | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| GPT2       | ✗                   | ✗                  | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| T5         | ✗                   | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| ViT        | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | :heavy_check_mark:   | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| Swin       | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | :heavy_check_mark:   | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| Wav2Vec2   | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | ✗                    | :heavy_check_mark:   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| BERT             | :heavy_check_mark:  | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| RoBERTa          | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| ALBERT           | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| DistilBERT       | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| GPT2             | ✗                   | ✗                  | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| T5               | ✗                   | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| ViT              | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | :heavy_check_mark:   | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| Swin             | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | :heavy_check_mark:   | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| Wav2Vec2         | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | ✗                    | :heavy_check_mark:   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| Stable Diffusion |                     |                    |                    |                    |                    |                      |                      |                    | :heavy_check_mark: | ✗                  | ✗                  |
 
 Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 

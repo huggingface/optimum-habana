@@ -15,15 +15,18 @@
 import copy
 import inspect
 import time
+from dataclasses import dataclass
 from math import ceil
-from packaging import version
 from typing import Callable, List, Optional, Union
 
+import numpy as np
+import PIL
 import torch
+from packaging import version
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -32,15 +35,23 @@ from diffusers.schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import deprecate
+from diffusers.utils import BaseOutput, deprecate
 from optimum.utils import logging
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ....transformers.gaudi_configuration import GaudiConfig
+from ....utils import speed_metrics
 from ...pipeline_utils import GaudiDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)
+
+
+@dataclass
+class GaudiStableDiffusionPipelineOutput(BaseOutput):
+    images: Union[List[PIL.Image.Image], np.ndarray]
+    nsfw_content_detected: Optional[List[bool]]
+    throughput: float
 
 
 class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
@@ -407,9 +418,9 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image.
+                The height in pixels of the generated images.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image.
+                The width in pixels of the generated images.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -469,7 +480,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
             f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
         )
-        if num_batches < 3:
+        if num_batches < 3 and (self.use_lazy_mode or self.use_hpu_graphs):
             logger.warning(
                 "In lazy mode or with HPU graphs, the first two iterations are slower so it is recommended to feed"
                 " more batches to make the most of it."
@@ -522,7 +533,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
 
         # 8. Denoising loop
         for j in self.progress_bar(range(num_batches)):
-            if j == 2:
+            # The throughput is calculated from the 3rd iteration in lazy mode or with HPU graphs
+            if j == 2 and (self.use_lazy_mode or self.use_hpu_graphs):
                 t1 = time.time()
 
             latents_batch = latents_batches[0]
@@ -567,13 +579,15 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             if self.use_lazy_mode:
                 self.htcore.mark_step()
 
-        t2 = time.time()
-        duration = t2 - t0
-        if (self.use_lazy_mode or self.use_hpu_graphs) and num_batches > 2:
-            throughput = ((num_batches - 2) * batch_size) / (t2 - t1)
-        else:
-            throughput = num_batches * batch_size / duration
-        logger.info(f"Runtime: {duration} seconds, throughput: {throughput} samples/s.")
+        speed_metrics_prefix = "generation"
+        speed_measures = speed_metrics(
+            split=speed_metrics_prefix,
+            start_time=t0,
+            num_samples=num_batches * batch_size if t1 == t0 else (num_batches - 2) * batch_size,
+            num_steps=num_batches,
+            start_time_after_warmup=t1,
+        )
+        logger.info(f"Speed metrics: {speed_measures}")
 
         # Remove dummy generations if needed
         if num_dummy_samples > 0:
@@ -602,9 +616,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         if not return_dict:
             return (outputs["images"], outputs["has_nsfw_concept"])
 
-        return StableDiffusionPipelineOutput(
+        return GaudiStableDiffusionPipelineOutput(
             images=outputs["images"],
             nsfw_content_detected=outputs["has_nsfw_concept"],
+            throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
         )
 
     @torch.no_grad()
