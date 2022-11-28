@@ -6,8 +6,8 @@
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 4,
-                "eval_rougeLsum": 38.6667,
-                "train_runtime": 4593.7473,
+                "eval_rougeLsum": 38.656,
+                "train_runtime": 5295.4711,
                 "extra_arguments": [
                     "--dataset_config \"3.0.0\"",
                     "--source_prefix \"summarize: \"",
