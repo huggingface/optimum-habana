@@ -86,7 +86,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             Whether to use lazy (`True`) or eager (`False`) mode.
         use_hpu_graphs (bool, defaults to `False`):
             Whether to use HPU graphs or not.
-        gaudi_config (Union[str, [`GaudiConfig`]], , defaults to `None`):
+        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
     """
