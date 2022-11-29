@@ -17,14 +17,14 @@ limitations under the License.
 # Stable Diffusion
 
 Stable Diffusion is a text-to-image latent diffusion model.
-Check out the [documentation of the 🤗 Diffusers library](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionPipeline) for more information.
+Check out this [blog post](https://huggingface.co/blog/stable_diffusion) for more information.
 
 
 ## How to generate images?
 
-To generate images from text with Stable Diffusion on Gaudi, you need to instantiate two instances:
-- A pipeline with [`GaudiStableDiffusionPipeline`](to-update). This pipeline supports *text-to-image generation*.
-- A scheduler with [`GaudiDDIMScheduler`](to-update). This scheduler has been optimized for Gaudi.
+To generate images with Stable Diffusion on Gaudi, you need to instantiate two instances:
+- A pipeline with [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline). This pipeline supports *text-to-image generation*.
+- A scheduler with [`GaudiDDIMScheduler`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
 
 When initializing the pipeline, you have to specify `use_habana=True` to deploy it on HPUs.
 Furthermore, in order to get the fastest possible generations you should enable **lazy mode** or **HPU graphs** with `use_lazy_mode=True` or `use_hpu_graphs=True`.
@@ -58,7 +58,7 @@ outputs = pipeline(
 )
 ```
 
-Outputs can be PIL images or Numpy arrays. See [here](to-update) all the parameters you can set to tailor generations to your taste.
+Outputs can be PIL images or Numpy arrays. See [here](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.StableDiffusionPipeline.__call__) all the parameters you can set to tailor generations to your taste.
 
 <Tip>
 
@@ -90,7 +90,7 @@ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
     gaudi_config="Habana/stable-diffusion",
 )
 
-outputs = generator(
+outputs = pipeline(
     ["An image of a squirrel in Picasso style"],
     num_images_per_prompt=16,
     batch_size=4,

@@ -29,7 +29,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
     """
     Extends [Diffusers' DDIMScheduler](https://huggingface.co/docs/diffusers/api/schedulers#diffusers.DDIMScheduler) to run optimally on Gaudi:
     - All time-dependent parameters are generated at the beginning
-    - At each step tensors are rolled to get update the parameter values
+    - At each time step, tensors are rolled to update the values of the time-dependent parameters
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -164,8 +164,8 @@ class GaudiDDIMScheduler(DDIMScheduler):
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            [`diffusers.schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
+            [`diffusers.schedulers.scheduling_utils.DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
         if self.num_inference_steps is None:
