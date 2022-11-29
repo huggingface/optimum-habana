@@ -7,7 +7,7 @@
 > Here is the full list of checkpoints on the hub that can be trained by this script:
 36a36,37
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-> from optimum.habana.trainer_utils import set_seed
+> from optimum.habana.utils import set_seed
 45,48d45
 <     Trainer,
 <     TrainingArguments,
