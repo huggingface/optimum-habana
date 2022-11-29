@@ -58,18 +58,18 @@ for library in GAUDI_LOADABLE_CLASSES:
 
 class GaudiDiffusionPipeline(DiffusionPipeline):
     """
-    Extends the `DiffusionPipeline` class:
-    - The pipeline is initialized on Gaudi.
+    Extends the [`DiffusionPipeline`](https://huggingface.co/docs/diffusers/api/diffusion_pipeline) class:
+    - The pipeline is initialized on Gaudi if `use_habana=True`.
     - The pipeline's Gaudi configuration is saved and pushed to the hub.
 
     Args:
-        use_habana (bool):
+        use_habana (bool, defaults to `False`):
             Whether to use Gaudi (`True`) or CPU (`False`).
-        use_lazy_mode (bool):
+        use_lazy_mode (bool, defaults to `False`):
             Whether to use lazy (`True`) or eager (`False`) mode.
-        use_hpu_graphs (bool):
+        use_hpu_graphs (bool, defaults to `False`):
             Whether to use HPU graphs or not.
-        gaudi_config (Union[str, [`GaudiConfig`]]):
+        gaudi_config (Union[str, [`GaudiConfig`]], , defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
     """
@@ -80,7 +80,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         use_lazy_mode: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
-        log_level: int = logging.INFO,
     ):
         super().__init__()
 
@@ -197,9 +196,9 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         """
-        Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
-        a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
-        method. The pipeline can easily be re-loaded using the `[`~DiffusionPipeline.from_pretrained`]` class method.
+        Save the pipeline and Gaudi configurations.
+        More information [here](https://huggingface.co/docs/diffusers/api/diffusion_pipeline#diffusers.DiffusionPipeline.save_pretrained).
+
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
@@ -246,6 +245,10 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+        """
+        More information [here](https://huggingface.co/docs/diffusers/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained).
+        """
+
         # Set the correct log level depending on the node
         # Already done in super().init() but we have to do it again
         # because we use optimum.utils.logging here and not

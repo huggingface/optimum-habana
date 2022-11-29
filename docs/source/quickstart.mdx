@@ -89,3 +89,38 @@ gaudi_config = GaudiConfig.from_pretrained(
     use_auth_token=True if model_args.use_auth_token else None,
 )
 ```
+
+
+## Stable Diffusion
+
+🤗 Optimum Habana also features HPU-optimized support for the 🤗 Diffusers library.
+Thus, you can easily deploy Stable Diffusion on Gaudi for performing text-to-image generation.
+
+Here is how to use it and the differences with the 🤗 Diffusers library:
+```diff
+- from diffusers import DDIMScheduler, StableDiffusionPipeline
++ from optimum.habana import GaudiConfig
++ from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
+
+
+model_name = "CompVis/stable-diffusion-v1-4"
+
+- scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
++ scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+- pipeline = StableDiffusionPipeline.from_pretrained(
++ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+    model_name,
+    scheduler=scheduler,
++   use_habana=True,
++   use_lazy_mode=False,
++   use_hpu_graphs=True,
++   gaudi_config="Habana/stable-diffusion",
+)
+
+outputs = generator(
+    ["An image of a squirrel in Picasso style"],
+    num_images_per_prompt=16,
++   batch_size=4,
+)
+```

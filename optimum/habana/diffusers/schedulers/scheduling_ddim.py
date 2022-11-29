@@ -27,7 +27,9 @@ from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
 
 class GaudiDDIMScheduler(DDIMScheduler):
     """
-    Extends [Diffusers' DDIMScheduler](https://huggingface.co/docs/diffusers/api/schedulers#diffusers.DDIMScheduler) to run optimally on Gaudi.
+    Extends [Diffusers' DDIMScheduler](https://huggingface.co/docs/diffusers/api/schedulers#diffusers.DDIMScheduler) to run optimally on Gaudi:
+    - All time-dependent parameters are generated at the beginning
+    - At each step tensors are rolled to get update the parameter values
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -145,6 +147,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
+
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             sample (`torch.FloatTensor`):
@@ -159,6 +162,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
                 can directly provide the noise for the variance itself. This is useful for methods such as
                 CycleDiffusion. (https://arxiv.org/abs/2210.05559)
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
+
         Returns:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When

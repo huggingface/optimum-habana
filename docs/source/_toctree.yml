@@ -18,6 +18,8 @@
       title: Distributed Training
     - local: usage_guides/deepspeed
       title: DeepSpeed
+    - local: usage_guides/stable_diffusion
+      title: Stable Diffusion
     title: How-To Guides
   - sections:
     - local: concept_guides/hpu
@@ -28,6 +30,8 @@
       title: Gaudi Trainer
     - local: package_reference/gaudi_config
       title: Gaudi Configuration
+    - local: package_reference/stable_diffusion_pipeline
+      title: Gaudi Stable Diffusion Pipeline
     - local: package_reference/distributed_runner
       title: Distributed Runner
     title: Reference
