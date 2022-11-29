@@ -86,7 +86,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             Whether to use lazy (`True`) or eager (`False`) mode.
         use_hpu_graphs (bool, defaults to `False`):
             Whether to use HPU graphs or not.
-        gaudi_config (Union[str, [`GaudiConfig`](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config)], , defaults to `None`):
+        gaudi_config (Union[str, [`GaudiConfig`]], , defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
     """
@@ -489,7 +489,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~diffusers.pipelines.stable_diffusion.GaudiStableDiffusionPipelineOutput`] instead of a
+                Whether or not to return a [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
@@ -499,8 +499,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 called at every step.
 
         Returns:
-            [`~diffusers.pipelines.stable_diffusion.GaudiStableDiffusionPipelineOutput`] or `tuple`:
-            [`~diffusers.pipelines.stable_diffusion.GaudiStableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
+            [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] or `tuple`:
+            [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple`.
             When returning a tuple, the first element is a list with the generated images, and the second element is a
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
