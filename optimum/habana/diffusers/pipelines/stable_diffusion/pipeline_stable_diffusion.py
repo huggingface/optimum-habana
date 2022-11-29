@@ -90,6 +90,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
     """
+
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
