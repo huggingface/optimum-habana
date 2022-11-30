@@ -89,8 +89,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             if self.use_hpu_graphs:
                 logger.info("Enabled HPU graphs.")
             else:
-                os.environ["PT_HPU_LAZY_MODE"] = "2"
-                logger.info("Enabled eager mode because use_hpu_graphs=False.")
+                logger.info("Enabled lazy mode because `use_hpu_graphs=False`.")
 
             self._device = torch.device("hpu")
 
@@ -116,6 +115,13 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 self.hpu_stream = ht.hpu.Stream()
                 self.static_inputs = list()
                 self.static_outputs = None
+            else:
+                try:
+                    import habana_frameworks.torch.core as htcore
+                except ImportError as error:
+                    error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
+                    raise error
+                self.htcore = htcore
 
             if self.gaudi_config.use_habana_mixed_precision:
                 try:

@@ -38,7 +38,6 @@ fast_tests:
 fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pytest tests/test_diffusers.py
-	python -m pytest tests/test_diffusers.py -k "test_stable_diffusion_hpu_graphs"
 
 # Run single-card non-regression tests
 slow_tests_1x:
@@ -59,8 +58,7 @@ slow_tests_deepspeed:
 slow_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pip install ftfy
-	python -m pytest tests/test_diffusers.py -v -s -k "test_no_throughput_regression"
-	python -m pytest tests/test_diffusers.py -v -s -k "test_no_generation_regression"
+	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests:

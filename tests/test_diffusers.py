@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest import TestCase
 
 import numpy as np
-import pytest
 import torch
 
 from diffusers import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
@@ -64,6 +63,14 @@ class GaudiPipelineUtilsTester(TestCase):
             use_habana=True,
             gaudi_config=gaudi_config,
         )
+
+    def test_default(self):
+        pipeline = GaudiDiffusionPipeline(
+            use_habana=True,
+            gaudi_config=GaudiConfig(),
+        )
+
+        self.assertTrue(hasattr(pipeline, "htcore"))
 
     def test_use_hpu_graphs(self):
         pipeline = GaudiDiffusionPipeline(
@@ -526,14 +533,42 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
         self.assertEqual(image.shape, (64, 64, 3))
 
-    def test_stable_diffusion_hpu_graphs(self):
-        # Skip this test if PT_HPU_LAZY_MODE=2
-        if os.environ.get("PT_HPU_LAZY_MODE", 1) == "2":
-            pytest.skip(
-                "Skipping this test because the environment variable `PT_HPU_LAZY_MODE` has already been declared and"
-                " is equal to '2', which is not compatible with HPU graphs."
-            )
+    def test_stable_diffusion_default(self):
+        unet = self.dummy_cond_unet
+        scheduler = GaudiDDIMScheduler()
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
+        sd_pipe = GaudiStableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+            use_habana=True,
+            use_hpu_graphs=False,
+            gaudi_config="Habana/stable-diffusion",
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        images = sd_pipe(
+            [prompt] * 2,
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+            batch_size=3,
+            num_images_per_prompt=5,
+        ).images
+
+        self.assertEqual(len(images), 10)
+        self.assertEqual(images[-1].shape, (64, 64, 3))
+
+    def test_stable_diffusion_hpu_graphs(self):
         unet = self.dummy_cond_unet
         scheduler = GaudiDDIMScheduler()
         vae = self.dummy_vae
