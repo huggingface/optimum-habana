@@ -80,10 +80,21 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        # HPU graphs and Gaudi configuration should be off if not using HPU
         self.use_habana = use_habana
-        self.use_hpu_graphs = False if not use_habana else use_hpu_graphs
-        self.gaudi_config = None if not use_habana else gaudi_config
+        # HPU graphs and Gaudi configuration require `use_habana` to be True
+        if not use_habana:
+            if use_hpu_graphs:
+                raise ValueError(
+                    "`use_hpu_graphs` is True but `use_habana` is False, please set `use_habana=True` to use HPU"
+                    " graphs."
+                )
+            if gaudi_config is not None:
+                raise ValueError(
+                    "Got a non-None `gaudi_config` but `use_habana` is False, please set `use_habana=True` to use this"
+                    " Gaudi configuration."
+                )
+        self.use_hpu_graphs = use_hpu_graphs
+        self.gaudi_config = gaudi_config
 
         if self.use_habana:
             if self.use_hpu_graphs:

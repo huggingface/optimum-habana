@@ -24,19 +24,19 @@ class GaudiPipelineUtilsTester(TestCase):
     Tests the features added on top of diffusers/pipeline_utils.py.
     """
 
-    def test_use_hpu_graphs_is_false_without_habana(self):
-        pipeline = GaudiDiffusionPipeline(
-            use_habana=False,
-            use_hpu_graphs=True,
-        )
-        self.assertFalse(pipeline.use_hpu_graphs)
+    def test_use_hpu_graphs_raise_error_without_habana(self):
+        with self.assertRaises(ValueError):
+            _ = GaudiDiffusionPipeline(
+                use_habana=False,
+                use_hpu_graphs=True,
+            )
 
-    def test_gaudi_config_is_none_without_habana(self):
-        pipeline = GaudiDiffusionPipeline(
-            use_habana=False,
-            gaudi_config=GaudiConfig(),
-        )
-        self.assertIsNone(pipeline.gaudi_config)
+    def test_gaudi_config_raise_error_without_habana(self):
+        with self.assertRaises(ValueError):
+            _ = GaudiDiffusionPipeline(
+                use_habana=False,
+                gaudi_config=GaudiConfig(),
+            )
 
     def test_device(self):
         pipeline_1 = GaudiDiffusionPipeline(
@@ -104,7 +104,6 @@ class GaudiPipelineUtilsTester(TestCase):
             model_name,
             scheduler=scheduler,
             use_habana=True,
-            use_hpu_graphs=False,
             gaudi_config=GaudiConfig(),
         )
 
@@ -245,7 +244,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 safety_checker=None,
                 feature_extractor=self.dummy_extractor,
                 use_habana=True,
-                use_hpu_graphs=False,
                 gaudi_config=gaudi_config,
             )
             sd_pipe.set_progress_bar_config(disable=None)
@@ -303,7 +301,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             scheduler=scheduler,
             safety_checker=None,
             use_habana=True,
-            use_hpu_graphs=False,
             gaudi_config=gaudi_config,
         )
         self.assertIsInstance(pipe, GaudiStableDiffusionPipeline)
@@ -319,7 +316,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             pipe = GaudiStableDiffusionPipeline.from_pretrained(
                 tmpdirname,
                 use_habana=True,
-                use_hpu_graphs=False,
                 gaudi_config=tmpdirname,
             )
 
@@ -386,7 +382,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
             use_habana=True,
-            use_hpu_graphs=False,
             gaudi_config=gaudi_config,
         )
         sd_pipe.set_progress_bar_config(disable=None)
@@ -444,7 +439,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
             use_habana=True,
-            use_hpu_graphs=False,
             gaudi_config=gaudi_config,
         )
         sd_pipe.set_progress_bar_config(disable=None)
@@ -522,7 +516,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
             use_habana=True,
-            use_hpu_graphs=False,
             gaudi_config=gaudi_config,
         )
         sd_pipe.set_progress_bar_config(disable=None)
@@ -549,7 +542,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
             use_habana=True,
-            use_hpu_graphs=False,
             gaudi_config="Habana/stable-diffusion",
         )
         sd_pipe.set_progress_bar_config(disable=None)
