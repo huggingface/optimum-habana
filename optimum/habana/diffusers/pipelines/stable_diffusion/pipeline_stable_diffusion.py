@@ -58,7 +58,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
     """
     Extends the [`StableDiffusionPipeline`](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionPipeline) class:
     - Generation is performed by batches
-    - Two `mark_step()` were added to add support for lazy mode
     - Added support for HPU graphs
 
     Args:
@@ -82,8 +81,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
         use_habana (bool, defaults to `False`):
             Whether to use Gaudi (`True`) or CPU (`False`).
-        use_lazy_mode (bool, defaults to `False`):
-            Whether to use lazy (`True`) or eager (`False`) mode.
         use_hpu_graphs (bool, defaults to `False`):
             Whether to use HPU graphs or not.
         gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
@@ -111,13 +108,11 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
         use_habana: bool = False,
-        use_lazy_mode: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
     ):
         super().__init__(
             use_habana,
-            use_lazy_mode,
             use_hpu_graphs,
             gaudi_config,
         )
@@ -519,9 +514,9 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
             f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
         )
-        if num_batches < 3 and (self.use_lazy_mode or self.use_hpu_graphs):
+        if num_batches < 3 and self.use_hpu_graphs:
             logger.warning(
-                "In lazy mode or with HPU graphs, the first two iterations are slower so it is recommended to feed"
+                "With HPU graphs, the first two iterations are slower so it is recommended to feed"
                 " more batches to make the most of it."
             )
         device = self._execution_device
@@ -572,8 +567,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
 
         # 8. Denoising loop
         for j in self.progress_bar(range(num_batches)):
-            # The throughput is calculated from the 3rd iteration in lazy mode or with HPU graphs
-            if j == 2 and (self.use_lazy_mode or self.use_hpu_graphs):
+            # The throughput is calculated from the 3rd iteration with HPU graphs
+            if j == 2 and self.use_hpu_graphs:
                 t1 = time.time()
 
             latents_batch = latents_batches[0]
@@ -602,9 +597,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_batch = self.scheduler.step(noise_pred, latents_batch, **extra_step_kwargs).prev_sample
 
-                if self.use_lazy_mode:
-                    self.htcore.mark_step()
-
                 # call the callback, if provided
                 if callback is not None and i % callback_steps == 0:
                     callback(i, timestep, latents_batch)
@@ -614,9 +606,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             outputs["images"].append(image)
 
             self.scheduler.reset_timestep_dependent_params()
-
-            if self.use_lazy_mode:
-                self.htcore.mark_step()
 
         speed_metrics_prefix = "generation"
         speed_measures = speed_metrics(

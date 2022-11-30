@@ -113,7 +113,6 @@ model_name = "CompVis/stable-diffusion-v1-4"
     model_name,
     scheduler=scheduler,
 +   use_habana=True,
-+   use_lazy_mode=False,
 +   use_hpu_graphs=True,
 +   gaudi_config="Habana/stable-diffusion",
 )

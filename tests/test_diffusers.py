@@ -25,13 +25,6 @@ class GaudiPipelineUtilsTester(TestCase):
     Tests the features added on top of diffusers/pipeline_utils.py.
     """
 
-    def test_use_lazy_mode_is_false_without_habana(self):
-        pipeline = GaudiDiffusionPipeline(
-            use_habana=False,
-            use_lazy_mode=True,
-        )
-        self.assertFalse(pipeline.use_lazy_mode)
-
     def test_use_hpu_graphs_is_false_without_habana(self):
         pipeline = GaudiDiffusionPipeline(
             use_habana=False,
@@ -45,14 +38,6 @@ class GaudiPipelineUtilsTester(TestCase):
             gaudi_config=GaudiConfig(),
         )
         self.assertIsNone(pipeline.gaudi_config)
-
-    def test_use_lazy_mode_and_use_hpu_graphs_are_exclusive(self):
-        with self.assertRaises(ValueError) as e:
-            _ = GaudiDiffusionPipeline(
-                use_habana=True,
-                use_lazy_mode=True,
-                use_hpu_graphs=True,
-            )
 
     def test_device(self):
         pipeline_1 = GaudiDiffusionPipeline(
@@ -93,15 +78,6 @@ class GaudiPipelineUtilsTester(TestCase):
         self.assertTrue(hasattr(pipeline, "static_inputs"))
         self.assertTrue(hasattr(pipeline, "static_outputs"))
 
-    def test_use_lazy_mode(self):
-        pipeline = GaudiDiffusionPipeline(
-            use_habana=True,
-            use_lazy_mode=True,
-            gaudi_config=GaudiConfig(),
-        )
-
-        self.assertTrue(hasattr(pipeline, "htcore"))
-
     def test_habana_mixed_precision(self):
         gaudi_config = GaudiConfig(
             use_habana_mixed_precision=True,
@@ -121,7 +97,6 @@ class GaudiPipelineUtilsTester(TestCase):
             model_name,
             scheduler=scheduler,
             use_habana=True,
-            use_lazy_mode=False,
             use_hpu_graphs=False,
             gaudi_config=GaudiConfig(),
         )
@@ -263,7 +238,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 safety_checker=None,
                 feature_extractor=self.dummy_extractor,
                 use_habana=True,
-                use_lazy_mode=False,
                 use_hpu_graphs=False,
                 gaudi_config=gaudi_config,
             )
@@ -322,7 +296,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             scheduler=scheduler,
             safety_checker=None,
             use_habana=True,
-            use_lazy_mode=False,
             use_hpu_graphs=False,
             gaudi_config=gaudi_config,
         )
@@ -339,7 +312,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             pipe = GaudiStableDiffusionPipeline.from_pretrained(
                 tmpdirname,
                 use_habana=True,
-                use_lazy_mode=False,
                 use_hpu_graphs=False,
                 gaudi_config=tmpdirname,
             )
@@ -407,7 +379,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
             use_habana=True,
-            use_lazy_mode=False,
             use_hpu_graphs=False,
             gaudi_config=gaudi_config,
         )
@@ -466,7 +437,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
             use_habana=True,
-            use_lazy_mode=False,
             use_hpu_graphs=False,
             gaudi_config=gaudi_config,
         )
@@ -545,7 +515,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
             use_habana=True,
-            use_lazy_mode=False,
             use_hpu_graphs=False,
             gaudi_config=gaudi_config,
         )
@@ -557,55 +526,12 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
         self.assertEqual(image.shape, (64, 64, 3))
 
-    def test_stable_diffusion_lazy_mode(self):
-        # Skip this test if PT_HPU_LAZY_MODE=2
-        if os.environ.get("PT_HPU_LAZY_MODE", 1) == "2":
-            pytest.skip(
-                "Skipping this test because the environment variable `PT_HPU_LAZY_MODE` has already been declared and"
-                " is equal to '2', which is not compatible with lazy mode and HPU graphs."
-            )
-
-        unet = self.dummy_cond_unet
-        scheduler = GaudiDDIMScheduler()
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
-        sd_pipe = GaudiStableDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-            use_habana=True,
-            use_lazy_mode=True,
-            use_hpu_graphs=False,
-            gaudi_config="Habana/stable-diffusion",
-        )
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        images = sd_pipe(
-            [prompt] * 2,
-            generator=generator,
-            num_inference_steps=2,
-            output_type="np",
-            batch_size=3,
-            num_images_per_prompt=5,
-        ).images
-
-        self.assertEqual(len(images), 10)
-        self.assertEqual(images[-1].shape, (64, 64, 3))
-
     def test_stable_diffusion_hpu_graphs(self):
         # Skip this test if PT_HPU_LAZY_MODE=2
         if os.environ.get("PT_HPU_LAZY_MODE", 1) == "2":
             pytest.skip(
                 "Skipping this test because the environment variable `PT_HPU_LAZY_MODE` has already been declared and"
-                " is equal to '2', which is not compatible with lazy mode and HPU graphs."
+                " is equal to '2', which is not compatible with HPU graphs."
             )
 
         unet = self.dummy_cond_unet
@@ -623,7 +549,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
             use_habana=True,
-            use_lazy_mode=False,
             use_hpu_graphs=True,
             gaudi_config="Habana/stable-diffusion",
         )
@@ -658,7 +583,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             model_name,
             scheduler=scheduler,
             use_habana=True,
-            use_lazy_mode=False,
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
         )
@@ -682,7 +606,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 scheduler=scheduler,
                 safety_checker=None,
                 use_habana=True,
-                use_lazy_mode=False,
                 use_hpu_graphs=True,
                 gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
             )

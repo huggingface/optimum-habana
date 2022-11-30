@@ -101,7 +101,6 @@ def main():
 
     # HPU-specific arguments
     parser.add_argument("--use_habana", action="store_true", help="Use HPU.")
-    parser.add_argument("--use_lazy_mode", action="store_true", help="Use lazy mode on HPU.")
     parser.add_argument(
         "--use_hpu_graphs", action="store_true", help="Use HPU graphs on HPU. This should lead to faster generations."
     )
@@ -131,7 +130,6 @@ def main():
         args.model_name_or_path,
         scheduler=scheduler,
         use_habana=args.use_habana,
-        use_lazy_mode=args.use_lazy_mode,
         use_hpu_graphs=args.use_hpu_graphs,
         gaudi_config=args.gaudi_config_name,
     )

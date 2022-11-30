@@ -65,8 +65,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
     Args:
         use_habana (bool, defaults to `False`):
             Whether to use Gaudi (`True`) or CPU (`False`).
-        use_lazy_mode (bool, defaults to `False`):
-            Whether to use lazy (`True`) or eager (`False`) mode.
         use_hpu_graphs (bool, defaults to `False`):
             Whether to use HPU graphs or not.
         gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
@@ -77,29 +75,22 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
     def __init__(
         self,
         use_habana: bool = False,
-        use_lazy_mode: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
     ):
         super().__init__()
 
-        # Lazy mode, HPU graphs and Gaudi configuration should be off if not using HPU
+        # HPU graphs and Gaudi configuration should be off if not using HPU
         self.use_habana = use_habana
-        self.use_lazy_mode = False if not use_habana else use_lazy_mode
         self.use_hpu_graphs = False if not use_habana else use_hpu_graphs
         self.gaudi_config = None if not use_habana else gaudi_config
 
-        if self.use_lazy_mode and self.use_hpu_graphs:
-            raise ValueError("`use_lazy_mode` and `use_hpu_graphs` cannot be both True.")
-
         if self.use_habana:
-            if self.use_lazy_mode:
-                logger.info("Enabled lazy mode.")
-            elif self.use_hpu_graphs:
+            if self.use_hpu_graphs:
                 logger.info("Enabled HPU graphs.")
             else:
                 os.environ["PT_HPU_LAZY_MODE"] = "2"
-                logger.info("Enabled eager mode because use_lazy_mode=False and use_hpu_graphs=False.")
+                logger.info("Enabled eager mode because use_hpu_graphs=False.")
 
             self._device = torch.device("hpu")
 
@@ -125,13 +116,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 self.hpu_stream = ht.hpu.Stream()
                 self.static_inputs = list()
                 self.static_outputs = None
-            elif self.use_lazy_mode:
-                try:
-                    import habana_frameworks.torch.core as htcore
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
-                    raise error
-                self.htcore = htcore
 
             if self.gaudi_config.use_habana_mixed_precision:
                 try:

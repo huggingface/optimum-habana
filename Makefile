@@ -38,7 +38,6 @@ fast_tests:
 fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pytest tests/test_diffusers.py
-	python -m pytest tests/test_diffusers.py -k "test_stable_diffusion_lazy_mode"
 	python -m pytest tests/test_diffusers.py -k "test_stable_diffusion_hpu_graphs"
 
 # Run single-card non-regression tests

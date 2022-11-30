@@ -22,9 +22,9 @@ python text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion
 ```
 
-> Lazy mode or HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
-> You can enable these modes with `--use_lazy_mode` or `--use_hpu_graphs`.
+> You can enable this mode with `--use_hpu_graphs`.
 
 
 ### Multiple Prompts
@@ -42,9 +42,9 @@ python text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion
 ```
 
-> Lazy mode or HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
-> You can enable these modes with `--use_lazy_mode` or `--use_hpu_graphs`.
+> You can enable this mode with `--use_hpu_graphs`.
 
 
 ## Stable Diffusion 2
