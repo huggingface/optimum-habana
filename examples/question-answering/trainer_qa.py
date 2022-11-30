@@ -16,7 +16,7 @@
 A subclass of `GaudiTrainer` specific to Question-Answering tasks
 """
 
-from optimum.habana.trainer import GaudiTrainer
+from optimum.habana import GaudiTrainer
 from transformers import Trainer
 from transformers.trainer_utils import PredictionOutput
 

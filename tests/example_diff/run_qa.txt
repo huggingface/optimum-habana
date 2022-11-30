@@ -4,7 +4,7 @@
 > # Copyright 2022 The HuggingFace Team All rights reserved.
 31a32,33
 > from optimum.habana import GaudiConfig, GaudiTrainingArguments
-> from optimum.habana.trainer_utils import set_seed
+> from optimum.habana.utils import set_seed
 41d42
 <     TrainingArguments,
 43d43

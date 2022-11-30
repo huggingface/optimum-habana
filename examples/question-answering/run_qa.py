@@ -30,7 +30,7 @@ from datasets import load_dataset
 import evaluate
 import transformers
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.trainer_utils import set_seed
+from optimum.habana.utils import set_seed
 from trainer_qa import QuestionAnsweringTrainer
 from transformers import (
     AutoConfig,

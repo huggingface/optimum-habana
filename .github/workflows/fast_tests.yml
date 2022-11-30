@@ -48,8 +48,8 @@ jobs:
               {"Key": "Name", "Value": "optimum-habana-ci-fast-tests"},
               {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
             ]
-  do-the-job:
-    name: Run tests
+  transformers:
+    name: Run tests for optimum.habana.transformers
     needs: start-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
@@ -73,11 +73,39 @@ jobs:
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.7.0/ubuntu20.04/habanalabs/pytorch-installer-1.12.0:latest \
             /bin/bash tests/ci/fast_tests.sh
+  diffusers:
+    name: Run tests for optimum.habana.diffusers
+    needs:
+      - start-runner # required to get output from the start-runner job
+      - transformers # required to wait for the previous tests to finish
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Pull image
+        run: |
+            docker pull vault.habana.ai/gaudi-docker/1.7.0/ubuntu20.04/habanalabs/pytorch-installer-1.12.0:latest
+      - name: Run tests
+        run: |
+            docker run \
+            -v $PWD:/root/workspace \
+            --workdir=/root/workspace \
+            --runtime=habana \
+            -e HABANA_VISIBLE_DEVICES=all \
+            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            --cap-add=sys_nice \
+            --net=host \
+            --ipc=host \
+            vault.habana.ai/gaudi-docker/1.7.0/ubuntu20.04/habanalabs/pytorch-installer-1.12.0:latest \
+            /bin/bash tests/ci/fast_tests_diffusers.sh
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
       - start-runner # required to get output from the start-runner job
-      - do-the-job # required to wait when the main job is done
+      - transformers # required to wait for the tests to be finished
+      - diffusers # required to wait for the tests to be finished
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-east-1

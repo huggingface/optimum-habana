@@ -29,7 +29,7 @@ from datasets import DatasetDict, load_dataset
 import evaluate
 import transformers
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.trainer_utils import set_seed
+from optimum.habana.utils import set_seed
 from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry

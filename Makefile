@@ -34,6 +34,11 @@ fast_tests:
 	python -m pip install .[tests]
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
 
+# Run unit and integration tests related to Diffusers
+fast_tests_diffusers:
+	python -m pip install .[tests]
+	python -m pytest tests/test_diffusers.py
+
 # Run single-card non-regression tests
 slow_tests_1x:
 	python -m pip install .[tests]
@@ -49,6 +54,11 @@ slow_tests_deepspeed:
 	python -m pip install .[tests]
 	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
+
+slow_tests_diffusers:
+	python -m pip install .[tests]
+	python -m pip install ftfy
+	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests:

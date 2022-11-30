@@ -15,7 +15,7 @@
 
 import random
 import time
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict
 
 import numpy as np
 import torch
@@ -53,19 +53,29 @@ def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dt
         return my_input
 
 
-def speed_metrics(split, start_time, num_samples=None, num_steps=None, start_time_after_warmup=None):
+def speed_metrics(
+    split: str,
+    start_time: float,
+    num_samples: int = None,
+    num_steps: int = None,
+    start_time_after_warmup: float = None,
+) -> Dict[str, float]:
     """
     Measure and return speed performance metrics.
     This function requires a time snapshot `start_time` before the operation to be measured starts and this function
     should be run immediately after the operation to be measured has completed.
+
     Args:
-    - split: name to prefix metric (like train, eval, test...)
-    - start_time: operation start time
-    - num_samples: number of samples processed
-    - start_time: operation start time
-    - num_steps: number of steps performed
-    - start_time_after_warmup: time after warmup steps have been performed
+        split (str): name to prefix metric (like train, eval, test...)
+        start_time (float): operation start time
+        num_samples (int, optional): number of samples processed. Defaults to None.
+        num_steps (int, optional): number of steps performed. Defaults to None.
+        start_time_after_warmup (float, optional): time after warmup steps have been performed. Defaults to None.
+
+    Returns:
+        Dict[str, float]: dictionary with performance metrics.
     """
+
     runtime = time.time() - start_time
     result = {f"{split}_runtime": round(runtime, 4)}
 
@@ -82,59 +92,6 @@ def speed_metrics(split, start_time, num_samples=None, num_steps=None, start_tim
         result[f"{split}_steps_per_second"] = round(steps_per_second, 3)
 
     return result
-
-
-def get_dtype(logits: Union[torch.Tensor, Tuple[torch.Tensor]]) -> Union[str, List[str]]:
-    """
-    Extract the dtype of logits.
-
-    Args:
-        logits (Union[torch.Tensor, Tuple[torch.Tensor]]): input
-
-    Raises:
-        TypeError: only torch.Tensor and tuple are supported
-
-    Returns:
-        Union[str, List[str]]: logits' dtype
-    """
-    if isinstance(logits, torch.Tensor):
-        # The dtype of a Torch tensor has the format 'torch.XXX', XXX being the actual dtype
-        logits_dtype = str(logits.dtype).split(".")[-1]
-        # If mixed-precision training was performed, dtype must be 'float32' to be understood by Numpy
-        if logits_dtype == "bfloat16":
-            logits_dtype = "float32"
-        return logits_dtype
-    elif isinstance(logits, tuple):
-        return [get_dtype(logits_tensor) for logits_tensor in logits]
-    else:
-        raise TypeError(f"logits should be of type torch.Tensor or tuple, got {type(logits)} which is not supported")
-
-
-def convert_into_dtypes(
-    preds: Union[np.ndarray, Tuple[np.ndarray]], dtypes: Union[str, List[str]]
-) -> Union[np.ndarray, Tuple[np.ndarray]]:
-    """
-    Convert preds into dtypes.
-
-    Args:
-        preds (Union[np.ndarray, Tuple[np.ndarray]]): predictions to convert
-        dtypes (Union[str, List[str]]): dtypes used for the conversion
-
-    Raises:
-        TypeError: only torch.Tensor and tuple are supported
-
-    Returns:
-        Union[np.ndarray, Tuple[np.ndarray]]: converted preds
-    """
-    if isinstance(preds, np.ndarray):
-        if preds.dtype == dtypes:
-            return preds
-        else:
-            return preds.astype(dtypes)
-    elif isinstance(preds, tuple):
-        return tuple(convert_into_dtypes(preds_tensor, dtypes[i]) for i, preds_tensor in enumerate(preds))
-    else:
-        raise TypeError(f"preds should be of type np.ndarray or tuple, got {type(preds)} which is not supported")
 
 
 def to_gb_rounded(mem: float) -> float:

@@ -36,7 +36,7 @@ from torchvision.transforms import (
 import evaluate
 import transformers
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.trainer_utils import set_seed
+from optimum.habana.utils import set_seed
 from transformers import (
     MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
     AutoConfig,
