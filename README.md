@@ -178,7 +178,6 @@ You can generate images from prompts using Stable Diffusion on Gaudi using the [
 
 ```diff
 - from diffusers import DDIMScheduler, StableDiffusionPipeline
-+ from optimum.habana import GaudiConfig
 + from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
 

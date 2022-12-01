@@ -99,7 +99,6 @@ Thus, you can easily deploy Stable Diffusion on Gaudi for performing text-to-ima
 Here is how to use it and the differences with the 🤗 Diffusers library:
 ```diff
 - from diffusers import DDIMScheduler, StableDiffusionPipeline
-+ from optimum.habana import GaudiConfig
 + from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
 
