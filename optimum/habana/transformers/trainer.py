@@ -31,7 +31,7 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
 
 from optimum.utils import logging
-from transformers import Trainer, __version__
+from transformers import Trainer
 from transformers.configuration_utils import PretrainedConfig
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
@@ -67,15 +67,15 @@ from transformers.trainer_utils import (
     find_executable_batch_size,
     get_last_checkpoint,
     has_length,
-    set_seed,
 )
 from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
+from ..utils import get_hpu_memory_stats, set_seed, speed_metrics, to_device_dtype
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
-from .trainer_utils import convert_into_dtypes, get_dtype, get_hpu_memory_stats, speed_metrics, to_device_dtype
+from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
 
 
@@ -195,6 +195,12 @@ class GaudiTrainer(Trainer):
 
         # Some methods needs to be tweaked to optimally run on Gaudi
         adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision)
+
+        # Suppress PyTorch autocast warnings with Wav2Vec2
+        # This is a bug in PyTorch
+        warnings.filterwarnings(
+            "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
+        )
 
     def create_optimizer(self):
         """
@@ -530,7 +536,10 @@ class GaudiTrainer(Trainer):
         self.callback_handler.optimizer = self.optimizer
         self.callback_handler.lr_scheduler = self.lr_scheduler
         self.callback_handler.train_dataloader = train_dataloader
-        self.state.trial_name = self.hp_name(trial) if self.hp_name is not None else None
+        if self.hp_name is not None and self._trial is not None:
+            # use self._trial because the SigOpt/Optuna hpo only call `_hp_search_setup(trial)` instead of passing trial
+            # parameter to Train when using DDP.
+            self.state.trial_name = self.hp_name(self._trial)
         if trial is not None:
             assignments = trial.assignments if self.hp_search_backend == HPSearchBackend.SIGOPT else trial
             self.state.trial_params = hp_params(assignments)
@@ -753,6 +762,16 @@ class GaudiTrainer(Trainer):
 
         self.log(metrics)
 
+        run_dir = self._get_output_dir(trial)
+        checkpoints_sorted = self._sorted_checkpoints(use_mtime=False, output_dir=run_dir)
+
+        # Delete the last checkpoint when save_total_limit=1 if it's different from the best checkpoint.
+        if self.state.best_model_checkpoint is not None and self.args.save_total_limit == 1:
+            for checkpoint in checkpoints_sorted:
+                if checkpoint != self.state.best_model_checkpoint:
+                    logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
+                    shutil.rmtree(checkpoint)
+
         self.control = self.callback_handler.on_train_end(args, self.state, self.control)
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
@@ -804,25 +823,10 @@ class GaudiTrainer(Trainer):
         # Save model checkpoint
         checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
 
-        if self.hp_search_backend is not None and trial is not None:
-            if self.hp_search_backend == HPSearchBackend.OPTUNA:
-                run_id = trial.number
-            elif self.hp_search_backend == HPSearchBackend.RAY:
-                from ray import tune
-
-                run_id = tune.get_trial_id()
-            elif self.hp_search_backend == HPSearchBackend.SIGOPT:
-                run_id = trial.id
-            elif self.hp_search_backend == HPSearchBackend.WANDB:
-                import wandb
-
-                run_id = wandb.run.id
-            run_name = self.hp_name(trial) if self.hp_name is not None else f"run-{run_id}"
-            run_dir = os.path.join(self.args.output_dir, run_name)
-        else:
-            run_dir = self.args.output_dir
+        if self.hp_search_backend is None and trial is None:
             self.store_flos()
 
+        run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
         self.save_model(output_dir, _internal_call=True)
         if self.deepspeed:
@@ -1489,7 +1493,7 @@ class GaudiTrainer(Trainer):
         best_model_path = os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME)
         model = self.model
         if os.path.exists(best_model_path):
-            # TODO: uncomment the code below when Habana DeepSpeed >= 0.6.5
+            # TODO: the code below does not work with Habana DeepSpeed
             # if self.deepspeed:
 
             #     if self.model_wrapped is not None:

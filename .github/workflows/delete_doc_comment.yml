@@ -3,6 +3,11 @@ name: Delete PR documentation
 on:
   pull_request:
     types: [ closed ]
+    paths:
+      - "optimum/**.py"
+      - "docs/**"
+      - ".github/workflows/build_pr_documentation.yml"
+      - ".github/workflows/delete_doc_comment.yml"
 
 
 jobs:

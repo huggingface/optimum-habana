@@ -1,6 +1,7 @@
-37a38
+37a38,39
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-44,45d44
+> from optimum.habana.utils import set_seed
+44,46d45
 <     Trainer,
 <     TrainingArguments,
 58c57
@@ -18,7 +19,7 @@
 >         revision=model_args.model_revision,
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
-> 
+>
 198,199c204,206
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"

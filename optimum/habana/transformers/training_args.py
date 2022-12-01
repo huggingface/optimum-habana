@@ -357,10 +357,10 @@ class GaudiTrainingArguments(TrainingArguments):
             )
             if self.local_rank != -1 and not torch.distributed.is_initialized():
                 # Initializes distributed backend for cpu
-                if self.xpu_backend not in ("mpi", "ccl"):
+                if self.xpu_backend not in ("mpi", "ccl", "gloo"):
                     raise ValueError(
                         "CPU distributed training backend is not properly set. "
-                        "Please set '--xpu_backend' to either 'mpi' or 'ccl'."
+                        "Please set '--xpu_backend' to either 'mpi' or 'ccl' or 'gloo'."
                     )
                 if self.xpu_backend == "ccl":
                     requires_backends(self, "oneccl_bind_pt")
@@ -410,13 +410,6 @@ class GaudiTrainingArguments(TrainingArguments):
                     backend=self.xpu_backend, rank=rank, world_size=size, timeout=self.ddp_timeout_delta
                 )
         elif self.use_habana:
-            import habana_frameworks.torch.hpu as hthpu
-
-            if hthpu.is_available():
-                logger.info("Habana is enabled.")
-            else:
-                raise RuntimeError("No HPU is currently available.")
-
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
             else:
@@ -425,6 +418,10 @@ class GaudiTrainingArguments(TrainingArguments):
 
             device = torch.device("hpu")
             self._n_gpu = 1
+
+            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+
+            world_size, rank, self.local_rank = initialize_distributed_hpu()
 
             if self.deepspeed:
                 # deepspeed inits torch.distributed internally
@@ -437,19 +434,9 @@ class GaudiTrainingArguments(TrainingArguments):
                 deepspeed.init_distributed(dist_backend="hccl")
                 logger.info("DeepSpeed is enabled.")
             else:
-                from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
-
-                world_size, rank, self.local_rank = initialize_distributed_hpu()
-
                 if self.local_rank != -1:
-                    if world_size > hthpu.device_count():
-                        raise RuntimeError(
-                            f"world_size is equal to {world_size} but there are only {hthpu.device_count()} devices."
-                        )
                     if not torch.distributed.is_initialized():
-                        torch.distributed.init_process_group(
-                            backend="hccl", rank=self.local_rank, world_size=world_size
-                        )
+                        torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
                         logger.info("Enabled distributed run.")
                 else:
                     logger.info("Single node run.")

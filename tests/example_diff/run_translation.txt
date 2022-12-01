@@ -1,6 +1,7 @@
-32a33
+32a33,34
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-44,45d44
+> from optimum.habana.utils import set_seed
+44,45d45
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
 55c54
@@ -22,7 +23,7 @@
 >         revision=model_args.model_revision,
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
-> 
+>
 284,285c290,292
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
@@ -37,8 +38,8 @@
 557a565
 >         gaudi_config=gaudi_config,
 648,652d655
-< 
-< 
+<
+<
 < def _mp_fn(index):
 <     # For xla_spawn (TPUs)
 <     main()
