@@ -17,7 +17,7 @@ INSTALL_REQUIRES = [
     "optimum",
     "torch",
     "accelerate",
-    "diffusers",
+    "diffusers >= 0.9.0",
 ]
 
 TESTS_REQUIRE = [
@@ -33,7 +33,7 @@ TESTS_REQUIRE = [
 QUALITY_REQUIRES = [
     "black",
     "isort",
-    "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
+    "hf_doc_builder",
 ]
 
 EXTRAS_REQUIRE = {
