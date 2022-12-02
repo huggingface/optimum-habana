@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from transformers.generation_utils import GenerationMixin
+from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.albert.modeling_albert import AlbertModel
 from transformers.models.vit.modeling_vit import ViTSelfAttention
@@ -22,7 +22,7 @@ from transformers.models.wav2vec2.modeling_wav2vec2 import (
     _sample_negative_indices,
 )
 
-from .generation_utils import GaudiGenerationMixin
+from .generation import GaudiGenerationMixin
 from .models import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
