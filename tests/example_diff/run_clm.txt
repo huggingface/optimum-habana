@@ -55,13 +55,13 @@
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
 346a363
 >         "use_cache": model_args.use_cache,
-507c524
+511c528
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-508a526
+512a530
 >         gaudi_config=gaudi_config,
-515,518c533,534
+519,522c537,538
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -69,7 +69,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-572,576d587
+576,580d591
 < 
 < 
 < def _mp_fn(index):
