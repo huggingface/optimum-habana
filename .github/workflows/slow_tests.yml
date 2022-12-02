@@ -71,6 +71,7 @@ jobs:
             /bin/bash tests/ci/example_diff_tests.sh
   stable-diffusion:
     name: Test Stable Diffusion
+    if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
       - example-diff  # run the job when the previous test job is done

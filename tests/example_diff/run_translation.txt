@@ -31,13 +31,13 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-556c563
+560c567
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-557a565
+561a569
 >         gaudi_config=gaudi_config,
-648,652d655
+652,656d659
 <
 <
 < def _mp_fn(index):

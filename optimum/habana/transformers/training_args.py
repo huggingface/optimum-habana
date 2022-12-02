@@ -14,6 +14,7 @@
 
 import os
 from dataclasses import asdict, dataclass, field
+from datetime import timedelta
 from typing import Optional, Union
 
 import transformers
@@ -431,7 +432,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     raise ImportError("--deepspeed requires deepspeed: `pip install deepspeed`.")
                 import deepspeed
 
-                deepspeed.init_distributed(dist_backend="hccl")
+                deepspeed.init_distributed(dist_backend="hccl", timeout=timedelta(seconds=self.ddp_timeout))
                 logger.info("DeepSpeed is enabled.")
             else:
                 if self.local_rank != -1:
