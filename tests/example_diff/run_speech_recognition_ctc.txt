@@ -6,6 +6,10 @@
 <     TrainingArguments,
 45d44
 <     set_seed,
+53c52
+< check_min_version("4.26.0.dev0")
+---
+> check_min_version("4.25.0")
 140d138
 < 
 373c371
