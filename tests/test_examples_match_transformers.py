@@ -49,8 +49,6 @@ def get_examples(
 
 
 cloned_repo = Repo.clone_from(TRANSFORMERS_REPO_URL, TRANSFORMERS_REPO_PATH)
-latest_tag = sorted(cloned_repo.tags, key=lambda t: t.commit.committed_datetime)[-1]
-cloned_repo.git.checkout(latest_tag)
 EXAMPLES = get_examples(TRANSFORMERS_REPO_PATH / "examples" / "pytorch", "examples")
 
 

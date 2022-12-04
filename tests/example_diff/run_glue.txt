@@ -6,6 +6,10 @@
 <     TrainingArguments,
 43d42
 <     set_seed,
+51c50
+< check_min_version("4.26.0.dev0")
+---
+> check_min_version("4.25.0")
 211c210
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---

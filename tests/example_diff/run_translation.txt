@@ -6,6 +6,10 @@
 <     Seq2SeqTrainingArguments,
 47d46
 <     set_seed,
+55c54
+< check_min_version("4.26.0.dev0")
+---
+> check_min_version("4.25.0")
 171c170
 <                 "efficient on GPU but very bad for TPU."
 ---
