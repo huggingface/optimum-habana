@@ -211,6 +211,9 @@ Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/
 ## Validated Models
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
+
+<center>
+
 | Architecture | Single Card | Multi Card | DeepSpeed | <center>Tasks</center> |
 |--------------|:-----------:|:----------:|:---------:|------------------------|
 | BERT         | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
@@ -223,6 +226,8 @@ The following model architectures, tasks and device distributions have been vali
 | Swin | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
 | Wav2Vec2 | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[audio classification](https://github.com/huggingface/optimum-habana/tree/main/examples/audio-classification)</li><li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition)</li> |
 | Stable Diffusion | :heavy_check_mark: | ✗ | ✗ | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+
+</center>
 
 Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 
