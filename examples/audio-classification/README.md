@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Audio classification examples
+# Audio Classification Examples
 
 The following examples showcase how to fine-tune `Wav2Vec2` for audio classification on Habana Gaudi.
 
