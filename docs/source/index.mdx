@@ -22,18 +22,18 @@ limitations under the License.
 
 The table below shows which model architectures, tasks and device distributions are currently supported for 🤗 Optimum Habana:
 
-|                    | Text Classification | Question Answering | Language Modeling  | Summarization | Translation | Image Classification | Audio Classification | Speech Recognition | Single Card | Multi Card | DeepSpeed |
-|--------------------|:-------------------:|:------------------:|:------------------:|:-------------:|:-----------:|:--------------------:|:--------------------:|:------------------:|:-----------:|:----------:|:---------:|
-| BERT               | ✅                  | ✅                 | ✅                 | ❌            | ❌          | ❌                   | ❌                   | ❌                 | ✅          | ✅         | ✅        |
-| RoBERTa            | ❌                  | ✅                 | ✅                 | ❌            | ❌          | ❌                   | ❌                   | ❌                 | ✅          | ✅         | ✅        |
-| ALBERT             | ❌                  | ✅                 | ✅                 | ❌            | ❌          | ❌                   | ❌                   | ❌                 | ✅          | ✅         | ✅        |
-| DistilBERT         | ❌                  | ✅                 | ✅                 | ❌            | ❌          | ❌                   | ❌                   | ❌                 | ✅          | ✅         | ✅        |
-| GPT2               | ❌                  | ❌                 | ✅                 | ❌            | ❌          | ❌                   | ❌                   | ❌                 | ✅          | ✅         | ✅        |
-| T5                 | ❌                  | ❌                 | ❌                 | ✅            | ✅          | ❌                   | ❌                   | ❌                 | ✅          | ✅         | ✅        |
-| ViT                | ❌                  | ❌                 | ❌                 | ❌            | ❌          | ✅                   | ❌                   | ❌                 | ✅          | ✅         | ✅        |
-| Swin               | ❌                  | ❌                 | ❌                 | ❌            | ❌          | ✅                   | ❌                   | ❌                 | ✅          | ✅         | ✅        |
-| Wav2Vec2           | ❌                  | ❌                 | ❌                 | ❌            | ❌          | ❌                   | ✅                   | ✅                 | ✅          | ✅         | ✅        |
-| Stable Diffusion   |                     |                    |                    |               |             |                      |                      |                    | ✅          | ❌         | ❌        |
+| Architecture     | Single Card | Multi Card | DeepSpeed | <center>Tasks</center> |
+|------------------|:-----------:|:----------:|:---------:|------------------------|
+| BERT             | ✅          | ✅         | ✅        | <li>[text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| RoBERTa          | ✅          | ✅         | ✅        | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| ALBERT           | ✅          | ✅         | ✅        | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| DistilBERT       | ✅          | ✅         | ✅        | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| GPT2             | ✅          | ✅         | ✅        | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| T5               | ✅          | ✅         | ✅        | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li> |
+| ViT              | ✅          | ✅         | ✅        | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
+| Swin             | ✅          | ✅         | ✅        | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
+| Wav2Vec2         | ✅          | ✅         | ✅        | <li>[audio classification](https://github.com/huggingface/optimum-habana/tree/main/examples/audio-classification)</li><li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition)</li> |
+| Stable Diffusion | ✅          | ❌         | ❌        | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 
 Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to the [Quickstart](./quickstart) for examples on using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 
