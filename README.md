@@ -211,9 +211,9 @@ Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/
 ## Validated Models
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
-| Architecture | Single Card | Multi Card | DeepSpeed | Tasks |
-|--------------|:-----------:|:----------:|:---------:|:-----:|
-| BERT         | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <div style="text-align:left;"><ul style="margin-bottom:0;"><li>[text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li></ul></div> |
+| Architecture | Single Card | Multi Card | DeepSpeed | <center>Tasks</center> |
+|--------------|:-----------:|:----------:|:---------:|-----|
+| BERT         | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <ul style="margin-bottom:0;"><li>[text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li></ul> |
 | RoBERTa | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <div style="text-align:left;"><ul style="margin-bottom:0;"><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li></ul></div> |
 | ALBERT | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <div style="text-align:left;"><ul style="margin-bottom:0;"><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li></ul></div> |
 | DistilBERT |:heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <div style="text-align:left;"><ul style="margin-bottom:0;"><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li></ul></div> |
