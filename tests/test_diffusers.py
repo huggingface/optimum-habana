@@ -170,8 +170,8 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         }
         return components
 
-    def get_dummy_inputs(self, seed=0):
-        generator = torch.manual_seed(seed)
+    def get_dummy_inputs(self, device, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
