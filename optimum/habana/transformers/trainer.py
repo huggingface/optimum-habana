@@ -340,8 +340,10 @@ class GaudiTrainer(Trainer):
         if "model_path" in kwargs:
             resume_from_checkpoint = kwargs.pop("model_path")
             warnings.warn(
-                "`model_path` is deprecated and will be removed in a future version. Use `resume_from_checkpoint` "
-                "instead.",
+                (
+                    "`model_path` is deprecated and will be removed in a future version. Use `resume_from_checkpoint` "
+                    "instead."
+                ),
                 FutureWarning,
             )
         if len(kwargs) > 0:

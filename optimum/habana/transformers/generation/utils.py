@@ -325,12 +325,14 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if self.device.type != input_ids.device.type:
             warnings.warn(
-                "You are calling .generate() with the `input_ids` being on a device type different"
-                f" than your model's device. `input_ids` is on {input_ids.device.type}, whereas the model"
-                f" is on {self.device.type}. You may experience unexpected behaviors or slower generation."
-                " Please make sure that you have put `input_ids` to the"
-                f" correct device by calling for example input_ids = input_ids.to('{self.device.type}') before"
-                " running `.generate()`.",
+                (
+                    "You are calling .generate() with the `input_ids` being on a device type different"
+                    f" than your model's device. `input_ids` is on {input_ids.device.type}, whereas the model"
+                    f" is on {self.device.type}. You may experience unexpected behaviors or slower generation."
+                    " Please make sure that you have put `input_ids` to the"
+                    f" correct device by calling for example input_ids = input_ids.to('{self.device.type}') before"
+                    " running `.generate()`."
+                ),
                 UserWarning,
             )
 
@@ -847,8 +849,10 @@ class GaudiGenerationMixin(GenerationMixin):
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
         if max_length is not None:
             warnings.warn(
-                "`max_length` is deprecated in this function, use"
-                " `stopping_criteria=StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])` instead.",
+                (
+                    "`max_length` is deprecated in this function, use"
+                    " `stopping_criteria=StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])` instead."
+                ),
                 UserWarning,
             )
             stopping_criteria = validate_stopping_criteria(stopping_criteria, max_length)
@@ -1119,8 +1123,10 @@ class GaudiGenerationMixin(GenerationMixin):
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
         if max_length is not None:
             warnings.warn(
-                "`max_length` is deprecated in this function, use"
-                " `stopping_criteria=StoppingCriteriaList(MaxLengthCriteria(max_length=max_length))` instead.",
+                (
+                    "`max_length` is deprecated in this function, use"
+                    " `stopping_criteria=StoppingCriteriaList(MaxLengthCriteria(max_length=max_length))` instead."
+                ),
                 UserWarning,
             )
             stopping_criteria = validate_stopping_criteria(stopping_criteria, max_length)
@@ -1388,8 +1394,10 @@ class GaudiGenerationMixin(GenerationMixin):
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
         if max_length is not None:
             warnings.warn(
-                "`max_length` is deprecated in this function, use"
-                " `stopping_criteria=StoppingCriteriaList(MaxLengthCriteria(max_length=max_length))` instead.",
+                (
+                    "`max_length` is deprecated in this function, use"
+                    " `stopping_criteria=StoppingCriteriaList(MaxLengthCriteria(max_length=max_length))` instead."
+                ),
                 UserWarning,
             )
             stopping_criteria = validate_stopping_criteria(stopping_criteria, max_length)
