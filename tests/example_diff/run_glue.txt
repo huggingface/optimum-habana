@@ -29,13 +29,21 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-513c520
+414,415c421,424
+<                 f"model labels: {list(sorted(label_name_to_id.keys()))}, dataset labels: {list(sorted(label_list))}."
+<                 "\nIgnoring the model labels as a result.",
+---
+>                 (
+>                     f"model labels: {list(sorted(label_name_to_id.keys()))}, dataset labels:"
+>                     f" {list(sorted(label_list))}.\nIgnoring the model labels as a result."
+>                 ),
+513c522
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-514a522
+514a524
 >         gaudi_config=gaudi_config,
-614,618d621
+614,618d623
 < 
 < 
 < def _mp_fn(index):
