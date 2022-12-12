@@ -95,3 +95,4 @@ clean:
 
 test_installs:
 	python -m pip install .[tests]
+	python -m pip install git+https://github.com/huggingface/transformers.git
