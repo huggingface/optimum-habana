@@ -460,14 +460,14 @@ class GaudiTrainer(Trainer):
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
-            if self.args.deepspeed:
+            if args.deepspeed:
                 from deepspeed.runtime.activation_checkpointing.checkpointing import CheckpointFunction
 
                 # HACK because outputs should always be tuples
-                def hpu_deepspeed_checkpointing(function, *args):
+                def hpu_deepspeed_checkpointing(function, *checkpoint_args):
                     """DeepSpeed acitvation checkpointing."""
                     all_outputs = []
-                    CheckpointFunction.apply(function, all_outputs, *args)
+                    CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
                     # Always return a tuple
                     # When all_outputs contains only one element, DeepSpeed returns this element instead of a tuple
                     # which is not consistent with some models. See https://github.com/microsoft/DeepSpeed/issues/1057.
