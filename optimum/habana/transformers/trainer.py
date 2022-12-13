@@ -153,6 +153,8 @@ class GaudiTrainer(Trainer):
                 self.gaudi_config.use_fused_adam = False
                 # HMP must be set to True when using DeepSpeed
                 self.gaudi_config.use_habana_mixed_precision = True
+                # To avoid warnings about parallelism in tokenizers
+                os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
             if self.gaudi_config.use_habana_mixed_precision:
                 try:
@@ -458,7 +460,21 @@ class GaudiTrainer(Trainer):
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
-            if args.use_lazy_mode:
+            if args.deepspeed:
+                from deepspeed.runtime.activation_checkpointing.checkpointing import CheckpointFunction
+
+                # HACK because outputs should always be tuples
+                def hpu_deepspeed_checkpointing(function, *checkpoint_args):
+                    """DeepSpeed acitvation checkpointing."""
+                    all_outputs = []
+                    CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
+                    # Always return a tuple
+                    # When all_outputs contains only one element, DeepSpeed returns this element instead of a tuple
+                    # which is not consistent with some models. See https://github.com/microsoft/DeepSpeed/issues/1057.
+                    return tuple(all_outputs)
+
+                torch.utils.checkpoint.checkpoint = hpu_deepspeed_checkpointing
+            elif args.use_lazy_mode:
                 from .gradient_checkpointing import checkpoint as lazy_mode_checkpointing
 
                 torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
