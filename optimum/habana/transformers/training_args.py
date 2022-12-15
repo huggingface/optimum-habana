@@ -21,7 +21,7 @@ import transformers
 from optimum.utils import logging
 from transformers.debug_utils import DebugOption
 from transformers.deepspeed import HfTrainerDeepSpeedConfig
-from transformers.file_utils import cached_property, is_torch_available, torch_required
+from transformers.file_utils import cached_property, is_torch_available, requires_backends
 from transformers.trainer_utils import EvaluationStrategy, HubStrategy, IntervalStrategy, SchedulerType
 from transformers.training_args import (
     OptimizerNames,
@@ -351,8 +351,9 @@ class GaudiTrainingArguments(TrainingArguments):
     __repr__ = __str__
 
     @cached_property
-    @torch_required
     def _setup_devices(self) -> "torch.device":
+        requires_backends(self, ["torch"])
+
         # Set the log level here for optimum.utils.logging
         # otherwise logs are not sent in this method.
         log_level = self.get_process_log_level()
