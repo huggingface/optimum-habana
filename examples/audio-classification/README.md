@@ -93,7 +93,7 @@ On 8 HPUs, this script should run in ~12 minutes and yield accuracy of **80.49%*
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
