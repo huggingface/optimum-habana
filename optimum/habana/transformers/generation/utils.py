@@ -23,7 +23,7 @@ import torch
 import torch.distributed as dist
 
 from optimum.utils import logging
-from transforemrs.generation.configuration_utils import GenerationConfig
+from transformers.generation.configuration_utils import GenerationConfig
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.logits_process import LogitsProcessorList
