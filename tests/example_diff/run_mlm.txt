@@ -5,16 +5,23 @@
 ---
 > Training the library models for masked language modeling (BERT, ALBERT, RoBERTa...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
-36a36
+36a36,37
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-45,46d44
+> from optimum.habana.utils import set_seed
+45,48d45
 <     Trainer,
 <     TrainingArguments,
-220c218
+<     is_torch_tpu_available,
+<     set_seed,
+56c53
+< check_min_version("4.26.0.dev0")
+---
+> check_min_version("4.25.0")
+220c217
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-245a244,250
+245a243,249
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -22,22 +29,30 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-248,249c253,255
+248,249c252,254
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-251d256
+251d255
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-542c547
+546c550
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-543a549
+547a552
 >         gaudi_config=gaudi_config,
-605,609d610
+553,556c558,559
+<         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
+<         preprocess_logits_for_metrics=preprocess_logits_for_metrics
+<         if training_args.do_eval and not is_torch_tpu_available()
+<         else None,
+---
+>         compute_metrics=compute_metrics if training_args.do_eval else None,
+>         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
+609,613d611
 < 
 < 
 < def _mp_fn(index):

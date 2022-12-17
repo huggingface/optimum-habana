@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Text classification examples
+# Text Classification Examples
 
 ## GLUE tasks
 
@@ -41,7 +41,7 @@ The following example fine-tunes BERT Large (lazy mode) on the `mrpc` dataset ho
 ```bash
 python run_glue.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
-  --gaudi_config_name gaudi_config_name_or_path \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --task_name mrpc \
   --do_train \
   --do_eval \
@@ -66,7 +66,7 @@ Here is how you would fine-tune the BERT large model (with whole word masking) o
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_glue.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
-    --gaudi_config_name gaudi_config_name_or_path \
+    --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
     --task_name mrpc \
     --do_train \
     --do_eval \
@@ -108,7 +108,7 @@ python ../gaudi_spawn.py \
     --deepspeed path_to_my_deepspeed_config
 ```
 
-You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
 Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```json
 {

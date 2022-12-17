@@ -31,7 +31,7 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
 
 from optimum.utils import logging
-from transformers import Trainer, __version__
+from transformers import Trainer
 from transformers.configuration_utils import PretrainedConfig
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
@@ -67,15 +67,15 @@ from transformers.trainer_utils import (
     find_executable_batch_size,
     get_last_checkpoint,
     has_length,
-    set_seed,
 )
 from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
+from ..utils import get_hpu_memory_stats, set_seed, speed_metrics, to_device_dtype
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
-from .trainer_utils import convert_into_dtypes, get_dtype, get_hpu_memory_stats, speed_metrics, to_device_dtype
+from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
 
 
@@ -151,6 +151,8 @@ class GaudiTrainer(Trainer):
             if self.args.deepspeed:
                 # HMP must be set to True when using DeepSpeed
                 self.gaudi_config.use_habana_mixed_precision = True
+                # To avoid warnings about parallelism in tokenizers
+                os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
             if self.gaudi_config.use_habana_mixed_precision:
                 try:
@@ -193,6 +195,12 @@ class GaudiTrainer(Trainer):
 
         # Some methods needs to be tweaked to optimally run on Gaudi
         adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision)
+
+        # Suppress PyTorch autocast warnings with Wav2Vec2
+        # This is a bug in PyTorch
+        warnings.filterwarnings(
+            "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
+        )
 
     def create_optimizer(self):
         """
@@ -288,6 +296,11 @@ class GaudiTrainer(Trainer):
             kwargs = {}
 
             kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
+            if self.args.ddp_find_unused_parameters and self.args.gradient_checkpointing:
+                logger.warning(
+                    "ddp_find_unused_parameters and gradient_checkpointing are both True, which may lead to an error:"
+                    " https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021"
+                )
             kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
 
             if self.args.use_habana:
@@ -337,8 +350,10 @@ class GaudiTrainer(Trainer):
         if "model_path" in kwargs:
             resume_from_checkpoint = kwargs.pop("model_path")
             warnings.warn(
-                "`model_path` is deprecated and will be removed in a future version. Use `resume_from_checkpoint` "
-                "instead.",
+                (
+                    "`model_path` is deprecated and will be removed in a future version. Use `resume_from_checkpoint` "
+                    "instead."
+                ),
                 FutureWarning,
             )
         if len(kwargs) > 0:
@@ -453,7 +468,21 @@ class GaudiTrainer(Trainer):
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
-            if args.use_lazy_mode:
+            if args.deepspeed:
+                from deepspeed.runtime.activation_checkpointing.checkpointing import CheckpointFunction
+
+                # HACK because outputs should always be tuples
+                def hpu_deepspeed_checkpointing(function, *checkpoint_args):
+                    """DeepSpeed acitvation checkpointing."""
+                    all_outputs = []
+                    CheckpointFunction.apply(function, all_outputs, *checkpoint_args)
+                    # Always return a tuple
+                    # When all_outputs contains only one element, DeepSpeed returns this element instead of a tuple
+                    # which is not consistent with some models. See https://github.com/microsoft/DeepSpeed/issues/1057.
+                    return tuple(all_outputs)
+
+                torch.utils.checkpoint.checkpoint = hpu_deepspeed_checkpointing
+            elif args.use_lazy_mode:
                 from .gradient_checkpointing import checkpoint as lazy_mode_checkpointing
 
                 torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
@@ -533,7 +562,10 @@ class GaudiTrainer(Trainer):
         self.callback_handler.optimizer = self.optimizer
         self.callback_handler.lr_scheduler = self.lr_scheduler
         self.callback_handler.train_dataloader = train_dataloader
-        self.state.trial_name = self.hp_name(trial) if self.hp_name is not None else None
+        if self.hp_name is not None and self._trial is not None:
+            # use self._trial because the SigOpt/Optuna hpo only call `_hp_search_setup(trial)` instead of passing trial
+            # parameter to Train when using DDP.
+            self.state.trial_name = self.hp_name(self._trial)
         if trial is not None:
             assignments = trial.assignments if self.hp_search_backend == HPSearchBackend.SIGOPT else trial
             self.state.trial_params = hp_params(assignments)
@@ -756,6 +788,16 @@ class GaudiTrainer(Trainer):
 
         self.log(metrics)
 
+        run_dir = self._get_output_dir(trial)
+        checkpoints_sorted = self._sorted_checkpoints(use_mtime=False, output_dir=run_dir)
+
+        # Delete the last checkpoint when save_total_limit=1 if it's different from the best checkpoint.
+        if self.state.best_model_checkpoint is not None and self.args.save_total_limit == 1:
+            for checkpoint in checkpoints_sorted:
+                if checkpoint != self.state.best_model_checkpoint:
+                    logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
+                    shutil.rmtree(checkpoint)
+
         self.control = self.callback_handler.on_train_end(args, self.state, self.control)
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
@@ -807,25 +849,10 @@ class GaudiTrainer(Trainer):
         # Save model checkpoint
         checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
 
-        if self.hp_search_backend is not None and trial is not None:
-            if self.hp_search_backend == HPSearchBackend.OPTUNA:
-                run_id = trial.number
-            elif self.hp_search_backend == HPSearchBackend.RAY:
-                from ray import tune
-
-                run_id = tune.get_trial_id()
-            elif self.hp_search_backend == HPSearchBackend.SIGOPT:
-                run_id = trial.id
-            elif self.hp_search_backend == HPSearchBackend.WANDB:
-                import wandb
-
-                run_id = wandb.run.id
-            run_name = self.hp_name(trial) if self.hp_name is not None else f"run-{run_id}"
-            run_dir = os.path.join(self.args.output_dir, run_name)
-        else:
-            run_dir = self.args.output_dir
+        if self.hp_search_backend is None and trial is None:
             self.store_flos()
 
+        run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
         self.save_model(output_dir, _internal_call=True)
         if self.deepspeed:
@@ -1184,7 +1211,15 @@ class GaudiTrainer(Trainer):
             Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
             logits and labels (each being optional).
         """
-        has_labels = all(inputs.get(k) is not None for k in self.label_names)
+        has_labels = False if len(self.label_names) == 0 else all(inputs.get(k) is not None for k in self.label_names)
+        # For CLIP-like models capable of returning loss values.
+        # If `return_loss` is not specified or being `None` in `inputs`, we check if the default value of `return_loss`
+        # is `True` in `model.forward`.
+        return_loss = inputs.get("return_loss", None)
+        if return_loss is None:
+            return_loss = self.can_return_loss
+        loss_without_labels = True if len(self.label_names) == 0 and return_loss else False
+
         inputs = self._prepare_inputs(inputs)
         if ignore_keys is None:
             if hasattr(self.model, "config"):
@@ -1193,7 +1228,7 @@ class GaudiTrainer(Trainer):
                 ignore_keys = []
 
         # labels may be popped when computing the loss (label smoothing for instance) so we grab them first.
-        if has_labels:
+        if has_labels or loss_without_labels:
             labels = nested_detach(tuple(inputs.get(name) for name in self.label_names))
             if len(labels) == 1:
                 labels = labels[0]
@@ -1201,7 +1236,7 @@ class GaudiTrainer(Trainer):
             labels = None
 
         with torch.no_grad():
-            if has_labels:
+            if has_labels or loss_without_labels:
                 with self.compute_loss_context_manager():
                     loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
                 loss = loss.mean().detach()
@@ -1492,7 +1527,7 @@ class GaudiTrainer(Trainer):
         best_model_path = os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME)
         model = self.model
         if os.path.exists(best_model_path):
-            # TODO: uncomment the code below when Habana DeepSpeed >= 0.6.5
+            # TODO: the code below does not work with Habana DeepSpeed
             # if self.deepspeed:
 
             #     if self.model_wrapped is not None:
@@ -1543,3 +1578,9 @@ class GaudiTrainer(Trainer):
         output = {**logs, **{"step": self.state.global_step}}
         self.state.log_history.append(output)
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
+
+    def _move_model_to_device(self, model, device):
+        model = model.to(device)
+        # Moving a model to HPU disconnects the tied weights, so we have to retie them.
+        if self.args.use_habana and hasattr(model, "tie_weights"):
+            model.tie_weights()

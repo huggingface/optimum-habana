@@ -30,6 +30,7 @@ from datasets import load_dataset
 import evaluate
 import transformers
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 from trainer_qa import QuestionAnsweringTrainer
 from transformers import (
     AutoConfig,
@@ -40,7 +41,6 @@ from transformers import (
     HfArgumentParser,
     PreTrainedTokenizerFast,
     default_data_collator,
-    set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
@@ -49,7 +49,7 @@ from utils_qa import postprocess_qa_predictions
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.22.0")
+check_min_version("4.25.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 
@@ -132,7 +132,7 @@ class DataTrainingArguments:
         metadata={
             "help": (
                 "Whether to pad all samples to `max_seq_length`. If False, will pad the samples dynamically when"
-                " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
+                " batching to the maximum length in the batch (which can be faster on GPU but will be slower on HPU)."
             )
         },
     )

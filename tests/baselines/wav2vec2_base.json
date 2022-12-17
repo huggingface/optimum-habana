@@ -1,0 +1,23 @@
+{
+    "common_language": {
+        "num_train_epochs": 10,
+        "eval_batch_size": 32,
+        "distribution": {
+            "multi_card": {
+                "learning_rate": 3e-4,
+                "train_batch_size": 16,
+                "eval_accuracy": 0.8069,
+                "train_runtime": 747.4195,
+                "extra_arguments": [
+                    "--audio_column_name audio",
+                    "--label_column_name language",
+                    "--remove_unused_columns False",
+                    "--max_length_seconds 8",
+                    "--attention_mask False",
+                    "--warmup_ratio 0.1",
+                    "--seed 0"
+                ]
+            }
+        }
+    }
+}

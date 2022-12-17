@@ -1,0 +1,94 @@
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# Stable Diffusion
+
+Stable Diffusion is a text-to-image latent diffusion model.
+Check out this [blog post](https://huggingface.co/blog/stable_diffusion) for more information.
+
+
+## How to generate images?
+
+To generate images with Stable Diffusion on Gaudi, you need to instantiate two instances:
+- A pipeline with [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline). This pipeline supports *text-to-image generation*.
+- A scheduler with [`GaudiDDIMScheduler`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
+
+When initializing the pipeline, you have to specify `use_habana=True` to deploy it on HPUs.
+Furthermore, in order to get the fastest possible generations you should enable **HPU graphs** with `use_hpu_graphs=True`.
+Finally, you will need to specify a [Gaudi configuration](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config) which can be downloaded from the Hugging Face Hub.
+
+```python
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
+
+model_name = "CompVis/stable-diffusion-v1-4"
+
+scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+    model_name,
+    scheduler=scheduler,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+)
+```
+
+You can then call the pipeline to generate images from one or several prompts:
+```python
+outputs = pipeline(
+    prompt=["High quality photo of an astronaut riding a horse in space", "Face of a yellow cat, high resolution, sitting on a park bench"],
+    num_images_per_prompt=10,
+    batch_size=4,
+    output_type="pil",
+)
+```
+
+Outputs can be PIL images or Numpy arrays. See [here](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.StableDiffusionPipeline.__call__) all the parameters you can set to tailor generations to your taste.
+
+<Tip>
+
+Check out the [example](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion) provided in the official Github repository.
+
+</Tip>
+
+
+## Stable Diffusion 2
+
+[Stable Diffusion 2](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion_2) can be used with the exact same classes.
+Here is an example:
+
+```python
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
+
+
+model_name = "stabilityai/stable-diffusion-2-base"
+
+scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+    model_name,
+    scheduler=scheduler,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+)
+
+outputs = pipeline(
+    ["An image of a squirrel in Picasso style"],
+    num_images_per_prompt=16,
+    batch_size=4,
+)
+```

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Language model training
+# Language Model Training
 
 Fine-tuning (or training from scratch) the library models for language modeling on a text dataset.
 GPT-2 is trained or fine-tuned using a causal language modeling (CLM) loss while ALBERT, BERT, DistilBERT and RoBERTa are trained or fine-tuned using a masked language modeling (MLM) loss. You can find more information about the differences between those objectives in our [model summary](https://huggingface.co/transformers/model_summary.html).
@@ -158,7 +158,6 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name Habana/roberta-base \
-    --ddp_find_unused_parameters \
     --throughput_warmup_steps 2
 ```
 
@@ -235,7 +234,7 @@ python ../gaudi_spawn.py \
     --deepspeed path_to_my_deepspeed_config
 ```
 
-You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
 Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```json
 {

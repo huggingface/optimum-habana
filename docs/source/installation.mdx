@@ -1,0 +1,27 @@
+<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Installation
+
+To install 🤗 Optimum Habana, you first need to install SynapseAI and the Gaudi drivers by following the official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html). Then, 🤗 Optimum Habana can be installed using `pip` as follows:
+
+```bash
+python -m pip install optimum[habana]
+```
+
+
+To use DeepSpeed on HPUs, you also need to run the following command:
+
+```bash
+python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
+```
+

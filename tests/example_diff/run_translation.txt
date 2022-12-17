@@ -1,8 +1,15 @@
-32a33
+32a33,34
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-44,45d44
+> from optimum.habana.utils import set_seed
+44,45d45
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
+47d46
+<     set_seed,
+55c54
+< check_min_version("4.26.0.dev0")
+---
+> check_min_version("4.25.0")
 171c170
 <                 "efficient on GPU but very bad for TPU."
 ---
@@ -26,13 +33,13 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-556c563
+560c567
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-557a565
+561a569
 >         gaudi_config=gaudi_config,
-648,652d655
+652,656d659
 < 
 < 
 < def _mp_fn(index):

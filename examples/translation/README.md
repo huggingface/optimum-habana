@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Translation
+# Translation Examples
 
 `run_translation.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune one of the architectures above on it.
 
@@ -178,7 +178,7 @@ python ../gaudi_spawn.py \
     --deepspeed path_to_my_deepspeed_config
 ```
 
-You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
 Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```json
 {

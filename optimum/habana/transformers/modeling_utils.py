@@ -12,17 +12,26 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from transformers.generation_utils import GenerationMixin
+from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.albert.modeling_albert import AlbertModel
 from transformers.models.vit.modeling_vit import ViTSelfAttention
+from transformers.models.wav2vec2.modeling_wav2vec2 import (
+    Wav2Vec2Model,
+    _compute_mask_indices,
+    _sample_negative_indices,
+)
 
-from .generation_utils import GaudiGenerationMixin
+from .generation import GaudiGenerationMixin
 from .models import (
+    _gaudi_wav2vec2_compute_mask_indices,
+    _gaudi_wav2vec2_mask_hidden_states,
+    _gaudi_wav2vec2_sample_negative_indices,
     gaudi_albert_forward,
     gaudi_get_extended_attention_mask,
     gaudi_invert_attention_mask,
     gaudi_vit_self_attention_forward,
+    gaudi_wav2vec2_forward,
 )
 
 
@@ -37,6 +46,12 @@ def adapt_transformers_to_gaudi(use_habana_mixed_precision: bool):
 
     # Optimization tweak for ViT
     ViTSelfAttention.forward = gaudi_vit_self_attention_forward
+
+    # Optimization tweak for Wav2Vec2
+    _compute_mask_indices = _gaudi_wav2vec2_compute_mask_indices
+    _sample_negative_indices = _gaudi_wav2vec2_sample_negative_indices
+    Wav2Vec2Model._mask_hidden_states = _gaudi_wav2vec2_mask_hidden_states
+    Wav2Vec2Model.forward = gaudi_wav2vec2_forward
 
     # Generation is modified to run faster in lazy mode
     GenerationMixin.generate = GaudiGenerationMixin.generate

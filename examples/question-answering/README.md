@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# SQuAD
+# Question Answering Examples on SQuAD
 
 Based on the script [`run_qa.py`](https://github.com/huggingface/transformers/blob/main/examples/pytorch/question-answering/run_qa.py).
 
@@ -41,7 +41,7 @@ It runs in 63 minutes with BERT-large.
 ```bash
 python run_qa.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
-  --gaudi_config_name gaudi_config_name_or_path \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --dataset_name squad \
   --do_train \
   --do_eval \
@@ -72,7 +72,7 @@ Here is how you would fine-tune the BERT large model (with whole word masking) o
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_qa.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
-    --gaudi_config_name gaudi_config_name_or_path \
+    --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
     --dataset_name squad \
     --do_train \
     --do_eval \
@@ -120,7 +120,7 @@ python ../gaudi_spawn.py \
     --deepspeed path_to_my_deepspeed_config
 ```
 
-You can look at the [documentation](https://huggingface.co/docs/optimum/habana_deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
 Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```json
 {

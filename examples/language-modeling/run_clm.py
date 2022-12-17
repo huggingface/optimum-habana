@@ -34,6 +34,7 @@ from datasets import load_dataset
 import evaluate
 import transformers
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_CAUSAL_LM_MAPPING,
@@ -42,7 +43,6 @@ from transformers import (
     AutoTokenizer,
     HfArgumentParser,
     default_data_collator,
-    set_seed,
 )
 from transformers.testing_utils import CaptureLogger
 from transformers.trainer_utils import get_last_checkpoint
@@ -51,7 +51,7 @@ from transformers.utils.versions import require_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.22.0")
+check_min_version("4.25.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 
@@ -114,6 +114,16 @@ class ModelArguments:
             "help": (
                 "Will use the token generated when running `huggingface-cli login` (necessary to use this script "
                 "with private models)."
+            )
+        },
+    )
+
+    use_cache: bool = field(
+        default=True,
+        metadata={
+            "help": (
+                "Whether or not the model should return the last key/values attentions (not used by all models)."
+                "Only relevant if `config.is_decoder=True`."
             )
         },
     )
@@ -350,6 +360,7 @@ def main():
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
+        "use_cache": model_args.use_cache,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -393,7 +404,11 @@ def main():
         n_params = sum(dict((p.data_ptr(), p.numel()) for p in model.parameters()).values())
         logger.info(f"Training new model from scratch - Total size={n_params/2**20:.2f}M params")
 
-    model.resize_token_embeddings(len(tokenizer))
+    # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
+    # on a small vocab and want a smaller embedding size, remove this test.
+    embedding_size = model.get_input_embeddings().weight.shape[0]
+    if len(tokenizer) > embedding_size:
+        model.resize_token_embeddings(len(tokenizer))
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
