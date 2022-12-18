@@ -14,6 +14,7 @@
 
 import os
 from dataclasses import asdict, dataclass, field
+from datetime import timedelta
 from typing import Optional, Union
 
 import transformers
@@ -178,8 +179,10 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if isinstance(self.evaluation_strategy, EvaluationStrategy):
             warnings.warn(
-                "using `EvaluationStrategy` for `evaluation_strategy` is deprecated and will be removed in version 5"
-                " of 🤗 Transformers. Use `IntervalStrategy` instead",
+                (
+                    "using `EvaluationStrategy` for `evaluation_strategy` is deprecated and will be removed in version"
+                    " 5 of 🤗 Transformers. Use `IntervalStrategy` instead"
+                ),
                 FutureWarning,
             )
             # Go back to the underlying string or we won't be able to instantiate `IntervalStrategy` on it.
@@ -232,8 +235,10 @@ class GaudiTrainingArguments(TrainingArguments):
         self.optim = OptimizerNames(self.optim)
         if self.adafactor:
             warnings.warn(
-                "`--adafactor` is deprecated and will be removed in version 5 of 🤗 Transformers. Use `--optim"
-                " adafactor` instead",
+                (
+                    "`--adafactor` is deprecated and will be removed in version 5 of 🤗 Transformers. Use `--optim"
+                    " adafactor` instead"
+                ),
                 FutureWarning,
             )
             self.optim = OptimizerNames.ADAFACTOR
@@ -286,8 +291,10 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if self.push_to_hub_token is not None:
             warnings.warn(
-                "`--push_to_hub_token` is deprecated and will be removed in version 5 of 🤗 Transformers. Use "
-                "`--hub_token` instead.",
+                (
+                    "`--push_to_hub_token` is deprecated and will be removed in version 5 of 🤗 Transformers. Use "
+                    "`--hub_token` instead."
+                ),
                 FutureWarning,
             )
             self.hub_token = self.push_to_hub_token
@@ -298,24 +305,30 @@ class GaudiTrainingArguments(TrainingArguments):
             )
             if self.push_to_hub_organization is not None:
                 warnings.warn(
-                    "`--push_to_hub_model_id` and `--push_to_hub_organization` are deprecated and will be removed in "
-                    "version 5 of 🤗 Transformers. Use `--hub_model_id` instead and pass the full repo name to this "
-                    f"argument (in this case {self.hub_model_id}).",
+                    (
+                        "`--push_to_hub_model_id` and `--push_to_hub_organization` are deprecated and will be removed"
+                        " in version 5 of 🤗 Transformers. Use `--hub_model_id` instead and pass the full repo name to"
+                        f" this argument (in this case {self.hub_model_id})."
+                    ),
                     FutureWarning,
                 )
             else:
                 warnings.warn(
-                    "`--push_to_hub_model_id` is deprecated and will be removed in version 5 of 🤗 Transformers. Use "
-                    "`--hub_model_id` instead and pass the full repo name to this argument (in this case "
-                    f"{self.hub_model_id}).",
+                    (
+                        "`--push_to_hub_model_id` is deprecated and will be removed in version 5 of 🤗 Transformers."
+                        " Use `--hub_model_id` instead and pass the full repo name to this argument (in this case"
+                        f" {self.hub_model_id})."
+                    ),
                     FutureWarning,
                 )
         elif self.push_to_hub_organization is not None:
             self.hub_model_id = f"{self.push_to_hub_organization}/{Path(self.output_dir).name}"
             warnings.warn(
-                "`--push_to_hub_organization` is deprecated and will be removed in version 5 of 🤗 Transformers. Use "
-                "`--hub_model_id` instead and pass the full repo name to this argument (in this case "
-                f"{self.hub_model_id}).",
+                (
+                    "`--push_to_hub_organization` is deprecated and will be removed in version 5 of 🤗 Transformers."
+                    " Use `--hub_model_id` instead and pass the full repo name to this argument (in this case"
+                    f" {self.hub_model_id})."
+                ),
                 FutureWarning,
             )
 
@@ -410,13 +423,6 @@ class GaudiTrainingArguments(TrainingArguments):
                     backend=self.xpu_backend, rank=rank, world_size=size, timeout=self.ddp_timeout_delta
                 )
         elif self.use_habana:
-            import habana_frameworks.torch.hpu as hthpu
-
-            if hthpu.is_available():
-                logger.info("Habana is enabled.")
-            else:
-                raise RuntimeError("No HPU is currently available.")
-
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
             else:
@@ -441,7 +447,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     )
                 import deepspeed
 
-                deepspeed.init_distributed(dist_backend="hccl")
+                deepspeed.init_distributed(dist_backend="hccl", timeout=timedelta(seconds=self.ddp_timeout))
                 logger.info("DeepSpeed is enabled.")
             else:
                 if self.local_rank != -1:

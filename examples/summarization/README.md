@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Summarization
+# Summarization Examples
 
 This directory contains examples for finetuning and evaluating transformers on summarization tasks.
 

@@ -23,7 +23,7 @@ In particular, you can use the two following ZeRO configurations that have been 
 
 These configurations are fully compatible with Habana Mixed Precision and can thus be used to train your model in *bf16* precision.
 
-You can find more information about DeepSpeed Gaudi integration [here](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/DeepSpeed_User_Guide.html).
+You can find more information about DeepSpeed Gaudi integration [here](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/DeepSpeed_User_Guide/DeepSpeed_User_Guide.html#deepspeed-user-guide).
 
 
 # Setup
@@ -31,7 +31,7 @@ You can find more information about DeepSpeed Gaudi integration [here](https://d
 In order to use DeepSpeed on Gaudi, you need to install Optimum Habana and Habana's DeepSpeed fork with:
 ```bash
 pip install optimum[habana]
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
 ```
 
 
@@ -78,7 +78,7 @@ It is strongly advised to read [this section](https://huggingface.co/docs/transf
 
 </Tip>
 
-Other examples of configurations for HPUs are proposed [here](https://github.com/HabanaAI/Model-References/tree/1.6.1/PyTorch/nlp/pretraining/deepspeed-bert) by Habana.
+Other examples of configurations for HPUs are proposed [here](https://github.com/HabanaAI/Model-References/tree/1.7.1/PyTorch/nlp/pretraining/deepspeed-bert/scripts) by Habana.
 
 The [Transformers documentation](https://huggingface.co/docs/transformers/main_classes/deepspeed#configuration) explains how to write a configuration from scratch very well.
 A more complete description of all configuration possibilities is available [here](https://www.deepspeed.ai/docs/config-json/).

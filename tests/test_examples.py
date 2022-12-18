@@ -360,8 +360,10 @@ class ExampleTesterBase(TestCase):
         self.assertGreaterEqual(
             number_asserted_metrics,
             2,
-            f"{number_asserted_metrics} asserted metric while at least 2 are expected (training time + accuracy)."
-            f" Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received: {baseline.keys()}",
+            (
+                f"{number_asserted_metrics} asserted metric while at least 2 are expected (training time + accuracy)."
+                f" Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received: {baseline.keys()}"
+            ),
         )
 
 

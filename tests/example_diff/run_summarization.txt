@@ -4,13 +4,17 @@
 > # Copyright 2022 The HuggingFace Team. All rights reserved.
 34a35,36
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-> from optimum.habana.trainer_utils import set_seed
+> from optimum.habana.utils import set_seed
 45,47c47
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
 <     set_seed,
 ---
 >     default_data_collator,
+55c55
+< check_min_version("4.26.0.dev0")
+---
+> check_min_version("4.25.0")
 203c203
 <                 "efficient on GPU but very bad for TPU."
 ---
@@ -34,7 +38,7 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-594,599c602,610
+598,603c606,614
 <     data_collator = DataCollatorForSeq2Seq(
 <         tokenizer,
 <         model=model,
@@ -51,13 +55,13 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-634c645
+638c649
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-635a647
+639a651
 >         gaudi_config=gaudi_config,
-724,728d735
+728,732d739
 < 
 < 
 < def _mp_fn(index):

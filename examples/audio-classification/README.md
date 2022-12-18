@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Audio classification examples
+# Audio Classification Examples
 
 The following examples showcase how to fine-tune `Wav2Vec2` for audio classification on Habana Gaudi.
 
@@ -93,7 +93,7 @@ On 8 HPUs, this script should run in ~12 minutes and yield accuracy of **80.49%*
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:

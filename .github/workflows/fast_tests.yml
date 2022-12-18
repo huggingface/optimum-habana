@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-east-1
-      EC2_AMI_ID: ami-0e9325b9a757fee84
+      EC2_AMI_ID: ami-08951910e7176d195
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-b7533b96
       EC2_SECURITY_GROUP: sg-059956d687c7ec5c2
@@ -48,8 +48,8 @@ jobs:
               {"Key": "Name", "Value": "optimum-habana-ci-fast-tests"},
               {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
             ]
-  do-the-job:
-    name: Run tests
+  transformers:
+    name: Run tests for optimum.habana.transformers
     needs: start-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.6.1/ubuntu20.04/habanalabs/pytorch-installer-1.12.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.7.1/ubuntu20.04/habanalabs/pytorch-installer-1.13.0:latest
       - name: Run tests
         run: |
             docker run \
@@ -71,13 +71,41 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.6.1/ubuntu20.04/habanalabs/pytorch-installer-1.12.0:latest \
+            vault.habana.ai/gaudi-docker/1.7.1/ubuntu20.04/habanalabs/pytorch-installer-1.13.0:latest \
             /bin/bash tests/ci/fast_tests.sh
+  diffusers:
+    name: Run tests for optimum.habana.diffusers
+    needs:
+      - start-runner # required to get output from the start-runner job
+      - transformers # required to wait for the previous tests to finish
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Pull image
+        run: |
+            docker pull vault.habana.ai/gaudi-docker/1.7.1/ubuntu20.04/habanalabs/pytorch-installer-1.13.0:latest
+      - name: Run tests
+        run: |
+            docker run \
+            -v $PWD:/root/workspace \
+            --workdir=/root/workspace \
+            --runtime=habana \
+            -e HABANA_VISIBLE_DEVICES=all \
+            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            --cap-add=sys_nice \
+            --net=host \
+            --ipc=host \
+            vault.habana.ai/gaudi-docker/1.7.1/ubuntu20.04/habanalabs/pytorch-installer-1.13.0:latest \
+            /bin/bash tests/ci/fast_tests_diffusers.sh
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
       - start-runner # required to get output from the start-runner job
-      - do-the-job # required to wait when the main job is done
+      - transformers # required to wait for the tests to be finished
+      - diffusers # required to wait for the tests to be finished
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-east-1

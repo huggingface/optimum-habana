@@ -19,8 +19,8 @@ limitations under the License.
 
 # Optimum Habana
 
-🤗 Optimum Habana is the interface between the 🤗 Transformers library and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
-It provides a set of tools enabling easy model loading and training on single- and multi-HPU settings for different downstream tasks.
+🤗 Optimum Habana is the interface between the 🤗 Transformers and Diffusers libraries and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
+It provides a set of tools enabling easy model loading, training and inference on single- and multi-HPU settings for different downstream tasks.
 The list of officially validated models and tasks is available [here](https://github.com/huggingface/optimum-habana#validated-models). Users can try other models and tasks with only few changes.
 
 
@@ -40,7 +40,7 @@ pip install optimum[habana]
 
 > To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
 >```
 
 Optimum Habana is a fast-moving project, and you may want to install it from source:
@@ -68,7 +68,10 @@ pip install -r requirements.txt
 
 ### Quick Start
 
-🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors**.
+🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers and 🤗 Diffusers user while leveraging the complete power of Gaudi processors**.
+
+#### Transformers Interface
+
 There are two main classes one needs to know:
 - [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer): the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
 - [GaudiConfig](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config): the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
@@ -169,6 +172,37 @@ gaudi_config = GaudiConfig.from_pretrained(
 ```
 
 
+#### Diffusers Interface
+
+You can generate images from prompts using Stable Diffusion on Gaudi using the [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline) class and the [`GaudiDDIMScheduler`] that have been both optimized for HPUs. Here is how to use them and the differences with the 🤗 Diffusers library:
+
+```diff
+- from diffusers import DDIMScheduler, StableDiffusionPipeline
++ from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
+
+
+model_name = "CompVis/stable-diffusion-v1-4"
+
+- scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
++ scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+- pipeline = StableDiffusionPipeline.from_pretrained(
++ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+    model_name,
+    scheduler=scheduler,
++   use_habana=True,
++   use_hpu_graphs=True,
++   gaudi_config="Habana/stable-diffusion",
+)
+
+outputs = generator(
+    ["An image of a squirrel in Picasso style"],
+    num_images_per_prompt=16,
++   batch_size=4,
+)
+```
+
+
 ### Documentation
 
 Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
@@ -177,17 +211,23 @@ Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/
 ## Validated Models
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
-|            | Text Classification | Question Answering | Language Modeling  | Summarization      | Translation        | Image Classification | Audio Classification | Speech Recognition | Single Card        | Multi Card         | DeepSpeed          |
-|------------|:-------------------:|:------------------:|:------------------:|:------------------:|:-----------------:|:--------------------:|:--------------------:|:------------------:|:------------------:|:-----------------:|:------------------:|
-| BERT       | :heavy_check_mark:  | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| RoBERTa    | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| ALBERT     | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| DistilBERT | ✗                   | :heavy_check_mark: | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| GPT2       | ✗                   | ✗                  | :heavy_check_mark: | ✗                  | ✗                  | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| T5         | ✗                   | ✗                  | ✗                  | :heavy_check_mark: | :heavy_check_mark: | ✗                    | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| ViT        | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | :heavy_check_mark:   | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| Swin       | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | :heavy_check_mark:   | ✗                    | ✗                  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| Wav2Vec2   | ✗                   | ✗                  | ✗                  | ✗                  | ✗                  | ✗                    | :heavy_check_mark:   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+
+<div align="center">
+
+| Architecture | Single Card | Multi Card | DeepSpeed | <center>Tasks</center> |
+|--------------|:-----------:|:----------:|:---------:|------------------------|
+| BERT         | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| RoBERTa | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| ALBERT | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| DistilBERT |:heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| GPT2             | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| T5 | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li> |
+| ViT | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
+| Swin | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
+| Wav2Vec2 | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[audio classification](https://github.com/huggingface/optimum-habana/tree/main/examples/audio-classification)</li><li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition)</li> |
+| Stable Diffusion | :heavy_check_mark: | ✗ | ✗ | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+
+</div>
 
 Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 
@@ -200,4 +240,4 @@ Please refer to Habana Gaudi's official [installation guide](https://docs.habana
 
 > Tests should be run in a Docker container based on Habana Docker images.
 >
-> The current version has been validated for SynapseAI 1.6.
+> The current version has been validated for SynapseAI 1.7.
