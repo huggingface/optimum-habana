@@ -21,7 +21,7 @@ ARG OPTIMUM_HABANA_WS="/root/optimum-habana"
 RUN git clone https://github.com/huggingface/optimum-habana.git "${OPTIMUM_HABANA_WS}" && \
    cd "${OPTIMUM_HABANA_WS}" && git checkout multi_node && \
    pip install . \
-   pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1 && \
+   pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1 && \
    cd examples/language-modeling && pip install -r requirements.txt
 
 # Environment variables to communicate to all nodes when using DL1 instances
