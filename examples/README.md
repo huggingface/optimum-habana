@@ -18,8 +18,8 @@ limitations under the License.
 This folder contains actively maintained examples of use of 🤗 Optimum Habana for various ML tasks.
 
 Other [examples](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library can be adapted the same way to enable deployment on Gaudi processors. This simply consists in:
-- replacing the `Trainer` from 🤗 Transformers by the `GaudiTrainer` from 🤗 Optimum Habana,
-- replacing the `TrainingArguments` from 🤗 Transformers by the `GaudiTrainingArguments` from 🤗 Optimum Habana.
+- replacing the `Trainer` from 🤗 Transformers with the `GaudiTrainer`` from 🤗 Optimum Habana,
+- replacing the `TrainingArguments` from 🤗 Transformers with the `GaudiTrainingArguments`` from 🤗 Optimum Habana.
 
 
 ## Distributed training
@@ -53,7 +53,7 @@ where `--argX` is an argument of the script to run with DeepSpeed.
 
 If a model also has Tensorflow or Flax checkpoints, you can load them instead of a PyTorch checkpoint by specifying `from_tf=True` or `from_flax=True` in the model instantiation.
 
-You can try it for SQuAD [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/question-answering/run_qa.py#L310) or for MRPC [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/text-classification/run_glue.py#L338).
+You can try it for SQuAD [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/question-answering/run_qa.py#L310) or MRPC [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/text-classification/run_glue.py#L338)](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/text-classification/run_glue.py#L338).
 
 You can check if a model has such checkpoints on the [Hub](https://huggingface.co/models). You can also specify a URL or a path to a Tensorflow/Flax checkpoint in `model_args.model_name_or_path`.
 
@@ -85,12 +85,12 @@ Should you want to turn an example into a notebook where you'd no longer have ac
 line, 🤗 GaudiTrainer supports resuming from a checkpoint via `trainer.train(resume_from_checkpoint)`.
 
 1. If `resume_from_checkpoint` is `True` it will look for the last checkpoint in the value of `output_dir` passed via `TrainingArguments`.
-2. If `resume_from_checkpoint` is a path to a specific checkpoint it will use that saved checkpoint folder to resume the training from.
+2. If `resume_from_checkpoint` is a path to a specific checkpoint it will use that saved checkpoint folder to resume the training.
 
 
 ## Uploading the trained/fine-tuned model to the Hub
 
-All the example scripts support automatic upload of your final model to the [Model Hub](https://huggingface.co/models) by adding a `--push_to_hub` argument. It will then create a repository with your username slash the name of the folder you are using as `output_dir`. For instance, `"sgugger/test-mrpc"` if your username is `sgugger` and you are working in the folder `~/tmp/test-mrpc`.
+All the example scripts support the automatic upload of your final model to the [Model Hub](https://huggingface.co/models) by adding a `--push_to_hub` argument. It will then create a repository with your username slash the name of the folder you are using as `output_dir`. For instance, `"sgugger/test-mrpc"` if your username is `sgugger` and you are working in the folder `~/tmp/test-mrpc`.
 
 To specify a given repository name, use the `--hub_model_id` argument. You will need to specify the whole repository name (including your username), for instance `--hub_model_id sgugger/finetuned-bert-mrpc`. To upload to an organization you are a member of, just use the name of that organization instead of your username: `--hub_model_id huggingface/finetuned-bert-mrpc`.
 

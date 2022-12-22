@@ -41,7 +41,7 @@ args = GaudiTrainingArguments(
 <Tip>
 
 In lazy mode, the first couple of training iterations may be slower due to graph compilations.
-In order to not take them into account in the computation of the throughput at the end of the training, you can add the following training argument: `throughput_warmup_steps=2`.
+To not take them into account in the computation of the throughput at the end of the training, you can add the following training argument: `throughput_warmup_steps=2`.
 
 </Tip>
 
@@ -49,7 +49,7 @@ In order to not take them into account in the computation of the throughput at t
 ## Mixed-Precision Training
 
 Mixed-precision training enables to compute some operations using lighter data types to accelerate training.
-Habana Mixed Preicision (HMP) proposes to mix *fp32* and *bf16* operations.
+Habana Mixed Precision (HMP) proposes to mix *fp32* and *bf16* operations.
 
 <Tip warning={true}>
 
@@ -57,7 +57,7 @@ Please refer to the [list of supported PyTorch operators](https://docs.habana.ai
 
 </Tip>
 
-In order to apply HMP, you must set `"use_habana_mixed_precision"` to `true` and `"hmp_opt_level"` to `"O1"` in the Gaudi configuration file.
+To apply HMP, you must set `"use_habana_mixed_precision"` to `true` and `"hmp_opt_level"` to `"O1"` in the Gaudi configuration file.
 Then, you can specify which operators to compute in *bf16* with `"hmp_bf16_ops"` and which operators to compute in *fp32* with `"hmp_fp32_ops"`.
 If these operators are not specified, their default values are set to be the ones written in the [Gaudi configuration file of BERT](https://huggingface.co/Habana/bert-large-uncased-whole-word-masking/blob/main/gaudi_config.json), which is a good starting point for applying HMP:
 ```
@@ -87,7 +87,7 @@ If these operators are not specified, their default values are set to be the one
 
 ## Custom Operators
 
-Habana probides a few custom operators that achieve better performance than their PyTorch counterparts on Gaudi.
+Habana provides a few custom operators that achieve better performance than their PyTorch counterparts on Gaudi.
 You can also define your own custom operator for Gaudi as described [here](https://docs.habana.ai/en/latest/PyTorch/PyTorch_CustomOp_API/page_index.html).
 
 
