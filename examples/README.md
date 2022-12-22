@@ -53,7 +53,7 @@ where `--argX` is an argument of the script to run with DeepSpeed.
 
 If a model also has Tensorflow or Flax checkpoints, you can load them instead of a PyTorch checkpoint by specifying `from_tf=True` or `from_flax=True` in the model instantiation.
 
-You can try it for SQuAD [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/question-answering/run_qa.py#L310) or MRPC [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/text-classification/run_glue.py#L338)](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/text-classification/run_glue.py#L338).
+You can try it for SQuAD [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/question-answering/run_qa.py#L310) or MRPC [here](https://github.com/huggingface/optimum-habana/blob/688a857d5308a87a502eec7657f744429125d6f1/examples/text-classification/run_glue.py#L338).
 
 You can check if a model has such checkpoints on the [Hub](https://huggingface.co/models). You can also specify a URL or a path to a Tensorflow/Flax checkpoint in `model_args.model_name_or_path`.
 
