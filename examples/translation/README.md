@@ -53,7 +53,7 @@ python run_translation.py \
 
 If you get a terrible BLEU score, make sure that you didn't forget to use the `--source_prefix` argument.
 
-For the aforementioned group of T5 models, it's important to remember that if you switch to a different language pair, make sure to adjust the source and target values in all 3 language-specific command line arguments: `-`-source_lang`, `--target_lang` and `--source_prefix`.
+For the aforementioned group of T5 models, it's important to remember that if you switch to a different language pair, make sure to adjust the source and target values in all 3 language-specific command line arguments: `--source_lang`, `--target_lang` and `--source_prefix`.
 
 In lazy mode, make sure to use the arguments `--pad_to_max_length` and `--ignore_pad_token_for_loss False` to pad batches to max length and to avoid negative pad tokens.
 
@@ -85,7 +85,7 @@ python run_translation.py \
     --throughput_warmup_steps 2
 ```
 
-The task of translation supports only custom JSONLINES files, with each line being a dictionary with the key `"translation`"` and its value another dictionary whose keys is the language pair. For example:
+The task of translation supports only custom JSONLINES files, with each line being a dictionary with the key `"translation"` and its value another dictionary whose keys is the language pair. For example:
 
 ```json
 { "translation": { "en": "Others have dismissed him as a joke.", "ro": "Alții l-au numit o glumă." } }

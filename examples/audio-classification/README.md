@@ -49,7 +49,7 @@ python run_audio_classification.py \
     --throughput_warmup_steps 2
 ```
 
-On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96**%**.
+On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96%**.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
@@ -84,7 +84,7 @@ python ../gaudi_spawn.py \
     --throughput_warmup_steps 2
 ```
 
-On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49**%**.
+On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
