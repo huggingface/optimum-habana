@@ -17,9 +17,9 @@ limitations under the License.
 # Single-HPU Training
 
 Training on a single device is as simple as in Transformers:
-- You need to replace the Transformers' [`Trainer`](https://huggingface.co/docs/transformers/main_classes/trainer) class by the [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) class,
-- You need to replace the Transformers' [`TrainingArguments`](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments) class by the [`GaudiTrainingArguments`] class and add the following arguments:
-    - `use_habana` to execute your script on a HPU,
+- You need to replace the Transformers' [`Trainer`](https://huggingface.co/docs/transformers/main_classes/trainer) class with the [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) class,
+- You need to replace the Transformers' [`TrainingArguments`](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments) class with the [`GaudiTrainingArguments`] class and add the following arguments:
+    - `use_habana` to execute your script on an HPU,
     - `use_lazy_mode` to use lazy mode or not (i.e. eager mode),
     - `gaudi_config_name` to give the name of (Hub) or the path to (local) your Gaudi configuration file.
 
