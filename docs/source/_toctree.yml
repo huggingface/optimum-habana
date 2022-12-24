@@ -20,7 +20,7 @@
       title: DeepSpeed
     - local: usage_guides/stable_diffusion
       title: Stable Diffusion
-    - local: multi_node_training
+    - local: usage_guides/multi_node_training
       title: Multi-node Training
     title: How-To Guides
   - sections:
