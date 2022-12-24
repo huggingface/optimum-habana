@@ -19,10 +19,10 @@
 import os
 import subprocess
 import sys
-
 from pathlib import Path
-from optimum.utils import logging
 from typing import List
+
+from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)
@@ -80,7 +80,8 @@ class DistributedRunner:
                 self.create_multi_node_setup()
             else:
                 raise ValueError(
-                    "A hostfile is specified to perform multi-node training. This requires to enable DeepSpeed with `use_deepspeed=True`."
+                    "A hostfile is specified to perform multi-node training. This requires to enable DeepSpeed with"
+                    " `use_deepspeed=True`."
                 )
         elif self._world_size > 1:
             # Distributed training
@@ -98,7 +99,8 @@ class DistributedRunner:
         else:
             # Single-card training
             logger.warning(
-                "The run will be executed on one device only. Specify `world_size` >= 1 or `hostfile` to perform a distributed run."
+                "The run will be executed on one device only. Specify `world_size` >= 1 or `hostfile` to perform a"
+                " distributed run."
             )
             self.create_single_card_setup()
 
@@ -173,7 +175,8 @@ class DistributedRunner:
         Multi-node configuration setup for DeepSpeed.
         """
 
-        self._interpreter = f"deepspeed --hostfile {self._hostfile} --no_local_rank "
+        master_addr = self.process_hostfile()
+        self._interpreter = f"deepspeed --hostfile {self._hostfile} --master_addr {master_addr} --no_local_rank "
 
     def run(self):
         """
@@ -208,3 +211,39 @@ class DistributedRunner:
                     del os.environ[str(env_name)]
         except Exception as exc:
             raise RuntimeError(f"Error in {self.__class__.__name__} run()") from exc
+
+    def process_hostfile(self) -> str:
+        """
+        Returns the master address to use for multi-node runs with DeepSpeed.
+        Directly inspired from https://github.com/microsoft/DeepSpeed/blob/316c4a43e0802a979951ee17f735daf77ea9780f/deepspeed/autotuning/utils.py#L145.
+
+        Returns:
+            str: address of the master node.
+        """
+        if not self._hostfile.is_file():
+            raise ValueError(f"Unable to find hostfile at {self._hostfile}.")
+
+        # e.g., worker-0 slots=16
+        with self._hostfile.open("r") as file:
+            resource_pool = {}
+            master_addr = None
+            for line in file.readlines():
+                line = line.strip()
+                if line == "":
+                    # skip empty lines
+                    continue
+                try:
+                    hostname, slots = line.split()
+                    _, slot_count = slots.split("=")
+                    slot_count = int(slot_count)
+                    if master_addr is None:
+                        master_addr = hostname
+                except ValueError as err:
+                    logger.error("Hostfile is not formatted correctly, unable to proceed with training.")
+                    raise err
+                if hostname in resource_pool:
+                    logger.error("Hostfile contains duplicate hosts, unable to proceed with training.")
+                    raise ValueError(f"Host {hostname} is already defined")
+                resource_pool[hostname] = slot_count
+
+        return master_addr

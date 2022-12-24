@@ -11,8 +11,8 @@ RUN git clone "https://github.com/HabanaAI/hccl_ofi_wrapper.git" "${OFI_WRAPPER_
    LIBFABRIC_ROOT=/opt/amazon/efa make
 
 # Docker ssh port setup
-RUN sed -i 's/#Port 22/Port 3022/g' /etc/ssh/sshd_config && \
-   sed -i 's/#   Port 22/    Port 3022/g' /etc/ssh/ssh_config && \
+RUN sed -i 's/#Port 22/Port 4022/g' /etc/ssh/sshd_config && \
+   sed -i 's/#   Port 22/    Port 4022/g' /etc/ssh/ssh_config && \
    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
    service ssh restart
 
@@ -24,7 +24,7 @@ RUN git clone https://github.com/huggingface/optimum-habana.git "${OPTIMUM_HABAN
    pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1 && \
    cd examples/language-modeling && pip install -r requirements.txt
 
-# Environment variables to communicate to all nodes when using DL1 instances
+# AWS ONLY: Environment variables to communicate to all nodes when using DL1 instances
 COPY .deepspeed_env "${OPTIMUM_HABANA_WS}"/examples/language-modeling
 
 # List of all nodes with their IP address and number of devices
