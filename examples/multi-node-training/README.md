@@ -4,7 +4,7 @@ Multi-node training can be performed easily on Gaudi with DeepSpeed for any trai
 ```bash
 python gaudi_spawn.py \
     --hostfile path_to_my_hostfile --use_deepspeed \
-    path_to_script.py --args1 --args2 ... --argsN \
+    path_to_my_script.py --args1 --args2 ... --argsN \
     --deepspeed path_to_my_deepspeed_config
 ```
 where `--argX` is an argument of the script to run.

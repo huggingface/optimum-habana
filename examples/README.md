@@ -59,7 +59,7 @@ All the PyTorch scripts in this repository work out of the box on several Gaudi 
 ```bash
 python gaudi_spawn.py \
     --hostfile path_to_my_hostfile --use_deepspeed \
-    path_to_script.py --args1 --args2 ... --argsN \
+    path_to_my_script.py --args1 --args2 ... --argsN \
     --deepspeed path_to_my_deepspeed_config
 ```
 where `--argX` is an argument of the script to run with DeepSpeed and `--hostfile` is [a file specifying the addresses and the number of devices to use for each node](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node) such as:

@@ -39,25 +39,95 @@ To set up your servers on premises, check out the [installation](https://docs.ha
 Follow the following steps to correctly set up your DL1 instances.
 
 
-#### 1 Set up an EFA-enabled security group
+#### 1. Set up an EFA-enabled security group
 
-To allow all instances to communicate with each other, you need to set up a security group as described by AWS in step 1 of [this link](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html#efa-start-security).
+To allow all instances to communicate with each other, you need to set up a *security group* as described by AWS in step 1 of [this link](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html#efa-start-security).
 Once this is done, it should look as follows:
 <p align="center">
     <img alt="Rules of the security group" src="https://huggingface.co/datasets/optimum/documentation-images/resolve/main/habana/multi_node_security_group.png" width="800">
-    <br>
     <em style="color: grey">Security group for multi-node training on AWS DL1 instances</em>
 </p>
 
 
-#### 2 Launching instances
+#### 2. Launching instances
+
+When you launch instances from the AWS EC2 console, you can choose the number of nodes to set up.
+
+We recommend using the [Habana Deep Learning Base AMI](https://docs.habana.ai/en/latest/Installation_Guide/Habana_Deep_Learning_AMI.html) for your AWS DL1 instances.
+It is an EFA-enabled AMI so you do not need to install the EFA software (which may be necessary if you use a different AMI).
+
+Then, in the *Network settings*, select the *security group* you created in the previous step. You also have to select a specific *subnet* to unlock the *Advanced network configuration* in which you can enable the *Elastic Fabric Adapter*.
+
+The last parameter to set is the *Placement group* in the *Advanced details*. You can create one if you do not have any. The *placement strategy* should be set to *cluster*.
+
+Here is how it should look:
+<p align="center">
+    <img alt="Rules of the security group" src="https://huggingface.co/datasets/optimum/documentation-images/resolve/main/habana/multi_node_launch_instances.png" width="800">
+    <em style="color: grey">Parameters for launching EFA-enabled AWS instances. The important parameters to set are circled in red. For the sake of clarity, not all parameters are represented.</em>
+</p>
+
+More information [here](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html#efa-start-instances).
 
 
-## Setting your computing environment
+## Launching a Multi-node Run
+
+Once your Gaudi instances are ready, you need to:
+
+1. Enable password-less SSH on your instances so that they can communicate with each other. [This explains how to do it](https://docs.habana.ai/en/latest/AWS_User_Guides/AWS_Distributed_Training_Multiple_DL1/AWS_Distributed_Training_Multiple_DL1.html#running-distributed-training-over-multiple-dl1-instances).
+2. On AWS, to train through EFA, `hccl_ofi_wrapper` should be installed. [Here is how to do it](https://docs.habana.ai/en/latest/AWS_User_Guides/AWS_Distributed_Training_Multiple_DL1/AWS_Distributed_Training_Multiple_DL1.html#build-and-store-custom-docker-image-for-training).
+3. On AWS, you need to set the following environment variables (the easiest way is to write a `.deepspeed_env` file as described [here](here)):
+  - `HCCL_OVER_OFI=1` and `HCCL_OVER_TCP=0`
+  - `LD_LIBRARY_PATH=path_to_hccl_ofi_wrapper:/opt/amazon/openmpi/lib:/opt/amazon/efa/lib` where `path_to_hccl_ofi_wrapper` is the path to the `hccl_ofi_wrapper` folder which you installed in the previous step.
+  - (optional) `HCCL_SOCKET_IFNAME=my_network_interface`. If not set, the first network interface with a name that does not start with `lo` or `docker` will be used. More information [here](https://docs.habana.ai/en/latest/API_Reference_Guides/HCCL_APIs/Using_HCCL.html?highlight=HCCL_SOCKET_IFNAME#hccl-socket-ifname).
+
+To make this easier, we provide a Dockerfile [here](https://github.com/huggingface/optimum-habana/blob/multi_node/examples/multi-node-training/Dockerfile). You will just have to copy the public key of the leader node in the `authorized_keys` file of all other nodes.
+
+Then, you need to write a hostfile with the addresses and the numbers of devices of your nodes as follows:
+```
+ip_1 slots=8
+ip_2 slots=8
+...
+ip_n slots=8
+```
+
+Finally, there are two possible ways to run your training script on several nodes:
+
+1. With the [`gaudi_spawn.py`](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) script, you can run the following command:
+```bash
+python gaudi_spawn.py \
+    --hostfile path_to_my_hostfile --use_deepspeed \
+    path_to_my_script.py --args1 --args2 ... --argsN \
+    --deepspeed path_to_my_deepspeed_config
+```
+where `--argX` is an argument of the script to run.
+2. With the[`~distributed.DistributedRunner`], you can add this code snippet to a script:
+```python
+from optimum.habana.distributed import DistributedRunner
+
+distributed_runner = DistributedRunner(
+    command_list=["path_to_my_script.py --args1 --args2 ... --argsN"],
+    hostfile=path_to_my_hostfile,
+    use_deepspeed=True,
+)
+```
 
 
-## Launching a multi-node run
+## Environment Variables
+
+If you need to set environment variables for all nodes, you can specify them in a `.deepspeed_env` file which is located in the same folder as the script you are calling. It is formatted as follows:
+```
+env_variable_1_name=value
+env_variable_2_name=value
+...
+```
+
+You can find an example for AWS instances [here](path_to_deepspeed_env).
 
 
 ## Recommendations
+
+- It is strongly recommended to use gradient checkpointing for multi-node runs to get the highest speedups. You can enable it with `--gradient_checkpointing` in [these examples](https://github.com/huggingface/optimum-habana/tree/main/examples) or with `gradient_checkpointing=True` in your `GaudiTrainingArguments`.
+- Larger batch sizes should lead to higher speedups.
+- Multi-node inference is not recommended and can provide inconsistent results.
+- On AWS DL1 instances, run your Docker containers with the `--privileged` flag so that EFA devices are visible.
 
