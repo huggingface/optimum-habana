@@ -20,7 +20,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 from optimum.utils import logging
 
@@ -37,7 +37,7 @@ class DistributedRunner:
         self,
         command_list: List = [],
         world_size: int = 1,
-        hostfile: Path = None,
+        hostfile: Union[str, Path] = None,
         use_mpi: bool = False,
         use_deepspeed: bool = False,
         use_env: bool = False,
@@ -52,7 +52,7 @@ class DistributedRunner:
         Args:
             command_list (List, optional): The list of commands to execute. Defaults to [].
             world_size (int, optional): The number of devices to use. This is only used for single-node runs. Defaults to 1.
-            hostfile (Path, optional): The path to the hostfile specifying the IP addresses and the number of devices to use for each node. This is only used for multi-node runs. Defaults to None.
+            hostfile (Union[str, Path], optional): The path to the hostfile specifying the IP addresses and the number of devices to use for each node. This is only used for multi-node runs. Defaults to None.
             use_mpi (bool, optional): Whether to use OpenMPI for the communication between devices. Defaults to False.
             use_deepspeed (bool, optional): Wheter to use DeepSpeed. Defaults to False.
             use_env (bool, optional): Whether to use `--use_env` with `torch.distributed`. Defaults to False.
@@ -68,6 +68,7 @@ class DistributedRunner:
 
         self._model_env_vars = {}
 
+        # TODO: remove multi_hls
         logger.warning("`multi_hls` is deprecated and will be removed in a future version.")
 
         logger.info(
@@ -78,6 +79,8 @@ class DistributedRunner:
             raise ValueError("`use_mpi` and `use_deepspeed` cannot be both True.")
 
         if hostfile is not None:
+            if isinstance(hostfile, str):
+                hostfile = Path(hostfile)
             # Multi-node training
             if use_deepspeed:
                 self.create_multi_node_setup()
