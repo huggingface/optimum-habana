@@ -70,7 +70,7 @@ ip_2 slots=8
 ip_n slots=8
 ```
 
-You can find more information about multi-node training in the [documentation](aaa) and in the [`multi-node-training`](bbb) folder where a Dockerfile is provided to easily set up your environment.
+You can find more information about multi-node training in the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) and in the [`multi-node-training`](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) folder where a Dockerfile is provided to easily set up your environment.
 
 
 ## Loading from a Tensorflow/Flax checkpoint file instead of a PyTorch model

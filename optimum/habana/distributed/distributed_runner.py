@@ -42,6 +42,7 @@ class DistributedRunner:
         use_deepspeed: bool = False,
         use_env: bool = False,
         map_by: bool = "socket",
+        multi_hls=False,
     ):
         """
         The `DistributedRunner` enables to exectute a command in a distributed way:
@@ -66,6 +67,8 @@ class DistributedRunner:
         self._interpreter = f"{sys.executable} "
 
         self._model_env_vars = {}
+
+        logger.warning("`multi_hls` is deprecated and will be removed in a future version.")
 
         logger.info(
             f"Training is {'not ' if self._world_size == 1 else ''}distributed, world_size = {self._world_size}"

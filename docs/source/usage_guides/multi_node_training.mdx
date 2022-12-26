@@ -26,7 +26,7 @@ Using several Gaudi servers to perform multi-node training can be done easily. T
 
 Two types of configurations are possible:
 - scale-out using Gaudi NICs or Host NICs (on-premises)
-- scale-out using AWS DL1
+- scale-out using AWS DL1 instances
 
 
 ### On premises
@@ -54,7 +54,7 @@ Once this is done, it should look as follows:
 When you launch instances from the AWS EC2 console, you can choose the number of nodes to set up.
 
 We recommend using the [Habana Deep Learning Base AMI](https://docs.habana.ai/en/latest/Installation_Guide/Habana_Deep_Learning_AMI.html) for your AWS DL1 instances.
-It is an EFA-enabled AMI so you do not need to install the EFA software (which may be necessary if you use a different AMI).
+It is an EFA-enabled AMI so you do not need to install the EFA software (which may be necessary if you use a different AMI, installation instructions [here](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html)).
 
 Then, in the *Network settings*, select the *security group* you created in the previous step. You also have to select a specific *subnet* to unlock the *Advanced network configuration* in which you can enable the *Elastic Fabric Adapter*.
 
@@ -75,12 +75,12 @@ Once your Gaudi instances are ready, you need to:
 
 1. Enable password-less SSH on your instances so that they can communicate with each other. [This explains how to do it](https://docs.habana.ai/en/latest/AWS_User_Guides/AWS_Distributed_Training_Multiple_DL1/AWS_Distributed_Training_Multiple_DL1.html#running-distributed-training-over-multiple-dl1-instances).
 2. On AWS, to train through EFA, `hccl_ofi_wrapper` should be installed. [Here is how to do it](https://docs.habana.ai/en/latest/AWS_User_Guides/AWS_Distributed_Training_Multiple_DL1/AWS_Distributed_Training_Multiple_DL1.html#build-and-store-custom-docker-image-for-training).
-3. On AWS, you need to set the following environment variables (the easiest way is to write a `.deepspeed_env` file as described [here](here)):
+3. On AWS, you need to set the following environment variables (the easiest way is to write a `.deepspeed_env` file as described [here](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training#environment-variables)):
   - `HCCL_OVER_OFI=1` and `HCCL_OVER_TCP=0`
   - `LD_LIBRARY_PATH=path_to_hccl_ofi_wrapper:/opt/amazon/openmpi/lib:/opt/amazon/efa/lib` where `path_to_hccl_ofi_wrapper` is the path to the `hccl_ofi_wrapper` folder which you installed in the previous step.
   - (optional) `HCCL_SOCKET_IFNAME=my_network_interface`. If not set, the first network interface with a name that does not start with `lo` or `docker` will be used. More information [here](https://docs.habana.ai/en/latest/API_Reference_Guides/HCCL_APIs/Using_HCCL.html?highlight=HCCL_SOCKET_IFNAME#hccl-socket-ifname).
 
-To make this easier, we provide a Dockerfile [here](https://github.com/huggingface/optimum-habana/blob/multi_node/examples/multi-node-training/Dockerfile). You will just have to copy the public key of the leader node in the `authorized_keys` file of all other nodes.
+To make this easier, we provide a Dockerfile [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/Dockerfile). You will just have to copy the public key of the leader node in the `authorized_keys` file of all other nodes.
 
 Then, you need to write a hostfile with the addresses and the numbers of devices of your nodes as follows:
 ```
@@ -100,7 +100,8 @@ python gaudi_spawn.py \
     --deepspeed path_to_my_deepspeed_config
 ```
 where `--argX` is an argument of the script to run.
-2. With the[`~distributed.DistributedRunner`], you can add this code snippet to a script:
+
+2. With the [`~distributed.DistributedRunner`], you can add this code snippet to a script:
 ```python
 from optimum.habana.distributed import DistributedRunner
 
@@ -114,7 +115,7 @@ distributed_runner = DistributedRunner(
 
 ## Environment Variables
 
-If you need to set environment variables for all nodes, you can specify them in a `.deepspeed_env` file which is located in the same folder as the script you are calling. It is formatted as follows:
+If you need to set environment variables for all nodes, you can specify them in a [`.deepspeed_env`](https://www.deepspeed.ai/getting-started/#multi-node-environment-variables) file which should be located in the local path you are executing from or in your home directory. The format is the following:
 ```
 env_variable_1_name=value
 env_variable_2_name=value

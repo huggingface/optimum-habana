@@ -11,14 +11,14 @@ where `--argX` is an argument of the script to run.
 
 ## Setup
 
-Check out the [documentation](path_to_doc) to know how to set up your Gaudi instances for multi-node runs on premises or on AWS.
+Check out the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) to know how to set up your Gaudi instances for multi-node runs on premises or on AWS.
 
-A `Dockerfile` is provided [here](path_to_dockerfile) to easily start a multi-node run on AWS instances.
+A `Dockerfile` is provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/Dockerfile) to easily start a multi-node run on AWS instances.
 
 
 ## Hostfile
 
-DeepSpeed requires a [hostfile](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node) to know the addresses of and the number of devices to use on each node. You can specify its path with `--hostfile`. This file should look like:
+DeepSpeed requires a [hostfile](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node) to know the addresses of and the number of devices to use on each node. You can specify its path with `--hostfile`. This file should look like this:
 ```
 ip_1 slots=8
 ip_2 slots=8
@@ -26,7 +26,7 @@ ip_2 slots=8
 ip_n slots=8
 ```
 
-You can find a template [here](path_to_hotfile).
+You can find a template [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/hostfile).
 
 
 ## Environment variables
@@ -38,7 +38,7 @@ env_variable_2_name=value
 ...
 ```
 
-You can find an example for AWS instances [here](path_to_deepspeed_env).
+You can find an example for AWS instances [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/.deepspeed_env).
 
 
 ## Recommendations
