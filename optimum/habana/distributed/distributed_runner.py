@@ -42,7 +42,7 @@ class DistributedRunner:
         use_deepspeed: bool = False,
         use_env: bool = False,
         map_by: bool = "socket",
-        multi_hls=False,
+        multi_hls=None,
     ):
         """
         The `DistributedRunner` enables to exectute a command in a distributed way:
@@ -59,6 +59,10 @@ class DistributedRunner:
             map_by (bool, optional): The mapping unit used for assigning processes with MPI. Defaults to "socket".
         """
 
+        logging.set_verbosity(logging.INFO)
+        logging.enable_default_handler()
+        logging.enable_explicit_format()
+
         self._commands = command_list
         self._world_size = world_size
         self._hostfile = hostfile
@@ -69,7 +73,8 @@ class DistributedRunner:
         self._model_env_vars = {}
 
         # TODO: remove multi_hls
-        logger.warning("`multi_hls` is deprecated and will be removed in a future version.")
+        if multi_hls is not None:
+            logger.warning("`multi_hls` is deprecated and will be removed in a future version.")
 
         logger.info(
             f"Training is {'not ' if self._world_size == 1 else ''}distributed, world_size = {self._world_size}"
