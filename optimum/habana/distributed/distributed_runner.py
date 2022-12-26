@@ -79,8 +79,8 @@ class DistributedRunner:
             raise ValueError("`use_mpi` and `use_deepspeed` cannot be both True.")
 
         if hostfile is not None:
-            if isinstance(hostfile, str):
-                hostfile = Path(hostfile)
+            if isinstance(self._hostfile, str):
+                self._hostfile = Path(self._hostfile)
             # Multi-node training
             if use_deepspeed:
                 self.create_multi_node_setup()
