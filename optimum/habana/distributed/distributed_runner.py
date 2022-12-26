@@ -76,10 +76,6 @@ class DistributedRunner:
         if multi_hls is not None:
             logger.warning("`multi_hls` is deprecated and will be removed in a future version.")
 
-        logger.info(
-            f"Training is {'not ' if self._world_size == 1 else ''}distributed, world_size = {self._world_size}"
-        )
-
         if use_deepspeed and use_mpi:
             raise ValueError("`use_mpi` and `use_deepspeed` cannot be both True.")
 
