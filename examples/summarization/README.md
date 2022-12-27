@@ -20,12 +20,12 @@ This directory contains examples for finetuning and evaluating transformers on s
 
 `run_summarization.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune T5 on it.
 
-For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files
-and you also will find examples of these below.
+For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files.
+You will also find examples of these below.
 
 ## Single-card Training
 
-Here is an example on a summarization task with T5:
+Here is an example of a summarization task with T5:
 
 ```bash
 python run_summarization.py \
@@ -94,7 +94,7 @@ text,summary
 "Christmas time is here. Happiness and cheer. Fun for all that children call. Their favorite time of the year. Snowflakes in the air. Carols everywhere. Olden times and ancient rhymes. Of love and dreams to share","It's that time of year again."
 ```
 
-The first column is assumed to be for `text` and the second is for summary.
+The first column is assumed to be for `text` and the second is for the summary.
 
 If the csv file has multiple columns, you can then specify the names of the columns to use:
 
@@ -103,7 +103,7 @@ If the csv file has multiple columns, you can then specify the names of the colu
     --summary_column summary_column_name \
 ```
 
-For example if the columns were:
+For example, if the columns were:
 
 ```csv
 id,date,text,summary

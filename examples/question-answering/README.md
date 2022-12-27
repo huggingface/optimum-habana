@@ -28,7 +28,7 @@ Note that if your dataset contains samples with no possible answers (like SQUAD 
 
 ## Fine-tuning BERT on SQuAD1.1
 
-For the following cases, an example of Gaudi configuration file is given
+For the following cases, an example of a Gaudi configuration file is given
 [here](https://github.com/huggingface/optimum-habana#how-to-use-it).
 
 
