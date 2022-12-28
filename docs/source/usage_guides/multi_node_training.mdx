@@ -122,7 +122,7 @@ env_variable_2_name=value
 ...
 ```
 
-You can find an example for AWS instances [here](path_to_deepspeed_env).
+You can find an example for AWS instances [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/.deepspeed_env).
 
 
 ## Recommendations
@@ -132,3 +132,45 @@ You can find an example for AWS instances [here](path_to_deepspeed_env).
 - Multi-node inference is not recommended and can provide inconsistent results.
 - On AWS DL1 instances, run your Docker containers with the `--privileged` flag so that EFA devices are visible.
 
+
+## Example
+
+In this example, we fine-tune a pre-trained GPT2-XL model on the [WikiText dataset](https://huggingface.co/datasets/wikitext).
+We are going to use the [causal language modeling example which is given in the Github repository](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling#gpt-2gpt-and-causal-language-modeling).
+
+The first step consists in training the model on several nodes with this command:
+```bash
+python ../gaudi_spawn.py \
+    --hostfile path_to_hostfile --use_deepspeed run_clm.py \
+    --model_name_or_path gpt2-xl \
+    --gaudi_config_name Habana/gpt2 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --do_train \
+    --output_dir /tmp/gpt2_xl_multi_node \
+    --learning_rate 5e-05 \
+    --per_device_train_batch_size 16 \
+    --gradient_checkpointing \
+    --num_train_epochs 1 \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 2 \
+    --deepspeed path_to_deepspeed_config
+```
+
+Evaluation is not performed in the same command because we do not recommend performing multi-node inference at the moment.
+
+Once the model is trained, we can evaluate it with the following command.
+The argument `--model_name_or_path` should be equal to the argument `--output_dir` of the previous command.
+```bash
+python run_clm.py \
+    --model_name_or_path /tmp/gpt2_xl_multi_node \
+    --gaudi_config_name Habana/gpt2 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --do_eval \
+    --output_dir /tmp/gpt2_xl_multi_node \
+    --per_device_eval_batch_size 8 \
+    --use_habana \
+    --use_lazy_mode
+```

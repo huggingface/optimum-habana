@@ -443,7 +443,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 if not is_deepspeed_available():
                     raise ImportError(
                         "--deepspeed requires deepspeed: `pip install"
-                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.6.1`."
+                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1`."
                     )
                 import deepspeed
 
