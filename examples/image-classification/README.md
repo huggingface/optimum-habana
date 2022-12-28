@@ -48,7 +48,13 @@ python run_image_classification.py \
     --throughput_warmup_steps 2
 ```
 
+For Swin, you need to change/add the following arguments:
+- `--model_name_or_path microsoft/swin-base-patch4-window7-224`
+- `--gaudi_config_name Habana/swin`
+- `--ignore_mismatched_sizes`
+
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
+
 
 ### Using your own data
 
@@ -186,6 +192,11 @@ python ../gaudi_spawn.py \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2
 ```
+
+For Swin, you need to change/add the following arguments:
+- `--model_name_or_path microsoft/swin-base-patch4-window7-224`
+- `--gaudi_config_name Habana/swin`
+- `--ignore_mismatched_sizes`
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
