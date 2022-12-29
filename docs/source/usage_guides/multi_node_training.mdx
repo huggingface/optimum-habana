@@ -81,7 +81,7 @@ Once your Gaudi instances are ready, you need to:
   - (optional) `HCCL_SOCKET_IFNAME=my_network_interface`. If not set, the first network interface with a name that does not start with `lo` or `docker` will be used. More information [here](https://docs.habana.ai/en/latest/API_Reference_Guides/HCCL_APIs/Using_HCCL.html?highlight=HCCL_SOCKET_IFNAME#hccl-socket-ifname).
 
 To make this easier, we provide a Dockerfile [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training).
-You will just have to copy the public key of the leader node in the `authorized_keys` file of all other nodes to enable password-less SSH.
+You will just have to copy the public key of the leader node in the `~/.ssh/authorized_keys` file of all other nodes to enable password-less SSH.
 
 Then, you need to write a [hostfile](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node) with the addresses and the numbers of devices of your nodes as follows:
 ```
@@ -102,7 +102,7 @@ python gaudi_spawn.py \
 ```
 where `--argX` is an argument of the script to run.
 
-2. With the [`~distributed.DistributedRunner`], you can add this code snippet to a script:
+2. With the [`DistributedRunner`](https://huggingface.co/docs/optimum/habana/package_reference/distributed_runner), you can add this code snippet to a script:
 ```python
 from optimum.habana.distributed import DistributedRunner
 

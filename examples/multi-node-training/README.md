@@ -14,7 +14,7 @@ where `--argX` is an argument of the script to run.
 Check out the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) to know how to set up your Gaudi instances for multi-node runs on premises or on AWS.
 
 A `Dockerfile` is provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/Dockerfile) to easily start a multi-node run.
-It is based on an image compatible with Ubuntu 20.04 but you can easily change this.
+It is based on an image compatible with Ubuntu 20.04 but you can easily adapt it to another OS.
 To build the Docker image, run:
 ```bash
 docker build -t gaudi_multi_node PATH
@@ -27,6 +27,8 @@ docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_va
 ```
 
 > For AWS DL1 instances, `--privileged` must be passed to the `docker run` command so that EFA interfaces are visible.
+
+Finally, you will have to copy the public key of the leader node in the `~/.ssh/authorized_keys` file of all other nodes to enable password-less SSH.
 
 
 ## Hostfile
@@ -44,7 +46,7 @@ You can find a template [here](https://github.com/huggingface/optimum-habana/tre
 
 ## Environment variables
 
-If you need to set environment variables for all nodes, you can specify them in a `.deepspeed_env` file which is located in the same folder as the script you are calling. It is formatted as follows:
+If you need to set environment variables for all nodes, you can specify them in a `.deepspeed_env` file which should be located in the local path you are executing from or in your home directory. It is formatted as follows:
 ```
 env_variable_1_name=value
 env_variable_2_name=value
