@@ -408,13 +408,13 @@ class DeepspeedCausalLanguageModelingExampleTester(
 class ImageClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification"
 ):
-    TASK_NAME = "beans"
+    TASK_NAME = "cifar10"
 
 
 class MultiCardImageClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification", multi_card=True
 ):
-    TASK_NAME = "beans"
+    TASK_NAME = "cifar10"
 
 
 class MultiCardMaskedLanguageModelingExampleTester(
