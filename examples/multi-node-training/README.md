@@ -14,6 +14,19 @@ where `--argX` is an argument of the script to run.
 Check out the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) to know how to set up your Gaudi instances for multi-node runs on premises or on AWS.
 
 A `Dockerfile` is provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/Dockerfile) to easily start a multi-node run on AWS instances.
+It is based on an image compatible with Ubuntu 20.04 but you can easily change this.
+To build the Docker image, run:
+```bash
+docker build -t gaudi_multi_node PATH
+```
+where `PATH` is the path to the folder containing the `Dockerfile`.
+
+To run a Docker container with the image you just built, execute:
+```bash
+docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --net=host --ipc=host multi_node:latest
+```
+
+> For AWS DL1 instances, `--privileged` must be passed to the `docker run` command so that EFA interfaces are visible.
 
 
 ## Hostfile

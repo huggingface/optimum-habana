@@ -18,17 +18,8 @@ RUN sed -i 's/#Port 22/Port 3022/g' /etc/ssh/sshd_config && \
 
 # Installs Optimum Habana and Habana's fork of DeepSpeed
 ARG OPTIMUM_HABANA_WS="/root/optimum-habana"
-RUN git clone https://github.com/huggingface/optimum-habana.git "${OPTIMUM_HABANA_WS}" && \
-   cd "${OPTIMUM_HABANA_WS}" && git checkout multi_node && \
-   pip install . \
-   pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1 && \
-   cd examples/language-modeling && pip install -r requirements.txt
-
-# AWS ONLY: Environment variables to communicate to all nodes when using DL1 instances
-COPY .deepspeed_env "${OPTIMUM_HABANA_WS}"/examples/language-modeling
-
-# List of all nodes with their IP address and number of devices
-COPY hostfile "${OPTIMUM_HABANA_WS}"/examples/language-modeling
+RUN pip install optimum[habana] \
+   pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
 
 CMD ssh-keygen -t rsa -b 4096 -N '' -f ~/.ssh/id_rsa && \
    chmod 600 ~/.ssh/id_rsa && \

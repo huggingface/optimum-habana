@@ -41,7 +41,7 @@ where `--argX` is an argument of the script to run in a distributed way.
 
 ### DeepSpeed
 
-All the PyTorch scripts in this repository work out of the box with DeepSpeed. To launch one of them on _n_ HPUs, use the following command:
+All the PyTorch training scripts in this repository work out of the box with DeepSpeed. To launch one of them on _n_ HPUs, use the following command:
 
 ```bash
 python gaudi_spawn.py \
@@ -54,7 +54,7 @@ where `--argX` is an argument of the script to run with DeepSpeed.
 
 ### Multi node
 
-All the PyTorch scripts in this repository work out of the box on several Gaudi instances. To launch one of them on _n_ nodes, use the following command:
+All the PyTorch training scripts in this repository work out of the box on several Gaudi instances. To launch one of them on _n_ nodes, use the following command:
 
 ```bash
 python gaudi_spawn.py \

@@ -76,13 +76,14 @@ Once your Gaudi instances are ready, you need to:
 1. Enable password-less SSH on your instances so that they can communicate with each other. [This explains how to do it](https://docs.habana.ai/en/latest/AWS_User_Guides/AWS_Distributed_Training_Multiple_DL1/AWS_Distributed_Training_Multiple_DL1.html#running-distributed-training-over-multiple-dl1-instances).
 2. On AWS, to train through EFA, `hccl_ofi_wrapper` should be installed. [Here is how to do it](https://docs.habana.ai/en/latest/AWS_User_Guides/AWS_Distributed_Training_Multiple_DL1/AWS_Distributed_Training_Multiple_DL1.html#build-and-store-custom-docker-image-for-training).
 3. On AWS, you need to set the following environment variables (the easiest way is to write a `.deepspeed_env` file as described [here](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training#environment-variables)):
-  - `HCCL_OVER_OFI=1` and `HCCL_OVER_TCP=0`
+  - `HCCL_OVER_OFI=1`
   - `LD_LIBRARY_PATH=path_to_hccl_ofi_wrapper:/opt/amazon/openmpi/lib:/opt/amazon/efa/lib` where `path_to_hccl_ofi_wrapper` is the path to the `hccl_ofi_wrapper` folder which you installed in the previous step.
   - (optional) `HCCL_SOCKET_IFNAME=my_network_interface`. If not set, the first network interface with a name that does not start with `lo` or `docker` will be used. More information [here](https://docs.habana.ai/en/latest/API_Reference_Guides/HCCL_APIs/Using_HCCL.html?highlight=HCCL_SOCKET_IFNAME#hccl-socket-ifname).
 
-To make this easier, we provide a Dockerfile [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/Dockerfile). You will just have to copy the public key of the leader node in the `authorized_keys` file of all other nodes.
+To make this easier, we provide a Dockerfile [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training).
+You will just have to copy the public key of the leader node in the `authorized_keys` file of all other nodes to enable password-less SSH.
 
-Then, you need to write a hostfile with the addresses and the numbers of devices of your nodes as follows:
+Then, you need to write a [hostfile](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node) with the addresses and the numbers of devices of your nodes as follows:
 ```
 ip_1 slots=8
 ip_2 slots=8
@@ -148,7 +149,7 @@ python ../gaudi_spawn.py \
     --dataset_config_name wikitext-2-raw-v1 \
     --do_train \
     --output_dir /tmp/gpt2_xl_multi_node \
-    --learning_rate 5e-05 \
+    --learning_rate 4e-04 \
     --per_device_train_batch_size 16 \
     --gradient_checkpointing \
     --num_train_epochs 1 \
