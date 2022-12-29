@@ -19,6 +19,8 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
+from typing import List, Union
 
 from optimum.utils import logging
 
@@ -33,58 +35,81 @@ class DistributedRunner:
 
     def __init__(
         self,
-        command_list=[],
-        world_size=1,
-        use_mpi=False,
-        use_deepspeed=False,
-        use_env=False,
-        map_by="socket",
-        multi_hls=False,
+        command_list: List = [],
+        world_size: int = 1,
+        hostfile: Union[str, Path] = None,
+        use_mpi: bool = False,
+        use_deepspeed: bool = False,
+        use_env: bool = False,
+        map_by: bool = "socket",
+        multi_hls=None,
     ):
-        self.__commands = command_list
-        self.__world_size = world_size
-        self.__map_by = map_by
-        self.__multi_hls = multi_hls
-        self.__use_env = use_env
-        self.__interpreter = f"{sys.executable} "
+        """
+        The `DistributedRunner` enables to exectute a command in a distributed way:
+        - On one Gaudi server with MPI, DeepSpeed or `torch.distributed`
+        - On several nodes with DeepSpeed.
 
-        self.__model_env_vars = {}
+        Args:
+            command_list (List, optional): The list of commands to execute. Defaults to [].
+            world_size (int, optional): The number of devices to use. This is only used for single-node runs. Defaults to 1.
+            hostfile (Union[str, Path], optional): The path to the hostfile specifying the IP addresses and the number of devices to use for each node. This is only used for multi-node runs. Defaults to None.
+            use_mpi (bool, optional): Whether to use OpenMPI for the communication between devices. Defaults to False.
+            use_deepspeed (bool, optional): Wheter to use DeepSpeed. Defaults to False.
+            use_env (bool, optional): Whether to use `--use_env` with `torch.distributed`. Defaults to False.
+            map_by (bool, optional): The mapping unit used for assigning processes with MPI. Defaults to "socket".
+        """
 
-        logger.info(
-            f"Training is {'not ' if self.__world_size == 1 else ''}distributed, world_size = {self.__world_size}"
-        )
-        # Distributed training
-        if self.__world_size > 1:
+        logging.set_verbosity(logging.INFO)
+        logging.enable_default_handler()
+        logging.enable_explicit_format()
+
+        self._commands = command_list
+        self._world_size = world_size
+        self._hostfile = hostfile
+        self._map_by = map_by
+        self._use_env = use_env
+        self._interpreter = f"{sys.executable} "
+
+        self._model_env_vars = {}
+
+        # TODO: remove multi_hls
+        if multi_hls is not None:
+            logger.warning("`multi_hls` is deprecated and will be removed in a future version.")
+
+        if use_deepspeed and use_mpi:
+            raise ValueError("`use_mpi` and `use_deepspeed` cannot be both True.")
+
+        if hostfile is not None:
+            if isinstance(self._hostfile, str):
+                self._hostfile = Path(self._hostfile)
             # Multi-node training
-            if self.__multi_hls:
-                self.create_multi_hls_setup()
-            elif use_deepspeed:
+            if use_deepspeed:
+                self.create_multi_node_setup()
+            else:
+                raise ValueError(
+                    "A hostfile is specified to perform multi-node training. This requires to enable DeepSpeed with"
+                    " `use_deepspeed=True`."
+                )
+        elif self._world_size > 1:
+            # Distributed training
+            if use_deepspeed:
                 # Single-node multi-card training with DeepSpeed
-                self.create_single_hls_setup_deepspeed()
+                self.create_single_node_setup_deepspeed()
             elif use_mpi:
                 # Single-node multi-card training with MPI
-                self.__model_env_vars["MASTER_ADDR"] = "localhost"
-                self.__model_env_vars["MASTER_PORT"] = "12345"
-                self.create_single_hls_setup_mpirun()
+                self._model_env_vars["MASTER_ADDR"] = "localhost"
+                self._model_env_vars["MASTER_PORT"] = "12345"
+                self.create_single_node_setup_mpirun()
             else:
                 # Single-node multi-card training with torch.distributed
-                self.create_single_hls_setup()
+                self.create_single_node_setup()
         else:
             # Single-card training
+            logger.warning(
+                "The run will be executed on one device only. Specify `world_size` >= 1 or `hostfile` to perform a"
+                " distributed run."
+            )
             self.create_single_card_setup()
-
-    def setup_config_env(self):
-        hccl_over_tcp = os.getenv("HCCL_OVER_TCP")
-        hccl_over_ofi = os.getenv("HCCL_OVER_OFI")
-        if hccl_over_tcp or hccl_over_ofi:
-            if hccl_over_tcp:
-                hccl_over_tcp = hccl_over_tcp.lower() in ["1", "true"]
-            if hccl_over_ofi:
-                hccl_over_ofi = hccl_over_ofi.lower() in ["1", "true"]
-            logger.info(f"HCCL_OVER_TCP={os.getenv('HCCL_OVER_TCP')}")
-            logger.info(f"HCCL_OVER_OFI={os.getenv('HCCL_OVER_OFI')}")
-
-        logger.info(f"HLS ({self.__world_size})")
 
     def get_peval(self):
         cmd1 = "lscpu 2>/dev/null | awk '/Socket\(s\)/  { print $2 }'"
@@ -102,148 +127,82 @@ class DistributedRunner:
         if corespsocket == 1:  # running inside VM?
             logger.warning(f"Cores per socket is {corespsocket}. Running inside a VM?")
             logger.warning(f"Mapping by slot instead of socket")
-            self.__map_by = "slot"
-        if self.__multi_hls:
-            __hls_list = str(os.getenv("MULTI_HLS_IPS", "")).split(",")
-            __world_size = self.__world_size
-            __per_node_processes = int(__world_size / len(__hls_list))
-            peval = (sockets * corespsocket) // __per_node_processes
+            self._map_by = "slot"
+        if self._hostfile:
+            _hls_list = str(os.getenv("MULTI_HLS_IPS", "")).split(",")
+            _world_size = 8
+            _per_node_processes = int(_world_size / len(_hls_list))
+            peval = (sockets * corespsocket) // _per_node_processes
         else:
-            peval = (sockets * corespsocket) // self.__world_size
+            peval = (sockets * corespsocket) // self._world_size
         return peval, sockets, corespsocket
 
     def setup_config_env_mpirun(self):
         peval, _, _ = self.get_peval()
-        if peval:
-            map_cmd = f"--map-by {self.__map_by}:PE={peval}"
-        return map_cmd
+        return f"--map-by {self._map_by}:PE={peval}"
 
     def create_single_card_setup(self):
         """
         Single-card setup.
         """
 
-        self.setup_config_env()
-        self.__interpreter = f"{sys.executable} "
+        self._interpreter = f"{sys.executable} "
 
-    def create_single_hls_setup_mpirun(self):
+    def create_single_node_setup_mpirun(self):
         """
         Single-node multi-card configuration setup for mpirun.
         """
 
-        self.setup_config_env()
         mpi_cmd = self.setup_config_env_mpirun()
-        self.__interpreter = (
-            f"mpirun -n {self.__world_size} --bind-to core {mpi_cmd} --rank-by core --report-bindings"
+        self._interpreter = (
+            f"mpirun -n {self._world_size} --bind-to core {mpi_cmd} --rank-by core --report-bindings"
             f" --allow-run-as-root {sys.executable} "
         )
 
-    def create_single_hls_setup_deepspeed(self):
+    def create_single_node_setup_deepspeed(self):
         """
         Single-node multi-card configuration setup for DeepSpeed.
         """
 
-        self.__interpreter = f"deepspeed --num_nodes 1 --num_gpus {self.__world_size} --no_local_rank "
+        self._interpreter = f"deepspeed --num_nodes 1 --num_gpus {self._world_size} --no_local_rank "
 
-    def create_single_hls_setup(self):
+    def create_single_node_setup(self):
         """
         Single-node multi-card configuration setup.
         """
 
-        use_env_param = "--use_env" if self.__use_env else ""
+        use_env_param = "--use_env" if self._use_env else ""
 
-        self.setup_config_env()
-        self.__interpreter = (
-            f"{sys.executable} -um torch.distributed.launch --nproc_per_node={self.__world_size} {use_env_param} "
+        self._interpreter = (
+            f"{sys.executable} -um torch.distributed.launch --nproc_per_node={self._world_size} {use_env_param} "
         )
 
-    def create_multi_hls_setup(self):
+    def create_multi_node_setup(self):
         """
-        Multi-node configuration setup for mpirun.
+        Multi-node configuration setup for DeepSpeed.
         """
 
-        self.setup_config_env()
-        envlist = [
-            "MAX_WAIT_ATTEMPTS",
-            "LOG_LEVEL_ALL",
-            "LOG_LEVEL_SYN_API",
-            "LD_LIBRARY_PATH",
-            "PYTORCH_MODULES_ROOT_PATH",
-            "BUILD_ROOT_LATEST",
-            "PYTHONPATH",
-            "HABANA_LOGS",
-            "GC_KERNEL_PATH",
-            "HCCL_BOX_SIZE",
-            "HCCL_OVER_TCP",
-            "HCCL_COMM_ID",
-            "HCCL_SOCKET_IFNAME",
-            "SOCKET_NTHREADS",
-            "NSOCK_PERTHREAD",
-            "HCCL_DEFAULT_NIC_COUNT",
-            "PT_HCCL_SLICE_SIZE_MB",
-            "HCCL_OVER_OFI",
-            "MULTI_HLS_IPS",
-            "https_proxy",
-            "HTTPS_PROXY",
-            "http_proxy",
-            "HTTP_PROXY",
-            "MULTI_STREAMS_ENABLE",
-        ]
-        assert os.getenv("MULTI_HLS_IPS"), "environment variable MULTI_HLS_IPS is not set"
-        __hls_list = str(os.getenv("MULTI_HLS_IPS", "")).split(",")
-        __world_size = self.__world_size
-        __sshport = os.getenv("DOCKER_SSHD_PORT", 3022)
-        __master_port = os.getenv("MASTER_PORT", 12345)
-        __master_addr = os.getenv("MASTER_ADDR", __hls_list[0])
-        __per_node_processes = int(__world_size / len(__hls_list))
-        __pe_val, __sockets, _ = self.get_peval()
-        __cores_per_node = __per_node_processes * __pe_val
-        __process_per_socket = __per_node_processes // __sockets
-        envset_cmds = []
-        for __env in envlist:
-            __val = os.getenv(__env, None)
-            if __val:
-                __arg = f'-x {__env}="{__val}"'
-                envset_cmds.append(__arg)
-        envset_cmd = " ".join(envset_cmds)
-        hls_nodes = []
-        for hls in __hls_list:
-            hls_node = hls.split("-")[0]
-            hls_nodes.append(f"{hls_node}:{__cores_per_node}")
-        hls_info = ",".join(hls_nodes)
-        __master_addr = __hls_list[0]
-        network = __master_addr.split(".")
-        network[-1] = "0"
-        network_id = ".".join(network) + "/16"
-        cmd = "mpirun --allow-run-as-root "
-        cmd += f" {envset_cmd} "
-        cmd += f"--prefix {os.getenv('MPI_ROOT', '/usr/local/openmpi')} "
-        cmd += f"--mca btl_tcp_if_include {network_id} "
-        cmd += f"-x MASTER_ADDR={__master_addr} "
-        cmd += f"-x MASTER_PORT={__master_port} "
-        cmd += f'--mca plm_rsh_args "-p {__sshport}" --bind-to core '
-        cmd += f"-H {hls_info} -n {__world_size} "
-        if __process_per_socket > 0:
-            cmd += f"--map-by ppr:{__process_per_socket}:socket:PE={__pe_val} "
-        else:
-            cmd += f"--map-by ppr:{__per_node_processes}:node:PE={__pe_val} "
-        cmd += f"--rank-by core --report-bindings {sys.executable} "
-        self.__interpreter = cmd
+        master_addr = self.process_hostfile()
+        self._interpreter = f"deepspeed --hostfile {self._hostfile} --master_addr {master_addr} --no_local_rank "
 
     def run(self):
+        """
+        Runs the desired command with configuration specified by the user.
+        """
+
         try:
-            if self.__model_env_vars:
+            if self._model_env_vars:
                 print("Running with the following model specific env vars: ")
                 for env_name, env_val in [
-                    *self.__model_env_vars.items()
-                ]:  # iterate key value pairs of self.__model_env_vars
+                    *self._model_env_vars.items()
+                ]:  # iterate key value pairs of self._model_env_vars
                     print(f"{env_name}={env_val}")
                     if "LD_PRELOAD" in str(env_name) and os.environ.get(str(env_name), None):
                         os.environ[str(env_name)] = str(env_val) + ":" + os.environ.get(str(env_name), None)
                     else:
                         os.environ[str(env_name)] = str(env_val)
-            for command in self.__commands:
-                command = self.__interpreter + command
+            for command in self._commands:
+                command = self._interpreter + command
                 print(f"{self.__class__.__name__} run(): command = {command}")
                 sys.stdout.flush()
                 sys.stderr.flush()
@@ -254,8 +213,44 @@ class DistributedRunner:
                     if proc.returncode != 0:
                         logger.error(f"{command}  exited with status = {proc.returncode}")
                         return proc.returncode
-            if self.__model_env_vars:
-                for env_name in [*self.__model_env_vars.keys()]:  # iterate keys of self.__model_env_vars
+            if self._model_env_vars:
+                for env_name in [*self._model_env_vars.keys()]:  # iterate keys of self._model_env_vars
                     del os.environ[str(env_name)]
         except Exception as exc:
             raise RuntimeError(f"Error in {self.__class__.__name__} run()") from exc
+
+    def process_hostfile(self) -> str:
+        """
+        Returns the master address to use for multi-node runs with DeepSpeed.
+        Directly inspired from https://github.com/microsoft/DeepSpeed/blob/316c4a43e0802a979951ee17f735daf77ea9780f/deepspeed/autotuning/utils.py#L145.
+
+        Returns:
+            str: address of the master node.
+        """
+        if not self._hostfile.is_file():
+            raise ValueError(f"Unable to find hostfile at {self._hostfile}.")
+
+        # e.g., worker-0 slots=16
+        with self._hostfile.open("r") as file:
+            resource_pool = {}
+            master_addr = None
+            for line in file.readlines():
+                line = line.strip()
+                if line == "":
+                    # skip empty lines
+                    continue
+                try:
+                    hostname, slots = line.split()
+                    _, slot_count = slots.split("=")
+                    slot_count = int(slot_count)
+                    if master_addr is None:
+                        master_addr = hostname
+                except ValueError as err:
+                    logger.error("Hostfile is not formatted correctly, unable to proceed with training.")
+                    raise err
+                if hostname in resource_pool:
+                    logger.error("Hostfile contains duplicate hosts, unable to proceed with training.")
+                    raise ValueError(f"Host {hostname} is already defined")
+                resource_pool[hostname] = slot_count
+
+        return master_addr

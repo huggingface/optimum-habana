@@ -1,0 +1,3 @@
+HCCL_OVER_OFI=1
+HCCL_SOCKET_IFNAME=ens32
+LD_LIBRARY_PATH=/root/hccl_ofi_wrapper:/opt/amazon/openmpi/lib:/opt/amazon/efa/lib

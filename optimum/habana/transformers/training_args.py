@@ -441,7 +441,10 @@ class GaudiTrainingArguments(TrainingArguments):
                 from transformers.deepspeed import is_deepspeed_available
 
                 if not is_deepspeed_available():
-                    raise ImportError("--deepspeed requires deepspeed: `pip install deepspeed`.")
+                    raise ImportError(
+                        "--deepspeed requires deepspeed: `pip install"
+                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1`."
+                    )
                 import deepspeed
 
                 deepspeed.init_distributed(dist_backend="hccl", timeout=timedelta(seconds=self.ddp_timeout))
