@@ -24,7 +24,7 @@ Other [examples](https://github.com/huggingface/transformers/tree/main/examples/
 
 ## Distributed training
 
-All the PyTorch scripts in this repository work out of the box with distributed training.
+All the PyTorch training scripts in this repository work out of the box with distributed training.
 
 
 ### Single node
