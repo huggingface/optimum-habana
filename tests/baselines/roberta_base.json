@@ -8,6 +8,7 @@
                 "train_batch_size": 12,
                 "eval_f1": 92.2812,
                 "train_runtime": 1372.4895,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -17,6 +18,7 @@
                 "train_batch_size": 12,
                 "eval_f1": 91.8137,
                 "train_runtime": 306.2919,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -29,9 +31,10 @@
         "distribution": {
             "multi_card": {
                 "learning_rate": 5e-5,
-                "train_batch_size": 8,
+                "train_batch_size": 16,
                 "perplexity": 3.4737,
                 "train_runtime": 69.0908,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--ddp_find_unused_parameters True"

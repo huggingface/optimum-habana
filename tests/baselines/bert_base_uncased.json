@@ -8,6 +8,7 @@
                 "train_batch_size": 24,
                 "eval_f1": 88.1827,
                 "train_runtime": 1215.958,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -17,6 +18,7 @@
                 "train_batch_size": 24,
                 "eval_f1": 85.2676,
                 "train_runtime": 253.0599,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -32,6 +34,7 @@
                 "train_batch_size": 32,
                 "eval_f1": 0.901,
                 "train_runtime": 54.9369,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--max_seq_length 128"
                 ]
@@ -41,6 +44,7 @@
                 "train_batch_size": 16,
                 "eval_f1": 0.8731,
                 "train_runtime": 70.9395,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--max_seq_length 128"
                 ]

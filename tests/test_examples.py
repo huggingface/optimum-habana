@@ -269,6 +269,7 @@ class ExampleTesterBase(TestCase):
         "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "train_runtime": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
         "eval_wer": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
+        "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TRAINING_TIME_PERF_FACTOR),
     }
 
     def _create_command_line(
@@ -359,9 +360,9 @@ class ExampleTesterBase(TestCase):
                 )
         self.assertGreaterEqual(
             number_asserted_metrics,
-            2,
+            3,
             (
-                f"{number_asserted_metrics} asserted metric while at least 2 are expected (training time + accuracy)."
+                f"{number_asserted_metrics} asserted metric(s) while at least 3 are expected (throughput + training time + accuracy)."
                 f" Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received: {baseline.keys()}"
             ),
         )
@@ -408,13 +409,13 @@ class DeepspeedCausalLanguageModelingExampleTester(
 class ImageClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification"
 ):
-    TASK_NAME = "beans"
+    TASK_NAME = "cifar10"
 
 
 class MultiCardImageClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification", multi_card=True
 ):
-    TASK_NAME = "beans"
+    TASK_NAME = "cifar10"
 
 
 class MultiCardMaskedLanguageModelingExampleTester(
