@@ -33,7 +33,7 @@ python run_image_classification.py \
     --remove_unused_columns False \
     --do_train \
     --do_eval \
-    --learning_rate 2e-5 \
+    --learning_rate 3e-5 \
     --num_train_epochs 5 \
     --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 64 \
@@ -49,7 +49,7 @@ python run_image_classification.py \
 ```
 
 For Swin, you need to change/add the following arguments:
-- `--model_name_or_path microsoft/swin-base-patch4-window7-224`
+- `--model_name_or_path microsoft/swin-base-patch4-window7-224-in22k`
 - `--gaudi_config_name Habana/swin`
 - `--ignore_mismatched_sizes`
 
@@ -178,7 +178,7 @@ python ../gaudi_spawn.py \
     --remove_unused_columns False \
     --do_train \
     --do_eval \
-    --learning_rate 2e-5 \
+    --learning_rate 2e-4 \
     --num_train_epochs 5 \
     --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 64 \
@@ -194,7 +194,7 @@ python ../gaudi_spawn.py \
 ```
 
 For Swin, you need to change/add the following arguments:
-- `--model_name_or_path microsoft/swin-base-patch4-window7-224`
+- `--model_name_or_path microsoft/swin-base-patch4-window7-224-in22k`
 - `--gaudi_config_name Habana/swin`
 - `--ignore_mismatched_sizes`
 
@@ -214,7 +214,7 @@ python ../gaudi_spawn.py \
     --remove_unused_columns False \
     --do_train \
     --do_eval \
-    --learning_rate 2e-5 \
+    --learning_rate 2e-4 \
     --num_train_epochs 5 \
     --per_device_train_batch_size 64 \
     --per_device_eval_batch_size 64 \
