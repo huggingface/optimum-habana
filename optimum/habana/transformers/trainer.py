@@ -85,6 +85,8 @@ if TYPE_CHECKING:
 
 logger = logging.get_logger(__name__)
 
+print("TEST")
+
 
 # Name of the files used for checkpointing
 TRAINING_ARGS_NAME = "training_args.bin"
