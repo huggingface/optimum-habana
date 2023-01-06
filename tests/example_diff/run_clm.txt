@@ -9,25 +9,25 @@
 ---
 > Training the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
-36a36,37
+37a37,38
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-44,45d44
+45,46d45
 <     Trainer,
 <     TrainingArguments,
-47,48d45
+48,49d46
 <     is_torch_tpu_available,
 <     set_seed,
-57c54
+58c55
 < check_min_version("4.26.0.dev0")
 ---
 > check_min_version("4.25.0")
-78c75,76
+79c76,77
 <                 "The model checkpoint for weights initialization.Don't set if you want to train a model from scratch."
 ---
 >                 "The model checkpoint for weights initialization. Don't set it if you want to train a model from"
 >                 " scratch."
-122a121,130
+132a131,139
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -37,12 +37,11 @@
 >             )
 >         },
 >     )
-> 
-210c218
+221c228
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-235a244,250
+246a254,260
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -50,22 +49,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-238,239c253,255
+249,250c263,265
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-346a363
+357a373
 >         "use_cache": model_args.use_cache,
-511c528
+528c544
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-512a530
+529a546
 >         gaudi_config=gaudi_config,
-519,522c537,538
+536,539c553,554
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -73,7 +72,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-576,580d591
+593,597d607
 < 
 < 
 < def _mp_fn(index):
