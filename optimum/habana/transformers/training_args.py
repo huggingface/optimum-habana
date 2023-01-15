@@ -80,6 +80,11 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": "Whether to use lazy mode for training the model."},
     )
 
+    use_hpu_graphs: bool = field(
+        default=False,
+        metadata={"help": "Whether to use HPU graphs for performing inference."},
+    )
+
     throughput_warmup_steps: int = field(
         default=0,
         metadata={
@@ -130,8 +135,13 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     def __post_init__(self):
-        if (self.use_lazy_mode or self.gaudi_config_name) and not self.use_habana:
-            raise ValueError("--use_lazy_mode and --gaudi_config_name cannot be used without --use_habana")
+        if (self.use_lazy_mode or self.use_hpu_graphs or self.gaudi_config_name) and not self.use_habana:
+            raise ValueError(
+                "--use_lazy_mode, --use_hpu_graphs and --gaudi_config_name cannot be used without --use_habana"
+            )
+
+        if self.use_hpu_graphs and not self.use_lazy_mode:
+            raise ValueError("--use_hpu_graphs cannot be used in eager mode. Please set --use_lazy_mode to True.")
 
         # Raise errors for arguments that are not supported by optimum-habana
         if self.bf16 or self.bf16_full_eval:

@@ -75,7 +75,7 @@ from ..utils import get_hpu_memory_stats, set_seed, speed_metrics, to_device_dty
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
-from .trainer_utils import convert_into_dtypes, get_dtype
+from .trainer_utils import convert_into_dtypes, copy_to, get_dtype, input_shape_hash
 from .training_args import GaudiTrainingArguments
 
 
@@ -996,6 +996,9 @@ class GaudiTrainer(Trainer):
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
+        if args.use_hpu_graphs:
+            model = self._wrap_model_for_hpu_graphs(model)
+
         batch_size = self.args.eval_batch_size
 
         logger.info(f"***** Running {description} *****")
@@ -1580,3 +1583,42 @@ class GaudiTrainer(Trainer):
         # Moving a model to HPU disconnects the tied weights, so we have to retie them.
         if self.args.use_habana and hasattr(model, "tie_weights"):
             model.tie_weights()
+
+    def _wrap_model_for_hpu_graphs(self, module):
+        import habana_frameworks.torch as ht
+
+        class CachedParams:
+            def __init__(self, graph_inputs, graph_outputs, graph):
+                self.graph_inputs = graph_inputs
+                self.graph_outputs = graph_outputs
+                self.graph = graph
+
+        stream = ht.hpu.Stream()
+        cache = {}
+        orig_fwd = module.forward
+
+        def forward(*args, **kwargs):
+            inputs = (args, kwargs)
+            shape_hash = input_shape_hash(inputs)
+            cached = cache.get(shape_hash)
+            if cached is None:
+                # Capture graph and cache it
+                with ht.hpu.stream(stream):
+                    graph = ht.hpu.HPUGraph()
+                    graph.capture_begin()
+                    outputs = orig_fwd(*args, **kwargs)
+                    graph.capture_end()
+                    graph_inputs = inputs
+                    graph_outputs = outputs
+                    cache[shape_hash] = CachedParams(graph_inputs, graph_outputs, graph)
+                return outputs
+
+            # Replay the cached graph with updated inputs
+            copy_to(cached.graph_inputs, inputs)
+            ht.core.mark_step()
+            ht.core.hpu.default_stream().synchronize()
+            cached.graph.replay()
+            return cached.graph_outputs
+
+        module.forward = forward
+        return module

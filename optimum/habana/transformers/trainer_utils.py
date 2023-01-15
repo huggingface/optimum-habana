@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 import torch
@@ -70,3 +70,43 @@ def convert_into_dtypes(
         return tuple(convert_into_dtypes(preds_tensor, dtypes[i]) for i, preds_tensor in enumerate(preds))
     else:
         raise TypeError(f"preds should be of type np.ndarray or tuple, got {type(preds)} which is not supported")
+
+
+def input_shape_hash(inputs: Dict[str, Union[torch.Tensor, Any]]) -> int:
+    """
+    Returns a hash based on the shapes of the inputs.
+    For instance, two different tensors of same shape will return the same hash.
+    This is used for HPU graphs to know whether capturing the graph for the current input or not.
+
+    Args:
+        inputs (Dict[str, Union[torch.Tensor, Any]]): the inputs of the model
+
+    Returns:
+        int: hash of the inputs
+    """
+
+    if isinstance(inputs, dict):
+        # Dictionaries are not hashable so turning them into tuples
+        return input_shape_hash(tuple(inputs.items()))
+    elif isinstance(inputs, list) or isinstance(inputs, tuple):
+        # Get the hash of the tuple
+        return hash(tuple(input_shape_hash(el) for el in inputs))
+    elif torch.is_tensor(inputs):
+        # Get the hash of the tensor shape
+        return hash(inputs.shape)
+    else:
+        # Get the hash of the inputs
+        return hash(inputs)
+
+
+def copy_to(dst, src):
+    assert type(dst) == type(src)
+    if isinstance(dst, dict):
+        for (dk, dv), (sk, sv) in zip(dst.items(), src.items()):
+            assert dk == sk
+            copy_to(dv, sv)
+    elif isinstance(dst, list) or isinstance(dst, tuple):
+        for d, s in zip(dst, src):
+            copy_to(d, s)
+    elif torch.is_tensor(dst):
+        dst.copy_(src, non_blocking=True)
