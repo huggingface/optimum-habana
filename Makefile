@@ -53,7 +53,6 @@ slow_tests_deepspeed: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
-	python -m pip install git+https://github.com/huggingface/diffusers.git
 	python -m pip install ftfy
 	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 
@@ -95,4 +94,3 @@ clean:
 
 test_installs:
 	python -m pip install .[tests]
-	python -m pip install git+https://github.com/huggingface/transformers.git

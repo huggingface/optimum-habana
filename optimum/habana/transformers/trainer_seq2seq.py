@@ -212,7 +212,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             else:
                 loss = None
 
-        if self.args.use_lazy_mode:
+        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
             self.htcore.mark_step()
 
         if self.args.prediction_loss_only:

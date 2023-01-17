@@ -100,11 +100,25 @@ def input_shape_hash(inputs: Dict[str, Union[torch.Tensor, Any]]) -> int:
 
 
 def copy_to(dst, src):
-    assert type(dst) == type(src)
+    """
+    Copies the dat from the source object to the target object.
+
+    Args:
+        dst: target
+        src: source
+    """
+    if type(dst) != type(src):
+        raise TypeError(
+            f"dst and src should have the same type, but dst is a {type(dst)} whereas src is a {type(src)}."
+        )
+
     if isinstance(dst, dict):
-        for (dk, dv), (sk, sv) in zip(dst.items(), src.items()):
-            assert dk == sk
-            copy_to(dv, sv)
+        for (dst_key, dst_value), (src_key, src_value) in zip(dst.items(), src.items()):
+            assert dst_key == src_key
+            if dst_key == src_key:
+                copy_to(dst_value, src_value)
+            else:
+                raise ValueError(f"dst_key and src_key should be equal but got {dst_key} and {src_key}.")
     elif isinstance(dst, list) or isinstance(dst, tuple):
         for d, s in zip(dst, src):
             copy_to(d, s)

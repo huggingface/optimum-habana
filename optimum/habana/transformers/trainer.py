@@ -996,7 +996,8 @@ class GaudiTrainer(Trainer):
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
-        if args.use_hpu_graphs:
+        # Do not use HPU graphs if the training is ongoing because it detaches gradients
+        if args.use_hpu_graphs and not self.is_in_train:
             model = self._wrap_model_for_hpu_graphs(model)
 
         batch_size = self.args.eval_batch_size
@@ -1256,7 +1257,7 @@ class GaudiTrainer(Trainer):
                 if self.args.past_index >= 0:
                     self._past = outputs[self.args.past_index - 1]
 
-        if self.args.use_lazy_mode:
+        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
             self.htcore.mark_step()
 
         if prediction_loss_only:
@@ -1302,6 +1303,9 @@ class GaudiTrainer(Trainer):
             deepspeed_engine.lr_scheduler = None
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+
+        if args.use_hpu_graphs and not self.is_in_train:
+            model = self._wrap_model_for_hpu_graphs(model)
 
         batch_size = dataloader.batch_size
         num_examples = self.num_examples(dataloader)
@@ -1584,9 +1588,11 @@ class GaudiTrainer(Trainer):
         if self.args.use_habana and hasattr(model, "tie_weights"):
             model.tie_weights()
 
-    def _wrap_model_for_hpu_graphs(self, module):
+    def _wrap_model_for_hpu_graphs(self, model: torch.nn.Module):
+        print("HERE")
         import habana_frameworks.torch as ht
 
+        # Class to manage cached inputs, outptus and graph
         class CachedParams:
             def __init__(self, graph_inputs, graph_outputs, graph):
                 self.graph_inputs = graph_inputs
@@ -1595,7 +1601,7 @@ class GaudiTrainer(Trainer):
 
         stream = ht.hpu.Stream()
         cache = {}
-        orig_fwd = module.forward
+        orig_fwd = model.forward
 
         def forward(*args, **kwargs):
             inputs = (args, kwargs)
@@ -1620,5 +1626,5 @@ class GaudiTrainer(Trainer):
             cached.graph.replay()
             return cached.graph_outputs
 
-        module.forward = forward
-        return module
+        model.forward = forward
+        return model
