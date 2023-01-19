@@ -43,6 +43,7 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -64,6 +65,7 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -84,6 +86,7 @@ python ../gaudi_spawn.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gradient_checkpointing \
     --throughput_warmup_steps 2
 ```
@@ -114,6 +117,7 @@ python run_mlm.py \
     --output_dir /tmp/test-mlm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
     --throughput_warmup_steps 2
 ```
@@ -132,6 +136,7 @@ python run_mlm.py \
     --output_dir /tmp/test-mlm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
     --throughput_warmup_steps 2
 ```
@@ -157,6 +162,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/test-mlm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
     --throughput_warmup_steps 2
 ```
@@ -181,6 +187,7 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -204,6 +211,7 @@ python run_clm.py \
     --output_dir /tmp/test-clm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/gpt2 \
     --throughput_warmup_steps 2
 ```
@@ -226,10 +234,11 @@ python ../gaudi_spawn.py \
     --do_train \
     --do_eval \
     --output_dir /tmp/test-clm \
+    --gradient_checkpointing \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
-    --gradient_checkpointing \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2 \
     --deepspeed path_to_my_deepspeed_config
 ```

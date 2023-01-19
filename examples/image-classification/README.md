@@ -44,6 +44,7 @@ python run_image_classification.py \
     --seed 1337 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2
 ```
@@ -90,6 +91,7 @@ python run_image_classification.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2
 ```
@@ -189,6 +191,7 @@ python ../gaudi_spawn.py \
     --seed 1337 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2
 ```
@@ -225,6 +228,7 @@ python ../gaudi_spawn.py \
     --seed 1337 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2 \
     --deepspeed path_to_my_deepspeed_config
