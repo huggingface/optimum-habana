@@ -95,6 +95,7 @@ class GaudiGenerationMixin(GenerationMixin):
         begin_suppress_tokens: Optional[List[int]] = None,
         forced_decoder_ids: Optional[List[List[int]]] = None,
         lazy_mode: Optional[bool] = False,
+        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -261,8 +262,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 will be forced before sampling. For example, `[[1, 123]]` means the second generated token will always
                 be a token of index 123.
             lazy_mode (`bool`, *optional*, defaults to `False`):
-                Whether the run is executed in lazy mode or not (i.e. eager mode)
-
+                Whether the run is executed in lazy mode or not (i.e. eager mode).
+            hpu_graphs (`bool`, *optional*, defaults to `False`):
+                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If the model
                 is an encoder-decoder model, encoder specific kwargs should not be prefixed and decoder specific kwargs
@@ -542,7 +544,7 @@ class GaudiGenerationMixin(GenerationMixin):
         )
 
         # In lazy mode, import Habana torch to be able to add mark_step()
-        if lazy_mode:
+        if lazy_mode and not hpu_graphs:
             import habana_frameworks.torch.core as htcore
 
             self.htcore_generation = htcore
@@ -565,6 +567,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -619,6 +622,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -657,6 +661,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -703,6 +708,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -749,6 +755,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -834,6 +841,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -853,6 +861,8 @@ class GaudiGenerationMixin(GenerationMixin):
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
+        lazy_mode: Optional[bool] = False,
+        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[ContrastiveSearchOutput, torch.LongTensor]:
         r"""
@@ -892,6 +902,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether or not to return a [`transformers.generationutils.ModelOutput`] instead of a plain tuple.
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
+            lazy_mode (`bool`, *optional*, defaults to `False`):
+                Whether the run is executed in lazy mode or not (i.e. eager mode).
+            hpu_graphs (`bool`, *optional*, defaults to `False`):
+                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -943,6 +957,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
+        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, torch.LongTensor]:
         r"""
@@ -978,7 +993,9 @@ class GaudiGenerationMixin(GenerationMixin):
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
-                Whether the run is executed in lazy mode or not (i.e. eager mode)
+                Whether the run is executed in lazy mode or not (i.e. eager mode).
+            hpu_graphs (`bool`, *optional*, defaults to `False`):
+                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1125,7 +1142,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if eos_token_id is not None:
                 unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
 
-            if lazy_mode:
+            if lazy_mode and not hpu_graphs:
                 self.htcore_generation.mark_step()
 
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
@@ -1172,6 +1189,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
+        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[SampleOutput, torch.LongTensor]:
         r"""
@@ -1211,7 +1229,9 @@ class GaudiGenerationMixin(GenerationMixin):
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
-                Whether the run is executed in lazy mode or not (i.e. eager mode)
+                Whether the run is executed in lazy mode or not (i.e. eager mode).
+            hpu_graphs (`bool`, *optional*, defaults to `False`):
+                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1379,7 +1399,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if eos_token_id is not None:
                 unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
 
-            if lazy_mode:
+            if lazy_mode and not hpu_graphs:
                 self.htcore_generation.mark_step()
 
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
@@ -1425,6 +1445,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
+        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
         r"""
@@ -1463,7 +1484,9 @@ class GaudiGenerationMixin(GenerationMixin):
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
-                Whether the run is executed in lazy mode or not (i.e. eager mode)
+                Whether the run is executed in lazy mode or not (i.e. eager mode).
+            hpu_graphs (`bool`, *optional*, defaults to `False`):
+                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1667,7 +1690,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # increase cur_len
             cur_len = cur_len + 1
 
-            if lazy_mode:
+            if lazy_mode and not hpu_graphs:
                 self.htcore_generation.mark_step()
 
             if stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
@@ -1731,6 +1754,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
+        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[BeamSampleOutput, torch.LongTensor]:
         r"""
@@ -1773,7 +1797,9 @@ class GaudiGenerationMixin(GenerationMixin):
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
-                Whether the run is executed in lazy mode or not (i.e. eager mode)
+                Whether the run is executed in lazy mode or not (i.e. eager mode).
+            hpu_graphs (`bool`, *optional*, defaults to `False`):
+                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1853,6 +1879,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
+        hpuy_graphs: Optional[bool] = False,
         **model_kwargs,
     ):
         r"""
@@ -1891,7 +1918,9 @@ class GaudiGenerationMixin(GenerationMixin):
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
-                Whether the run is executed in lazy mode or not (i.e. eager mode)
+                Whether the run is executed in lazy mode or not (i.e. eager mode).
+            hpu_graphs (`bool`, *optional*, defaults to `False`):
+                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs that will be forwarded to the `forward` function of the model. If
                 model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1967,6 +1996,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = None,
         lazy_mode: Optional[bool] = False,
+        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
         r"""
@@ -2010,7 +2040,9 @@ class GaudiGenerationMixin(GenerationMixin):
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
-                Whether the run is executed in lazy mode or not (i.e. eager mode)
+                Whether the run is executed in lazy mode or not (i.e. eager mode).
+            hpu_graphs (`bool`, *optional*, defaults to `False`):
+                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.

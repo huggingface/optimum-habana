@@ -170,6 +170,9 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         gen_kwargs["lazy_mode"] = (
             gen_kwargs["lazy_mode"] if gen_kwargs.get("lazy_mode") is not None else self.args.use_lazy_mode
         )
+        gen_kwargs["hpu_graphs"] = (
+            gen_kwargs["hpu_graphs"] if gen_kwargs.get("hpu_graphs") is not None else self.args.use_hpu_graphs
+        )
 
         if "attention_mask" in inputs:
             gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
