@@ -1621,7 +1621,6 @@ class GaudiTrainer(Trainer):
 
             # Replay the cached graph with updated inputs
             copy_to(cached.graph_inputs, inputs)
-            ht.core.mark_step()
             ht.core.hpu.default_stream().synchronize()
             cached.graph.replay()
             return cached.graph_outputs

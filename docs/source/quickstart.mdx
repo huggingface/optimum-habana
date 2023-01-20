@@ -34,6 +34,7 @@ That is how most of the [example scripts](https://github.com/huggingface/optimum
 +training_args = GaudiTrainingArguments(
 +  use_habana=True,
 +  use_lazy_mode=True,
++  use_hpu_graphs=True,
 +  gaudi_config_name=gaudi_config_name,
   ...
 )
