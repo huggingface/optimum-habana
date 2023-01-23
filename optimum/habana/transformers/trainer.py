@@ -998,7 +998,14 @@ class GaudiTrainer(Trainer):
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
-            model = self._wrap_model_for_hpu_graphs(model)
+            if self.args.local_rank == -1:
+                model = self._wrap_model_for_hpu_graphs(model)
+            else:
+                # Do not use HPU graphs for distributed runs
+                logger.warning(
+                    "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
+                    " performed in lazy mode."
+                )
 
         batch_size = self.args.eval_batch_size
 
@@ -1304,10 +1311,16 @@ class GaudiTrainer(Trainer):
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
+        # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
-            model = self._wrap_model_for_hpu_graphs(model)
-            if hasattr(model, "generate"):
-                model = self._wrap_generate_for_hpu_graphs(model)
+            if self.args.local_rank == -1:
+                model = self._wrap_model_for_hpu_graphs(model)
+            else:
+                # Do not use HPU graphs for distributed runs
+                logger.warning(
+                    "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
+                    " performed in lazy mode."
+                )
 
         batch_size = dataloader.batch_size
         num_examples = self.num_examples(dataloader)
