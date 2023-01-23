@@ -10,6 +10,8 @@
       title: Accelerating Training
     - local: tutorials/pretraining
       title: Pretraining Transformers
+    - local: tutorials/accelerating_inference
+      title: Accelerating Inference
     title: Tutorials
   - sections:
     - local: usage_guides/single_hpu

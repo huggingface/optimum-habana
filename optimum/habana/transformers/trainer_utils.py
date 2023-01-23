@@ -114,7 +114,6 @@ def copy_to(dst, src):
 
     if isinstance(dst, dict):
         for (dst_key, dst_value), (src_key, src_value) in zip(dst.items(), src.items()):
-            assert dst_key == src_key
             if dst_key == src_key:
                 copy_to(dst_value, src_value)
             else:
