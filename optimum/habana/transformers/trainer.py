@@ -999,6 +999,7 @@ class GaudiTrainer(Trainer):
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
             if self.args.local_rank == -1:
+                logger.info("Using HPU graphs for inference.")
                 model = self._wrap_model_for_hpu_graphs(model)
             else:
                 # Do not use HPU graphs for distributed runs
@@ -1314,6 +1315,7 @@ class GaudiTrainer(Trainer):
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
             if self.args.local_rank == -1:
+                logger.info("Using HPU graphs for inference.")
                 model = self._wrap_model_for_hpu_graphs(model)
             else:
                 # Do not use HPU graphs for distributed runs
