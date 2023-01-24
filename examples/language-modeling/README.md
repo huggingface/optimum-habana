@@ -85,6 +85,7 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --gradient_checkpointing \
+    --use_cache False \
     --throughput_warmup_steps 2
 ```
 
@@ -201,6 +202,7 @@ python run_clm.py \
     --do_train \
     --do_eval \
     --gradient_checkpointing \
+    --use_cache False \
     --output_dir /tmp/test-clm \
     --use_habana \
     --use_lazy_mode \
@@ -230,6 +232,7 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --gradient_checkpointing \
+    --use_cache False \
     --throughput_warmup_steps 2 \
     --deepspeed path_to_my_deepspeed_config
 ```

@@ -98,7 +98,7 @@ class GaudiPipelineUtilsTester(TestCase):
         self.assertTrue(hasattr(pipeline, "hmp"))
 
     def test_save_pretrained(self):
-        model_name = "hf-internal-testing/tiny-stable-diffusion-lms-pipe"
+        model_name = "hf-internal-testing/tiny-stable-diffusion-torch"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
             model_name,

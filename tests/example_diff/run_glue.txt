@@ -6,6 +6,10 @@
 <     TrainingArguments,
 43d42
 <     set_seed,
+51c50
+< check_min_version("4.27.0.dev0")
+---
+> check_min_version("4.26.0")
 211c210
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
@@ -17,7 +21,7 @@
 >         revision=model_args.model_revision,
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
-> 
+>
 239,240c245,247
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
@@ -32,8 +36,8 @@
 514a522
 >         gaudi_config=gaudi_config,
 614,618d621
-< 
-< 
+<
+<
 < def _mp_fn(index):
 <     # For xla_spawn (TPUs)
 <     main()

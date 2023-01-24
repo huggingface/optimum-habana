@@ -1,4 +1,6 @@
-31,39c31,33
+20d19
+< import warnings
+31,39c30,32
 < from transformers import (
 <     AutoConfig,
 <     AutoFeatureExtractor,
@@ -12,11 +14,15 @@
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser
-164,166d157
+48c41
+< check_min_version("4.27.0.dev0")
+---
+> check_min_version("4.26.0")
+164,166d156
 <     freeze_feature_extractor: Optional[bool] = field(
 <         default=None, metadata={"help": "Whether to freeze the feature extractor layers of the model."}
 <     )
-172,186d162
+172,186d161
 <     def __post_init__(self):
 <         if not self.freeze_feature_extractor and self.freeze_feature_encoder:
 <             warnings.warn(
@@ -31,33 +37,33 @@
 <                 "should not be used in combination with `--freeze_feature_encoder`."
 <                 "Only make use of `--freeze_feature_encoder`."
 <             )
-< 
-193c169
+<
+193c168
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-217a194,200
+217a193,199
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         revision=model_args.model_revision,
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
-> 
-220,221c203,205
+>
+220,221c202,204
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu} "
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-287a272,274
+287a271,273
 >     # Max input length
 >     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
-> 
-290a278
-> 
-295,296c283,290
+>
+290a277
+>
+295,296c282,289
 <             output_batch["input_values"].append(wav)
 <         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
 ---
@@ -69,11 +75,11 @@
 >                 truncation=True,
 >             )
 >             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-297a292
+297a291
 >         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
-302a298
-> 
-305,306c301,308
+302a297
+>
+305,306c300,307
 <             output_batch["input_values"].append(wav)
 <         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
 ---
@@ -85,11 +91,11 @@
 >                 truncation=True,
 >             )
 >             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-307a310
+307a309
 >         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
-369c372
+369c371
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-370a374
+370a373
 >         gaudi_config=gaudi_config,
