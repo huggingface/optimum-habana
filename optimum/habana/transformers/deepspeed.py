@@ -83,7 +83,7 @@ def deepspeed_init(trainer, num_training_steps, resume_from_checkpoint=None, inf
     If `resume_from_checkpoint` was passed then an attempt to resume from a previously saved checkpoint will be made.
     Args:
         trainer: Trainer object
-        num_training_steps: per single gpu
+        num_training_steps: per single HPU
         resume_from_checkpoint: path to a checkpoint if to resume from after normal DeepSpeedEngine load
         inference: launch in inference mode (no optimizer and no lr scheduler)
     Returns: model, optimizer, lr_scheduler

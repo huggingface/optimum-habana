@@ -49,7 +49,7 @@ class QuestionAnsweringTrainer(GaudiTrainer):
             self.compute_metrics = compute_metrics
 
         if self.post_process_function is not None and self.compute_metrics is not None and self.args.should_save:
-            # Only the main node write the results by default:
+            # Only the main node write the results by default
             eval_preds = self.post_process_function(eval_examples, eval_dataset, output.predictions)
             metrics = self.compute_metrics(eval_preds)
 
@@ -89,12 +89,15 @@ class QuestionAnsweringTrainer(GaudiTrainer):
         if self.post_process_function is None or self.compute_metrics is None:
             return output
 
-        predictions = self.post_process_function(predict_examples, predict_dataset, output.predictions, "predict")
-        metrics = self.compute_metrics(predictions)
+        if self.args.should_save:
+            predictions = self.post_process_function(predict_examples, predict_dataset, output.predictions, "predict")
+            metrics = self.compute_metrics(predictions)
 
-        # Prefix all keys with metric_key_prefix + '_'
-        for key in list(metrics.keys()):
-            if not key.startswith(f"{metric_key_prefix}_"):
-                metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
+            # Prefix all keys with metric_key_prefix + '_'
+            for key in list(metrics.keys()):
+                if not key.startswith(f"{metric_key_prefix}_"):
+                    metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
 
-        return PredictionOutput(predictions=predictions.predictions, label_ids=predictions.label_ids, metrics=metrics)
+            return PredictionOutput(
+                predictions=predictions.predictions, label_ids=predictions.label_ids, metrics=metrics
+            )

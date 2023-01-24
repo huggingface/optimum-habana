@@ -24,8 +24,12 @@ Other [examples](https://github.com/huggingface/transformers/tree/main/examples/
 
 ## Distributed training
 
-All the PyTorch scripts in this repository work out of the box with distributed training. To launch one of them on _n_ HPUs,
-use the following command:
+All the PyTorch training scripts in this repository work out of the box with distributed training.
+
+
+### Single node
+
+To launch a script on _n_ HPUs belonging to a single Gaudi server, use the following command:
 
 ```bash
 python gaudi_spawn.py \
@@ -33,12 +37,11 @@ python gaudi_spawn.py \
     path_to_script.py --args1 --args2 ... --argsN
 ```
 where `--argX` is an argument of the script to run in a distributed way.
-Examples are given for question answering [here](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/README.md#multi-card-training) and for text classification [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification#multi-card-training).
 
 
-## DeepSpeed
+### DeepSpeed
 
-All the PyTorch scripts in this repository work out of the box with DeepSpeed. To launch one of them on _n_ HPUs, use the following command:
+All the PyTorch training scripts in this repository work out of the box with DeepSpeed. To launch one of them on _n_ HPUs, use the following command:
 
 ```bash
 python gaudi_spawn.py \
@@ -47,6 +50,27 @@ python gaudi_spawn.py \
     --deepspeed path_to_my_deepspeed_config
 ```
 where `--argX` is an argument of the script to run with DeepSpeed.
+
+
+### Multi node
+
+All the PyTorch training scripts in this repository work out of the box on several Gaudi instances. To launch one of them on _n_ nodes, use the following command:
+
+```bash
+python gaudi_spawn.py \
+    --hostfile path_to_my_hostfile --use_deepspeed \
+    path_to_my_script.py --args1 --args2 ... --argsN \
+    --deepspeed path_to_my_deepspeed_config
+```
+where `--argX` is an argument of the script to run with DeepSpeed and `--hostfile` is [a file specifying the addresses and the number of devices to use for each node](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node) such as:
+```
+ip_1 slots=8
+ip_2 slots=8
+...
+ip_n slots=8
+```
+
+You can find more information about multi-node training in the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) and in the [`multi-node-training`](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) folder where a Dockerfile is provided to easily set up your environment.
 
 
 ## Loading from a Tensorflow/Flax checkpoint file instead of a PyTorch model

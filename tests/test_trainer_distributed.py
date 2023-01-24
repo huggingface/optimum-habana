@@ -74,7 +74,6 @@ class TestGaudiTrainerDistributed(TestCasePlus):
             command_list=command,
             world_size=8,
             use_mpi=True,
-            multi_hls=False,
         )
 
         ret_code = distributed_runner.run()
