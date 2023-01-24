@@ -40,6 +40,14 @@ args = GaudiTrainingArguments(
 
 <Tip>
 
+In lazy mode, the last batch is filled with extra samples by default so that it has the same dimensions as previous batches.
+This enables to avoid extra graph compilations during training.
+You can also discard the last batch with `dataloader_drop_last=True`.
+
+</Tip>
+
+<Tip>
+
 In lazy mode, the first couple of training iterations may be slower due to graph compilations.
 To not take them into account in the computation of the throughput at the end of the training, you can add the following training argument: `throughput_warmup_steps=2`.
 
