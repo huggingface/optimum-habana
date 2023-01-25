@@ -262,8 +262,12 @@ class GaudiTrainer(Trainer):
         else:
             if self.args.world_size <= 1:
                 num_samples = len(self.train_dataset)
-                if self.args.use_lazy_mode and not self.args.dataloader_drop_last:
-                    # Make the total number of samples divisible by the batch size in lazy mode
+                if (
+                    self.args.use_lazy_mode
+                    and not self.args.dataloader_drop_last
+                    and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
+                ):
+                    # Make the total number of samples divisible by the batch size in lazy mode if needed
                     num_samples += (
                         self.args.per_device_train_batch_size
                         - len(self.train_dataset) % self.args.per_device_train_batch_size
@@ -271,7 +275,7 @@ class GaudiTrainer(Trainer):
                 return RandomSampler(self.train_dataset, num_samples=num_samples, generator=generator)
             else:
                 if self.args.use_lazy_mode and not self.args.dataloader_drop_last:
-                    # Use a loop for HPUs when drop_last is False to have all batches have the same size.
+                    # Use a loop for HPUs when drop_last is False to have all batches have the same size
                     return DistributedSamplerWithLoop(
                         self.train_dataset,
                         batch_size=self.args.per_device_train_batch_size,
