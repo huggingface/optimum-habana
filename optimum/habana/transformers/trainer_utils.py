@@ -125,8 +125,11 @@ def copy_to(dst, src):
         dst.copy_(src, non_blocking=True)
 
 
-# Class to manage cached inputs, outputs and graph for HPU graphs
 class CachedParams:
+    """
+    Manages cached inputs, outputs and graph for HPU graphs.
+    """
+
     def __init__(self, graph_inputs, graph_outputs, graph):
         self.graph_inputs = graph_inputs
         self.graph_outputs = graph_outputs

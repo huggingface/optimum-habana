@@ -103,8 +103,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             do_eval=True,
             use_habana=True,
             use_lazy_mode=True,
-            # TODO: enable HPU graphs for generation when it is ready
-            # use_hpu_graphs=True,
+            use_hpu_graphs=True,
         )
 
         # instantiate trainer

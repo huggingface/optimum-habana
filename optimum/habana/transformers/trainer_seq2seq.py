@@ -71,6 +71,13 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         )
         self._gen_kwargs = gen_kwargs
 
+        # Disable HPU graphs as generation needs to be fixed
+        self.args.use_hpu_graphs = False
+        logger.warning(
+            "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
+            " performed in lazy mode."
+        )
+
         return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def predict(
@@ -120,6 +127,13 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
         )
         self._gen_kwargs = gen_kwargs
+
+        # Disable HPU graphs as generation needs to be fixed
+        self.args.use_hpu_graphs = False
+        logger.warning(
+            "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
+            " performed in lazy mode."
+        )
 
         return super().predict(test_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
