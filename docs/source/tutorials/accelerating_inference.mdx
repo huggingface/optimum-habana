@@ -66,8 +66,8 @@ outputs = generator(
 )
 ```
 
-Models that run partially on CPU may not work with HPU Graphs.
-In that case, inference should be run in lazy mode (`use_lazy_mode=True` and `use_hpu_graphs=False`).
+HPU graphs are currently not supported for distributed runs and text generation.
+In those cases, inference will be automatically run in lazy mode.
 
 <Tip warning={true}>
 
