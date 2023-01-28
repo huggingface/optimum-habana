@@ -275,7 +275,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         logging.enable_default_handler()
         logging.enable_explicit_format()
 
-        # Import diffusers.pipeline_utils to override the values of LOADABLE_CLASSES and ALL_IMPORTABLE_CLASSES
+        # Import diffusers.pipelines.pipeline_utils to override the values of LOADABLE_CLASSES and ALL_IMPORTABLE_CLASSES
         import diffusers.pipelines.pipeline_utils
 
         diffusers.pipelines.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
