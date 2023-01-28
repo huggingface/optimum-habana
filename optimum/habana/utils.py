@@ -15,7 +15,7 @@
 
 import random
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 import numpy as np
 import torch
@@ -139,3 +139,67 @@ def set_seed(seed: int):
     if is_torch_available():
         torch.manual_seed(seed)
         hpu_random.manual_seed_all(seed)
+
+
+def input_shape_hash(inputs: Dict[str, Union[torch.Tensor, Any]]) -> int:
+    """
+    Returns a hash based on the shapes of the inputs.
+    For instance, two different tensors of same shape will return the same hash.
+    This is used for HPU graphs to know whether capturing the graph for the current input or not.
+
+    Args:
+        inputs (Dict[str, Union[torch.Tensor, Any]]): the inputs of the model
+
+    Returns:
+        int: hash of the inputs
+    """
+
+    if isinstance(inputs, dict):
+        # Dictionaries are not hashable so turning them into tuples
+        return input_shape_hash(tuple(inputs.items()))
+    elif isinstance(inputs, list) or isinstance(inputs, tuple):
+        # Get the hash of the tuple
+        return hash(tuple(input_shape_hash(el) for el in inputs))
+    elif torch.is_tensor(inputs):
+        # Get the hash of the tensor shape
+        return hash(inputs.shape)
+    else:
+        # Get the hash of the inputs
+        return hash(inputs)
+
+
+def copy_to(dst, src):
+    """
+    Copies the dat from the source object to the target object.
+
+    Args:
+        dst: target
+        src: source
+    """
+    if type(dst) != type(src):
+        raise TypeError(
+            f"dst and src should have the same type, but dst is a {type(dst)} whereas src is a {type(src)}."
+        )
+
+    if isinstance(dst, dict):
+        for (dst_key, dst_value), (src_key, src_value) in zip(dst.items(), src.items()):
+            if dst_key == src_key:
+                copy_to(dst_value, src_value)
+            else:
+                raise ValueError(f"dst_key and src_key should be equal but got {dst_key} and {src_key}.")
+    elif isinstance(dst, list) or isinstance(dst, tuple):
+        for d, s in zip(dst, src):
+            copy_to(d, s)
+    elif torch.is_tensor(dst):
+        dst.copy_(src, non_blocking=True)
+
+
+class CachedParams:
+    """
+    Manages cached inputs, outputs and graph for HPU graphs.
+    """
+
+    def __init__(self, graph_inputs, graph_outputs, graph):
+        self.graph_inputs = graph_inputs
+        self.graph_outputs = graph_outputs
+        self.graph = graph

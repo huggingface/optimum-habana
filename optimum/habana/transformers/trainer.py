@@ -71,11 +71,19 @@ from transformers.trainer_utils import (
 from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
-from ..utils import get_hpu_memory_stats, set_seed, speed_metrics, to_device_dtype
+from ..utils import (
+    CachedParams,
+    copy_to,
+    get_hpu_memory_stats,
+    input_shape_hash,
+    set_seed,
+    speed_metrics,
+    to_device_dtype,
+)
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
-from .trainer_utils import CachedParams, convert_into_dtypes, copy_to, get_dtype, input_shape_hash
+from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
 
 

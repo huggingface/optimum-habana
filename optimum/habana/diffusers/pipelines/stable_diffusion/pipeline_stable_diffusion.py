@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import inspect
 import time
 from dataclasses import dataclass
@@ -40,7 +39,7 @@ from optimum.utils import logging
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
+from ....utils import CachedParams, copy_to, input_shape_hash, speed_metrics
 from ...pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -590,14 +589,12 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 timestep = timesteps[0]
                 timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
-                capture = True if self.use_hpu_graphs and i < 2 else False
-
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents_batch] * 2) if do_classifier_free_guidance else latents_batch
                 # latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
 
                 # predict the noise residual
-                noise_pred = self.unet_hpu(latent_model_input, timestep, text_embeddings_batch, capture)
+                noise_pred = self.unet_hpu(latent_model_input, timestep, text_embeddings_batch)
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -667,29 +664,30 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         )
 
     @torch.no_grad()
-    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, capture):
+    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states):
         if self.use_hpu_graphs:
-            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture)
+            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states)
         else:
             return self.unet(latent_model_input, timestep, encoder_hidden_states).sample
 
     @torch.no_grad()
-    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, capture):
-        if capture:
-            self.static_inputs = [latent_model_input, timestep, encoder_hidden_states, False]
+    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states):
+        inputs = [latent_model_input, timestep, encoder_hidden_states, False]
+        shape_hash = input_shape_hash(inputs)
+        cached = self.cache.get(shape_hash)
+        if cached is None:
+            # Capture graph and cache it
             with self.ht.hpu.stream(self.hpu_stream):
-                self.hpu_graph.capture_begin()
+                graph = self.ht.hpu.HPUGraph()
+                graph.capture_begin()
+                outputs = self.unet(inputs[0], inputs[1], inputs[2], inputs[3])[0]
+                graph.capture_end()
+                self.cache[shape_hash] = CachedParams(inputs, outputs, graph)
+            return outputs
 
-                self.static_outputs = self.unet(
-                    self.static_inputs[0], self.static_inputs[1], self.static_inputs[2], self.static_inputs[3]
-                )[0]
-
-                self.hpu_graph.capture_end()
-        self.static_inputs[0].copy_(latent_model_input)
-        self.static_inputs[1].copy_(timestep)
-        self.static_inputs[2].copy_(encoder_hidden_states)
-        self.ht.core.mark_step()
+        # Replay the cached graph with updated inputs
+        copy_to(cached.graph_inputs, inputs)
         self.ht.core.hpu.default_stream().synchronize()
-        self.hpu_graph.replay()
+        cached.graph.replay()
 
-        return self.static_outputs
+        return cached.graph_outputs
