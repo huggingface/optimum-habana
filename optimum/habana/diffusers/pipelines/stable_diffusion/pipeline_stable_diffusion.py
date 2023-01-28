@@ -664,7 +664,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 timestep = timesteps[0]
                 timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
-                capture = True if self.use_hpu_graphs and i < 1 else False
+                capture = True if self.use_hpu_graphs and i < 2 else False
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents_batch] * 2) if do_classifier_free_guidance else latents_batch
