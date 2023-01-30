@@ -6,7 +6,6 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, UNet2DConditionModel
-from diffusers.utils import load_numpy
 from habana_frameworks.torch.hpex import hmp
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline, GaudiStableDiffusionPipeline

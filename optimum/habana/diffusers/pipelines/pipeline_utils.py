@@ -23,10 +23,10 @@ from typing import Optional, Union
 
 import torch
 
-from diffusers import DiffusionPipeline
+from diffusers.pipelines import DiffusionPipeline
 from optimum.utils import logging
 
-from ..transformers.gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
+from ...transformers.gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 
 
 logger = logging.get_logger(__name__)
@@ -273,11 +273,11 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         logging.enable_default_handler()
         logging.enable_explicit_format()
 
-        # Import diffusers.pipeline_utils to override the values of LOADABLE_CLASSES and ALL_IMPORTABLE_CLASSES
-        import diffusers.pipeline_utils
+        # Import diffusers.pipelines.pipeline_utils to override the values of LOADABLE_CLASSES and ALL_IMPORTABLE_CLASSES
+        import diffusers.pipelines.pipeline_utils
 
-        diffusers.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
-        diffusers.pipeline_utils.ALL_IMPORTABLE_CLASSES = GAUDI_ALL_IMPORTABLE_CLASSES
+        diffusers.pipelines.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
+        diffusers.pipelines.pipeline_utils.ALL_IMPORTABLE_CLASSES = GAUDI_ALL_IMPORTABLE_CLASSES
 
         return super().from_pretrained(
             pretrained_model_name_or_path,
