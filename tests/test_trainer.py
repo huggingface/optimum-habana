@@ -547,6 +547,17 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         _ = trainer.evaluate()
         _ = trainer.predict(eval_dataset)
 
+    def test_hpu_graphs(self):
+        train_dataset = RegressionDataset()
+        eval_dataset = RegressionDataset()
+        model = RegressionModel()
+        gaudi_config = get_gaudi_config()
+        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True, use_hpu_graphs=True)
+        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer.train()
+        _ = trainer.evaluate()
+        _ = trainer.predict(eval_dataset)
+
     def test_trainer_works_with_dict(self):
         train_dataset = RegressionDataset()
         eval_dataset = RegressionDataset()

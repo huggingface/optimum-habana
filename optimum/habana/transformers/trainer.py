@@ -71,7 +71,15 @@ from transformers.trainer_utils import (
 from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
-from ..utils import get_hpu_memory_stats, set_seed, speed_metrics, to_device_dtype
+from ..utils import (
+    CachedParams,
+    copy_to,
+    get_hpu_memory_stats,
+    input_shape_hash,
+    set_seed,
+    speed_metrics,
+    to_device_dtype,
+)
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
@@ -996,6 +1004,18 @@ class GaudiTrainer(Trainer):
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
+        # Do not use HPU graphs if the training is ongoing because it detaches gradients
+        if args.use_hpu_graphs and not self.is_in_train:
+            if self.args.local_rank == -1:
+                logger.info("Using HPU graphs for inference.")
+                model = self._wrap_model_for_hpu_graphs(model)
+            else:
+                # Do not use HPU graphs for distributed runs
+                logger.warning(
+                    "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
+                    " performed in lazy mode."
+                )
+
         batch_size = self.args.eval_batch_size
 
         logger.info(f"***** Running {description} *****")
@@ -1253,7 +1273,7 @@ class GaudiTrainer(Trainer):
                 if self.args.past_index >= 0:
                     self._past = outputs[self.args.past_index - 1]
 
-        if self.args.use_lazy_mode:
+        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
             self.htcore.mark_step()
 
         if prediction_loss_only:
@@ -1299,6 +1319,18 @@ class GaudiTrainer(Trainer):
             deepspeed_engine.lr_scheduler = None
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+
+        # Do not use HPU graphs if the training is ongoing because it detaches gradients
+        if args.use_hpu_graphs and not self.is_in_train:
+            if self.args.local_rank == -1:
+                logger.info("Using HPU graphs for inference.")
+                model = self._wrap_model_for_hpu_graphs(model)
+            else:
+                # Do not use HPU graphs for distributed runs
+                logger.warning(
+                    "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
+                    " performed in lazy mode."
+                )
 
         batch_size = dataloader.batch_size
         num_examples = self.num_examples(dataloader)
@@ -1580,3 +1612,33 @@ class GaudiTrainer(Trainer):
         # Moving a model to HPU disconnects the tied weights, so we have to retie them.
         if self.args.use_habana and hasattr(model, "tie_weights"):
             model.tie_weights()
+
+    def _wrap_model_for_hpu_graphs(self, model: torch.nn.Module):
+        import habana_frameworks.torch as ht
+
+        stream = ht.hpu.Stream()
+        cache = {}
+        orig_fwd = model.forward
+
+        def forward(*args, **kwargs):
+            inputs = (args, kwargs)
+            shape_hash = input_shape_hash(inputs)
+            cached = cache.get(shape_hash)
+            if cached is None:
+                # Capture graph and cache it
+                with ht.hpu.stream(stream):
+                    graph = ht.hpu.HPUGraph()
+                    graph.capture_begin()
+                    outputs = orig_fwd(*args, **kwargs)
+                    graph.capture_end()
+                    cache[shape_hash] = CachedParams(inputs, outputs, graph)
+                return outputs
+
+            # Replay the cached graph with updated inputs
+            copy_to(cached.graph_inputs, inputs)
+            ht.core.hpu.default_stream().synchronize()
+            cached.graph.replay()
+            return cached.graph_outputs
+
+        model.forward = forward
+        return model

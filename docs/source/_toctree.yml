@@ -18,6 +18,8 @@
       title: Pretraining Transformers
     - local: usage_guides/accelerate_training
       title: Accelerating Training
+    - local: usage_guides/accelerating_inference
+      title: Accelerating Inference
     - local: usage_guides/deepspeed
       title: How to use DeepSpeed
     - local: usage_guides/multi_node_training

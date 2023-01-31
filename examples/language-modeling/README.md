@@ -43,6 +43,7 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -64,6 +65,7 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -84,6 +86,7 @@ python ../gaudi_spawn.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gradient_checkpointing \
     --use_cache False \
     --throughput_warmup_steps 2
@@ -115,6 +118,7 @@ python run_mlm.py \
     --output_dir /tmp/test-mlm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
     --throughput_warmup_steps 2
 ```
@@ -133,6 +137,7 @@ python run_mlm.py \
     --output_dir /tmp/test-mlm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
     --throughput_warmup_steps 2
 ```
@@ -158,6 +163,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/test-mlm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
     --throughput_warmup_steps 2
 ```
@@ -182,6 +188,7 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -206,6 +213,7 @@ python run_clm.py \
     --output_dir /tmp/test-clm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/gpt2 \
     --throughput_warmup_steps 2
 ```
@@ -231,6 +239,7 @@ python ../gaudi_spawn.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gradient_checkpointing \
     --use_cache False \
     --throughput_warmup_steps 2 \
