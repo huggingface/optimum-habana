@@ -31,7 +31,7 @@
     title: How-To Guides
   - sections:
     - local: concept_guides/hpu
-      title: What is a Habana Processing Unit?
+      title: What are Habana's Gaudi and HPUs?
     title: Conceptual Guides
   - sections:
     - local: package_reference/trainer
