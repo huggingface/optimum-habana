@@ -54,6 +54,7 @@ python run_qa.py \
   --output_dir /tmp/squad/ \
   --use_habana \
   --use_lazy_mode \
+  --use_hpu_graphs \
   --throughput_warmup_steps 2
 ```
 
@@ -85,6 +86,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/squad_output/ \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -116,6 +118,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/squad_output/ \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2 \
     --deepspeed path_to_my_deepspeed_config
 ```

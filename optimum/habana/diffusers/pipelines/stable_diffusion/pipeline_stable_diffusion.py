@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import inspect
 import time
 from dataclasses import dataclass
@@ -753,11 +752,9 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             self.static_inputs = [latent_model_input, timestep, encoder_hidden_states, False]
             with self.ht.hpu.stream(self.hpu_stream):
                 self.hpu_graph.capture_begin()
-
                 self.static_outputs = self.unet(
                     self.static_inputs[0], self.static_inputs[1], self.static_inputs[2], self.static_inputs[3]
                 )[0]
-
                 self.hpu_graph.capture_end()
         self.static_inputs[0].copy_(latent_model_input)
         self.static_inputs[1].copy_(timestep)
