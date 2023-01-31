@@ -6,6 +6,8 @@
   - local: quickstart
     title: Quickstart
   - sections:
+    - local: tutorials/overview
+      title: Overview
     - local: tutorials/single_hpu
       title: Single-HPU Training
     - local: tutorials/distributed
@@ -14,11 +16,13 @@
       title: Stable Diffusion
     title: Tutorials
   - sections:
+    - local: usage_guides/overview
+      title: Overview
     - local: usage_guides/pretraining
       title: Pretraining Transformers
     - local: usage_guides/accelerate_training
       title: Accelerating Training
-    - local: usage_guides/accelerating_inference
+    - local: usage_guides/accelerate_inference
       title: Accelerating Inference
     - local: usage_guides/deepspeed
       title: How to use DeepSpeed
