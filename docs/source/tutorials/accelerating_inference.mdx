@@ -17,12 +17,11 @@ limitations under the License.
 # Accelerating Inference
 
 Gaudi provides a way to run fast inference with HPU Graphs.
-It consists in capturing a series of operations (i.e. graphs) in a HPU stream and then replaying them in an optimized way.
-More information [here](https://docs.habana.ai/en/latest/PyTorch/Inference_on_Gaudi/Inference_using_HPU_Graphs/Inference_using_HPU_Graphs.html).
+It consists in capturing a series of operations (i.e. graphs) in a HPU stream and then replaying them in an optimized way (more information [here](https://docs.habana.ai/en/latest/PyTorch/Inference_on_Gaudi/Inference_using_HPU_Graphs/Inference_using_HPU_Graphs.html)).
 Thus, you can apply this to the `forward` method of your model to run it efficiently at inference.
 
-HPU Graphs are integrated into the [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) and the [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline) so that one can use them very easily:
-- The `GaudiTrainer` needs the training argument `use_hpu_graphs` to be set to `True` as follows:
+HPU Graphs are integrated into the [`GaudiTrainer`](../package_reference/trainer) and the [`GaudiStableDiffusionPipeline`](../package_reference/stable_diffusion_pipeline) so that one can use them very easily:
+- `GaudiTrainer` needs the training argument `use_hpu_graphs` to be set to `True` as follows:
 ```python
 from optimum.habana import GaudiTrainer, GaudiTrainingArguments
 
@@ -43,7 +42,7 @@ trainer = GaudiTrainer(
     ... # other arguments
 )
 ```
-- The `GaudiStableDiffusionPipeline` needs its argument `use_hpu_graphs` to be set to `True` such as:
+- `GaudiStableDiffusionPipeline` needs its argument `use_hpu_graphs` to be set to `True` such as:
 ```python
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
@@ -66,8 +65,12 @@ outputs = generator(
 )
 ```
 
+<Tip warning={true}>
+
 HPU graphs are currently not supported for distributed runs and text generation.
-In those cases, inference will be automatically run in lazy mode.
+In those cases, *inference will be automatically run in lazy mode*.
+
+</Tip>
 
 <Tip warning={true}>
 

@@ -123,8 +123,10 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     error.msg = f"Could not import habana_frameworks.torch. {error.msg}."
                     raise error
                 self.ht = ht
+                self.hpu_graph = ht.hpu.HPUGraph()
                 self.hpu_stream = ht.hpu.Stream()
-                self.cache = {}
+                self.static_inputs = list()
+                self.static_outputs = None
             else:
                 try:
                     import habana_frameworks.torch.core as htcore

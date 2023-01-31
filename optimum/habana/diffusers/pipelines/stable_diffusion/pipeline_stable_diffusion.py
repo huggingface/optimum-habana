@@ -26,14 +26,21 @@ from packaging import version
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.schedulers import (
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+)
 from diffusers.utils import BaseOutput, deprecate
 from optimum.utils import logging
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import CachedParams, copy_to, input_shape_hash, speed_metrics
-from ..pipeline_utils import GaudiDiffusionPipeline
+from ....utils import speed_metrics
+from ...pipeline_utils import GaudiDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)
@@ -89,7 +96,14 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
+        scheduler: Union[
+            DDIMScheduler,
+            PNDMScheduler,
+            LMSDiscreteScheduler,
+            EulerDiscreteScheduler,
+            EulerAncestralDiscreteScheduler,
+            DPMSolverMultistepScheduler,
+        ],
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
@@ -199,21 +213,12 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def _encode_prompt(
-        self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-    ):
+    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list(int)`):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -221,67 +226,48 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_ prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
+            negative_prompt (`str` or `List[str]`):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
         """
-        if prompt is not None and isinstance(prompt, str):
-            num_prompts = 1
-        elif prompt is not None and isinstance(prompt, list):
-            num_prompts = len(prompt)
+        num_prompts = len(prompt) if isinstance(prompt, list) else 1
+
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+
+        if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            attention_mask = text_inputs.attention_mask.to(device)
         else:
-            num_prompts = prompt_embeds.shape[0]
+            attention_mask = None
 
-        if prompt_embeds is None:
-            text_inputs = self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+        text_embeddings = self.text_encoder(
+            text_input_ids.to(device),
+            attention_mask=attention_mask,
+        )
+        text_embeddings = text_embeddings[0]
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-                )
-                logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-                )
-
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask.to(device)
-            else:
-                attention_mask = None
-
-            prompt_embeds = self.text_encoder(
-                text_input_ids.to(device),
-                attention_mask=attention_mask,
-            )
-            prompt_embeds = prompt_embeds[0]
-
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
-
-        bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        bs_embed, seq_len, _ = text_embeddings.shape
+        text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
+        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
-        if do_classifier_free_guidance and negative_prompt_embeds is None:
+        uncond_embeddings = None
+        if do_classifier_free_guidance:
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * num_prompts
@@ -301,7 +287,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
-            max_length = prompt_embeds.shape[1]
+            max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
@@ -315,22 +301,18 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             else:
                 attention_mask = None
 
-            negative_prompt_embeds = self.text_encoder(
+            uncond_embeddings = self.text_encoder(
                 uncond_input.input_ids.to(device),
                 attention_mask=attention_mask,
             )
-            negative_prompt_embeds = negative_prompt_embeds[0]
+            uncond_embeddings = uncond_embeddings[0]
 
-        if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = negative_prompt_embeds.shape[1]
+            seq_len = uncond_embeddings.shape[1]
+            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
+            uncond_embeddings = uncond_embeddings.view(num_prompts * num_images_per_prompt, seq_len, -1)
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
-
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(num_prompts * num_images_per_prompt, seq_len, -1)
-
-        return prompt_embeds, negative_prompt_embeds
+        return text_embeddings, uncond_embeddings
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
@@ -367,16 +349,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    def check_inputs(
-        self,
-        prompt,
-        height,
-        width,
-        callback_steps,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-    ):
+    def check_inputs(self, prompt, height, width, callback_steps):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
@@ -388,35 +364,9 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-            )
-
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
-
     def prepare_latents(self, num_images, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (num_images, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
-        if isinstance(generator, list) and len(generator) != num_images:
+        if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective number"
                 f" of images of {num_images}. Make sure the number of images matches the length of the generators."
@@ -489,7 +439,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, List[str]],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -500,8 +450,6 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -511,9 +459,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated images.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -528,9 +475,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             batch_size (`int`, *optional*, defaults to 1):
@@ -538,20 +484,13 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated randomly.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -577,17 +516,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
-        )
+        self.check_inputs(prompt, height, width, callback_steps)
 
         # 2. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
-            num_prompts = 1
-        elif prompt is not None and isinstance(prompt, list):
-            num_prompts = len(prompt)
-        else:
-            num_prompts = prompt_embeds.shape[0]
+        num_prompts = 1 if isinstance(prompt, str) else len(prompt)
         num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
         logger.info(
             f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
@@ -602,14 +534,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds, negative_prompt_embeds = self._encode_prompt(
-            prompt,
-            device,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
+        text_embeddings, uncond_embeddings = self._encode_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
         # 4. Prepare timesteps
@@ -623,7 +549,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             num_channels_latents,
             height,
             width,
-            prompt_embeds.dtype,
+            text_embeddings.dtype,
             device,
             generator,
             latents,
@@ -636,8 +562,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         latents_batches, text_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
             batch_size,
             latents,
-            prompt_embeds,
-            negative_prompt_embeds,
+            text_embeddings,
+            uncond_embeddings,
         )
 
         outputs = {
@@ -663,12 +589,14 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 timestep = timesteps[0]
                 timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
+                capture = True if self.use_hpu_graphs and i < 2 else False
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents_batch] * 2) if do_classifier_free_guidance else latents_batch
                 # latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
 
                 # predict the noise residual
-                noise_pred = self.unet_hpu(latent_model_input, timestep, text_embeddings_batch)
+                noise_pred = self.unet_hpu(latent_model_input, timestep, text_embeddings_batch, capture)
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -711,7 +639,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         # Process generated images
         for i, image in enumerate(outputs["images"][:]):
             # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
             if i == 0:
                 outputs["images"].clear()
@@ -738,30 +666,29 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         )
 
     @torch.no_grad()
-    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states):
+    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, capture):
         if self.use_hpu_graphs:
-            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states)
+            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture)
         else:
             return self.unet(latent_model_input, timestep, encoder_hidden_states).sample
 
     @torch.no_grad()
-    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states):
-        inputs = [latent_model_input, timestep, encoder_hidden_states, False]
-        shape_hash = input_shape_hash(inputs)
-        cached = self.cache.get(shape_hash)
-        if cached is None:
-            # Capture graph and cache it
+    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, capture):
+        if capture:
+            self.static_inputs = [latent_model_input, timestep, encoder_hidden_states, False]
             with self.ht.hpu.stream(self.hpu_stream):
-                graph = self.ht.hpu.HPUGraph()
-                graph.capture_begin()
-                outputs = self.unet(inputs[0], inputs[1], inputs[2], inputs[3])[0]
-                graph.capture_end()
-                self.cache[shape_hash] = CachedParams(inputs, outputs, graph)
-            return outputs
+                self.hpu_graph.capture_begin()
 
-        # Replay the cached graph with updated inputs
-        copy_to(cached.graph_inputs, inputs)
+                self.static_outputs = self.unet(
+                    self.static_inputs[0], self.static_inputs[1], self.static_inputs[2], self.static_inputs[3]
+                )[0]
+
+                self.hpu_graph.capture_end()
+        self.static_inputs[0].copy_(latent_model_input)
+        self.static_inputs[1].copy_(timestep)
+        self.static_inputs[2].copy_(encoder_hidden_states)
+        self.ht.core.mark_step()
         self.ht.core.hpu.default_stream().synchronize()
-        cached.graph.replay()
+        self.hpu_graph.replay()
 
-        return cached.graph_outputs
+        return self.static_outputs
