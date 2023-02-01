@@ -194,7 +194,7 @@ class DataTrainingArguments:
             )
         },
     )
-    streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
+    streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
 
     def __post_init__(self):
         if self.streaming:
