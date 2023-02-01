@@ -266,3 +266,8 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
     }
 }
 ```
+
+
+## Streaming
+
+To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` to the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
