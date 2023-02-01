@@ -26,9 +26,9 @@ The list of officially validated models and tasks is available [here](https://gi
 
 ## What is a Habana Processing Unit (HPU)?
 
-Quote from the Hugging Face [blog post](https://huggingface.co/blog/habana):
-
-> Habana Gaudi training solutions, which power Amazon’s EC2 DL1 instances and Supermicro’s X12 Gaudi AI Training Server, deliver price/performance up to 40% lower than comparable training solutions and enable customers to train more while spending less. The integration of ten 100 Gigabit Ethernet ports onto every Gaudi processor enables system scaling from 1 to thousands of Gaudis with ease and cost-efficiency. Habana’s SynapseAI® is optimized—at inception—to enable Gaudi performance and usability, supports TensorFlow and PyTorch frameworks, with a focus on computer vision and natural language processing applications.
+HPUs offer fast model training and inference as well as a great price-performance ratio.
+Check out [this blog post about BERT pre-training](https://huggingface.co/blog/pretraining-bert) and [this article benchmarking Habana Gaudi2 versus Nvidia A100 GPUs](https://huggingface.co/blog/habana-gaudi-2-benchmark) for concrete examples.
+If you are not familiar with HPUs and would like to know more about them, we recommend you take a look at [our conceptual guide](https://huggingface.co/docs/optimum/habana/concept_guides/hpu).
 
 
 ## Install
@@ -206,7 +206,7 @@ outputs = generator(
 
 ### Documentation
 
-Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
+Check out [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
 
 
 ## Validated Models
