@@ -71,6 +71,14 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         )
         self._gen_kwargs = gen_kwargs
 
+        if self.args.use_hpu_graphs:
+            # Disable HPU graphs as generation needs to be fixed
+            self.args.use_hpu_graphs = False
+            logger.warning(
+                "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
+                " performed in lazy mode."
+            )
+
         return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def predict(
@@ -121,6 +129,14 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         )
         self._gen_kwargs = gen_kwargs
 
+        if self.args.use_hpu_graphs:
+            # Disable HPU graphs as generation needs to be fixed
+            self.args.use_hpu_graphs = False
+            logger.warning(
+                "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
+                " performed in lazy mode."
+            )
+
         return super().predict(test_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def prediction_step(
@@ -170,6 +186,9 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         gen_kwargs["lazy_mode"] = (
             gen_kwargs["lazy_mode"] if gen_kwargs.get("lazy_mode") is not None else self.args.use_lazy_mode
         )
+        gen_kwargs["hpu_graphs"] = (
+            gen_kwargs["hpu_graphs"] if gen_kwargs.get("hpu_graphs") is not None else self.args.use_hpu_graphs
+        )
 
         if "attention_mask" in inputs:
             gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
@@ -188,7 +207,11 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             generation_inputs,
             **gen_kwargs,
         )
-
+        # Temporary hack to ensure the generation config is not initialized for each iteration of the evaluation loop
+        # TODO: remove this hack when the legacy code that initializes generation_config from a model config is
+        # removed in https://github.com/huggingface/transformers/blob/98d88b23f54e5a23e741833f1e973fdf600cc2c5/src/transformers/generation/utils.py#L1183
+        if self.model.generation_config._from_model_config:
+            self.model.generation_config._from_model_config = False
         # in case the batch is shorter than max length, the output should be padded
         if gen_kwargs.get("max_length") is not None and generated_tokens.shape[-1] < gen_kwargs["max_length"]:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
@@ -212,7 +235,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             else:
                 loss = None
 
-        if self.args.use_lazy_mode:
+        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
             self.htcore.mark_step()
 
         if self.args.prediction_loss_only:

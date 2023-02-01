@@ -316,6 +316,7 @@ class ExampleTesterBase(TestCase):
             f" --num_train_epochs {num_epochs}",
             "--use_habana",
             "--use_lazy_mode",
+            "--use_hpu_graphs",
             "--throughput_warmup_steps 2",
         ]
 

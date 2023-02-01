@@ -17,11 +17,15 @@
 < check_min_version("4.27.0.dev0")
 ---
 > check_min_version("4.26.0")
-220c217
+200c197
+<     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
+---
+>     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
+224c221
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-245a243,249
+249a247,253
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -29,22 +33,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-248,249c252,254
+252,253c256,258
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-251d255
+255d259
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-546c550
+573c577
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-547a552
+574a579
 >         gaudi_config=gaudi_config,
-553,556c558,559
+580,583c585,586
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -52,7 +56,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-609,613d611
+636,640d638
 < 
 < 
 < def _mp_fn(index):

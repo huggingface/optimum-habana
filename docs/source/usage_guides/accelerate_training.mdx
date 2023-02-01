@@ -23,7 +23,7 @@ They are all compatible with each other and can be coupled with [distributed tra
 ## Lazy Mode
 
 Two execution modes are proposed:
-- *Lazy mode*, where the Habana bridge internally accumulates operations in a graph. The execution of the operations in the accumulated graph is triggered in a lazy manner. This allows the bridge to construct a graph with multiple operations, which provides the graph compiler the opportunity to optimize the device execution for these operations.
+- *Lazy mode*, where operations are accumulated in a graph whose execution is triggered in a lazy manner. This allows the graph compiler to optimize the device execution for these operations.
 - *Eager mode*, where one operation at a time is executed.
 
 In lazy mode, the graph compiler generates optimized binary code that implements the given model topology on Gaudi. It performs operator fusion, data layout management, parallelization, pipelining and memory management, as well as graph-level optimizations.
