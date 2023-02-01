@@ -366,7 +366,10 @@ class GaudiTrainer(Trainer):
         model_reloaded = False
         if self.model_init is not None:
             # Seed must be set before instantiating the model when using model_init.
-            enable_full_determinism(self.args.seed) if self.args.full_determinism else set_seed(self.args.seed)
+            if self.args.full_determinism:
+                enable_full_determinism(self.args.seed)
+            else:
+                set_seed(self.args.seed)
             self.model = self.call_model_init(trial)
             model_reloaded = True
             # Reinitializes optimizer and scheduler
