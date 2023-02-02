@@ -10,10 +10,6 @@
                 "train_runtime": 1243.4596,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--evaluation_strategy epoch",
-                    "--save_strategy epoch",
-                    "--load_best_model_at_end True",
-                    "--save_total_limit 3",
                     "--seed 1337",
                     "--ignore_mismatched_sizes"
                 ]
@@ -25,10 +21,6 @@
                 "train_runtime": 403.6147,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--evaluation_strategy epoch",
-                    "--save_strategy epoch",
-                    "--load_best_model_at_end True",
-                    "--save_total_limit 3",
                     "--seed 1337",
                     "--ignore_mismatched_sizes"
                 ]

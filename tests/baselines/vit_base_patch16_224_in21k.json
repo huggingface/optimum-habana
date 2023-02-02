@@ -11,10 +11,6 @@
                 "train_samples_per_second": 258.459,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--evaluation_strategy epoch",
-                    "--save_strategy epoch",
-                    "--load_best_model_at_end True",
-                    "--save_total_limit 3",
                     "--seed 1337"
                 ]
             },
@@ -26,10 +22,6 @@
                 "train_samples_per_second": 1440.259,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--evaluation_strategy epoch",
-                    "--save_strategy epoch",
-                    "--load_best_model_at_end True",
-                    "--save_total_limit 3",
                     "--seed 1337"
                 ]
             }

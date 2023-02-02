@@ -363,8 +363,9 @@ class ExampleTesterBase(TestCase):
             number_asserted_metrics,
             3,
             (
-                f"{number_asserted_metrics} asserted metric(s) while at least 3 are expected (throughput + training time + accuracy)."
-                f" Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received: {baseline.keys()}"
+                f"{number_asserted_metrics} asserted metric(s) while at least 3 are expected (throughput + training"
+                f" time + accuracy). Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received:"
+                f" {baseline.keys()}"
             ),
         )
 
