@@ -44,6 +44,7 @@ python run_translation.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -79,6 +80,7 @@ python run_translation.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -111,6 +113,7 @@ python run_translation.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -140,6 +143,7 @@ python ../gaudi_spawn.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -170,6 +174,7 @@ python ../gaudi_spawn.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \

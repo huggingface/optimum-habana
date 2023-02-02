@@ -6,26 +6,32 @@
   - local: quickstart
     title: Quickstart
   - sections:
-    - local: tutorials/accelerate_training
-      title: Accelerating Training
-    - local: tutorials/pretraining
-      title: Pretraining Transformers
+    - local: tutorials/overview
+      title: Overview
+    - local: tutorials/single_hpu
+      title: Single-HPU Training
+    - local: tutorials/distributed
+      title: Distributed Training
+    - local: tutorials/stable_diffusion
+      title: Stable Diffusion
     title: Tutorials
   - sections:
-    - local: usage_guides/single_hpu
-      title: Single-HPU Training
-    - local: usage_guides/distributed
-      title: Distributed Training
+    - local: usage_guides/overview
+      title: Overview
+    - local: usage_guides/pretraining
+      title: Pretraining Transformers
+    - local: usage_guides/accelerate_training
+      title: Accelerating Training
+    - local: usage_guides/accelerate_inference
+      title: Accelerating Inference
     - local: usage_guides/deepspeed
-      title: DeepSpeed
-    - local: usage_guides/stable_diffusion
-      title: Stable Diffusion
+      title: How to use DeepSpeed
     - local: usage_guides/multi_node_training
       title: Multi-node Training
     title: How-To Guides
   - sections:
     - local: concept_guides/hpu
-      title: What is a Habana Processing Unit?
+      title: What are Habana's Gaudi and HPUs?
     title: Conceptual Guides
   - sections:
     - local: package_reference/trainer

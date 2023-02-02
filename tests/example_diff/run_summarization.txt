@@ -12,18 +12,28 @@
 ---
 >     default_data_collator,
 55c55
-< check_min_version("4.26.0.dev0")
+< check_min_version("4.27.0.dev0")
 ---
-> check_min_version("4.25.0")
-203c203
+> check_min_version("4.26.0")
+119a120,128
+>     use_cache: bool = field(
+>         default=True,
+>         metadata={
+>             "help": (
+>                 "Whether or not the model should return the last key/values attentions (not used by all models)."
+>                 "Only relevant if `config.is_decoder=True`."
+>             )
+>         },
+>     )
+203c212
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-299c299
+299c308
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-323a324,330
+323a333,339
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -31,14 +41,16 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-326,327c333,335
+326,327c342,344
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-598,603c606,614
+407a425
+>         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
+598,603c616,624
 <     data_collator = DataCollatorForSeq2Seq(
 <         tokenizer,
 <         model=model,
@@ -55,13 +67,13 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-638c649
+638c659
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-639a651
+639a661
 >         gaudi_config=gaudi_config,
-728,732d739
+728,732d749
 < 
 < 
 < def _mp_fn(index):

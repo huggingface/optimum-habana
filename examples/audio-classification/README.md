@@ -45,6 +45,7 @@ python run_audio_classification.py \
     --seed 27 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2
 ```
@@ -80,6 +81,7 @@ python ../gaudi_spawn.py \
     --seed 0 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2
 ```
@@ -123,6 +125,7 @@ python ../gaudi_spawn.py \
     --seed 0 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json

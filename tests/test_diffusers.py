@@ -6,7 +6,6 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, UNet2DConditionModel
-from diffusers.utils import load_numpy
 from habana_frameworks.torch.hpex import hmp
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline, GaudiStableDiffusionPipeline
@@ -97,7 +96,7 @@ class GaudiPipelineUtilsTester(TestCase):
         self.assertTrue(hasattr(pipeline, "hmp"))
 
     def test_save_pretrained(self):
-        model_name = "hf-internal-testing/tiny-stable-diffusion-lms-pipe"
+        model_name = "hf-internal-testing/tiny-stable-diffusion-torch"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
             model_name,
