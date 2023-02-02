@@ -62,7 +62,7 @@
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
 363a380
->         "use_cache": model_args.use_cache,
+>         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
 547c564
 <     trainer = Trainer(
 ---
