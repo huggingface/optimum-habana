@@ -377,7 +377,7 @@ def main():
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
-        "use_cache": model_args.use_cache,
+        "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)

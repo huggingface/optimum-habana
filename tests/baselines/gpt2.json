@@ -10,8 +10,7 @@
                 "train_runtime": 817.3621,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
-                    "--gradient_checkpointing",
-                    "--use_cache False"
+                    "--gradient_checkpointing"
                 ]
             },
             "multi_card": {
@@ -21,8 +20,7 @@
                 "train_runtime": 181.0181,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
-                    "--gradient_checkpointing",
-                    "--use_cache False"
+                    "--gradient_checkpointing"
                 ]
             }
         }
