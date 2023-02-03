@@ -42,9 +42,11 @@ from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
+    DistributedLengthGroupedSampler,
     DistributedSamplerWithLoop,
     DistributedTensorGatherer,
     IterableDatasetShard,
+    LengthGroupedSampler,
     SequentialDistributedSampler,
     find_batch_size,
     get_parameter_names,
@@ -61,7 +63,6 @@ from transformers.trainer_utils import (
     HPSearchBackend,
     HubStrategy,
     IntervalStrategy,
-    PredictionOutput,
     TrainOutput,
     denumpify_detensorize,
     enable_full_determinism,
@@ -70,7 +71,7 @@ from transformers.trainer_utils import (
     has_length,
 )
 from transformers.training_args import TrainingArguments
-from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
+from transformers.utils import CONFIG_NAME, WEIGHTS_NAME, is_datasets_available
 
 from ..utils import (
     CachedParams,
@@ -86,6 +87,10 @@ from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
 from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
+
+
+if is_datasets_available():
+    import datasets
 
 
 if TYPE_CHECKING:
@@ -156,6 +161,9 @@ class GaudiTrainer(Trainer):
                     error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
                     raise error
                 self.htcore = htcore
+
+            if self.args.use_hpu_graphs:
+                self.already_wrapped_for_hpu_graphs = False
 
             if self.args.deepspeed:
                 # Habana's fused ADAM is not compatible with DeepSpeed yet
@@ -906,16 +914,18 @@ class GaudiTrainer(Trainer):
         np.random.set_state(checkpoint_rng_state["numpy"])
         torch.random.set_rng_state(checkpoint_rng_state["cpu"])
         if self.args.use_habana:
-            if self.args.local_rank != -1:
-                self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
-            else:
-                try:
-                    self.hpu_random.set_rng_state_all(checkpoint_rng_state["hpu"])
-                except Exception as e:
-                    logger.info(
-                        f"Didn't manage to set back the RNG states of the HPU because of the following error:\n {e}"
-                        "\nThis won't yield the same results as if the training had not been interrupted."
-                    )
+            # TODO: uncomment the code block below when torch.hpu.random.get_rng_state_all is fixed in SynapseAI
+            # if self.args.local_rank != -1:
+            #     self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
+            # else:
+            #     try:
+            #         self.hpu_random.set_rng_state_all(checkpoint_rng_state["hpu"])
+            #     except Exception as e:
+            #         logger.info(
+            #             f"Didn't manage to set back the RNG states of the HPU because of the following error:\n {e}"
+            #             "\nThis won't yield the same results as if the training had not been interrupted."
+            #         )
+            self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
 
     def _save_checkpoint(self, model, trial, metrics=None):
         # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
@@ -985,11 +995,13 @@ class GaudiTrainer(Trainer):
         }
 
         if self.args.use_habana:
-            if self.args.local_rank == -1:
-                # In non distributed, we save the global HPU RNG state
-                rng_states["hpu"] = self.hpu_random.get_rng_state_all()
-            else:
-                rng_states["hpu"] = self.hpu_random.get_rng_state()
+            # TODO: uncomment the code block below when torch.hpu.random.get_rng_state_all is fixed in SynapseAI
+            # if self.args.local_rank == -1:
+            #     # In non distributed, we save the global HPU RNG state
+            #     rng_states["hpu"] = self.hpu_random.get_rng_state_all()
+            # else:
+            #     rng_states["hpu"] = self.hpu_random.get_rng_state()
+            rng_states["hpu"] = self.hpu_random.get_rng_state()
 
         # A process can arrive here before the process 0 has a chance to save the model, in which case output_dir may
         # not yet exist.
@@ -1075,12 +1087,18 @@ class GaudiTrainer(Trainer):
             self.deepspeed = deepspeed_engine
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+        model.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
             if self.args.local_rank == -1:
                 logger.info("Using HPU graphs for inference.")
-                model = self._wrap_model_for_hpu_graphs(model)
+                if not self.already_wrapped_for_hpu_graphs:
+                    # Do not wrap the model in HPU graphs if it has already been done
+                    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+                    model = wrap_in_hpu_graph(model)
+                    self.already_wrapped_for_hpu_graphs = True
             else:
                 # Do not use HPU graphs for distributed runs
                 logger.warning(
@@ -1096,8 +1114,6 @@ class GaudiTrainer(Trainer):
         else:
             logger.info("  Num examples: Unknown")
         logger.info(f"  Batch size = {batch_size}")
-
-        model.eval()
 
         self.callback_handler.eval_dataloader = dataloader
         # Do this before wrapping.
@@ -1380,7 +1396,9 @@ class GaudiTrainer(Trainer):
         if args.deepspeed and not self.deepspeed:
             # XXX: eval doesn't have `resume_from_checkpoint` arg but we should be able to do eval
             # from the checkpoint eventually
-            deepspeed_engine, _, _ = deepspeed_init(self, num_training_steps=0, resume_from_checkpoint=None)
+            deepspeed_engine, _, _ = deepspeed_init(
+                self, num_training_steps=0, resume_from_checkpoint=None, inference=True
+            )
             self.model = deepspeed_engine.module
             self.model_wrapped = deepspeed_engine
             self.deepspeed = deepspeed_engine
@@ -1391,12 +1409,18 @@ class GaudiTrainer(Trainer):
             deepspeed_engine.lr_scheduler = None
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+        model.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
             if self.args.local_rank == -1:
                 logger.info("Using HPU graphs for inference.")
-                model = self._wrap_model_for_hpu_graphs(model)
+                if not self.already_wrapped_for_hpu_graphs:
+                    # Do not wrap the model in HPU graphs if it has already been done
+                    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+                    model = wrap_in_hpu_graph(model)
+                    self.already_wrapped_for_hpu_graphs = True
             else:
                 # Do not use HPU graphs for distributed runs
                 logger.warning(
@@ -1426,8 +1450,6 @@ class GaudiTrainer(Trainer):
             preds_gatherer = DistributedTensorGatherer(world_size, num_examples, make_multiple_of=make_multiple_of)
             labels_gatherer = DistributedTensorGatherer(world_size, num_examples, make_multiple_of=make_multiple_of)
             inputs_gatherer = DistributedTensorGatherer(world_size, num_examples, make_multiple_of=make_multiple_of)
-
-        model.eval()
 
         if args.past_index >= 0:
             self._past = None
@@ -1684,33 +1706,3 @@ class GaudiTrainer(Trainer):
         # Moving a model to HPU disconnects the tied weights, so we have to retie them.
         if self.args.use_habana and hasattr(model, "tie_weights"):
             model.tie_weights()
-
-    def _wrap_model_for_hpu_graphs(self, model: torch.nn.Module):
-        import habana_frameworks.torch as ht
-
-        stream = ht.hpu.Stream()
-        cache = {}
-        orig_fwd = model.forward
-
-        def forward(*args, **kwargs):
-            inputs = (args, kwargs)
-            shape_hash = input_shape_hash(inputs)
-            cached = cache.get(shape_hash)
-            if cached is None:
-                # Capture graph and cache it
-                with ht.hpu.stream(stream):
-                    graph = ht.hpu.HPUGraph()
-                    graph.capture_begin()
-                    outputs = orig_fwd(*args, **kwargs)
-                    graph.capture_end()
-                    cache[shape_hash] = CachedParams(inputs, outputs, graph)
-                return outputs
-
-            # Replay the cached graph with updated inputs
-            copy_to(cached.graph_inputs, inputs)
-            ht.core.hpu.default_stream().synchronize()
-            cached.graph.replay()
-            return cached.graph_outputs
-
-        model.forward = forward
-        return model
