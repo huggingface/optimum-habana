@@ -8,6 +8,7 @@
                 "train_batch_size": 4,
                 "eval_rougeLsum": 38.656,
                 "train_runtime": 5295.4711,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--dataset_config \"3.0.0\"",
                     "--source_prefix \"summarize: \"",

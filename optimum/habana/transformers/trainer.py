@@ -221,73 +221,73 @@ class GaudiTrainer(Trainer):
             "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
         )
 
-    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
-        if self.train_dataset is None or not has_length(self.train_dataset):
-            return None
+    # def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
+    #     if self.train_dataset is None or not has_length(self.train_dataset):
+    #         return None
 
-        generator = None
-        if self.args.world_size <= 1:
-            generator = torch.Generator()
-            # for backwards compatibility, we generate a seed here (which is sampled from a generator seeded with
-            # `args.seed`) if data_seed isn't provided.
-            # Further on in this method, we default to `args.seed` instead.
-            if self.args.data_seed is None:
-                seed = int(torch.empty((), dtype=torch.int64).random_().item())
-            else:
-                seed = self.args.data_seed
-            generator.manual_seed(seed)
+    #     generator = None
+    #     if self.args.world_size <= 1:
+    #         generator = torch.Generator()
+    #         # for backwards compatibility, we generate a seed here (which is sampled from a generator seeded with
+    #         # `args.seed`) if data_seed isn't provided.
+    #         # Further on in this method, we default to `args.seed` instead.
+    #         if self.args.data_seed is None:
+    #             seed = int(torch.empty((), dtype=torch.int64).random_().item())
+    #         else:
+    #             seed = self.args.data_seed
+    #         generator.manual_seed(seed)
 
-        seed = self.args.data_seed if self.args.data_seed is not None else self.args.seed
+    #     seed = self.args.data_seed if self.args.data_seed is not None else self.args.seed
 
-        # Build the sampler.
-        if self.args.group_by_length:
-            if is_datasets_available() and isinstance(self.train_dataset, datasets.Dataset):
-                lengths = (
-                    self.train_dataset[self.args.length_column_name]
-                    if self.args.length_column_name in self.train_dataset.column_names
-                    else None
-                )
-            else:
-                lengths = None
-            model_input_name = self.tokenizer.model_input_names[0] if self.tokenizer is not None else None
-            if self.args.world_size <= 1:
-                return LengthGroupedSampler(
-                    self.args.train_batch_size * self.args.gradient_accumulation_steps,
-                    dataset=self.train_dataset,
-                    lengths=lengths,
-                    model_input_name=model_input_name,
-                    generator=generator,
-                )
-            else:
-                return DistributedLengthGroupedSampler(
-                    self.args.train_batch_size * self.args.gradient_accumulation_steps,
-                    dataset=self.train_dataset,
-                    num_replicas=self.args.world_size,
-                    rank=self.args.process_index,
-                    lengths=lengths,
-                    model_input_name=model_input_name,
-                    seed=seed,
-                )
+    #     # Build the sampler.
+    #     if self.args.group_by_length:
+    #         if is_datasets_available() and isinstance(self.train_dataset, datasets.Dataset):
+    #             lengths = (
+    #                 self.train_dataset[self.args.length_column_name]
+    #                 if self.args.length_column_name in self.train_dataset.column_names
+    #                 else None
+    #             )
+    #         else:
+    #             lengths = None
+    #         model_input_name = self.tokenizer.model_input_names[0] if self.tokenizer is not None else None
+    #         if self.args.world_size <= 1:
+    #             return LengthGroupedSampler(
+    #                 self.args.train_batch_size * self.args.gradient_accumulation_steps,
+    #                 dataset=self.train_dataset,
+    #                 lengths=lengths,
+    #                 model_input_name=model_input_name,
+    #                 generator=generator,
+    #             )
+    #         else:
+    #             return DistributedLengthGroupedSampler(
+    #                 self.args.train_batch_size * self.args.gradient_accumulation_steps,
+    #                 dataset=self.train_dataset,
+    #                 num_replicas=self.args.world_size,
+    #                 rank=self.args.process_index,
+    #                 lengths=lengths,
+    #                 model_input_name=model_input_name,
+    #                 seed=seed,
+    #             )
 
-        else:
-            if self.args.world_size <= 1:
-                return RandomSampler(self.train_dataset, generator=generator)
-            elif not self.args.dataloader_drop_last:
-                # Use a loop for HPUs when drop_last is False to have all batches have the same size.
-                return DistributedSamplerWithLoop(
-                    self.train_dataset,
-                    batch_size=self.args.per_device_train_batch_size,
-                    num_replicas=self.args.world_size,
-                    rank=self.args.process_index,
-                    seed=seed,
-                )
-            else:
-                return DistributedSampler(
-                    self.train_dataset,
-                    num_replicas=self.args.world_size,
-                    rank=self.args.process_index,
-                    seed=seed,
-                )
+    #     else:
+    #         if self.args.world_size <= 1:
+    #             return RandomSampler(self.train_dataset, generator=generator)
+    #         elif not self.args.dataloader_drop_last:
+    #             # Use a loop for HPUs when drop_last is False to have all batches have the same size.
+    #             return DistributedSamplerWithLoop(
+    #                 self.train_dataset,
+    #                 batch_size=self.args.per_device_train_batch_size,
+    #                 num_replicas=self.args.world_size,
+    #                 rank=self.args.process_index,
+    #                 seed=seed,
+    #             )
+    #         else:
+    #             return DistributedSampler(
+    #                 self.train_dataset,
+    #                 num_replicas=self.args.world_size,
+    #                 rank=self.args.process_index,
+    #                 seed=seed,
+    #             )
 
     def create_optimizer(self):
         """

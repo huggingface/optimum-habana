@@ -8,6 +8,7 @@
                 "train_batch_size": 64,
                 "eval_accuracy": 0.9915,
                 "train_runtime": 1243.4596,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--remove_unused_columns False",
                     "--seed 1337",
@@ -19,6 +20,7 @@
                 "train_batch_size": 64,
                 "eval_accuracy": 0.9897,
                 "train_runtime": 403.6147,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--remove_unused_columns False",
                     "--seed 1337",

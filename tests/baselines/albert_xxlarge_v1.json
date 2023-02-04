@@ -8,6 +8,7 @@
                 "train_batch_size": 12,
                 "eval_f1": 94.7863,
                 "train_runtime": 19466.2771,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -17,6 +18,7 @@
                 "train_batch_size": 12,
                 "eval_f1": 95.0864,
                 "train_runtime": 2635.061,
+                "train_samples_per_second": 1.0,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
