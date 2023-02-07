@@ -29,12 +29,9 @@ from itertools import chain
 from typing import Optional
 
 import datasets
-from datasets import load_dataset
-
 import evaluate
 import transformers
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
+from datasets import load_dataset
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
@@ -47,6 +44,9 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
+
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -418,8 +418,9 @@ def main():
         max_seq_length = tokenizer.model_max_length
         if max_seq_length > 1024:
             logger.warning(
-                f"The tokenizer picked seems to have a very large `model_max_length` ({tokenizer.model_max_length}). "
-                "Picking 1024 instead. You can change that default value by passing --max_seq_length xxx."
+                "The chosen tokenizer supports a `model_max_length` that is longer than the default `block_size` value"
+                " of 1024. If you would like to use a longer `block_size` up to `tokenizer.model_max_length` you can"
+                " override this default with `--block_size xxx`."
             )
             max_seq_length = 1024
     else:

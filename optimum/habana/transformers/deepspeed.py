@@ -19,7 +19,6 @@ from copy import deepcopy
 from dataclasses import make_dataclass
 
 import torch
-
 from transformers.deepspeed import (
     HfDeepSpeedConfig,
     HfTrainerDeepSpeedConfig,
@@ -27,9 +26,11 @@ from transformers.deepspeed import (
     set_hf_deepspeed_config,
 )
 from transformers.dependency_versions_check import dep_version_check
-from transformers.utils.versions import require_version
 
-from .gaudi_configuration import GaudiConfig
+from optimum.utils import logging
+
+
+logger = logging.get_logger(__name__)
 
 
 class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):

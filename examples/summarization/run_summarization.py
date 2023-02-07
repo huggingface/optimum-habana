@@ -25,15 +25,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import datasets
+import evaluate
 import nltk  # Here to have a nice missing dependency error message early on
 import numpy as np
-from datasets import load_dataset
-
-import evaluate
 import transformers
+from datasets import load_dataset
 from filelock import FileLock
-from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-from optimum.habana.utils import set_seed
 from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,
@@ -49,6 +46,9 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
+
+from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+from optimum.habana.utils import set_seed
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.

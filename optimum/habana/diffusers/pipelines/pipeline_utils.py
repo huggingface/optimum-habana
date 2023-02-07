@@ -22,11 +22,11 @@ import tempfile
 from typing import Optional, Union
 
 import torch
-
 from diffusers.pipelines import DiffusionPipeline
+
 from optimum.utils import logging
 
-from ...transformers.gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
+from ...transformers.gaudi_configuration import GaudiConfig
 
 
 logger = logging.get_logger(__name__)

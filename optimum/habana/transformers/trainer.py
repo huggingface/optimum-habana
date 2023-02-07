@@ -29,10 +29,7 @@ from packaging import version
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
-
-from optimum.utils import logging
 from transformers import Trainer
-from transformers.configuration_utils import PretrainedConfig
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.deepspeed import is_deepspeed_zero3_enabled
@@ -60,7 +57,6 @@ from transformers.trainer_utils import (
     HPSearchBackend,
     HubStrategy,
     IntervalStrategy,
-    PredictionOutput,
     TrainOutput,
     denumpify_detensorize,
     enable_full_determinism,
@@ -70,6 +66,8 @@ from transformers.trainer_utils import (
 )
 from transformers.training_args import TrainingArguments
 from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
+
+from optimum.utils import logging
 
 from ..utils import (
     CachedParams,
@@ -1582,9 +1580,6 @@ class GaudiTrainer(Trainer):
             state_dict = torch.load(best_model_path, map_location="cpu")
             # If the model is on the GPU, it still works!
             load_result = model.load_state_dict(state_dict, strict=False)
-            self._issue_warnings_after_load(load_result)
-        elif os.path.exists(os.path.join(self.state.best_model_checkpoint, WEIGHTS_INDEX_NAME)):
-            load_result = load_sharded_checkpoint(model, self.state.best_model_checkpoint, strict=False)
             self._issue_warnings_after_load(load_result)
         else:
             logger.warning(

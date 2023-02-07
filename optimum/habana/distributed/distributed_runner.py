@@ -126,7 +126,7 @@ class DistributedRunner:
         corespsocket = int(lscpu_output2)
         if corespsocket == 1:  # running inside VM?
             logger.warning(f"Cores per socket is {corespsocket}. Running inside a VM?")
-            logger.warning(f"Mapping by slot instead of socket")
+            logger.warning("Mapping by slot instead of socket")
             self._map_by = "slot"
         if self._hostfile:
             _hls_list = str(os.getenv("MULTI_HLS_IPS", "")).split(",")

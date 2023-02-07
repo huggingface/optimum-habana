@@ -18,8 +18,6 @@ from transformers.models.albert.modeling_albert import AlbertModel
 from transformers.models.vit.modeling_vit import ViTSelfAttention
 from transformers.models.wav2vec2.modeling_wav2vec2 import (
     Wav2Vec2Model,
-    _compute_mask_indices,
-    _sample_negative_indices,
 )
 
 from .generation import GaudiGenerationMixin
