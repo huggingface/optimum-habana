@@ -5,14 +5,20 @@
 ---
 > Training the library models for masked language modeling (BERT, ALBERT, RoBERTa...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
-36a36,37
-> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-> from optimum.habana.utils import set_seed
-45,48d45
+34,35d32
+< from datasets import load_dataset
+< 
+36a34
+> from datasets import load_dataset
+45,48d42
 <     Trainer,
 <     TrainingArguments,
 <     is_torch_tpu_available,
 <     set_seed,
+53a48,50
+> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+> from optimum.habana.utils import set_seed
+> 
 56c53
 < check_min_version("4.27.0.dev0")
 ---
@@ -42,13 +48,13 @@
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
 255d259
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-573c577
+574c578
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-574a579
+575a580
 >         gaudi_config=gaudi_config,
-580,583c585,586
+581,584c586,587
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -56,7 +62,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-636,640d638
+637,641d639
 < 
 < 
 < def _mp_fn(index):

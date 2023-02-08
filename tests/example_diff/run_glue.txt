@@ -1,11 +1,17 @@
-31a32,33
-> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-> from optimum.habana.utils import set_seed
-40,41d41
+29,30d28
+< from datasets import load_dataset
+< 
+31a30
+> from datasets import load_dataset
+40,41d38
 <     Trainer,
 <     TrainingArguments,
-43d42
+43d39
 <     set_seed,
+48a45,47
+> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+> from optimum.habana.utils import set_seed
+> 
 51c50
 < check_min_version("4.27.0.dev0")
 ---
@@ -29,21 +35,13 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-414,415c421,424
-<                 f"model labels: {list(sorted(label_name_to_id.keys()))}, dataset labels: {list(sorted(label_list))}."
-<                 "\nIgnoring the model labels as a result.",
----
->                 (
->                     f"model labels: {list(sorted(label_name_to_id.keys()))}, dataset labels:"
->                     f" {list(sorted(label_list))}.\nIgnoring the model labels as a result."
->                 ),
-513c522
+513c520
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-514a524
+514a522
 >         gaudi_config=gaudi_config,
-614,618d623
+614,618d621
 < 
 < 
 < def _mp_fn(index):

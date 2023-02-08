@@ -19,8 +19,10 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
+import evaluate
 import numpy as np
 import torch
+import transformers
 from datasets import load_dataset
 from PIL import Image
 from torchvision.transforms import (
@@ -32,11 +34,6 @@ from torchvision.transforms import (
     Resize,
     ToTensor,
 )
-
-import evaluate
-import transformers
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
 from transformers import (
     MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
     AutoConfig,
@@ -47,6 +44,9 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
+
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 
 
 """ Fine-tuning a 🤗 Transformers model for image classification"""

@@ -13,14 +13,13 @@
 #  limitations under the License.
 
 import os
+import warnings
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
+from pathlib import Path
 from typing import Optional, Union
 
-import transformers
-from optimum.utils import logging
 from transformers.debug_utils import DebugOption
-from transformers.deepspeed import HfTrainerDeepSpeedConfig
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
 from transformers.trainer_utils import EvaluationStrategy, HubStrategy, IntervalStrategy, SchedulerType
 from transformers.training_args import (
@@ -28,9 +27,10 @@ from transformers.training_args import (
     TrainingArguments,
     default_logdir,
     get_int_from_env,
-    trainer_log_levels,
 )
-from transformers.utils import get_full_repo_name, is_accelerate_available
+from transformers.utils import ccl_version, get_full_repo_name, is_accelerate_available, is_psutil_available
+
+from optimum.utils import logging
 
 
 if is_torch_available():

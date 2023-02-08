@@ -18,8 +18,9 @@ A subclass of `GaudiTrainer` specific to Question-Answering tasks
 import math
 import time
 
-from optimum.habana import GaudiTrainer
 from transformers.trainer_utils import PredictionOutput, speed_metrics
+
+from optimum.habana import GaudiTrainer
 
 
 class QuestionAnsweringTrainer(GaudiTrainer):

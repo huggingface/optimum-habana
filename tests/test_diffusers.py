@@ -4,14 +4,14 @@ from unittest import TestCase
 
 import numpy as np
 import torch
-
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from habana_frameworks.torch.hpex import hmp
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers.testing_utils import slow
+
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline, GaudiStableDiffusionPipeline
 from optimum.habana.utils import set_seed
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
-from transformers.testing_utils import slow
 
 
 THROUGHPUT_BASELINE = 0.229

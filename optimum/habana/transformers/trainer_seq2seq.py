@@ -16,10 +16,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.utils.data import Dataset
-
-from optimum.utils import logging
 from transformers.deepspeed import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import PredictionOutput
+
+from optimum.utils import logging
 
 from .trainer import GaudiTrainer
 
@@ -33,7 +33,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         eval_dataset: Optional[Dataset] = None,
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "eval",
-        **gen_kwargs
+        **gen_kwargs,
     ) -> Dict[str, float]:
         """
         Run evaluation and returns metrics.
@@ -86,7 +86,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         test_dataset: Dataset,
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "test",
-        **gen_kwargs
+        **gen_kwargs,
     ) -> PredictionOutput:
         """
         Run prediction and returns predictions and potential metrics.

@@ -2,15 +2,21 @@
 < # Copyright 2021 The HuggingFace Team. All rights reserved.
 ---
 > # Copyright 2022 The HuggingFace Team. All rights reserved.
-34a35,36
-> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-> from optimum.habana.utils import set_seed
-45,47c47
+30a31
+> import transformers
+33,34d33
+< 
+< import transformers
+45,47c44
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
 <     set_seed,
 ---
 >     default_data_collator,
+52a50,52
+> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+> from optimum.habana.utils import set_seed
+> 
 55c55
 < check_min_version("4.27.0.dev0")
 ---

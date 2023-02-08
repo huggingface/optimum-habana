@@ -1,10 +1,16 @@
-37a38,39
-> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-> from optimum.habana.utils import set_seed
-44,46d45
+24a25
+> import transformers
+36,37d36
+< 
+< import transformers
+44,46d42
 <     Trainer,
 <     TrainingArguments,
 <     set_seed,
+51a48,50
+> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+> from optimum.habana.utils import set_seed
+> 
 58c57
 < check_min_version("4.27.0.dev0")
 ---

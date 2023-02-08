@@ -19,7 +19,6 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-
 from diffusers.configuration_utils import register_to_config
 from diffusers.schedulers import DDIMScheduler
 from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
