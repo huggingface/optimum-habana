@@ -6,9 +6,9 @@
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 4,
-                "eval_rougeLsum": 38.656,
-                "train_runtime": 5295.4711,
-                "train_samples_per_second": 1.0,
+                "eval_rougeLsum": 38.6121,
+                "train_runtime": 4845.2769,
+                "train_samples_per_second": 179.471,
                 "extra_arguments": [
                     "--dataset_config \"3.0.0\"",
                     "--source_prefix \"summarize: \"",

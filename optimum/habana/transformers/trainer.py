@@ -39,11 +39,8 @@ from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
-    DistributedLengthGroupedSampler,
-    DistributedSamplerWithLoop,
     DistributedTensorGatherer,
     IterableDatasetShard,
-    LengthGroupedSampler,
     SequentialDistributedSampler,
     find_batch_size,
     get_parameter_names,
@@ -68,15 +65,12 @@ from transformers.trainer_utils import (
     has_length,
 )
 from transformers.training_args import TrainingArguments
-from transformers.utils import CONFIG_NAME, WEIGHTS_NAME, is_datasets_available
+from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
 
 from optimum.utils import logging
 
 from ..utils import (
-    CachedParams,
-    copy_to,
     get_hpu_memory_stats,
-    input_shape_hash,
     set_seed,
     speed_metrics,
     to_device_dtype,
@@ -86,10 +80,6 @@ from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .modeling_utils import adapt_transformers_to_gaudi
 from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
-
-
-if is_datasets_available():
-    import datasets
 
 
 if TYPE_CHECKING:
@@ -219,74 +209,6 @@ class GaudiTrainer(Trainer):
         warnings.filterwarnings(
             "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
         )
-
-    # def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
-    #     if self.train_dataset is None or not has_length(self.train_dataset):
-    #         return None
-
-    #     generator = None
-    #     if self.args.world_size <= 1:
-    #         generator = torch.Generator()
-    #         # for backwards compatibility, we generate a seed here (which is sampled from a generator seeded with
-    #         # `args.seed`) if data_seed isn't provided.
-    #         # Further on in this method, we default to `args.seed` instead.
-    #         if self.args.data_seed is None:
-    #             seed = int(torch.empty((), dtype=torch.int64).random_().item())
-    #         else:
-    #             seed = self.args.data_seed
-    #         generator.manual_seed(seed)
-
-    #     seed = self.args.data_seed if self.args.data_seed is not None else self.args.seed
-
-    #     # Build the sampler.
-    #     if self.args.group_by_length:
-    #         if is_datasets_available() and isinstance(self.train_dataset, datasets.Dataset):
-    #             lengths = (
-    #                 self.train_dataset[self.args.length_column_name]
-    #                 if self.args.length_column_name in self.train_dataset.column_names
-    #                 else None
-    #             )
-    #         else:
-    #             lengths = None
-    #         model_input_name = self.tokenizer.model_input_names[0] if self.tokenizer is not None else None
-    #         if self.args.world_size <= 1:
-    #             return LengthGroupedSampler(
-    #                 self.args.train_batch_size * self.args.gradient_accumulation_steps,
-    #                 dataset=self.train_dataset,
-    #                 lengths=lengths,
-    #                 model_input_name=model_input_name,
-    #                 generator=generator,
-    #             )
-    #         else:
-    #             return DistributedLengthGroupedSampler(
-    #                 self.args.train_batch_size * self.args.gradient_accumulation_steps,
-    #                 dataset=self.train_dataset,
-    #                 num_replicas=self.args.world_size,
-    #                 rank=self.args.process_index,
-    #                 lengths=lengths,
-    #                 model_input_name=model_input_name,
-    #                 seed=seed,
-    #             )
-
-    #     else:
-    #         if self.args.world_size <= 1:
-    #             return RandomSampler(self.train_dataset, generator=generator)
-    #         elif not self.args.dataloader_drop_last:
-    #             # Use a loop for HPUs when drop_last is False to have all batches have the same size.
-    #             return DistributedSamplerWithLoop(
-    #                 self.train_dataset,
-    #                 batch_size=self.args.per_device_train_batch_size,
-    #                 num_replicas=self.args.world_size,
-    #                 rank=self.args.process_index,
-    #                 seed=seed,
-    #             )
-    #         else:
-    #             return DistributedSampler(
-    #                 self.train_dataset,
-    #                 num_replicas=self.args.world_size,
-    #                 rank=self.args.process_index,
-    #                 seed=seed,
-    #             )
 
     def create_optimizer(self):
         """
