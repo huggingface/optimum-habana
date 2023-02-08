@@ -21,8 +21,6 @@ from typing import Callable, List, Optional, Union
 
 import torch
 import torch.distributed as dist
-
-from optimum.utils import logging
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.configuration_utils import GenerationConfig
@@ -44,6 +42,8 @@ from transformers.generation.utils import (
     SampleOutput,
 )
 from transformers.pytorch_utils import torch_int_div
+
+from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)

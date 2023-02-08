@@ -1,11 +1,17 @@
-34a35,36
-> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-> from optimum.habana.utils import set_seed
-42,43d43
+32,33d31
+< from datasets import DatasetDict, load_dataset
+< 
+34a33
+> from datasets import DatasetDict, load_dataset
+42,43d40
 <     Trainer,
 <     TrainingArguments,
-45d44
+45d41
 <     set_seed,
+50a47,49
+> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+> from optimum.habana.utils import set_seed
+> 
 53c52
 < check_min_version("4.27.0.dev0")
 ---
@@ -36,18 +42,7 @@
 >             f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
 >             " support it on HPUs yet."
 >         )
-685,688c695,699
-<             "Loading a processor from a feature extractor config that does not"
-<             " include a `processor_class` attribute is deprecated and will be removed in v5. Please add the following "
-<             " attribute to your `preprocessor_config.json` file to suppress this warning: "
-<             " `'processor_class': 'Wav2Vec2Processor'`",
----
->             (
->                 "Loading a processor from a feature extractor config that does not include a `processor_class`"
->                 " attribute is deprecated and will be removed in v5. Please add the following  attribute to your"
->                 " `preprocessor_config.json` file to suppress this warning:  `'processor_class': 'Wav2Vec2Processor'`"
->             ),
-694c705,709
+694c704,708
 <     data_collator = DataCollatorCTCWithPadding(processor=processor)
 ---
 >     data_collator = DataCollatorCTCWithPadding(
@@ -55,11 +50,9 @@
 >         pad_to_multiple_of=int(max_input_length),
 >         pad_to_multiple_of_labels=500,
 >     )
-697c712
+697c711
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-698a714
+698a713
 >         gaudi_config=gaudi_config,
-711d726
-< 

@@ -1,11 +1,17 @@
-32a33,34
-> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-> from optimum.habana.utils import set_seed
-44,45d45
+30,31d29
+< from datasets import load_dataset
+< 
+32a31
+> from datasets import load_dataset
+44,45d42
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
-47d46
+47d43
 <     set_seed,
+52a49,51
+> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+> from optimum.habana.utils import set_seed
+> 
 55c54
 < check_min_version("4.27.0.dev0")
 ---

@@ -22,12 +22,12 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
 # Run code quality checks
 style_check:
-	black --check --preview .
-	isort --check .
+	black --check .
+	ruff .
 
 style:
-	black --preview .
-	isort .
+	black .
+	ruff . --fix
 
 # Run unit and integration tests
 fast_tests:
