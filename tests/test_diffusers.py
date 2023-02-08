@@ -78,10 +78,8 @@ class GaudiPipelineUtilsTester(TestCase):
         )
 
         self.assertTrue(hasattr(pipeline, "ht"))
-        self.assertTrue(hasattr(pipeline, "hpu_graph"))
         self.assertTrue(hasattr(pipeline, "hpu_stream"))
-        self.assertTrue(hasattr(pipeline, "static_inputs"))
-        self.assertTrue(hasattr(pipeline, "static_outputs"))
+        self.assertTrue(hasattr(pipeline, "cache"))
 
     def test_habana_mixed_precision(self):
         gaudi_config = GaudiConfig(

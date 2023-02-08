@@ -1,33 +1,27 @@
 {
     "cifar10": {
         "num_train_epochs": 5,
-        "eval_batch_size": 64,
+        "eval_batch_size": 32,
         "distribution": {
             "single_card": {
                 "learning_rate": 3e-5,
-                "train_batch_size": 64,
-                "eval_accuracy": 0.9889,
-                "train_runtime": 819.6108,
+                "train_batch_size": 32,
+                "eval_accuracy": 0.99,
+                "train_runtime": 770.1643,
+                "train_samples_per_second": 286.915,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--evaluation_strategy epoch",
-                    "--save_strategy epoch",
-                    "--load_best_model_at_end True",
-                    "--save_total_limit 3",
                     "--seed 1337"
                 ]
             },
             "multi_card": {
                 "learning_rate": 2e-4,
                 "train_batch_size": 64,
-                "eval_accuracy": 0.9908,
-                "train_runtime": 222.6659,
+                "eval_accuracy": 0.9897,
+                "train_runtime": 178.1801,
+                "train_samples_per_second": 1680.255,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--evaluation_strategy epoch",
-                    "--save_strategy epoch",
-                    "--load_best_model_at_end True",
-                    "--save_total_limit 3",
                     "--seed 1337"
                 ]
             }

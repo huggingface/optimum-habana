@@ -5,12 +5,12 @@
         "distribution": {
             "deepspeed": {
                 "learning_rate": 5e-5,
-                "train_batch_size": 8,
-                "perplexity": 13.7992,
-                "train_runtime": 469.2313,
+                "train_batch_size": 16,
+                "perplexity": 12.8698,
+                "train_runtime": 672.6815,
+                "train_samples_per_second": 15.093,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
-                    "--gradient_accumulation 8",
                     "--gradient_checkpointing",
                     "--deepspeed tests/configs/deepspeed_zero_2.json"
                 ]
