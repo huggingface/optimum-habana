@@ -347,27 +347,39 @@ class ExampleTesterBase(TestCase):
             results (Dict): results of the run to assess
             baseline (Dict): baseline to assert whether or not there is regression
         """
+        # Gather all the metrics to assess
+        metrics_to_assess = []
+        for metric_name in self.REGRESSION_METRICS.keys():
+            if metric_name in baseline and metric_name in results:
+                metrics_to_assess.append(metric_name)
 
-        number_asserted_metrics = 0
-        for metric_name, assert_function_and_threshold in self.REGRESSION_METRICS.items():
-            if metric_name in baseline:
-                number_asserted_metrics += 1
-                assert_function, threshold_factor = assert_function_and_threshold
-                assert_function(
-                    self,
-                    results[metric_name],
-                    threshold_factor * baseline[metric_name],
-                    msg=f"for metric {metric_name}.",
-                )
+        # Check that at least 3 metrics are assessed:
+        # training time + throughput + accuracy metric (F1, accuracy, perplexity,...)
         self.assertGreaterEqual(
-            number_asserted_metrics,
+            len(metrics_to_assess),
             3,
             (
-                f"{number_asserted_metrics} asserted metric(s) while at least 3 are expected (throughput + training"
+                f"{len(metrics_to_assess)} asserted metric(s) while at least 3 are expected (throughput + training"
                 f" time + accuracy). Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received:"
                 f" {baseline.keys()}"
             ),
         )
+
+        # Message to display if one test fails
+        # This enables to show all the results and baselines even if one test fails before others
+        failure_message = "\n===== Assessed metrics (measured vs thresholded baseline) =====\n"
+        for metric_name in metrics_to_assess:
+            failure_message += f"{metric_name}: {results[metric_name]} vs {self.REGRESSION_METRICS[metric_name][1] * baseline[metric_name]}\n"
+
+        # Assess metrics
+        for metric_name in metrics_to_assess:
+            assert_function, threshold_factor = self.REGRESSION_METRICS[metric_name]
+            assert_function(
+                self,
+                results[metric_name],
+                threshold_factor * baseline[metric_name],
+                msg=f"for metric {metric_name}. {failure_message}",
+            )
 
 
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
