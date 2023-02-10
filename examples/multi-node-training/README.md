@@ -23,7 +23,7 @@ where `PATH` is the path to the folder containing the `Dockerfile`.
 
 To run a Docker container with the image you just built, execute:
 ```bash
-docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --net=host --ipc=host multi_node:latest
+docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --net=host --ipc=host gaudi_multi_node:latest
 ```
 
 > For AWS DL1 instances, `--privileged` must be passed to the `docker run` command so that EFA interfaces are visible.

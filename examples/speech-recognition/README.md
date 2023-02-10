@@ -64,6 +64,7 @@ python run_speech_recognition_ctc.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name="Habana/wav2vec2" \
     --throughput_warmup_steps="2"
 ```
@@ -101,6 +102,7 @@ python ../gaudi_spawn.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2
 ```
@@ -115,7 +117,7 @@ On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -147,6 +149,7 @@ python ../gaudi_spawn.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2\
     --deepspeed ../../tests/configs/deepspeed_zero_2.json

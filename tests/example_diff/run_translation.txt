@@ -1,24 +1,40 @@
-32a33,34
-> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-> from optimum.habana.utils import set_seed
-44,45d45
+30,31d29
+< from datasets import load_dataset
+< 
+32a31
+> from datasets import load_dataset
+44,45d42
 <     Seq2SeqTrainer,
 <     Seq2SeqTrainingArguments,
-47d46
+47d43
 <     set_seed,
+52a49,51
+> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+> from optimum.habana.utils import set_seed
+> 
 55c54
-< check_min_version("4.26.0.dev0")
+< check_min_version("4.27.0.dev0")
 ---
-> check_min_version("4.25.0")
-171c170
+> check_min_version("4.26.0")
+100a100,108
+>     use_cache: bool = field(
+>         default=True,
+>         metadata={
+>             "help": (
+>                 "Whether or not the model should return the last key/values attentions (not used by all models)."
+>                 "Only relevant if `config.is_decoder=True`."
+>             )
+>         },
+>     )
+171c179
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-256c255
+256c264
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-281a281,287
+281a290,296
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -26,20 +42,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-284,285c290,292
+284,285c299,301
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-560c567
+365a382
+>         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
+560c577
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-561a569
+561a579
 >         gaudi_config=gaudi_config,
-652,656d659
+652,656d669
 < 
 < 
 < def _mp_fn(index):

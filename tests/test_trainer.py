@@ -26,10 +26,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
-
 from huggingface_hub import HfFolder, Repository, delete_repo, set_access_token
-from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.utils import logging
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
@@ -43,28 +40,28 @@ from transformers.testing_utils import (
     get_tests_dir,
     is_staging_test,
     require_optuna,
-    require_ray,
     require_sentencepiece,
-    require_sigopt,
     require_tokenizers,
     require_torch,
-    require_wandb,
 )
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 from transformers.training_args import OptimizerNames
 from transformers.utils import WEIGHTS_NAME
 from transformers.utils.hp_naming import TrialShortNamer
 
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
+from optimum.utils import logging
+
 
 if is_torch_available():
     import torch
+    import transformers.optimization
     from torch import nn
     from torch.utils.data import IterableDataset
-
-    import transformers.optimization
-    from optimum.habana import GaudiTrainer
     from transformers import EarlyStoppingCallback, GPT2Config, GPT2LMHeadModel, PreTrainedModel, TrainerState
     from transformers.modeling_utils import unwrap_model
+
+    from optimum.habana import GaudiTrainer
 
 
 PATH_SAMPLE_TEXT = f"{get_tests_dir()}/fixtures/sample_text.txt"
@@ -523,7 +520,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
 
         # --bf16 is not supported and should raise an error
         with self.assertRaises(ValueError):
-            trainer = get_regression_trainer(learning_rate=0.1, bf16=True)
+            get_regression_trainer(learning_rate=0.1, bf16=True)
 
 
 @require_torch
@@ -542,6 +539,17 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         model = RegressionModel()
         gaudi_config = get_gaudi_config()
         args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=False)
+        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer.train()
+        _ = trainer.evaluate()
+        _ = trainer.predict(eval_dataset)
+
+    def test_hpu_graphs(self):
+        train_dataset = RegressionDataset()
+        eval_dataset = RegressionDataset()
+        model = RegressionModel()
+        gaudi_config = get_gaudi_config()
+        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True, use_hpu_graphs=True)
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         trainer.train()
         _ = trainer.evaluate()

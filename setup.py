@@ -13,11 +13,11 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.25.0",
+    "transformers >= 4.26.0",
     "optimum",
     "torch",
     "accelerate",
-    "diffusers >= 0.9.0",
+    "diffusers >= 0.12.0",
 ]
 
 TESTS_REQUIRE = [
@@ -32,7 +32,7 @@ TESTS_REQUIRE = [
 
 QUALITY_REQUIRES = [
     "black",
-    "isort",
+    "ruff",
     "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
 ]
 
@@ -46,8 +46,8 @@ setup(
     version=__version__,
     description=(
         "Optimum Habana is the interface between the Hugging Face Transformers and Diffusers libraries and Habana's"
-        " Gaudi Processor (HPU). It provides a set of tools enabling easy model loading and training on single- and"
-        " multi-HPU settings for different downstream tasks."
+        " Gaudi processor (HPU). It provides a set of tools enabling easy model loading, training and inference on"
+        " single- and multi-HPU settings for different downstream tasks."
     ),
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

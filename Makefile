@@ -22,12 +22,12 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
 # Run code quality checks
 style_check:
-	black --check --preview .
-	isort --check .
+	black --check .
+	ruff .
 
 style:
-	black --preview .
-	isort .
+	black .
+	ruff . --fix
 
 # Run unit and integration tests
 fast_tests:
@@ -49,7 +49,7 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
