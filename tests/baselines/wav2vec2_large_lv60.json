@@ -6,9 +6,9 @@
             "single_card": {
                 "learning_rate": 3e-4,
                 "train_batch_size": 4,
-                "eval_wer": 0.0423,
-                "train_runtime": 20969.068,
-                "train_samples_per_second": 1.0,
+                "eval_wer": 0.0394,
+                "train_runtime": 20001.2782,
+                "train_samples_per_second": 4.294,
                 "extra_arguments": [
                     "--dataset_config_name clean",
                     "--train_split_name train.100",
@@ -18,15 +18,15 @@
                     "--text_column_name text",
                     "--layerdrop 0.0",
                     "--freeze_feature_encoder",
-                    "--chars_to_ignore , ? . ! - \\; \\: \\\" “ % ‘ ”"
+                    "--chars_to_ignore , ? . ! - ; : \" “ % ‘ ”"
                 ]
             },
             "multi_card": {
                 "learning_rate": 3e-4,
                 "train_batch_size": 4,
-                "eval_wer": 0.0458,
-                "train_runtime": 2867.0015,
-                "train_samples_per_second": 1.0,
+                "eval_wer": 0.0401,
+                "train_runtime": 3175.302,
+                "train_samples_per_second": 27.853,
                 "extra_arguments": [
                     "--dataset_config_name clean",
                     "--train_split_name train.100",
@@ -36,7 +36,7 @@
                     "--text_column_name text",
                     "--layerdrop 0.0",
                     "--freeze_feature_encoder",
-                    "--chars_to_ignore '\",?.!-;:\\\"“%‘”\"'"
+                    "--chars_to_ignore ',?.!-;:\"“%‘”'"
                 ]
             }
         }
