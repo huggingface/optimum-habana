@@ -36,6 +36,10 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
+466c471
+<         f'[{"".join(data_args.chars_to_ignore)}]' if data_args.chars_to_ignore is not None else None
+---
+>         f'[{"".join(data_args.chars_to_ignore).replace(" ", "")}]' if data_args.chars_to_ignore is not None else None
 595a601,605
 >         raise RuntimeError(
 >             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
