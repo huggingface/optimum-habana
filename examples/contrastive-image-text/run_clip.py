@@ -29,13 +29,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import torch
+import transformers
 from datasets import load_dataset
 from PIL import Image
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
 from torchvision.transforms.functional import InterpolationMode
-
-import transformers
 from transformers import (
     AutoImageProcessor,
     AutoModel,
