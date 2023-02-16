@@ -50,9 +50,9 @@ COCO_DIR = os.path.join(os.getcwd(), "data")
 ds = datasets.load_dataset("ydshieh/coco_dataset_script", "2017", data_dir=COCO_DIR)
 ```
 
-### Create a model from a vision encoder model and a text decoder model
+### Create a model from a vision encoder model and a text encoder model
 Next, we create a [VisionTextDualEncoderModel](https://huggingface.co/docs/transformers/model_doc/vision-text-dual-encoder#visiontextdualencoder).
-The `VisionTextDualEncoderModel` class let's you load any vision and text encoder model to create a dual encoder.
+The `VisionTextDualEncoderModel` class lets you load any vision and text encoder model to create a dual encoder.
 Here is an example of how to load the model using pre-trained vision and text models.
 
 ```python3
@@ -64,11 +64,11 @@ from transformers import (
 )
 
 model = VisionTextDualEncoderModel.from_vision_text_pretrained(
-    "openai/clip-vit-large-patch14", "roberta-large"
+    "openai/clip-vit-base-patch32", "roberta-base"
 )
 
-tokenizer = AutoTokenizer.from_pretrained("roberta-large")
-image_processor = AutoImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
+tokenizer = AutoTokenizer.from_pretrained("roberta-base")
+image_processor = AutoImageProcessor.from_pretrained("openai/clip-vit-base-patch32")
 processor = VisionTextDualEncoderProcessor(image_processor, tokenizer)
 
 # save the model and processor
@@ -94,13 +94,14 @@ python run_clip.py \
     --caption_column caption \
     --remove_unused_columns=False \
     --do_train  --do_eval \
-    --per_device_train_batch_size="16" \
-    --per_device_eval_batch_size="16" \
+    --per_device_train_batch_size="64" \
+    --per_device_eval_batch_size="64" \
     --learning_rate="5e-5" --warmup_steps="0" --weight_decay 0.1 \
     --overwrite_output_dir \
+    --save_strategy epoch \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs \
-    --gaudi_config_name Habana/vit \
+    --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 2
 ```
