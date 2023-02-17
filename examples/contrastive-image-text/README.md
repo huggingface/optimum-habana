@@ -25,7 +25,7 @@ The idea is to train a vision encoder and a text encoder jointly to project the 
 captions into the same embedding space, such that the caption embeddings are located near the embeddings
 of the images they describe.
 
-### Download COCO dataset (2017)
+## Download COCO dataset (2017)
 This example uses COCO dataset (2017) through a custom dataset script, which requires users to manually download the
 COCO dataset before training.
 
@@ -50,7 +50,7 @@ COCO_DIR = os.path.join(os.getcwd(), "data")
 ds = datasets.load_dataset("ydshieh/coco_dataset_script", "2017", data_dir=COCO_DIR)
 ```
 
-### Create a model from a vision encoder model and a text encoder model
+## Create a model from a vision encoder model and a text encoder model
 Next, we create a [VisionTextDualEncoderModel](https://huggingface.co/docs/transformers/model_doc/vision-text-dual-encoder#visiontextdualencoder).
 The `VisionTextDualEncoderModel` class lets you load any vision and text encoder model to create a dual encoder.
 Here is an example of how to load the model using pre-trained vision and text models.
@@ -80,11 +80,72 @@ This loads both the text and vision encoders using pre-trained weights, the proj
 initialized except for CLIP's vision model. If you use CLIP to initialize the vision model then the vision projection weights are also
 loaded using the pre-trained weights.
 
-### Train the model
-Finally, we can run the example script to train the model:
+## Train the model
+Finally, we can run the example script to train the model.
+
+
+### Single-HPU training
+
+Run the following command for single-device training:
 
 ```bash
 python run_clip.py \
+    --output_dir ./clip-roberta-finetuned \
+    --model_name_or_path ./clip-roberta \
+    --data_dir $PWD/data \
+    --dataset_name ydshieh/coco_dataset_script \
+    --dataset_config_name=2017 \
+    --image_column image_path \
+    --caption_column caption \
+    --remove_unused_columns=False \
+    --do_train  --do_eval \
+    --per_device_train_batch_size="64" \
+    --per_device_eval_batch_size="64" \
+    --learning_rate="5e-5" --warmup_steps="0" --weight_decay 0.1 \
+    --overwrite_output_dir \
+    --save_strategy epoch \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/clip \
+    --throughput_warmup_steps 2
+```
+
+
+### Multi-HPU training
+
+Run the following command for distributed training:
+
+```bash
+python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
+    --output_dir ./clip-roberta-finetuned \
+    --model_name_or_path ./clip-roberta \
+    --data_dir $PWD/data \
+    --dataset_name ydshieh/coco_dataset_script \
+    --dataset_config_name=2017 \
+    --image_column image_path \
+    --caption_column caption \
+    --remove_unused_columns=False \
+    --do_train  --do_eval \
+    --per_device_train_batch_size="64" \
+    --per_device_eval_batch_size="64" \
+    --learning_rate="5e-5" --warmup_steps="0" --weight_decay 0.1 \
+    --overwrite_output_dir \
+    --save_strategy epoch \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/clip \
+    --throughput_warmup_steps 2
+```
+
+
+### DeepSpeed
+
+Run the following command for training with DeepSpeed:
+
+```bash
+python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
     --data_dir $PWD/data \
