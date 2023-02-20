@@ -25,13 +25,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import datasets
-import numpy as np
-from datasets import load_dataset
-
 import evaluate
+import numpy as np
 import transformers
-from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-from optimum.habana.utils import set_seed
+from datasets import load_dataset
 from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,
@@ -48,6 +45,9 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
+
+from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+from optimum.habana.utils import set_seed
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -94,6 +94,15 @@ class ModelArguments:
             "help": (
                 "Will use the token generated when running `huggingface-cli login` (necessary to use this script "
                 "with private models)."
+            )
+        },
+    )
+    use_cache: bool = field(
+        default=True,
+        metadata={
+            "help": (
+                "Whether or not the model should return the last key/values attentions (not used by all models)."
+                "Only relevant if `config.is_decoder=True`."
             )
         },
     )
@@ -370,6 +379,7 @@ def main():
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
+        use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,

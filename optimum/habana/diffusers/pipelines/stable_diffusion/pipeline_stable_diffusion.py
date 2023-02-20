@@ -21,15 +21,15 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from packaging import version
-
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate
-from optimum.utils import logging
+from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+
+from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import speed_metrics
@@ -748,19 +748,25 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
 
     @torch.no_grad()
     def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, capture):
-        if capture:
-            self.static_inputs = [latent_model_input, timestep, encoder_hidden_states, False]
-            with self.ht.hpu.stream(self.hpu_stream):
-                self.hpu_graph.capture_begin()
-                self.static_outputs = self.unet(
-                    self.static_inputs[0], self.static_inputs[1], self.static_inputs[2], self.static_inputs[3]
-                )[0]
-                self.hpu_graph.capture_end()
-        self.static_inputs[0].copy_(latent_model_input)
-        self.static_inputs[1].copy_(timestep)
-        self.static_inputs[2].copy_(encoder_hidden_states)
-        self.ht.core.mark_step()
-        self.ht.core.hpu.default_stream().synchronize()
-        self.hpu_graph.replay()
+        inputs = [latent_model_input, timestep, encoder_hidden_states, False]
+        h = self.ht.hpu.graphs.input_hash(inputs)
+        cached = self.cache.get(h)
 
-        return self.static_outputs
+        if capture:
+            # Capture the graph and cache it
+            with self.ht.hpu.stream(self.hpu_stream):
+                graph = self.ht.hpu.HPUGraph()
+                graph.capture_begin()
+                outputs = self.unet(inputs[0], inputs[1], inputs[2], inputs[3])[0]
+                graph.capture_end()
+                graph_inputs = inputs
+                graph_outputs = outputs
+                self.cache[h] = self.ht.hpu.graphs.CachedParams(graph_inputs, graph_outputs, graph)
+            return outputs
+
+        # Replay the cached graph with updated inputs
+        self.ht.hpu.graphs.copy_to(cached.graph_inputs, inputs)
+        cached.graph.replay()
+        self.ht.core.hpu.default_stream().synchronize()
+
+        return cached.graph_outputs

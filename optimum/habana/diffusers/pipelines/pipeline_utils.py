@@ -22,11 +22,11 @@ import tempfile
 from typing import Optional, Union
 
 import torch
-
 from diffusers.pipelines import DiffusionPipeline
+
 from optimum.utils import logging
 
-from ...transformers.gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
+from ...transformers.gaudi_configuration import GaudiConfig
 
 
 logger = logging.get_logger(__name__)
@@ -123,10 +123,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     error.msg = f"Could not import habana_frameworks.torch. {error.msg}."
                     raise error
                 self.ht = ht
-                self.hpu_graph = ht.hpu.HPUGraph()
                 self.hpu_stream = ht.hpu.Stream()
-                self.static_inputs = list()
-                self.static_outputs = None
+                self.cache = {}
             else:
                 try:
                     import habana_frameworks.torch.core as htcore

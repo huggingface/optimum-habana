@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 """ Fine-tuning a 🤗 Transformers CTC model for automatic speech recognition"""
 
@@ -26,14 +27,11 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
 import datasets
+import evaluate
 import numpy as np
 import torch
-from datasets import DatasetDict, load_dataset
-
-import evaluate
 import transformers
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
+from datasets import DatasetDict, load_dataset
 from transformers import (
     AutoConfig,
     AutoFeatureExtractor,
@@ -46,6 +44,9 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
+
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -467,7 +468,7 @@ def main():
     # E.g. characters, such as `,` and `.` do not really have an acoustic characteristic
     # that could be easily picked up by the model
     chars_to_ignore_regex = (
-        f'[{"".join(data_args.chars_to_ignore)}]' if data_args.chars_to_ignore is not None else None
+        f'[{"".join(data_args.chars_to_ignore).replace(" ", "")}]' if data_args.chars_to_ignore is not None else None
     )
     text_column_name = data_args.text_column_name
 
@@ -692,11 +693,10 @@ def main():
         processor = AutoProcessor.from_pretrained(training_args.output_dir)
     except (OSError, KeyError):
         warnings.warn(
-            (
-                "Loading a processor from a feature extractor config that does not include a `processor_class`"
-                " attribute is deprecated and will be removed in v5. Please add the following  attribute to your"
-                " `preprocessor_config.json` file to suppress this warning:  `'processor_class': 'Wav2Vec2Processor'`"
-            ),
+            "Loading a processor from a feature extractor config that does not"
+            " include a `processor_class` attribute is deprecated and will be removed in v5. Please add the following "
+            " attribute to your `preprocessor_config.json` file to suppress this warning: "
+            " `'processor_class': 'Wav2Vec2Processor'`",
             FutureWarning,
         )
         processor = Wav2Vec2Processor.from_pretrained(training_args.output_dir)

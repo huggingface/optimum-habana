@@ -9,15 +9,21 @@
 ---
 > Training the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
-37a37,38
-> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-> from optimum.habana.utils import set_seed
-45,46d45
+35,36d33
+< from datasets import load_dataset
+< 
+37a35
+> from datasets import load_dataset
+45,46d42
 <     Trainer,
 <     TrainingArguments,
-48,49d46
+48,49d43
 <     is_torch_tpu_available,
 <     set_seed,
+55a50,52
+> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+> from optimum.habana.utils import set_seed
+> 
 58c55
 < check_min_version("4.27.0.dev0")
 ---
@@ -62,14 +68,14 @@
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
 363a380
->         "use_cache": model_args.use_cache,
-547c564
+>         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
+548c565
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-548a566
+549a567
 >         gaudi_config=gaudi_config,
-555,558c573,574
+556,559c574,575
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -77,7 +83,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-612,616d627
+613,617d628
 < 
 < 
 < def _mp_fn(index):

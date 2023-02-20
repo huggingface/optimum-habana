@@ -19,7 +19,6 @@ from typing import Any, Dict, Union
 
 import numpy as np
 import torch
-
 from habana_frameworks.torch.hpu import memory_stats
 from habana_frameworks.torch.hpu import random as hpu_random
 from transformers.utils import is_torch_available
