@@ -19,7 +19,7 @@
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-195a195,201
+199a199,205
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -27,16 +27,16 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-198,199c204,206
+202,203c208,210
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-349c356
+353c360
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-350a358
+354a362
 >         gaudi_config=gaudi_config,
