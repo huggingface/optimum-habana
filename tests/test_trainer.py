@@ -891,11 +891,11 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         logger = logging.get_logger()
         log_info_string = "Running training"
 
-        # test with the default log_level - should be info and thus log on the main process
+        # test with the default log_level - should be warning and thus not log on the main process
         with CaptureLogger(logger) as cl:
             trainer = get_regression_trainer()
             trainer.train()
-        self.assertIn(log_info_string, cl.out)
+        self.assertNotIn(log_info_string, cl.out)
 
         # test with low log_level - lower than info
         with CaptureLogger(logger) as cl:
