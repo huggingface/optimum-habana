@@ -962,7 +962,13 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         # With a regular model that is not a PreTrainedModel
         with tempfile.TemporaryDirectory() as tmpdir:
-            kwargs = {"output_dir": tmpdir, "train_len": 128, "save_steps": 5, "learning_rate": 0.1, "pretrained": False}
+            kwargs = {
+                "output_dir": tmpdir,
+                "train_len": 128,
+                "save_steps": 5,
+                "learning_rate": 0.1,
+                "pretrained": False,
+            }
 
             trainer = get_regression_trainer(**kwargs)
             # Disable FusedClipNorm because it makes the test fail
