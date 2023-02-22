@@ -288,7 +288,7 @@ def main():
             )
             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
 
-        output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
+        output_batch["labels"] = list(batch[data_args.label_column_name])
         return output_batch
 
     def val_transforms(batch):
@@ -306,13 +306,13 @@ def main():
             )
             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
 
-        output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
+        output_batch["labels"] = list(batch[data_args.label_column_name])
         return output_batch
 
     # Prepare label mappings.
     # We'll include these in the model's config to get human readable labels in the Inference API.
     labels = raw_datasets["train"].features[data_args.label_column_name].names
-    label2id, id2label = dict(), dict()
+    label2id, id2label = {}, {}
     for i, label in enumerate(labels):
         label2id[label] = str(i)
         id2label[str(i)] = label
