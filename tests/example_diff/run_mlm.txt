@@ -31,7 +31,7 @@
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-249a247,253
+253a251,257
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -39,22 +39,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-252,253c256,258
+256,257c260,262
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-255d259
+259d263
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-574c578
+578c582
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-575a580
+579a584
 >         gaudi_config=gaudi_config,
-581,584c586,587
+585,588c590,591
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -62,7 +62,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-637,641d639
+641,645d643
 < 
 < 
 < def _mp_fn(index):

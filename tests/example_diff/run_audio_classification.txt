@@ -48,7 +48,7 @@
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-217a193,199
+221a197,203
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -56,22 +56,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-220,221c202,204
+224,225c206,208
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu} "
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-287a271,273
+291a275,277
 >     # Max input length
 >     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
 > 
-290a277
+294a281
 > 
-295,296c282,289
+299,300c286,293
 <             output_batch["input_values"].append(wav)
-<         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
+<         output_batch["labels"] = list(batch[data_args.label_column_name])
 ---
 >             preprocessed_audio = feature_extractor(
 >                 wav,
@@ -81,13 +81,13 @@
 >                 truncation=True,
 >             )
 >             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-297a291
->         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
-302a297
+301a295
+>         output_batch["labels"] = list(batch[data_args.label_column_name])
+306a301
 > 
-305,306c300,307
+309,310c304,311
 <             output_batch["input_values"].append(wav)
-<         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
+<         output_batch["labels"] = list(batch[data_args.label_column_name])
 ---
 >             preprocessed_audio = feature_extractor(
 >                 wav,
@@ -97,11 +97,11 @@
 >                 truncation=True,
 >             )
 >             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-307a309
->         output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
-369c371
+311a313
+>         output_batch["labels"] = list(batch[data_args.label_column_name])
+373c375
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-370a373
+374a377
 >         gaudi_config=gaudi_config,

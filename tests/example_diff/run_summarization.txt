@@ -39,7 +39,7 @@
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-323a333,339
+328a338,344
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -47,16 +47,16 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-326,327c342,344
+331,332c347,349
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-407a425
+412a430
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-598,603c616,624
+603,608c621,629
 <     data_collator = DataCollatorForSeq2Seq(
 <         tokenizer,
 <         model=model,
@@ -73,13 +73,13 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-638c659
+643c664
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-639a661
+644a666
 >         gaudi_config=gaudi_config,
-728,732d749
+733,737d754
 < 
 < 
 < def _mp_fn(index):

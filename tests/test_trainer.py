@@ -923,7 +923,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
     def test_can_resume_training(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            kwargs = dict(output_dir=tmpdir, train_len=128, save_steps=5, learning_rate=0.1)
+            kwargs = {"output_dir": tmpdir, "train_len": 128, "save_steps": 5, "learning_rate": 0.1}
             trainer = get_regression_trainer(**kwargs)
             # Disable FusedClipNorm because it makes the test fail
             trainer.gaudi_config.use_fused_clip_norm = False
@@ -962,7 +962,13 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         # With a regular model that is not a PreTrainedModel
         with tempfile.TemporaryDirectory() as tmpdir:
-            kwargs = dict(output_dir=tmpdir, train_len=128, save_steps=5, learning_rate=0.1, pretrained=False)
+            kwargs = {
+                "output_dir": tmpdir,
+                "train_len": 128,
+                "save_steps": 5,
+                "learning_rate": 0.1,
+                "pretrained": False,
+            }
 
             trainer = get_regression_trainer(**kwargs)
             # Disable FusedClipNorm because it makes the test fail
