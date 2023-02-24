@@ -18,7 +18,7 @@ limitations under the License.
 
 The following examples showcase how to fine-tune `Wav2Vec2` for audio classification on Habana Gaudi.
 
-Speech recognition models that have been pretrained in unsupervised fashion on audio data alone, *e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html), have shown to require only very little annotated data to yield good performance on speech classification datasets.
+Speech recognition models that have been pretrained in an unsupervised fashion on audio data alone, *e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html), have shown to require only very little annotated data to yield good performance on speech classification datasets.
 
 ## Single-HPU
 
@@ -45,11 +45,12 @@ python run_audio_classification.py \
     --seed 27 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2
 ```
 
-On a single HPU, this script should run in ~13 minutes and yield accuracy of **97.96%**.
+On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96%**.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
@@ -80,11 +81,12 @@ python ../gaudi_spawn.py \
     --seed 0 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2
 ```
 
-On 8 HPUs, this script should run in ~12 minutes and yield accuracy of **80.49%**.
+On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
@@ -93,7 +95,7 @@ On 8 HPUs, this script should run in ~12 minutes and yield accuracy of **80.49%*
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -123,6 +125,7 @@ python ../gaudi_spawn.py \
     --seed 0 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 2 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json

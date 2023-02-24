@@ -4,15 +4,14 @@ from unittest import TestCase
 
 import numpy as np
 import torch
-
 from diffusers import AutoencoderKL, UNet2DConditionModel
-from diffusers.utils import load_numpy
 from habana_frameworks.torch.hpex import hmp
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers.testing_utils import slow
+
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline, GaudiStableDiffusionPipeline
 from optimum.habana.utils import set_seed
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
-from transformers.testing_utils import slow
 
 
 THROUGHPUT_BASELINE = 0.229
@@ -79,10 +78,8 @@ class GaudiPipelineUtilsTester(TestCase):
         )
 
         self.assertTrue(hasattr(pipeline, "ht"))
-        self.assertTrue(hasattr(pipeline, "hpu_graph"))
         self.assertTrue(hasattr(pipeline, "hpu_stream"))
-        self.assertTrue(hasattr(pipeline, "static_inputs"))
-        self.assertTrue(hasattr(pipeline, "static_outputs"))
+        self.assertTrue(hasattr(pipeline, "cache"))
 
     def test_habana_mixed_precision(self):
         gaudi_config = GaudiConfig(
@@ -97,7 +94,7 @@ class GaudiPipelineUtilsTester(TestCase):
         self.assertTrue(hasattr(pipeline, "hmp"))
 
     def test_save_pretrained(self):
-        model_name = "hf-internal-testing/tiny-stable-diffusion-lms-pipe"
+        model_name = "hf-internal-testing/tiny-stable-diffusion-torch"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
             model_name,

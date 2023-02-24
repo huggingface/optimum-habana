@@ -14,12 +14,11 @@
 """
 Integration with Deepspeed
 """
-
+import os
 from copy import deepcopy
 from dataclasses import make_dataclass
 
 import torch
-
 from transformers.deepspeed import (
     HfDeepSpeedConfig,
     HfTrainerDeepSpeedConfig,
@@ -27,9 +26,11 @@ from transformers.deepspeed import (
     set_hf_deepspeed_config,
 )
 from transformers.dependency_versions_check import dep_version_check
-from transformers.utils.versions import require_version
 
-from .gaudi_configuration import GaudiConfig
+from optimum.utils import logging
+
+
+logger = logging.get_logger(__name__)
 
 
 class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
@@ -83,7 +84,7 @@ def deepspeed_init(trainer, num_training_steps, resume_from_checkpoint=None, inf
     If `resume_from_checkpoint` was passed then an attempt to resume from a previously saved checkpoint will be made.
     Args:
         trainer: Trainer object
-        num_training_steps: per single gpu
+        num_training_steps: per single HPU
         resume_from_checkpoint: path to a checkpoint if to resume from after normal DeepSpeedEngine load
         inference: launch in inference mode (no optimizer and no lr scheduler)
     Returns: model, optimizer, lr_scheduler
@@ -135,15 +136,19 @@ def deepspeed_init(trainer, num_training_steps, resume_from_checkpoint=None, inf
 
     HabanaArgs = make_dataclass("HabanaArgs", [("use_hpu", bool), ("no_cuda", bool)])
     habana_args = HabanaArgs(use_hpu=args.use_habana, no_cuda=args.no_cuda)
+    if args.use_habana:
+        # This env variable is initialized here to make sure it is set to "true"
+        # It should be done by the launcher but it does not work for multi-node runs
+        os.environ["DEEPSPEED_USE_HPU"] = "true"
 
-    kwargs = dict(
-        args=habana_args,
-        model=model,
-        model_parameters=model_parameters,
-        config_params=config,
-        optimizer=optimizer,
-        lr_scheduler=lr_scheduler,
-    )
+    kwargs = {
+        "args": habana_args,
+        "model": model,
+        "model_parameters": model_parameters,
+        "config_params": config,
+        "optimizer": optimizer,
+        "lr_scheduler": lr_scheduler,
+    }
 
     deepspeed_engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
 

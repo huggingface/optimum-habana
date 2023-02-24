@@ -22,11 +22,11 @@ import tempfile
 from typing import Optional, Union
 
 import torch
+from diffusers.pipelines import DiffusionPipeline
 
-from diffusers import DiffusionPipeline
 from optimum.utils import logging
 
-from ..transformers.gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
+from ...transformers.gaudi_configuration import GaudiConfig
 
 
 logger = logging.get_logger(__name__)
@@ -123,10 +123,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     error.msg = f"Could not import habana_frameworks.torch. {error.msg}."
                     raise error
                 self.ht = ht
-                self.hpu_graph = ht.hpu.HPUGraph()
                 self.hpu_stream = ht.hpu.Stream()
-                self.static_inputs = list()
-                self.static_outputs = None
+                self.cache = {}
             else:
                 try:
                     import habana_frameworks.torch.core as htcore
@@ -152,7 +150,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                             hmp_fp32_file.name,
                         )
                         self.hmp.convert(
-                            opt_level=self.gaudi_config.hmp_opt_level,
                             bf16_file_path=hmp_bf16_file.name,
                             fp32_file_path=hmp_fp32_file.name,
                             isVerbose=self.gaudi_config.hmp_is_verbose,
@@ -275,11 +272,11 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         logging.enable_default_handler()
         logging.enable_explicit_format()
 
-        # Import diffusers.pipeline_utils to override the values of LOADABLE_CLASSES and ALL_IMPORTABLE_CLASSES
-        import diffusers.pipeline_utils
+        # Import diffusers.pipelines.pipeline_utils to override the values of LOADABLE_CLASSES and ALL_IMPORTABLE_CLASSES
+        import diffusers.pipelines.pipeline_utils
 
-        diffusers.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
-        diffusers.pipeline_utils.ALL_IMPORTABLE_CLASSES = GAUDI_ALL_IMPORTABLE_CLASSES
+        diffusers.pipelines.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
+        diffusers.pipelines.pipeline_utils.ALL_IMPORTABLE_CLASSES = GAUDI_ALL_IMPORTABLE_CLASSES
 
         return super().from_pretrained(
             pretrained_model_name_or_path,

@@ -19,12 +19,12 @@ limitations under the License.
 Fine-tuning (or training from scratch) the library models for language modeling on a text dataset.
 GPT-2 is trained or fine-tuned using a causal language modeling (CLM) loss while ALBERT, BERT, DistilBERT and RoBERTa are trained or fine-tuned using a masked language modeling (MLM) loss. You can find more information about the differences between those objectives in our [model summary](https://huggingface.co/transformers/model_summary.html).
 
-The following examples, will run on datasets hosted on our [hub](https://huggingface.co/datasets) or with your own
+The following examples will run on datasets hosted on our [hub](https://huggingface.co/datasets) or with your own
 text files for training and validation. We give examples of both below.
 
 ## GPT-2/GPT and causal language modeling
 
-The following examples fine-tunes GPT-2 on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before
+The following examples fine-tune GPT-2 on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before
 the tokenization). The loss here is that of causal language modeling.
 
 
@@ -43,11 +43,12 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
 This takes about 13 minutes to train on a single HPU. It reaches
-a score of about 20.9963 perplexity once fine-tuned on the dataset.
+a perplexity of about 20.9963 once fine-tuned on the dataset.
 
 To run on your own training and validation files, use the following command:
 
@@ -64,6 +65,7 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -84,19 +86,21 @@ python ../gaudi_spawn.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gradient_checkpointing \
+    --use_cache False \
     --throughput_warmup_steps 2
 ```
 
 This takes about 4 minutes to train on 8 HPUs. It reaches
-a score of 21.7968 perplexity once fine-tuned on the dataset.
+a perplexity of 21.7968 once fine-tuned on the dataset.
 
 
 ## RoBERTa/BERT/DistilBERT and masked language modeling
 
 The following examples fine-tune RoBERTa on WikiText-2. Here too, we're using the raw WikiText-2. The loss is different as BERT/RoBERTa have a bidirectional mechanism; we're therefore using the same loss that was used during their pre-training: masked language modeling.
 
-In accordance to the RoBERTa paper, we use dynamic masking rather than static masking. The model may, therefore,
+In accordance with the RoBERTa paper, we use dynamic masking rather than static masking. The model may, therefore,
 converge slightly slower (over-fitting takes more epochs).
 
 
@@ -114,6 +118,7 @@ python run_mlm.py \
     --output_dir /tmp/test-mlm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
     --throughput_warmup_steps 2
 ```
@@ -132,12 +137,13 @@ python run_mlm.py \
     --output_dir /tmp/test-mlm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
     --throughput_warmup_steps 2
 ```
 
 If your dataset is organized with one sample per line, you can use the `--line_by_line` flag (otherwise the script
-concatenates all texts and then splits them in blocks of the same length).
+concatenates all texts and then splits them into blocks of the same length).
 
 **Note:** On HPU, you should use the flag `--pad_to_max_length` in conjunction with the `--line_by_line` flag to make sure all your batches have the same length.
 
@@ -157,6 +163,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/test-mlm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
     --throughput_warmup_steps 2
 ```
@@ -181,6 +188,7 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -201,9 +209,11 @@ python run_clm.py \
     --do_train \
     --do_eval \
     --gradient_checkpointing \
+    --use_cache False \
     --output_dir /tmp/test-clm \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/gpt2 \
     --throughput_warmup_steps 2
 ```
@@ -229,7 +239,9 @@ python ../gaudi_spawn.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gradient_checkpointing \
+    --use_cache False \
     --throughput_warmup_steps 2 \
     --deepspeed path_to_my_deepspeed_config
 ```
@@ -254,3 +266,8 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
     }
 }
 ```
+
+
+## Streaming
+
+To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` to the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.

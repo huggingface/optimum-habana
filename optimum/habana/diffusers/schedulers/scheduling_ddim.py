@@ -19,7 +19,6 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-
 from diffusers.configuration_utils import register_to_config
 from diffusers.schedulers import DDIMScheduler
 from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
@@ -104,9 +103,9 @@ class GaudiDDIMScheduler(DDIMScheduler):
                 self.alpha_prod_t_prev_list.append(alpha_prod_t_prev)
                 self.variance_list.append(self._get_variance(alpha_prod_t, alpha_prod_t_prev))
 
-            self.alpha_prod_t_list = torch.stack([i for i in self.alpha_prod_t_list])
-            self.alpha_prod_t_prev_list = torch.stack([i for i in self.alpha_prod_t_prev_list])
-            self.variance_list = torch.stack([i for i in self.variance_list])
+            self.alpha_prod_t_list = torch.stack(self.alpha_prod_t_list)
+            self.alpha_prod_t_prev_list = torch.stack(self.alpha_prod_t_prev_list)
+            self.variance_list = torch.stack(self.variance_list)
             self.are_timestep_dependent_params_set = True
 
         alpha_prod_t = self.alpha_prod_t_list[0]

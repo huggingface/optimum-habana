@@ -25,12 +25,12 @@ Evaluation](https://gluebenchmark.com/). This script can fine-tune any of the mo
 and can also be used for a dataset hosted on our [hub](https://huggingface.co/datasets) or your own data in a csv or a JSON file
 (the script might need some tweaks in that case, refer to the comments inside for help).
 
-GLUE is made up of a total of 9 different tasks where task name can be one of cola, sst2, mrpc, stsb, qqp, mnli, qnli, rte, wnli.
+GLUE is made up of a total of 9 different tasks where the task name can be cola, sst2, mrpc, stsb, qqp, mnli, qnli, rte or wnli.
 
 
 ## Fine-tuning BERT on MRPC
 
-For the following cases, an example of Gaudi configuration file is given
+For the following cases, an example of a Gaudi configuration file is given
 [here](https://github.com/huggingface/optimum-habana#how-to-use-it).
 
 
@@ -52,6 +52,7 @@ python run_glue.py \
   --output_dir ./output/mrpc/ \
   --use_habana \
   --use_lazy_mode \
+  --use_hpu_graphs \
   --throughput_warmup_steps 2
 ```
 
@@ -78,6 +79,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/mrpc_output/ \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -104,6 +106,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/mrpc_output/ \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2 \
     --deepspeed path_to_my_deepspeed_config
 ```

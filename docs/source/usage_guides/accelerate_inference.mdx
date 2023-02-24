@@ -1,0 +1,79 @@
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# Accelerating Inference
+
+Gaudi provides a way to run fast inference with HPU Graphs.
+It consists in capturing a series of operations (i.e. graphs) in a HPU stream and then replaying them in an optimized way (more information [here](https://docs.habana.ai/en/latest/PyTorch/Inference_on_Gaudi/Inference_using_HPU_Graphs/Inference_using_HPU_Graphs.html)).
+Thus, you can apply this to the `forward` method of your model to run it efficiently at inference.
+
+HPU Graphs are integrated into the [`GaudiTrainer`](../package_reference/trainer) and the [`GaudiStableDiffusionPipeline`](../package_reference/stable_diffusion_pipeline) so that one can use them very easily:
+- `GaudiTrainer` needs the training argument `use_hpu_graphs` to be set to `True` as follows:
+```python
+from optimum.habana import GaudiTrainer, GaudiTrainingArguments
+
+# define the training arguments
+training_args = GaudiTrainingArguments(
+    use_habana=True,
+    use_lazy_mode=True,
+    use_hpu_graphs=True,
+    gaudi_config_name=gaudi_config_name,
+    ...
+)
+
+# Initialize our Trainer
+trainer = GaudiTrainer(
+    model=model,
+    args=training_args,
+    train_dataset=train_dataset
+    ... # other arguments
+)
+```
+- `GaudiStableDiffusionPipeline` needs its argument `use_hpu_graphs` to be set to `True` such as:
+```python
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
+
+model_name = "CompVis/stable-diffusion-v1-4"
+
+scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+    model_name,
+    scheduler=scheduler,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+)
+
+outputs = generator(
+    ["An image of a squirrel in Picasso style"],
+    num_images_per_prompt=16,
+    batch_size=4,
+)
+```
+
+<Tip warning={true}>
+
+HPU graphs are currently not supported for distributed runs and text generation.
+In those cases, *inference will be automatically run in lazy mode*.
+
+</Tip>
+
+<Tip warning={true}>
+
+With HPU Graphs and in lazy mode, the *first couple of training iterations* may be slower due to graph compilations.
+
+</Tip>

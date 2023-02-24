@@ -18,8 +18,8 @@ limitations under the License.
 
 `run_translation.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune one of the architectures above on it.
 
-For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files
-and you also will find examples of these below.
+For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files.
+You will also find examples of these below.
 
 
 ## Single-card Training
@@ -44,6 +44,7 @@ python run_translation.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -53,7 +54,7 @@ python run_translation.py \
 
 If you get a terrible BLEU score, make sure that you didn't forget to use the `--source_prefix` argument.
 
-For the aforementioned group of T5 models it's important to remember that if you switch to a different language pair, make sure to adjust the source and target values in all 3 language-specific command line argument: `--source_lang`, `--target_lang` and `--source_prefix`.
+For the aforementioned group of T5 models, it's important to remember that if you switch to a different language pair, make sure to adjust the source and target values in all 3 language-specific command line arguments: `--source_lang`, `--target_lang` and `--source_prefix`.
 
 In lazy mode, make sure to use the arguments `--pad_to_max_length` and `--ignore_pad_token_for_loss False` to pad batches to max length and to avoid negative pad tokens.
 
@@ -79,13 +80,14 @@ python run_translation.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --throughput_warmup_steps 2
 ```
 
-The task of translation supports only custom JSONLINES files, with each line being a dictionary with a key `"translation"` and its value another dictionary whose keys is the language pair. For example:
+The task of translation supports only custom JSONLINES files, with each line being a dictionary with the key `"translation"` and its value another dictionary whose keys is the language pair. For example:
 
 ```json
 { "translation": { "en": "Others have dismissed him as a joke.", "ro": "Alții l-au numit o glumă." } }
@@ -93,7 +95,7 @@ The task of translation supports only custom JSONLINES files, with each line bei
 ```
 Here the languages are Romanian (`ro`) and English (`en`).
 
-If you want to use a pre-processed dataset that leads to high BLEU scores, but for the `en-de` language pair, you can use `--dataset_name stas/wmt14-en-de-pre-processed`, as following:
+If you want to use a pre-processed dataset that leads to high BLEU scores, but for the `en-de` language pair, you can use `--dataset_name stas/wmt14-en-de-pre-processed`, as follows:
 
 ```bash
 python run_translation.py \
@@ -111,6 +113,7 @@ python run_translation.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -120,7 +123,7 @@ python run_translation.py \
 
  ## Multi-card Training
 
- Here is an example for distributing training on 8 HPUs:
+ Here is an example of distributing training on 8 HPUs:
 
  ```bash
 python ../gaudi_spawn.py \
@@ -140,6 +143,7 @@ python ../gaudi_spawn.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -170,6 +174,7 @@ python ../gaudi_spawn.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \

@@ -26,9 +26,9 @@ The list of officially validated models and tasks is available [here](https://gi
 
 ## What is a Habana Processing Unit (HPU)?
 
-Quote from the Hugging Face [blog post](https://huggingface.co/blog/habana):
-
-> Habana Gaudi training solutions, which power Amazon’s EC2 DL1 instances and Supermicro’s X12 Gaudi AI Training Server, deliver price/performance up to 40% lower than comparable training solutions and enable customers to train more while spending less. The integration of ten 100 Gigabit Ethernet ports onto every Gaudi processor enables system scaling from 1 to thousands of Gaudis with ease and cost-efficiency. Habana’s SynapseAI® is optimized—at inception—to enable Gaudi performance and usability, supports TensorFlow and PyTorch frameworks, with a focus on computer vision and natural language processing applications.
+HPUs offer fast model training and inference as well as a great price-performance ratio.
+Check out [this blog post about BERT pre-training](https://huggingface.co/blog/pretraining-bert) and [this article benchmarking Habana Gaudi2 versus Nvidia A100 GPUs](https://huggingface.co/blog/habana-gaudi-2-benchmark) for concrete examples.
+If you are not familiar with HPUs and would like to know more about them, we recommend you take a look at [our conceptual guide](https://huggingface.co/docs/optimum/habana/concept_guides/hpu).
 
 
 ## Install
@@ -40,7 +40,7 @@ pip install optimum[habana]
 
 > To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.7.1
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
 >```
 
 Optimum Habana is a fast-moving project, and you may want to install it from source:
@@ -56,7 +56,7 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 > python setup.py install
 > ```
 
-Last but not least, don't forget to install requirements for every example:
+Last but not least, don't forget to install the requirements for every example:
 
 ```bash
 cd <example-folder>
@@ -68,12 +68,12 @@ pip install -r requirements.txt
 
 ### Quick Start
 
-🤗 Optimum Habana was designed with one goal in mind: **make training and evaluation straightforward for any 🤗 Transformers and 🤗 Diffusers user while leveraging the complete power of Gaudi processors**.
+🤗 Optimum Habana was designed with one goal in mind: **to make training and evaluation straightforward for any 🤗 Transformers and 🤗 Diffusers user while leveraging the complete power of Gaudi processors**.
 
 #### Transformers Interface
 
 There are two main classes one needs to know:
-- [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer): the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing traning and evaluation.
+- [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer): the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and performing training and evaluation.
 - [GaudiConfig](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config): the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
 
 The [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer) is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
@@ -110,6 +110,7 @@ training_args = GaudiTrainingArguments(
   # same training arguments...
   use_habana=True,
   use_lazy_mode=True,  # whether to use lazy or eager mode
+  use_hpu_graphs=True,  # whether to use HPU graphs for inference
   gaudi_config_name=path_to_gaudi_config,
 )
 
@@ -133,7 +134,6 @@ where `gaudi_config_name` is the name of a model from the [Hub](https://huggingf
 ```json
 {
   "use_habana_mixed_precision": true,
-  "hmp_opt_level": "O1",
   "hmp_is_verbose": false,
   "use_fused_adam": true,
   "use_fused_clip_norm": true,
@@ -174,7 +174,7 @@ gaudi_config = GaudiConfig.from_pretrained(
 
 #### Diffusers Interface
 
-You can generate images from prompts using Stable Diffusion on Gaudi using the [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline) class and the [`GaudiDDIMScheduler`] that have been both optimized for HPUs. Here is how to use them and the differences with the 🤗 Diffusers library:
+You can generate images from prompts using Stable Diffusion on Gaudi using the [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline) class and the [`GaudiDDIMScheduler`] which have been both optimized for HPUs. Here is how to use them and the differences with the 🤗 Diffusers library:
 
 ```diff
 - from diffusers import DDIMScheduler, StableDiffusionPipeline
@@ -205,7 +205,7 @@ outputs = generator(
 
 ### Documentation
 
-Check [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
+Check out [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
 
 
 ## Validated Models
@@ -226,6 +226,7 @@ The following model architectures, tasks and device distributions have been vali
 | Swin | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
 | Wav2Vec2 | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[audio classification](https://github.com/huggingface/optimum-habana/tree/main/examples/audio-classification)</li><li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition)</li> |
 | Stable Diffusion | :heavy_check_mark: | ✗ | ✗ | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| CLIP | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/main/examples/contrastive-image-text)</li> |
 
 </div>
 
@@ -240,4 +241,4 @@ Please refer to Habana Gaudi's official [installation guide](https://docs.habana
 
 > Tests should be run in a Docker container based on Habana Docker images.
 >
-> The current version has been validated for SynapseAI 1.7.
+> The current version has been validated for SynapseAI 1.8.

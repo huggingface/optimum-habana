@@ -17,29 +17,28 @@
 import logging
 import os
 import sys
-import warnings
 from dataclasses import dataclass, field
 from random import randint
 from typing import Optional
 
 import datasets
-import numpy as np
-from datasets import DatasetDict, load_dataset
-
 import evaluate
+import numpy as np
 import transformers
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
+from datasets import DatasetDict, load_dataset
 from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
+
 
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.25.0")
+check_min_version("4.26.0")
 
 require_version("datasets>=1.14.0", "To fix: pip install -r examples/pytorch/audio-classification/requirements.txt")
 
@@ -185,6 +184,10 @@ def main():
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
+    if training_args.should_log:
+        # The default of training_args.log_level is passive, so we set log level at info here to have that default.
+        transformers.utils.logging.set_verbosity_info()
+
     log_level = training_args.get_process_log_level()
     logger.setLevel(log_level)
     transformers.utils.logging.set_verbosity(log_level)
@@ -289,7 +292,7 @@ def main():
             )
             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
 
-        output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
+        output_batch["labels"] = list(batch[data_args.label_column_name])
         return output_batch
 
     def val_transforms(batch):
@@ -307,13 +310,13 @@ def main():
             )
             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
 
-        output_batch["labels"] = [label for label in batch[data_args.label_column_name]]
+        output_batch["labels"] = list(batch[data_args.label_column_name])
         return output_batch
 
     # Prepare label mappings.
     # We'll include these in the model's config to get human readable labels in the Inference API.
     labels = raw_datasets["train"].features[data_args.label_column_name].names
-    label2id, id2label = dict(), dict()
+    label2id, id2label = {}, {}
     for i, label in enumerate(labels):
         label2id[label] = str(i)
         id2label[str(i)] = label

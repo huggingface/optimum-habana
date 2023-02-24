@@ -15,11 +15,12 @@
 from pathlib import Path
 from typing import Dict
 
+from transformers import EvalPrediction, HfArgumentParser, is_torch_available
+from transformers.testing_utils import TestCasePlus
+
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.distributed import DistributedRunner
 from optimum.utils import logging
-from transformers import EvalPrediction, HfArgumentParser, is_torch_available
-from transformers.testing_utils import TestCasePlus
 
 
 logger = logging.get_logger(__name__)
@@ -68,13 +69,13 @@ class TestGaudiTrainerDistributed(TestCasePlus):
         command_list += [output_dir]
         command_list += ["--use_habana"]
         command_list += ["--use_lazy_mode"]
+        command_list += ["--use_hpu_graphs"]
         command = [" ".join(command_list)]
 
         distributed_runner = DistributedRunner(
             command_list=command,
             world_size=8,
             use_mpi=True,
-            multi_hls=False,
         )
 
         ret_code = distributed_runner.run()
