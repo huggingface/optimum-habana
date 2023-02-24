@@ -22,7 +22,6 @@ You can specify which features to use in a Gaudi configuration, which will take 
 ```JSON
 {
   "use_habana_mixed_precision": true/false,
-  "hmp_opt_level": "O1"/"O2",
   "hmp_is_verbose": true/false,
   "use_fused_adam": true/false,
   "use_fused_clip_norm": true/false,
@@ -39,9 +38,6 @@ You can specify which features to use in a Gaudi configuration, which will take 
 
 Here is a description of each configuration parameter:
 - `use_habana_mixed_precision` enables to decide whether or not Habana Mixed Precision (HMP) should be used. HMP allows to mix *fp32* and *bf16* operations. You can find more information [here](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Mixed_Precision/PT_Mixed_Precision.html).
-- `hmp_opt_level` enables to specify the optimization level to use for HMP such as:
-  - `"O1"`, which is the default and recommended mode of operation,
-  - `"O2"`, which can be used for debugging convergence issues as well as for initial iterations of converting a new model to run with mixed precision.
 - `hmp_is_verbose` enables to decide whether to log precision decisions for each operation for debugging purposes. It is disabled by default. You can find an example of such log [here](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Mixed_Precision/PT_Mixed_Precision.html#hmp-logs).
 - `use_fused_adam` enables to decide whether to use the [custom fused implementation of the ADAM optimizer provided by Habana](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
 - `use_fused_clip_norm` enables to decide whether to use the [custom fused implementation of gradient norm clipping provided by Habana](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
@@ -50,7 +46,7 @@ Here is a description of each configuration parameter:
 
 <Tip warning={true}>
 
-`hmp_opt_level`, `hmp_is_verbose`, `hmp_bf16_ops` and `hmp_fp32_ops` will not be used if `use_habana_mixed_precision` is false.
+`hmp_is_verbose`, `hmp_bf16_ops` and `hmp_fp32_ops` will not be used if `use_habana_mixed_precision` is false.
 
 </Tip>
 
@@ -59,7 +55,6 @@ You can find examples of Gaudi configurations in the [Habana model repository on
 ```JSON
 {
   "use_habana_mixed_precision": true,
-  "hmp_opt_level": "O1",
   "hmp_is_verbose": false,
   "use_fused_adam": true,
   "use_fused_clip_norm": true,

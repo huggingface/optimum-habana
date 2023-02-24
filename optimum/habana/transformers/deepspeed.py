@@ -14,7 +14,7 @@
 """
 Integration with Deepspeed
 """
-
+import os
 from copy import deepcopy
 from dataclasses import make_dataclass
 
@@ -136,15 +136,19 @@ def deepspeed_init(trainer, num_training_steps, resume_from_checkpoint=None, inf
 
     HabanaArgs = make_dataclass("HabanaArgs", [("use_hpu", bool), ("no_cuda", bool)])
     habana_args = HabanaArgs(use_hpu=args.use_habana, no_cuda=args.no_cuda)
+    if args.use_habana:
+        # This env variable is initialized here to make sure it is set to "true"
+        # It should be done by the launcher but it does not work for multi-node runs
+        os.environ["DEEPSPEED_USE_HPU"] = "true"
 
-    kwargs = dict(
-        args=habana_args,
-        model=model,
-        model_parameters=model_parameters,
-        config_params=config,
-        optimizer=optimizer,
-        lr_scheduler=lr_scheduler,
-    )
+    kwargs = {
+        "args": habana_args,
+        "model": model,
+        "model_parameters": model_parameters,
+        "config_params": config,
+        "optimizer": optimizer,
+        "lr_scheduler": lr_scheduler,
+    }
 
     deepspeed_engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
 
