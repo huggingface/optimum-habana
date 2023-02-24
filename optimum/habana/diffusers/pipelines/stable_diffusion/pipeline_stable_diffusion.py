@@ -16,7 +16,7 @@ import inspect
 import time
 from dataclasses import dataclass
 from math import ceil
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -188,7 +188,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+        if not hasattr(self.unet, "_hf_hook"):
             return self.device
         for module in self.unet.modules():
             if (
@@ -221,7 +221,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_ prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
@@ -343,10 +343,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         return image, has_nsfw_concept
 
     def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
@@ -505,7 +505,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -564,6 +565,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
+                `self.processor` in
+                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
         Returns:
             [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] or `tuple`:
@@ -670,7 +675,13 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 # latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
 
                 # predict the noise residual
-                noise_pred = self.unet_hpu(latent_model_input, timestep, text_embeddings_batch, capture)
+                noise_pred = self.unet_hpu(
+                    latent_model_input,
+                    timestep,
+                    text_embeddings_batch,
+                    cross_attention_kwargs,
+                    capture,
+                )
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -687,8 +698,11 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
                 if callback is not None and i % callback_steps == 0:
                     callback(i, timestep, latents_batch)
 
-            # 8. Post-processing
-            image = self.decode_latents(latents_batch)
+            if output_type == "latent":
+                image = latents_batch
+            else:
+                # 8. Post-processing
+                image = self.decode_latents(latents_batch)
             outputs["images"].append(image)
 
             self.scheduler.reset_timestep_dependent_params()
@@ -712,8 +726,11 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
 
         # Process generated images
         for i, image in enumerate(outputs["images"][:]):
-            # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            if output_type == "latent":
+                has_nsfw_concept = None
+            else:
+                # 9. Run safety checker
+                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             if i == 0:
                 outputs["images"].clear()
@@ -740,11 +757,11 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline):
         )
 
     @torch.no_grad()
-    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, capture):
+    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs, capture):
         if self.use_hpu_graphs:
             return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture)
         else:
-            return self.unet(latent_model_input, timestep, encoder_hidden_states).sample
+            return self.unet(latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs).sample
 
     @torch.no_grad()
     def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, capture):
