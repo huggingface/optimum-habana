@@ -63,7 +63,7 @@ python text_to_image_generation.py \
 > You can enable this mode with `--use_hpu_graphs`.
 
 
-## Stable Diffusion 2
+### Stable Diffusion 2
 
 [Stable Diffusion 2](https://huggingface.co/docs/diffusers/v0.9.0/en/api/pipelines/stable_diffusion_2) can also be used to generate images with this script. Here is an example for a single prompt:
 
@@ -77,4 +77,35 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion
+```
+
+
+## Textual Inversion
+
+### Build a dataset
+
+Download 3-4 images from [here](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and save them in a directory. This will be our training data.
+
+
+### Launch training
+
+Launch training with the following command:
+```bash
+python textual_inversion.py \
+  --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
+  --train_data_dir=/root/workspace/textual_inversion_images \
+  --learnable_property="object" \
+  --placeholder_token="<cat-toy>" \
+  --initializer_token="toy" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --max_train_steps=3000 \
+  --learning_rate=5.0e-04 \
+  --scale_lr \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --output_dir="/tmp/textual_inversion_cat" \
+  --use_lazy_mode \
+  --gaudi_config_name Habana/stable-diffusion
 ```

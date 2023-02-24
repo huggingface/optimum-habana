@@ -458,7 +458,6 @@ def main():
                     hmp_fp32_file.name,
                 )
                 hmp.convert(
-                    opt_level=gaudi_config.hmp_opt_level,
                     bf16_file_path=hmp_bf16_file.name,
                     fp32_file_path=hmp_fp32_file.name,
                     isVerbose=gaudi_config.hmp_is_verbose,
@@ -560,7 +559,7 @@ def main():
         args.learning_rate = args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * world_size
 
     # Initialize the optimizer
-    if gaudi_config.use_fused_adam and args.use_habana:
+    if gaudi_config.use_fused_adam:
         from habana_frameworks.torch.hpex.optimizers import FusedAdamW
 
         optimizer_cls = FusedAdamW
@@ -695,7 +694,6 @@ def main():
 
             # Get the text embedding for conditioning
             encoder_hidden_states = text_encoder(batch["input_ids"])[0]
-            encoder_hidden_states.backward(gradient=torch.ones_like(encoder_hidden_states))
 
             # Predict the noise residual
             model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
