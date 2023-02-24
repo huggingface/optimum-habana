@@ -141,14 +141,14 @@ def deepspeed_init(trainer, num_training_steps, resume_from_checkpoint=None, inf
         # It should be done by the launcher but it does not work for multi-node runs
         os.environ["DEEPSPEED_USE_HPU"] = "true"
 
-    kwargs = dict(
-        args=habana_args,
-        model=model,
-        model_parameters=model_parameters,
-        config_params=config,
-        optimizer=optimizer,
-        lr_scheduler=lr_scheduler,
-    )
+    kwargs = {
+        "args": habana_args,
+        "model": model,
+        "model_parameters": model_parameters,
+        "config_params": config,
+        "optimizer": optimizer,
+        "lr_scheduler": lr_scheduler,
+    }
 
     deepspeed_engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
 

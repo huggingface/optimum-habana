@@ -186,7 +186,6 @@ class GaudiTrainer(Trainer):
                             hmp_fp32_file.name,
                         )
                         self.hmp.convert(
-                            opt_level=self.gaudi_config.hmp_opt_level,
                             bf16_file_path=hmp_bf16_file.name,
                             fp32_file_path=hmp_fp32_file.name,
                             isVerbose=self.gaudi_config.hmp_is_verbose,

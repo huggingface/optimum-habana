@@ -22,7 +22,6 @@ from typing import List
 from optimum.habana import GaudiConfig
 
 
-OPT_LEVELS = ["O1", "O2"]
 BF16_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/bf16_ops.txt")
 FP32_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/fp32_ops.txt")
 
@@ -58,8 +57,6 @@ class GaudiConfigTester(unittest.TestCase):
 
         self.assertTrue(is_list_of_strings(gaudi_config.hmp_bf16_ops))
         self.assertTrue(is_list_of_strings(gaudi_config.hmp_fp32_ops))
-
-        self.assertIn(gaudi_config.hmp_opt_level, OPT_LEVELS)
 
     def test_write_bf16_fp32_ops_to_text_files(self):
         gaudi_config = GaudiConfig()

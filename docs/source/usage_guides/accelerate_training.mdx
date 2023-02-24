@@ -65,7 +65,7 @@ Please refer to the [list of supported PyTorch operators](https://docs.habana.ai
 
 </Tip>
 
-To apply HMP, you must set `"use_habana_mixed_precision"` to `true` and `"hmp_opt_level"` to `"O1"` in the Gaudi configuration file.
+To apply HMP, you must set `"use_habana_mixed_precision"` to `true` in the Gaudi configuration file.
 Then, you can specify which operators to compute in *bf16* with `"hmp_bf16_ops"` and which operators to compute in *fp32* with `"hmp_fp32_ops"`.
 If these operators are not specified, their default values are set to be the ones written in the [Gaudi configuration file of BERT](https://huggingface.co/Habana/bert-large-uncased-whole-word-masking/blob/main/gaudi_config.json), which is a good starting point for applying HMP:
 ```

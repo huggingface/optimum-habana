@@ -52,7 +52,6 @@ class GaudiConfig(BaseConfig):
     def __init__(self, **kwargs):
         # Habana Mixed Precision (MHP) configuration
         self.use_habana_mixed_precision = kwargs.pop("use_habana_mixed_precision", False)
-        self.hmp_opt_level = kwargs.pop("hmp_opt_level", "O1")
         self.hmp_bf16_ops = kwargs.pop("hmp_bf16_ops", DEFAULT_BF16_OPS)
         self.hmp_fp32_ops = kwargs.pop("hmp_fp32_ops", DEFAULT_FP32_OPS)
         self.hmp_is_verbose = kwargs.pop("hmp_is_verbose", False)
