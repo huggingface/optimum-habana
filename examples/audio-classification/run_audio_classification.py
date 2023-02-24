@@ -275,42 +275,42 @@ def main():
     # Max input length
     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
 
+    model_input_name = feature_extractor.model_input_names[0]
+
     def train_transforms(batch):
         """Apply train_transforms across a batch."""
-        output_batch = {"input_values": []}
+        subsampled_wavs = []
 
         for audio in batch[data_args.audio_column_name]:
             wav = random_subsample(
                 audio["array"], max_length=data_args.max_length_seconds, sample_rate=feature_extractor.sampling_rate
             )
-            preprocessed_audio = feature_extractor(
-                wav,
-                max_length=max_length,
-                sampling_rate=feature_extractor.sampling_rate,
-                padding="max_length",
-                truncation=True,
-            )
-            output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-
+            subsampled_wavs.append(wav)
+        inputs = feature_extractor(
+            subsampled_wavs,
+            max_length=max_length,
+            sampling_rate=feature_extractor.sampling_rate,
+            padding="max_length",
+            truncation=True,
+        )
+        output_batch = {model_input_name: inputs.get(model_input_name)}
         output_batch["labels"] = list(batch[data_args.label_column_name])
+
         return output_batch
 
     def val_transforms(batch):
         """Apply val_transforms across a batch."""
-        output_batch = {"input_values": []}
-
-        for audio in batch[data_args.audio_column_name]:
-            wav = audio["array"]
-            preprocessed_audio = feature_extractor(
-                wav,
-                max_length=max_length,
-                sampling_rate=feature_extractor.sampling_rate,
-                padding="max_length",
-                truncation=True,
-            )
-            output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-
+        wavs = [audio["array"] for audio in batch[data_args.audio_column_name]]
+        inputs = feature_extractor(
+            wavs,
+            max_length=max_length,
+            sampling_rate=feature_extractor.sampling_rate,
+            padding="max_length",
+            truncation=True,
+        )
+        output_batch = {model_input_name: inputs.get(model_input_name)}
         output_batch["labels"] = list(batch[data_args.label_column_name])
+
         return output_batch
 
     # Prepare label mappings.
