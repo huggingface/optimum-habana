@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import warnings
 from pathlib import Path
 
 from optimum.configuration_utils import BaseConfig
@@ -60,6 +61,14 @@ class GaudiConfig(BaseConfig):
         self.use_fused_adam = kwargs.pop("use_fused_adam", False)
         # Use Habana's custom fused clip norm implementation
         self.use_fused_clip_norm = kwargs.pop("use_fused_clip_norm", False)
+
+        # TODO: to remove in a future version
+        if "hmp_opt_level" in kwargs:
+            warnings.warn(
+                "`hmp_opt_level` is deprecated and will be removed in a future version.",
+                FutureWarning,
+            )
+        self.hmp_opt_level = kwargs.pop("hmp_opt_level", "O1")
 
     def write_bf16_fp32_ops_to_text_files(
         self,
