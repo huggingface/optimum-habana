@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from habana_frameworks.torch.hpex import hmp
+from parameterized import parameterized
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from transformers.testing_utils import slow
 
@@ -239,6 +240,36 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertIsNone(pipe.safety_checker)
         image = pipe("example prompt", num_inference_steps=2).images[0]
         self.assertIsNotNone(image)
+
+    @parameterized.expand(["pil", "np", "latent"])
+    def test_stable_diffusion_output_types(self, output_type):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig()
+
+        sd_pipe = GaudiStableDiffusionPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        num_prompts = 2
+        num_images_per_prompt = 3
+
+        outputs = sd_pipe(
+            num_prompts * [prompt],
+            num_images_per_prompt=num_images_per_prompt,
+            num_inference_steps=2,
+            output_type=output_type,
+        )
+
+        self.assertEqual(len(outputs.images), 2 * 3)
+        # TODO: enable safety checker
+        # if output_type == "latent":
+        #     self.assertIsNone(outputs.nsfw_content_detected)
+        # else:
+        #     self.assertEqual(len(outputs.nsfw_content_detected), 2 * 3)
 
     # TODO: enable this test when PNDMScheduler is adapted to Gaudi
     # def test_stable_diffusion_negative_prompt(self):

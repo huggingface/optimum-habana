@@ -67,7 +67,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
-        **kwargs,
     ):
         super().__init__(
             num_train_timesteps,
@@ -79,7 +78,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
             set_alpha_to_one,
             steps_offset,
             prediction_type,
-            **kwargs,
         )
 
         self.reset_timestep_dependent_params()
@@ -229,7 +227,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if eta > 0:
-            # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
             device = model_output.device
             if variance_noise is not None and generator is not None:
                 raise ValueError(
