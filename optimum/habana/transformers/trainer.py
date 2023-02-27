@@ -1099,20 +1099,20 @@ class GaudiTrainer(Trainer):
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
-            if self.args.local_rank == -1:
-                logger.info("Using HPU graphs for inference.")
-                if not self.already_wrapped_for_hpu_graphs:
-                    # Do not wrap the model in HPU graphs if it has already been done
-                    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+            # if self.args.local_rank == -1:
+            logger.info("Using HPU graphs for inference.")
+            if not self.already_wrapped_for_hpu_graphs:
+                # Do not wrap the model in HPU graphs if it has already been done
+                from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-                    model = wrap_in_hpu_graph(model)
-                    self.already_wrapped_for_hpu_graphs = True
-            else:
-                # Do not use HPU graphs for distributed runs
-                logger.warning(
-                    "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
-                    " performed in lazy mode."
-                )
+                model = wrap_in_hpu_graph(model)
+                self.already_wrapped_for_hpu_graphs = True
+            # else:
+            #     # Do not use HPU graphs for distributed runs
+            #     logger.warning(
+            #         "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
+            #         " performed in lazy mode."
+            #     )
 
         batch_size = self.args.eval_batch_size
 
