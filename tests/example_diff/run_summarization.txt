@@ -73,13 +73,13 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-643c664
+653c674
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-644a666
+654a676
 >         gaudi_config=gaudi_config,
-733,737d754
+735,739d756
 < 
 < 
 < def _mp_fn(index):
