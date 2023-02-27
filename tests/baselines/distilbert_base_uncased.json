@@ -6,9 +6,9 @@
             "single_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 8,
-                "eval_f1": 85.5392,
-                "train_runtime": 1236.6218,
-                "train_samples_per_second": 217.057,
+                "eval_f1": 85.5899,
+                "train_runtime": 1230.5609,
+                "train_samples_per_second": 218.186,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -16,9 +16,9 @@
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 8,
-                "eval_f1": 85.5348,
-                "train_runtime": 250.2808,
-                "train_samples_per_second": 1167.007,
+                "eval_f1": 85.4743,
+                "train_runtime": 239.038,
+                "train_samples_per_second": 1227.301,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]

@@ -6,9 +6,9 @@
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 32,
-                "eval_accuracy": 0.99,
-                "train_runtime": 770.1643,
-                "train_samples_per_second": 286.915,
+                "eval_accuracy": 0.9911,
+                "train_runtime": 767.229,
+                "train_samples_per_second": 288.202,
                 "extra_arguments": [
                     "--remove_unused_columns False",
                     "--seed 1337"
