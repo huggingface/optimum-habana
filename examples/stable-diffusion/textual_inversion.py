@@ -8,11 +8,17 @@ from pathlib import Path
 from typing import Optional
 
 import datasets
+import diffusers
 import numpy as np
 import PIL
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
+import transformers
+from diffusers import AutoencoderKL, UNet2DConditionModel
+from diffusers.optimization import get_scheduler
+from diffusers.utils import check_min_version
+from huggingface_hub import HfFolder, Repository, whoami
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
@@ -20,18 +26,12 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
+from transformers import CLIPTextModel, CLIPTokenizer
 
-import diffusers
-import transformers
-from diffusers import AutoencoderKL, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version
-from huggingface_hub import HfFolder, Repository, whoami
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 from optimum.habana.utils import set_seed, to_device_dtype
 from optimum.utils.logging import get_logger
-from transformers import CLIPTextModel, CLIPTokenizer
 
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -382,10 +382,7 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            (
-                h,
-                w,
-            ) = (
+            (h, w,) = (
                 img.shape[0],
                 img.shape[1],
             )
@@ -723,9 +720,6 @@ def main():
                 with torch.no_grad():
                     text_encoder.get_input_embeddings().weight[index_no_updates] = orig_embeds_params[index_no_updates]
 
-            # # Checks if the accelerator has performed an optimization step behind the scenes
-            # if accelerator.sync_gradients:
-            torch.distributed.barrier()
             progress_bar.update(1)
             global_step += 1
             if global_step % args.save_steps == 0:
@@ -745,8 +739,9 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-    # Create the pipeline using using the trained modules and save it.
-    torch.distributed.barrier()
+    # Create the pipeline using the trained modules and save it.
+    if args.local_rank != -1:
+        torch.distributed.barrier()
     if rank == 0:
         if args.push_to_hub and args.only_save_embeds:
             logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
