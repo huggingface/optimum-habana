@@ -40,7 +40,7 @@ wget http://images.cocodataset.org/annotations/image_info_test2017.zip
 cd ..
 ```
 
-Having downloaded COCO dataset manually you should be able to load with the `ydshieh/coc_dataset_script` dataset loading script:
+Having downloaded COCO dataset manually you should be able to load with the `ydshieh/coco_dataset_script` dataset loading script:
 
 ```py
 import os
