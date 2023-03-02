@@ -68,7 +68,7 @@ pip install -r requirements.txt
 
 ### Quick Start
 
-🤗 Optimum Habana was designed with one goal in mind: **to make training and evaluation straightforward for any 🤗 Transformers and 🤗 Diffusers user while leveraging the complete power of Gaudi processors**.
+🤗 Optimum Habana was designed with one goal in mind: **to make training and inference straightforward for any 🤗 Transformers and 🤗 Diffusers user while leveraging the complete power of Gaudi processors**.
 
 #### Transformers Interface
 
