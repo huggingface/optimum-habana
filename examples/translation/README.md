@@ -14,12 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Translation
+# Translation Examples
 
 `run_translation.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune one of the architectures above on it.
 
-For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files
-and you also will find examples of these below.
+For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files.
+You will also find examples of these below.
 
 
 ## Single-card Training
@@ -38,12 +38,13 @@ python run_translation.py \
     --dataset_name wmt16 \
     --dataset_config_name ro-en \
     --output_dir /tmp/tst-translation \
-    --per_device_train_batch_size=4 \
-    --per_device_eval_batch_size=4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --overwrite_output_dir \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -53,7 +54,7 @@ python run_translation.py \
 
 If you get a terrible BLEU score, make sure that you didn't forget to use the `--source_prefix` argument.
 
-For the aforementioned group of T5 models it's important to remember that if you switch to a different language pair, make sure to adjust the source and target values in all 3 language-specific command line argument: `--source_lang`, `--target_lang` and `--source_prefix`.
+For the aforementioned group of T5 models, it's important to remember that if you switch to a different language pair, make sure to adjust the source and target values in all 3 language-specific command line arguments: `--source_lang`, `--target_lang` and `--source_prefix`.
 
 In lazy mode, make sure to use the arguments `--pad_to_max_length` and `--ignore_pad_token_for_loss False` to pad batches to max length and to avoid negative pad tokens.
 
@@ -73,19 +74,20 @@ python run_translation.py \
     --train_file path_to_jsonlines_file \
     --validation_file path_to_jsonlines_file \
     --output_dir /tmp/tst-translation \
-    --per_device_train_batch_size=4 \
-    --per_device_eval_batch_size=4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --overwrite_output_dir \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --throughput_warmup_steps 2
 ```
 
-The task of translation supports only custom JSONLINES files, with each line being a dictionary with a key `"translation"` and its value another dictionary whose keys is the language pair. For example:
+The task of translation supports only custom JSONLINES files, with each line being a dictionary with the key `"translation"` and its value another dictionary whose keys is the language pair. For example:
 
 ```json
 { "translation": { "en": "Others have dismissed him as a joke.", "ro": "Alții l-au numit o glumă." } }
@@ -93,7 +95,7 @@ The task of translation supports only custom JSONLINES files, with each line bei
 ```
 Here the languages are Romanian (`ro`) and English (`en`).
 
-If you want to use a pre-processed dataset that leads to high BLEU scores, but for the `en-de` language pair, you can use `--dataset_name stas/wmt14-en-de-pre-processed`, as following:
+If you want to use a pre-processed dataset that leads to high BLEU scores, but for the `en-de` language pair, you can use `--dataset_name stas/wmt14-en-de-pre-processed`, as follows:
 
 ```bash
 python run_translation.py \
@@ -105,12 +107,13 @@ python run_translation.py \
     --source_prefix "translate English to German: " \
     --dataset_name stas/wmt14-en-de-pre-processed \
     --output_dir /tmp/tst-translation \
-    --per_device_train_batch_size=4 \
-    --per_device_eval_batch_size=4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --overwrite_output_dir \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -120,7 +123,7 @@ python run_translation.py \
 
  ## Multi-card Training
 
- Here is an example for distributing training on 8 HPUs:
+ Here is an example of distributing training on 8 HPUs:
 
  ```bash
 python ../gaudi_spawn.py \
@@ -134,15 +137,69 @@ python ../gaudi_spawn.py \
     --dataset_name wmt16 \
     --dataset_config_name ro-en \
     --output_dir /tmp/tst-translation \
-    --per_device_train_batch_size=4 \
-    --per_device_eval_batch_size=4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --overwrite_output_dir \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
     --throughput_warmup_steps 2
+```
+
+
+## Using DeepSpeed
+
+ Here is an example with DeepSpeed on 8 HPUs:
+
+ ```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_translation.py \
+    --model_name_or_path t5-small \
+    --do_train \
+    --do_eval \
+    --source_lang en \
+    --target_lang ro \
+    --source_prefix '"translate English to Romanian: "' \
+    --dataset_name wmt16 \
+    --dataset_config_name ro-en \
+    --output_dir /tmp/tst-translation \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --overwrite_output_dir \
+    --predict_with_generate \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/t5 \
+    --ignore_pad_token_for_loss False \
+    --pad_to_max_length \
+    --save_strategy epoch \
+    --throughput_warmup_steps 2 \
+    --deepspeed path_to_my_deepspeed_config
+```
+
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+Here is a DeepSpeed configuration you can use to train your models on Gaudi:
+```json
+{
+    "steps_per_print": 64,
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": "auto",
+    "gradient_accumulation_steps": "auto",
+    "bf16": {
+        "enabled": true
+    },
+    "gradient_clipping": 1.0,
+    "zero_optimization": {
+        "stage": 2,
+        "overlap_comm": false,
+        "reduce_scatter": false,
+        "contiguous_gradients": false
+    }
+}
 ```

@@ -1,0 +1,47 @@
+- sections:
+  - local: index
+    title: 🤗 Optimum Habana
+  - local: installation
+    title: Installation
+  - local: quickstart
+    title: Quickstart
+  - sections:
+    - local: tutorials/overview
+      title: Overview
+    - local: tutorials/single_hpu
+      title: Single-HPU Training
+    - local: tutorials/distributed
+      title: Distributed Training
+    - local: tutorials/stable_diffusion
+      title: Stable Diffusion
+    title: Tutorials
+  - sections:
+    - local: usage_guides/overview
+      title: Overview
+    - local: usage_guides/pretraining
+      title: Pretraining Transformers
+    - local: usage_guides/accelerate_training
+      title: Accelerating Training
+    - local: usage_guides/accelerate_inference
+      title: Accelerating Inference
+    - local: usage_guides/deepspeed
+      title: How to use DeepSpeed
+    - local: usage_guides/multi_node_training
+      title: Multi-node Training
+    title: How-To Guides
+  - sections:
+    - local: concept_guides/hpu
+      title: What are Habana's Gaudi and HPUs?
+    title: Conceptual Guides
+  - sections:
+    - local: package_reference/trainer
+      title: Gaudi Trainer
+    - local: package_reference/gaudi_config
+      title: Gaudi Configuration
+    - local: package_reference/stable_diffusion_pipeline
+      title: Gaudi Stable Diffusion Pipeline
+    - local: package_reference/distributed_runner
+      title: Distributed Runner
+    title: Reference
+  title: Optimum Habana
+  isExpanded: false

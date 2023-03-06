@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# SQuAD
+# Question Answering Examples on SQuAD
 
 Based on the script [`run_qa.py`](https://github.com/huggingface/transformers/blob/main/examples/pytorch/question-answering/run_qa.py).
 
@@ -28,7 +28,7 @@ Note that if your dataset contains samples with no possible answers (like SQUAD 
 
 ## Fine-tuning BERT on SQuAD1.1
 
-For the following cases, an example of Gaudi configuration file is given
+For the following cases, an example of a Gaudi configuration file is given
 [here](https://github.com/huggingface/optimum-habana#how-to-use-it).
 
 
@@ -41,7 +41,7 @@ It runs in 63 minutes with BERT-large.
 ```bash
 python run_qa.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
-  --gaudi_config_name gaudi_config_name_or_path \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --dataset_name squad \
   --do_train \
   --do_eval \
@@ -54,6 +54,7 @@ python run_qa.py \
   --output_dir /tmp/squad/ \
   --use_habana \
   --use_lazy_mode \
+  --use_hpu_graphs \
   --throughput_warmup_steps 2
 ```
 
@@ -72,7 +73,7 @@ Here is how you would fine-tune the BERT large model (with whole word masking) o
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_qa.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
-    --gaudi_config_name gaudi_config_name_or_path \
+    --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
     --dataset_name squad \
     --do_train \
     --do_eval \
@@ -85,6 +86,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/squad_output/ \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --throughput_warmup_steps 2
 ```
 
@@ -92,6 +94,54 @@ It runs in 11 minutes with BERT-large and yields the following results:
 ```bash
 f1 = 93.1666
 exact_match = 86.8874
+```
+
+
+## Using DeepSpeed
+
+Similarly to multi-card training, here is how you would fine-tune the BERT large model (with whole word masking) on the SQuAD dataset using DeepSpeed with 8 HPUs:
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_qa.py \
+    --model_name_or_path bert-large-uncased-whole-word-masking \
+    --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
+    --dataset_name squad \
+    --do_train \
+    --do_eval \
+    --per_device_train_batch_size 24 \
+    --per_device_eval_batch_size 8 \
+    --learning_rate 3e-5 \
+    --num_train_epochs 2 \
+    --max_seq_length 384 \
+    --doc_stride 128 \
+    --output_dir /tmp/squad_output/ \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --throughput_warmup_steps 2 \
+    --deepspeed path_to_my_deepspeed_config
+```
+
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+Here is a DeepSpeed configuration you can use to train your models on Gaudi:
+```json
+{
+    "steps_per_print": 64,
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": "auto",
+    "gradient_accumulation_steps": "auto",
+    "bf16": {
+        "enabled": true
+    },
+    "gradient_clipping": 1.0,
+    "zero_optimization": {
+        "stage": 2,
+        "overlap_comm": false,
+        "reduce_scatter": false,
+        "contiguous_gradients": false
+    }
+}
 ```
 
 

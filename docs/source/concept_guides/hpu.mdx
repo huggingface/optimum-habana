@@ -1,0 +1,49 @@
+<!---
+Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# What are Habana's first-generation Gaudi, Gaudi2 and HPUs?
+
+[Gaudi](https://habana.ai/training/gaudi/) and [Gaudi2](https://habana.ai/training/gaudi2/) are the first- and second-generation AI hardware accelerators designed by Habana Labs.
+A single server contains 8 devices called Habana Processing Units (HPUs) with 96GB of memory each on Gaudi2 and 32GB on first-gen Gaudi.
+Check out [here](https://docs.habana.ai/en/latest/Gaudi_Overview/Gaudi_Architecture.html) for more information about the underlying hardware architecture.
+
+The Habana SDK is called [SynapseAI](https://docs.habana.ai/en/latest/index.html) and is common to both first-gen Gaudi and Gaudi2.
+As a consequence, 🤗 Optimum Habana is fully compatible with both generations of accelerators.
+
+
+## Execution modes
+
+Two execution modes are supported on HPUs for PyTorch, which is the main deep learning framework the 🤗 Transformers and 🤗 Diffusers libraries rely on:
+
+- *Eager mode* execution, where the framework executes one operation at a time as defined in [standard PyTorch eager mode](https://pytorch.org/tutorials/beginner/hybrid_frontend/learning_hybrid_frontend_through_example_tutorial.html).
+- *Lazy mode* execution, where operations are internally accumulated in a graph. The execution of the operations in the accumulated graph is triggered in a lazy manner, only when a tensor value is required by the user or when it is explicitly required in the script. The [SynapseAI graph compiler](https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html#graph-compiler-and-runtime) will optimize the execution of the operations accumulated in the graph (e.g. operator fusion, data layout management, parallelization, pipelining and memory management, graph-level optimizations).
+
+See [here](../usage_guides/accelerate_training#lazy-mode) how to use these execution modes in 🤗 Optimum Habana.
+
+
+## Distributed training
+
+First-gen Gaudi and Gaudi2 are well-equipped for distributed training:
+
+- *Scale-up* to 8 devices on one server. See [here](../tutorials/distributed) how to perform distributed training on a single node.
+- *Scale-out* to 1000s of devices on several servers. See [here](../usage_guides/multi_node_training) how to do multi-node training.
+
+
+## Inference
+
+HPUs can also be used to perform inference:
+- Through HPU graphs that are well-suited for latency-sensitive applications. Check out [here](../usage_guides/accelerate_inference) how to use them.
+- In lazy mode, which can be used the same way as for training.

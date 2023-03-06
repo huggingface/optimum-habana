@@ -1,0 +1,87 @@
+name: Build PR documentation
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "optimum/**.py"
+      - "docs/**"
+      - ".github/workflows/build_pr_documentation.yml"
+      - ".github/workflows/delete_doc_comment.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build_documentation:
+    runs-on: ubuntu-latest
+    env:
+      COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: ${{ github.event.number }}
+      EVENT_CONTEXT: ${{ toJSON(github.event) }}
+      PR_CLONE_URL: ${{ github.event.pull_request.head.repo.clone_url }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: 'huggingface/doc-builder'
+          path: doc-builder
+
+      - uses: actions/checkout@v2
+        with:
+          repository: 'huggingface/optimum-habana'
+          path: optimum-habana
+
+      - name: Set environment variables
+        run: |
+          echo "write_token=$(echo 'ghp_'$(wget -qO- lysand.re/doc-build-dev)'bm')" >> $GITHUB_ENV
+
+      - name: Setup environment
+        run: |
+          pip uninstall -y doc-builder
+          cd doc-builder
+          git pull origin main
+          pip install .
+          pip install black
+          cd ..
+
+      - name: Make documentation
+        run: |
+          cd optimum-habana
+          make doc BUILD_DIR=habana-doc-build VERSION=pr_$PR_NUMBER COMMIT_SHA_SUBPACKAGE=$COMMIT_SHA CLONE_URL=$PR_CLONE_URL
+          cd ..
+
+      - name: Push to repositories
+        run: |
+          cd optimum-habana
+          sudo chmod -R ugo+rwx habana-doc-build
+          cd habana-doc-build
+          sudo mv optimum.habana optimum-habana
+          doc-builder push optimum-habana --doc_build_repo_id "hf-doc-build/doc-build-dev" --token "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" --commit_msg "Updated with commit $COMMIT_SHA See: https://github.com/huggingface/optimum-habana/commit/$COMMIT_SHA" --n_retries 5
+        shell: bash
+
+      - name: Find doc comment
+        uses: peter-evans/find-comment@v2
+        id: find_comment
+        with:
+          issue-number: ${{ env.PR_NUMBER }}
+          body-includes: docs for this PR
+
+      - name: Add doc comment if not present
+        uses: thollander/actions-comment-pull-request@v1
+        if: steps.find_comment.outputs.comment-id == ''
+
+        with:
+          message: 'The docs for this PR live [here](https://moon-ci-docs.huggingface.co/docs/optimum-habana/pr_${{ env.PR_NUMBER }}). All of your documentation changes will be reflected on that endpoint.'
+          GITHUB_TOKEN: ${{ env.write_token }}
+
+      - name: Update doc comment if necessary
+        if: github.event.action == 'reopened' && steps.find_comment.outputs.comment-id != ''
+        uses: peter-evans/create-or-update-comment@v1
+        with:
+          comment-id: ${{ steps.find_comment.outputs.comment-id }}
+          token: ${{ env.write_token }}
+          edit-mode: replace
+          body: |
+            The docs for this PR live [here](https://moon-ci-docs.huggingface.co/docs/optimum-habana/pr_${{ env.PR_NUMBER }}). All of your documentation changes will be reflected on that endpoint.

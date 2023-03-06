@@ -1,0 +1,124 @@
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+
+# Quickstart
+
+🤗 Optimum Habana was designed with one goal in mind: **making training and evaluation straightforward for any 🤗 Transformers user while leveraging the complete power of Gaudi processors**.
+There are two main classes one needs to know:
+- [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer): the trainer class that takes care of compiling (lazy or eager mode) and distributing the model to run on HPUs, and of performing training and evaluation.
+- [`GaudiConfig`](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config): the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
+
+The [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
+That is how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their [original counterparts](https://github.com/huggingface/transformers/tree/main/examples/pytorch).
+
+```diff
+-from transformers import Trainer, TrainingArguments
++from optimum.habana import GaudiTrainer, GaudiTrainingArguments
+
+# define the training arguments
+-training_args = TrainingArguments(
++training_args = GaudiTrainingArguments(
++  use_habana=True,
++  use_lazy_mode=True,
++  use_hpu_graphs=True,
++  gaudi_config_name=gaudi_config_name,
+  ...
+)
+
+# Initialize our Trainer
+-trainer = Trainer(
++trainer = GaudiTrainer(
+    model=model,
+    args=training_args,
+    train_dataset=train_dataset
+    ... # other arguments
+)
+```
+
+where `gaudi_config_name` is the name of a model from the [Hub](https://huggingface.co/Habana) (Gaudi configurations are stored in model repositories). You can also give the path to a custom Gaudi configuration written in a JSON file such as this one:
+```json
+{
+  "use_habana_mixed_precision": true,
+  "hmp_is_verbose": false,
+  "use_fused_adam": true,
+  "use_fused_clip_norm": true,
+  "hmp_bf16_ops": [
+    "add",
+    "addmm",
+    "bmm",
+    "div",
+    "dropout",
+    "gelu",
+    "iadd",
+    "linear",
+    "layer_norm",
+    "matmul",
+    "mm",
+    "rsub",
+    "softmax",
+    "truediv"
+  ],
+  "hmp_fp32_ops": [
+    "embedding",
+    "nll_loss",
+    "log_softmax"
+  ]
+}
+```
+
+If you prefer to instantiate a Gaudi configuration to work on it before giving it to the trainer, you can do it as follows:
+```python
+gaudi_config = GaudiConfig.from_pretrained(
+    gaudi_config_name,
+    cache_dir=model_args.cache_dir,
+    revision=model_args.model_revision,
+    use_auth_token=True if model_args.use_auth_token else None,
+)
+```
+
+
+## Stable Diffusion
+
+🤗 Optimum Habana also features HPU-optimized support for the 🤗 Diffusers library.
+Thus, you can easily deploy Stable Diffusion on Gaudi for performing text-to-image generation.
+
+Here is how to use it and the differences with the 🤗 Diffusers library:
+```diff
+- from diffusers import DDIMScheduler, StableDiffusionPipeline
++ from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
+
+
+model_name = "CompVis/stable-diffusion-v1-4"
+
+- scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
++ scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+- pipeline = StableDiffusionPipeline.from_pretrained(
++ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+    model_name,
+    scheduler=scheduler,
++   use_habana=True,
++   use_hpu_graphs=True,
++   gaudi_config="Habana/stable-diffusion",
+)
+
+outputs = generator(
+    ["An image of a squirrel in Picasso style"],
+    num_images_per_prompt=16,
++   batch_size=4,
+)
+```

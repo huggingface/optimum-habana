@@ -13,10 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from optimum.habana import GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 from transformers.testing_utils import TestCasePlus, require_torch
 from transformers.utils import is_datasets_available
+
+from optimum.habana import GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 
 
 if is_datasets_available():
@@ -103,6 +104,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             do_eval=True,
             use_habana=True,
             use_lazy_mode=True,
+            use_hpu_graphs=True,
         )
 
         # instantiate trainer

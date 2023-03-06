@@ -25,7 +25,11 @@ from unittest import TestCase
 
 from transformers import (
     CONFIG_MAPPING,
+    MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,
     MODEL_FOR_CAUSAL_LM_MAPPING,
+    MODEL_FOR_CTC_MAPPING,
+    MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
+    MODEL_FOR_MASKED_LM_MAPPING,
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
@@ -34,9 +38,13 @@ from transformers.testing_utils import slow
 
 from .utils import (
     MODELS_TO_TEST_MAPPING,
-    VALID_MODELS_FOR_LANGUAGE_MODELING,
+    VALID_MODELS_FOR_AUDIO_CLASSIFICATION,
+    VALID_MODELS_FOR_CAUSAL_LANGUAGE_MODELING,
+    VALID_MODELS_FOR_IMAGE_CLASSIFICATION,
+    VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING,
     VALID_MODELS_FOR_QUESTION_ANSWERING,
     VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION,
+    VALID_MODELS_FOR_SPEECH_RECOGNITION,
     VALID_SEQ2SEQ_MODELS,
 )
 
@@ -90,12 +98,32 @@ _SCRIPT_TO_MODEL_MAPPING = {
     "run_clm": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
-        VALID_MODELS_FOR_LANGUAGE_MODELING,
+        VALID_MODELS_FOR_CAUSAL_LANGUAGE_MODELING,
     ),
     "run_summarization": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
         VALID_SEQ2SEQ_MODELS,
+    ),
+    "run_image_classification": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
+        VALID_MODELS_FOR_IMAGE_CLASSIFICATION,
+    ),
+    "run_mlm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_MASKED_LM_MAPPING,
+        VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING,
+    ),
+    "run_audio_classification": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,
+        VALID_MODELS_FOR_AUDIO_CLASSIFICATION,
+    ),
+    "run_speech_recognition_ctc": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CTC_MAPPING,
+        VALID_MODELS_FOR_SPEECH_RECOGNITION,
     ),
 }
 
@@ -107,29 +135,49 @@ class ExampleTestMeta(type):
     models.
     """
 
-    def __new__(cls, name, bases, attrs, example_name=None, multi_card=False):
+    @staticmethod
+    def to_test(model_name: str, multi_card: bool, deepspeed: bool):
+        if model_name not in ["albert-xxlarge-v1", "gpt2-xl"] and not deepspeed:
+            return True
+        elif model_name == "gpt2-xl" and deepspeed:
+            # GPT2-XL is tested only with DeepSpeed
+            return True
+        elif model_name == "albert-xxlarge-v1":
+            if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
+                # ALBERT XXL 1X is tested only if the required flag is present because it takes long
+                return True
+
+        return False
+
+    def __new__(cls, name, bases, attrs, example_name=None, multi_card=False, deepspeed=False):
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
                 raise AttributeError(f"Could not create class because no model was found for example {example_name}")
         for model_name, gaudi_config_name in models_to_test:
-            # Conditional statement to filter out ALBERT XXL 1x if env variable RUN_ALBERT_XXL_1X is not true
-            test_albert_xxl_1x = ("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])
-            if model_name != "albert-xxlarge-v1" or multi_card or test_albert_xxl_1x:
-                attrs[
-                    f"test_{example_name}_{model_name}_{'multi_card' if multi_card else 'single_card'}"
-                ] = cls._create_test(model_name, gaudi_config_name, multi_card)
+            if cls.to_test(model_name, multi_card, deepspeed):
+                distribution = "single_card"
+                if multi_card:
+                    distribution = "multi_card"
+                elif deepspeed:
+                    distribution = "deepspeed"
+                attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
+                    model_name, gaudi_config_name, multi_card, deepspeed
+                )
         attrs["EXAMPLE_NAME"] = example_name
         return super().__new__(cls, name, bases, attrs)
 
     @classmethod
-    def _create_test(cls, model_name: str, gaudi_config_name: str, multi_card: bool = False) -> Callable[[], None]:
+    def _create_test(
+        cls, model_name: str, gaudi_config_name: str, multi_card: bool = False, deepspeed: bool = False
+    ) -> Callable[[], None]:
         """
         Create a test function that runs an example for a specific (model_name, gaudi_config_name) pair.
         Args:
             model_name (str): the model_name_or_path.
             gaudi_config_name (str): the gaudi config name.
             multi_card (bool): whether it is a distributed run or not.
+            deepspeed (bool): whether deepspeed should be used or not.
         Returns:
             The test function that runs the example.
         """
@@ -149,15 +197,22 @@ class ExampleTestMeta(type):
 
             self._install_requirements(example_script.parent / "requirements.txt")
 
-            path_to_baseline = BASELINE_DIRECTORY / Path(model_name.replace("-", "_")).with_suffix(".json")
+            path_to_baseline = BASELINE_DIRECTORY / Path(model_name.split("/")[-1].replace("-", "_")).with_suffix(
+                ".json"
+            )
             with path_to_baseline.open("r") as json_file:
                 baseline = json.load(json_file)[self.TASK_NAME]
 
-            distribution = "multi_card" if multi_card else "single_card"
+            distribution = "single_card"
+            if multi_card:
+                distribution = "multi_card"
+            elif deepspeed:
+                distribution = "deepspeed"
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
                     multi_card,
+                    deepspeed,
                     example_script,
                     model_name,
                     gaudi_config_name,
@@ -209,14 +264,18 @@ class ExampleTesterBase(TestCase):
     DATASET_PARAMETER_NAME = "dataset_name"
     REGRESSION_METRICS = {
         "eval_f1": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
+        "eval_accuracy": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
         "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "train_runtime": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
+        "eval_wer": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
+        "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TRAINING_TIME_PERF_FACTOR),
     }
 
     def _create_command_line(
         self,
         multi_card: bool,
+        deepspeed: bool,
         script: Path,
         model_name: str,
         gaudi_config_name: str,
@@ -235,6 +294,13 @@ class ExampleTesterBase(TestCase):
             cmd_line.append(f"{script.parent.parent / 'gaudi_spawn.py'}")
             cmd_line.append("--world_size 8")
             cmd_line.append("--use_mpi")
+        elif deepspeed:
+            cmd_line = [
+                "deepspeed",
+                "--num_nodes 1",
+                "--num_gpus 8",
+                "--no_local_rank",
+            ]
 
         cmd_line += [
             f"{script}",
@@ -251,6 +317,7 @@ class ExampleTesterBase(TestCase):
             f" --num_train_epochs {num_epochs}",
             "--use_habana",
             "--use_lazy_mode",
+            "--use_hpu_graphs",
             "--throughput_warmup_steps 2",
         ]
 
@@ -280,19 +347,39 @@ class ExampleTesterBase(TestCase):
             results (Dict): results of the run to assess
             baseline (Dict): baseline to assert whether or not there is regression
         """
+        # Gather all the metrics to assess
+        metrics_to_assess = []
+        for metric_name in self.REGRESSION_METRICS.keys():
+            if metric_name in baseline and metric_name in results:
+                metrics_to_assess.append(metric_name)
 
-        number_asserted_metrics = 0
-        for metric_name, assert_function_and_threshold in self.REGRESSION_METRICS.items():
-            if metric_name in baseline:
-                number_asserted_metrics += 1
-                assert_function, threshold_factor = assert_function_and_threshold
-                assert_function(self, results[metric_name], threshold_factor * baseline[metric_name])
+        # Check that at least 3 metrics are assessed:
+        # training time + throughput + accuracy metric (F1, accuracy, perplexity,...)
         self.assertGreaterEqual(
-            number_asserted_metrics,
-            2,
-            f"{number_asserted_metrics} asserted metric while at least 2 are expected (training time + accuracy)."
-            f" Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received: {baseline.keys()}",
+            len(metrics_to_assess),
+            3,
+            (
+                f"{len(metrics_to_assess)} asserted metric(s) while at least 3 are expected (throughput + training"
+                f" time + accuracy). Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received:"
+                f" {baseline.keys()}"
+            ),
         )
+
+        # Message to display if one test fails
+        # This enables to show all the results and baselines even if one test fails before others
+        failure_message = "\n===== Assessed metrics (measured vs thresholded baseline) =====\n"
+        for metric_name in metrics_to_assess:
+            failure_message += f"{metric_name}: {results[metric_name]} vs {self.REGRESSION_METRICS[metric_name][1] * baseline[metric_name]}\n"
+
+        # Assess metrics
+        for metric_name in metrics_to_assess:
+            assert_function, threshold_factor = self.REGRESSION_METRICS[metric_name]
+            assert_function(
+                self,
+                results[metric_name],
+                threshold_factor * baseline[metric_name],
+                msg=f"for metric {metric_name}. {failure_message}",
+            )
 
 
 class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue"):
@@ -317,14 +404,50 @@ class MultiCardQuestionAnsweringExampleTester(
     TASK_NAME = "squad"
 
 
-class LanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
+class CausalLanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
     TASK_NAME = "wikitext"
 
 
-class MultiCardLanguageModelingExampleTester(
+class MultiCardCausalLanguageModelingExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm", multi_card=True
 ):
     TASK_NAME = "wikitext"
+
+
+class DeepspeedCausalLanguageModelingExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm", deepspeed=True
+):
+    TASK_NAME = "wikitext"
+
+
+class ImageClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification"
+):
+    TASK_NAME = "cifar10"
+
+
+class MultiCardImageClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_image_classification", multi_card=True
+):
+    TASK_NAME = "cifar10"
+
+
+class MultiCardMaskedLanguageModelingExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_mlm", multi_card=True
+):
+    TASK_NAME = "wikitext"
+
+
+class MultiCardAudioClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_audio_classification", multi_card=True
+):
+    TASK_NAME = "common_language"
+
+
+# class MultiCardSpeechRecognitionExampleTester(
+#     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
+# ):
+#     TASK_NAME = "librispeech_asr"
 
 
 class MultiCardSummarizationExampleTester(

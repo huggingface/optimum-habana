@@ -1,0 +1,68 @@
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+
+# 🤗 Optimum Habana
+
+🤗 Optimum Habana is the interface between the 🤗 Transformers and 🤗 Diffusers libraries and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
+It provides a set of tools that enable easy model loading, training and inference on single- and multi-HPU settings for various downstream tasks as shown in the table below.
+
+HPUs offer fast model training and inference as well as a great price-performance ratio.
+Check out [this blog post about BERT pre-training](https://huggingface.co/blog/pretraining-bert) and [this article benchmarking Habana Gaudi2 versus Nvidia A100 GPUs](https://huggingface.co/blog/habana-gaudi-2-benchmark) for concrete examples.
+If you are not familiar with HPUs, we recommend you take a look at [our conceptual guide](./concept_guides/hpu).
+
+
+The table below shows which model architectures, tasks and device distributions are currently supported for 🤗 Optimum Habana:
+
+| Architecture     | Single Card | Multi Card | DeepSpeed | <center>Tasks</center> |
+|------------------|:-----------:|:----------:|:---------:|------------------------|
+| BERT             | ✅          | ✅         | ✅        | <li>[text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| RoBERTa          | ✅          | ✅         | ✅        | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| ALBERT           | ✅          | ✅         | ✅        | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| DistilBERT       | ✅          | ✅         | ✅        | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| GPT2             | ✅          | ✅         | ✅        | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
+| T5               | ✅          | ✅         | ✅        | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li> |
+| ViT              | ✅          | ✅         | ✅        | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
+| Swin             | ✅          | ✅         | ✅        | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
+| Wav2Vec2         | ✅          | ✅         | ✅        | <li>[audio classification](https://github.com/huggingface/optimum-habana/tree/main/examples/audio-classification)</li><li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition)</li> |
+| Stable Diffusion | ✅          | ❌         | ❌        | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| CLIP             | ✅          | ✅         | ✅        | <li>[contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/main/examples/contrastive-image-text)</li> |
+
+Other models and tasks supported by the 🤗 Transformers library may also work.
+You can refer to [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) for examples of how to use them with 🤗 Optimum Habana.
+Besides, the [Quickstart](./quickstart) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
+
+
+<div class="mt-10">
+  <div class="w-full flex flex-col space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-y-4 md:gap-x-5">
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./tutorials/accelerate_training"
+      ><div class="w-full text-center bg-gradient-to-br from-blue-400 to-blue-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Tutorials</div>
+      <p class="text-gray-700">Learn the basics and become familiar with training transformers on HPUs with 🤗 Optimum. Start here if you are using 🤗 Optimum Habana for the first time!</p>
+    </a>
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./usage_guides/single_hpu"
+      ><div class="w-full text-center bg-gradient-to-br from-indigo-400 to-indigo-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">How-to guides</div>
+      <p class="text-gray-700">Practical guides to help you achieve a specific goal. Take a look at these guides to learn how to use 🤗 Optimum Habana to solve real-world problems.</p>
+    </a>
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./concept_guides/hpu"
+      ><div class="w-full text-center bg-gradient-to-br from-pink-400 to-pink-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Conceptual guides</div>
+      <p class="text-gray-700">High-level explanations for building a better understanding of important topics such as HPUs.</p>
+   </a>
+    <a class="!no-underline border dark:border-gray-700 p-5 rounded-lg shadow hover:shadow-lg" href="./package_reference/trainer"
+      ><div class="w-full text-center bg-gradient-to-br from-purple-400 to-purple-500 rounded-lg py-1.5 font-semibold mb-5 text-white text-lg leading-relaxed">Reference</div>
+      <p class="text-gray-700">Technical descriptions of how the Habana classes and methods of 🤗 Optimum Habana work.</p>
+    </a>
+  </div>
+</div>

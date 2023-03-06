@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2022 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +16,12 @@
 from pathlib import Path
 from typing import Dict
 
+from transformers import EvalPrediction, HfArgumentParser, is_torch_available
+from transformers.testing_utils import TestCasePlus
+
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.distributed import DistributedRunner
 from optimum.utils import logging
-from transformers import EvalPrediction, HfArgumentParser, is_torch_available
-from transformers.testing_utils import TestCasePlus
 
 
 logger = logging.get_logger(__name__)
@@ -61,7 +63,6 @@ if is_torch_available():
 
 class TestGaudiTrainerDistributed(TestCasePlus):
     def test_gaudi_trainer_distributed(self):
-
         output_dir = self.get_auto_remove_tmp_dir()
 
         command_list = [f"{self.test_file_dir}/test_trainer_distributed.py"]
@@ -69,13 +70,13 @@ class TestGaudiTrainerDistributed(TestCasePlus):
         command_list += [output_dir]
         command_list += ["--use_habana"]
         command_list += ["--use_lazy_mode"]
+        command_list += ["--use_hpu_graphs"]
         command = [" ".join(command_list)]
 
         distributed_runner = DistributedRunner(
             command_list=command,
             world_size=8,
             use_mpi=True,
-            multi_hls=False,
         )
 
         ret_code = distributed_runner.run()

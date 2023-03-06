@@ -1,0 +1,140 @@
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# DeepSpeed for HPUs
+
+[DeepSpeed](https://www.deepspeed.ai/) enables you to fit and train larger models on HPUs thanks to various optimizations described in the [ZeRO paper](https://arxiv.org/abs/1910.02054).
+In particular, you can use the two following ZeRO configurations that have been validated to be fully functioning with Gaudi:
+- **ZeRO-1**: partitions the optimizer states across processes.
+- **ZeRO-2**: partitions the optimizer states + gradients across processes.
+
+These configurations are fully compatible with Habana Mixed Precision and can thus be used to train your model in *bf16* precision.
+
+You can find more information about DeepSpeed Gaudi integration [here](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/DeepSpeed_User_Guide/DeepSpeed_User_Guide.html#deepspeed-user-guide).
+
+
+## Setup
+
+To use DeepSpeed on Gaudi, you need to install Optimum Habana and [Habana's DeepSpeed fork](https://github.com/HabanaAI/DeepSpeed) with:
+```bash
+pip install optimum[habana]
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
+```
+
+
+## Using DeepSpeed with Optimum Habana
+
+The [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) allows using DeepSpeed as easily as the [Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer).
+This can be done in 3 steps:
+1. A DeepSpeed configuration has to be defined.
+2. The `deepspeed` training argument enables to specify the path to the DeepSpeed configuration.
+3. The `deepspeed` launcher must be used to run your script.
+
+These steps are detailed below.
+A comprehensive guide about how to use DeepSpeed with the Transformers Trainer is also available [here](https://huggingface.co/docs/transformers/main_classes/deepspeed).
+
+
+### DeepSpeed configuration
+
+The DeepSpeed configuration to use is passed through a JSON file and enables you to choose the optimizations to apply.
+Here is an example for applying ZeRO-2 optimizations and *bf16* precision:
+```json
+{
+    "steps_per_print": 64,
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": "auto",
+    "gradient_accumulation_steps": "auto",
+    "bf16": {
+        "enabled": true
+    },
+    "gradient_clipping": 1.0,
+    "zero_optimization": {
+        "stage": 2,
+        "overlap_comm": false,
+        "reduce_scatter": false,
+        "contiguous_gradients": false
+    }
+}
+```
+
+<Tip>
+
+The special value `"auto"` enables to automatically get the correct or most efficient value.
+You can also specify the values yourself but, if you do so, you should be careful not to have conflicting values with your training arguments.
+It is strongly advised to read [this section](https://huggingface.co/docs/transformers/main_classes/deepspeed#shared-configuration) in the Transformers documentation to completely understand how this works.
+
+</Tip>
+
+Other examples of configurations for HPUs are proposed [here](https://github.com/HabanaAI/Model-References/tree/1.8.0/PyTorch/nlp/pretraining/deepspeed-bert/scripts) by Habana.
+
+The [Transformers documentation](https://huggingface.co/docs/transformers/main_classes/deepspeed#configuration) explains how to write a configuration from scratch very well.
+A more complete description of all configuration possibilities is available [here](https://www.deepspeed.ai/docs/config-json/).
+
+
+### The `deepspeed` training argument
+
+To use DeepSpeed, you must specify `deespeed=path_to_my_deepspeed_configuration` in your `GaudiTrainingArguments` instance:
+```python
+training_args = GaudiTrainingArguments(
+    # my usual training arguments...
+    use_habana=True,
+    use_lazy_mode=True,
+    gaudi_config_name=path_to_my_gaudi_config,
+    deepspeed=path_to_my_deepspeed_config,
+)
+```
+
+This argument both indicates that DeepSpeed should be used and points to your DeepSpeed configuration.
+
+
+### Launching your script
+
+Finally, there are two possible ways to launch your script:
+
+1. Using the [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) script:
+
+```bash
+python gaudi_spawn.py \
+    --world_size number_of_hpu_you_have --use_deepspeed \
+    path_to_script.py --args1 --args2 ... --argsN \
+    --deepspeed path_to_deepspeed_config
+```
+where `--argX` is an argument of the script to run with DeepSpeed.
+
+2. Using the [`DistributedRunner`](https://huggingface.co/docs/optimum/habana/package_reference/distributed_runner) directly in code:
+
+```python
+from optimum.habana.distributed import DistributedRunner
+from optimum.utils import logging
+
+world_size=8 # Number of HPUs to use (1 or 8)
+
+# define distributed runner
+distributed_runner = DistributedRunner(
+    command_list=["scripts/train.py --args1 --args2 ... --argsN --deepspeed path_to_deepspeed_config"],
+    world_size=world_size,
+    use_deepspeed=True,
+)
+
+# start job
+ret_code = distributed_runner.run()
+```
+
+<Tip warning={true}>
+
+You should set `"use_fused_adam": false` in your Gaudi configuration because it is not compatible with DeepSpeed yet.
+
+</Tip>

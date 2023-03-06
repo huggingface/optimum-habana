@@ -1,0 +1,32 @@
+{
+    "cifar10": {
+        "num_train_epochs": 5,
+        "eval_batch_size": 64,
+        "distribution": {
+            "single_card": {
+                "learning_rate": 3e-5,
+                "train_batch_size": 64,
+                "eval_accuracy": 0.9911,
+                "train_runtime": 1169.6091,
+                "train_samples_per_second": 199.56,
+                "extra_arguments": [
+                    "--remove_unused_columns False",
+                    "--seed 1337",
+                    "--ignore_mismatched_sizes"
+                ]
+            },
+            "multi_card": {
+                "learning_rate": 2e-4,
+                "train_batch_size": 64,
+                "eval_accuracy": 0.9915,
+                "train_runtime": 367.8198,
+                "train_samples_per_second": 1018.236,
+                "extra_arguments": [
+                    "--remove_unused_columns False",
+                    "--seed 1337",
+                    "--ignore_mismatched_sizes"
+                ]
+            }
+        }
+    }
+}

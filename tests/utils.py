@@ -33,10 +33,18 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "gpt2": [
         ("gpt2", "Habana/gpt2"),
+        ("gpt2-xl", "Habana/gpt2"),
     ],
     "t5": [
         ("t5-small", "Habana/t5"),
     ],
+    "vit": [
+        ("google/vit-base-patch16-224-in21k", "Habana/vit"),
+    ],
+    "wav2vec2": [
+        ("facebook/wav2vec2-base", "Habana/wav2vec2"),
+    ],
+    "swin": [("microsoft/swin-base-patch4-window7-224-in22k", "Habana/swin")],
 }
 
 VALID_MODELS_FOR_QUESTION_ANSWERING = [
@@ -46,7 +54,7 @@ VALID_MODELS_FOR_QUESTION_ANSWERING = [
     "distilbert",
 ]
 
-# Only BERT is officially supported for sequence classification
+# Only BERT has been officially validated for sequence classification
 VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION = [
     "bert",
     # "roberta",
@@ -54,13 +62,20 @@ VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION = [
     # "distilbert",
 ]
 
-# Only GPT2 is officially supported for language modeling
-VALID_MODELS_FOR_LANGUAGE_MODELING = [
-    "gpt2",
+VALID_MODELS_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2"]
+
+VALID_SEQ2SEQ_MODELS = ["t5"]
+
+VALID_MODELS_FOR_IMAGE_CLASSIFICATION = ["vit", "swin"]
+
+# Only RoBERTa is tested in CI for MLM
+VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING = [
     # "bert",
-    # "roberta",
+    "roberta",
     # "albert",
     # "distilbert",
 ]
 
-VALID_SEQ2SEQ_MODELS = ["t5"]
+VALID_MODELS_FOR_AUDIO_CLASSIFICATION = ["wav2vec2"]
+
+VALID_MODELS_FOR_SPEECH_RECOGNITION = ["wav2vec2"]

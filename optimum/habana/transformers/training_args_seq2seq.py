@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2022 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +16,9 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from optimum.utils import logging
 from transformers.utils import add_start_docstrings
+
+from optimum.utils import logging
 
 from .training_args import GaudiTrainingArguments
 

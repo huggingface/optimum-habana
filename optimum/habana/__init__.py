@@ -16,11 +16,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from .gaudi_configuration import GaudiConfig
-from .models.bloom import GaudiBloomForCausalLM
-from .models.gpt2 import GaudiGPT2LMHeadModel
-from .models.t5 import GaudiT5ForConditionalGeneration
-from .trainer import GaudiTrainer
-from .trainer_seq2seq import GaudiSeq2SeqTrainer
-from .training_args import GaudiTrainingArguments
-from .training_args_seq2seq import GaudiSeq2SeqTrainingArguments
+from .transformers import (
+    GaudiConfig,
+    GaudiSeq2SeqTrainer,
+    GaudiSeq2SeqTrainingArguments,
+    GaudiTrainer,
+    GaudiTrainingArguments,
+)
+from .version import __version__

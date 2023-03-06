@@ -1,3 +1,19 @@
+# coding=utf-8
+# Copyright 2022 The HuggingFace Inc. team.
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import re
 
 from setuptools import find_namespace_packages, setup
@@ -13,16 +29,11 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.20.0",
+    "transformers >= 4.26.0",
     "optimum",
-    "datasets",
-    "tokenizers",
     "torch",
-    "sentencepiece",
-    "scipy",
-    "pillow",
-    "dill < 0.3.5",  # see https://github.com/huggingface/datasets/issues/4506
-    "multiprocess < 0.70.13",  # 0.70.13 depends on dill>=0.3.5, to remove when the dill issue is solved
+    "accelerate",
+    "diffusers >= 0.12.0",
 ]
 
 TESTS_REQUIRE = [
@@ -30,19 +41,29 @@ TESTS_REQUIRE = [
     "psutil",
     "parameterized",
     "GitPython",
+    "optuna",
+    "sentencepiece",
+    "datasets",
+]
+
+QUALITY_REQUIRES = [
+    "black",
+    "ruff",
+    "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
 ]
 
 EXTRAS_REQUIRE = {
     "tests": TESTS_REQUIRE,
+    "quality": QUALITY_REQUIRES,
 }
 
 setup(
     name="optimum-habana",
     version=__version__,
     description=(
-        "Optimum Habana is the interface between the Hugging Face Transformers library and Habana Gaudi Processor"
-        " (HPU). It provides a set of tools enabling easy model loading and fine-tuning on single- and multi-HPU"
-        " settings for different downstream tasks."
+        "Optimum Habana is the interface between the Hugging Face Transformers and Diffusers libraries and Habana's"
+        " Gaudi processor (HPU). It provides a set of tools enabling easy model loading, training and inference on"
+        " single- and multi-HPU settings for different downstream tasks."
     ),
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -57,7 +78,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    keywords="transformers, mixed-precision training, fine-tuning, gaudi, hpu",
+    keywords="transformers, diffusers, mixed-precision training, fine-tuning, gaudi, hpu",
     url="https://huggingface.co/hardware/habana",
     author="HuggingFace Inc. Special Ops Team",
     author_email="hardware@huggingface.co",

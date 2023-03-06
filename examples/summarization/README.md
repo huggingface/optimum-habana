@@ -14,18 +14,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Summarization
+# Summarization Examples
 
 This directory contains examples for finetuning and evaluating transformers on summarization tasks.
 
 `run_summarization.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune T5 on it.
 
-For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files
-and you also will find examples of these below.
+For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files.
+You will also find examples of these below.
 
 ## Single-card Training
 
-Here is an example on a summarization task with T5:
+Here is an example of a summarization task with T5:
 
 ```bash
 python run_summarization.py \
@@ -36,12 +36,13 @@ python run_summarization.py \
     --dataset_config "3.0.0" \
     --source_prefix "summarize: " \
     --output_dir /tmp/tst-summarization \
-    --per_device_train_batch_size=4 \
-    --per_device_eval_batch_size=4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --overwrite_output_dir \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -68,11 +69,12 @@ python run_summarization.py \
     --source_prefix "summarize: " \
     --output_dir /tmp/tst-summarization \
     --overwrite_output_dir \
-    --per_device_train_batch_size=4 \
-    --per_device_eval_batch_size=4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
@@ -94,7 +96,7 @@ text,summary
 "Christmas time is here. Happiness and cheer. Fun for all that children call. Their favorite time of the year. Snowflakes in the air. Carols everywhere. Olden times and ancient rhymes. Of love and dreams to share","It's that time of year again."
 ```
 
-The first column is assumed to be for `text` and the second is for summary.
+The first column is assumed to be for `text` and the second is for the summary.
 
 If the csv file has multiple columns, you can then specify the names of the columns to use:
 
@@ -103,7 +105,7 @@ If the csv file has multiple columns, you can then specify the names of the colu
     --summary_column summary_column_name \
 ```
 
-For example if the columns were:
+For example, if the columns were:
 
 ```csv
 id,date,text,summary
@@ -150,15 +152,66 @@ python ../gaudi_spawn.py \
     --dataset_config '"3.0.0"' \
     --source_prefix '"summarize: "' \
     --output_dir /tmp/tst-summarization \
-    --per_device_train_batch_size=4 \
-    --per_device_eval_batch_size=4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --overwrite_output_dir \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
     --throughput_warmup_steps 2
+```
+
+
+## Using DeepSpeed
+
+Here is an example with DeepSpeed on 8 HPUs:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_summarization.py \
+    --model_name_or_path t5-small \
+    --do_train \
+    --do_eval \
+    --dataset_name cnn_dailymail \
+    --dataset_config '"3.0.0"' \
+    --source_prefix '"summarize: "' \
+    --output_dir /tmp/tst-summarization \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --overwrite_output_dir \
+    --predict_with_generate \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/t5 \
+    --ignore_pad_token_for_loss False \
+    --pad_to_max_length \
+    --save_strategy epoch \
+    --throughput_warmup_steps 2 \
+    --deepspeed path_to_my_deepspeed_config
+```
+
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+Here is a DeepSpeed configuration you can use to train your models on Gaudi:
+```json
+{
+    "steps_per_print": 64,
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": "auto",
+    "gradient_accumulation_steps": "auto",
+    "bf16": {
+        "enabled": true
+    },
+    "gradient_clipping": 1.0,
+    "zero_optimization": {
+        "stage": 2,
+        "overlap_comm": false,
+        "reduce_scatter": false,
+        "contiguous_gradients": false
+    }
+}
 ```

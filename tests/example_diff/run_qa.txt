@@ -2,12 +2,34 @@
 < # Copyright 2020 The HuggingFace Team All rights reserved.
 ---
 > # Copyright 2022 The HuggingFace Team All rights reserved.
-30a31,32
-> from optimum.habana import GaudiConfig
-> from optimum.habana.training_args import GaudiTrainingArguments as TrainingArguments
-40d41
+28a29
+> import transformers
+31,33d31
+< from utils_qa import postprocess_qa_predictions
+< 
+< import transformers
+42d39
 <     TrainingArguments,
-246a248,254
+44d40
+<     set_seed,
+48a45,48
+> from utils_qa import postprocess_qa_predictions
+> 
+> from optimum.habana import GaudiConfig, GaudiTrainingArguments
+> from optimum.habana.utils import set_seed
+52c52
+< check_min_version("4.27.0.dev0")
+---
+> check_min_version("4.26.0")
+135c135
+<                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
+---
+>                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on HPU)."
+222c222
+<     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+---
+>     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
+251a252,258
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -15,16 +37,16 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-249,250c257,259
+254,255c261,263
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-603a613
+608a617
 >         gaudi_config=gaudi_config,
-672,676d681
+677,681d685
 < 
 < 
 < def _mp_fn(index):
