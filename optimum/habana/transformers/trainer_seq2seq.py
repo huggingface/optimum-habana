@@ -71,14 +71,6 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         )
         self._gen_kwargs = gen_kwargs
 
-        # if self.args.use_hpu_graphs:
-        #     # Disable HPU graphs as generation needs to be fixed
-        #     self.args.use_hpu_graphs = False
-        #     logger.warning(
-        #         "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
-        #         " performed in lazy mode."
-        #     )
-
         return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def predict(
