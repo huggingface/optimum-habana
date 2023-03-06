@@ -26,14 +26,14 @@ import tempfile
 import numpy as np
 import torch
 from datasets import Dataset
+from habana_frameworks.torch.utils.library_loader import load_habana_module
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
+from transformers import BloomForCausalLM, BloomTokenizerFast, GPT2LMHeadModel, GPT2Tokenizer
 
-from habana_frameworks.torch.utils.library_loader import load_habana_module
 from optimum.habana import GaudiConfig
 from optimum.habana.modeling_utils import to_gaudi_for_accelerated_generation
-from transformers import BloomForCausalLM, BloomTokenizerFast, GPT2LMHeadModel, GPT2Tokenizer
 
 
 logging.basicConfig(
@@ -158,11 +158,11 @@ def main():
                 args.local_rank = rank
             else:
                 raise ("Single MPI process")
-        except Exception as e:
+        except Exception:
             logger.info("Single node run")
     if args.local_rank != -1:
         try:
-            import habana_frameworks.torch.core.hccl
+            pass
         except ImportError as error:
             error.msg = f"Could not import habana_frameworks.torch.core.hccl. {error.msg}."
             raise error

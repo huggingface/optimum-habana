@@ -131,11 +131,6 @@ class GaudiTrainer(Trainer):
             logger.info(f"No `GaudiTrainingArguments` passed, using `output_dir={output_dir}`.")
             args = GaudiTrainingArguments(output_dir=output_dir)
 
-        # In lazy_mode, decoder or encoder-decoder architectures are slightly
-        # modified to accelerate the generation process
-        if args.use_habana and model.__class__ in PRETRAINED_TO_GAUDI_REGISTRY and model is not None:
-            model = to_gaudi_for_accelerated_generation(model)
-
         super().__init__(
             model,
             args,

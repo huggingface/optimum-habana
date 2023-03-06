@@ -24,8 +24,6 @@ from optimum.utils import logging
 
 from .trainer import GaudiTrainer
 
-from .trainer import GaudiTrainer
-
 
 logger = logging.get_logger(__name__)
 
