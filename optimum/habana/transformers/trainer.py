@@ -210,7 +210,7 @@ class GaudiTrainer(Trainer):
         logging.enable_explicit_format()
 
         # Some methods needs to be tweaked to optimally run on Gaudi
-        adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision)
+        adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision, args.local_rank != -1)
 
         # Suppress PyTorch autocast warnings with Wav2Vec2
         # This is a bug in PyTorch
