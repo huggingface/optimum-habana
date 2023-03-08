@@ -7,7 +7,7 @@ import torch
 def _gaudi_relative_position_bucket(relative_position, bidirectional=True, num_buckets=32, max_distance=128):
     """
     Adapted from Transformers: https://github.com/huggingface/transformers/blob/ae54e3c3b18bac0832ad62ea9b896dfd52a09850/src/transformers/models/t5/modeling_t5.py#L426
-    The only difference is that the argument of `torch.where` are casted to int32 to avoid an error with HPU Graphs.
+    The only difference is that the arguments of `torch.where` are casted to int32 to avoid an error with HPU Graphs.
     """
     relative_buckets = 0
     if bidirectional:
