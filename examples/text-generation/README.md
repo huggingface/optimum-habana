@@ -1,5 +1,5 @@
 <!---
-Copyright 2020 The HuggingFace Team. All rights reserved.
+Copyright 2022 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,13 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-## Language generation
+# Language generation
 
 Based on the script [`run_generation.py`](https://github.com/huggingface/transformers/blob/main/examples/pytorch/text-generation/run_generation.py).
 
 Conditional text generation using the auto-regressive models of the library: GPT2 and BLOOM.
-A similar script is used for our official demo [Write With Transfomer](https://transformer.huggingface.co), where you
-can try out the different models available in the library.
+A similar script is used for our official demo [Write With Transfomer](https://transformer.huggingface.co), where you can try out the different models available in the library.
 
 First, you should install the requirements:
 ```bash
@@ -37,7 +36,8 @@ python run_generation.py \
     --batch_size 4 \
     --length 64 \
     --input_size 64 \
-    --n_iterations 20
+    --n_iterations 20 \
+    --use_hpu_graphs
 ```
 
 Example usage on 8 HPUs:
@@ -50,5 +50,6 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi \
     --batch_size 4 \
     --length 64 \
     --input_size 64 \
-    --n_iterations 80
+    --n_iterations 80 \
+    --use_hpu_graphs
 ```

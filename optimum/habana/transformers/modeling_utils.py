@@ -29,7 +29,7 @@ from .models import (
 )
 
 
-def adapt_transformers_to_gaudi(use_habana_mixed_precision: bool):
+def adapt_transformers_to_gaudi(use_habana_mixed_precision: bool = False):
     """
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.

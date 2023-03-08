@@ -17,23 +17,21 @@
 """ Conditional text generation with the auto-regressive models of the library (GPT2/BLOOM)
 """
 
-
 import argparse
 import logging
 import os
 import tempfile
 
-import numpy as np
 import torch
 from datasets import Dataset
-from habana_frameworks.torch.utils.library_loader import load_habana_module
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from transformers import BloomForCausalLM, BloomTokenizerFast, GPT2LMHeadModel, GPT2Tokenizer
 
 from optimum.habana import GaudiConfig
-from optimum.habana.modeling_utils import to_gaudi_for_accelerated_generation
+from optimum.habana.utils import set_seed
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 
 logging.basicConfig(
@@ -51,17 +49,9 @@ MODEL_CLASSES = {
 }
 
 
-def generate_dummy_dataset(batch_size=32, sequence_length=32, n_iterations=80):
-    my_dict = {"prompt": ["a" * sequence_length] * batch_size * n_iterations}
+def generate_dataset(prompt, batch_size=4, sequence_length=32, n_iterations=80):
+    my_dict = {"prompt": [prompt] * batch_size * n_iterations}
     return Dataset.from_dict(my_dict)
-
-
-def set_seed(args):
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    # TODO: multi HPUs seed setting should be possible with SynapseAI 1.5
-    # if args.n_gpu > 0:
-    #     torch.cuda.manual_seed_all(args.seed)
 
 
 #
@@ -112,7 +102,7 @@ def main():
     parser.add_argument("--p", type=float, default=0.9)
     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
-    parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
+    parser.add_argument("--seed", type=int, default=27, help="random seed for initialization")
     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size")
     parser.add_argument("--input_size", type=int, default=128, help="Length of the input sequence")
@@ -120,55 +110,31 @@ def main():
     parser.add_argument("--n_iterations", type=int, default=80, help="Number of inference iterations")
     parser.add_argument("--bf16", action="store_true", help="Whether to use bf16 mixed-precision")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
+    # parser.add_argument("--use_lazy_mode", action="store_true", help="Whether to use lazy mode or not.")
+    parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not.")
+
     args = parser.parse_args()
 
-    # The following line is needed for lazy mode
-    load_habana_module()
+    # Disable lazy mode if HPU graphs are not used
+    if not args.use_hpu_graphs:
+        os.environ["PT_HPU_LAZY_MODE"] = "2"
 
-    args.device = torch.device("hpu")
+    device = torch.device("hpu")
+    # _n_gpu = 1
 
-    # The following lines are needed for distributed runs on HPUs
-    _n_gpu = 1
-    world_size = 1
-    rank = -1
-    if "WORLD_SIZE" in os.environ and "RANK" in os.environ:
-        world_size = int(os.environ["WORLD_SIZE"])
-        rank = int(os.environ["RANK"])
-        if "LOCAL_RANK" in os.environ:
-            args.local_rank = int(os.environ["LOCAL_RANK"])
-        logger.info("Torch distributed launch used")
-    elif (
-        "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ
-        and "OMPI_COMM_WORLD_SIZE" in os.environ
-        and "OMPI_COMM_WORLD_RANK" in os.environ
-    ):
-        args.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
-        world_size = int(os.environ["OMPI_COMM_WORLD_SIZE"])
-        rank = int(os.environ["OMPI_COMM_WORLD_RANK"])
-        logger.info("MPI environment variables set")
-    else:
-        try:
-            global mpi_comm
-            from mpi4py import MPI
+    from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
-            mpi_comm = MPI.COMM_WORLD
-            world_size = mpi_comm.Get_size()
-            if world_size > 1:
-                rank = mpi_comm.Get_rank()
-                args.local_rank = rank
-            else:
-                raise ("Single MPI process")
-        except Exception:
-            logger.info("Single node run")
+    world_size, rank, args.local_rank = initialize_distributed_hpu()
+
     if args.local_rank != -1:
-        try:
-            pass
-        except ImportError as error:
-            error.msg = f"Could not import habana_frameworks.torch.core.hccl. {error.msg}."
-            raise error
-        os.environ["ID"] = str(args.local_rank)
-        torch.distributed.init_process_group(backend="hccl", rank=args.local_rank, world_size=world_size)
-        logger.info("Enabled distributed run.")
+        if not torch.distributed.is_initialized():
+            torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
+            logger.info("Enabled distributed run.")
+    else:
+        logger.info("Single node run.")
+
+    # Tweak generation so that it runs faster on Gaudi
+    adapt_transformers_to_gaudi()
 
     # Load Gaudi configuration from the hub to get the list of bf16 ops if necessary
     if args.bf16:
@@ -179,44 +145,63 @@ def main():
         gaudi_config_name = "gpt2"
     gaudi_config = GaudiConfig.from_pretrained(f"Habana/{gaudi_config_name}")
 
-    logger.warning(f"device: {args.device}, n_hpu: {world_size} bf16: {gaudi_config.use_habana_mixed_precision}")
+    logger.warning(f"device: {device}, n_hpu: {world_size}, bf16: {gaudi_config.use_habana_mixed_precision}")
 
-    set_seed(args)
+    set_seed(args.seed)
 
     # Initialize the model and tokenizer
     try:
         args.model_type = args.model_type.lower()
         model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     except KeyError:
-        raise KeyError("the model {} you specified is not supported. You are welcome to add it and open a PR :)")
+        raise KeyError(
+            f"The model {args.model_type} you specified is not supported. You are welcome to add it and open a PR :)"
+        )
     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
-    model = model_class.from_pretrained(args.model_name_or_path)
-    # Convert the model to have custom Gaudi generation
-    model = to_gaudi_for_accelerated_generation(model).eval()
-    model.to(args.device)
+
+    if args.local_rank == -1:
+        model = model_class.from_pretrained(args.model_name_or_path)
+        # Convert the model to have custom Gaudi generation
+        model = model.eval().to(device)
+
+        # # Torch DDP in distributed mode
+        # if args.local_rank != -1:
+        #     kwargs = {}
+        #     kwargs["bucket_cap_mb"] = 230
+        #     kwargs["gradient_as_bucket_view"] = True
+        #     kwargs["find_unused_parameters"] = False
+        #     model_wrapped = torch.nn.parallel.DistributedDataParallel(
+        #         model,
+        #         device_ids=None,
+        #         output_device=None,
+        #         **kwargs,
+        #     )
+        # else:
+        # model_wrapped = model
+
+        # Wrapper for HPU graphs
+        if args.use_hpu_graphs:
+            from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+            model = wrap_in_hpu_graph(model)
+    else:
+        import deepspeed
+
+        # with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta"):
+        model = model_class.from_pretrained(args.model_name_or_path, torch_dtype=torch.bfloat16)
+        model = model.eval()
+        args.device = "hpu"
+        model = deepspeed.init_inference(
+            model, mp_size=world_size, dtype=torch.bfloat16, args=args, enable_cuda_graph=args.use_hpu_graphs
+        )
 
     if hasattr(model.config, "max_position_embeddings"):
         max_position_embeddings = model.config.max_position_embeddings
     else:
         max_position_embeddings = 1024
 
-    # Torch DDP in distributed mode
-    if args.local_rank != -1:
-        kwargs = {}
-        kwargs["bucket_cap_mb"] = 230
-        kwargs["gradient_as_bucket_view"] = True
-        kwargs["find_unused_parameters"] = False
-        model_wrapped = torch.nn.parallel.DistributedDataParallel(
-            model,
-            device_ids=None,
-            output_device=None,
-            **kwargs,
-        )
-    else:
-        model_wrapped = model
-
     args.length = adjust_length_to_model(args.length, max_sequence_length=max_position_embeddings)
-    logger.info(args)
+    logger.info(f"Args: {args}")
 
     # Tell Gaudi the bf16 ops to use
     if gaudi_config.use_habana_mixed_precision:
@@ -231,14 +216,14 @@ def main():
                     hmp_fp32_file.name,
                 )
                 hmp.convert(
-                    opt_level=gaudi_config.hmp_opt_level,
                     bf16_file_path=hmp_bf16_file.name,
                     fp32_file_path=hmp_fp32_file.name,
                     isVerbose=gaudi_config.hmp_is_verbose,
                 )
 
     # Generate the dataset to use
-    dummy_dataset = generate_dummy_dataset(args.batch_size, args.input_size, args.n_iterations)
+    prompt = "My name is Michael and I live in"
+    dummy_dataset = generate_dataset(prompt, args.batch_size, args.input_size, args.n_iterations)
 
     def tokenize_function(examples):
         return tokenizer(examples["prompt"])
@@ -281,7 +266,7 @@ def main():
             steps_progress_bar.update(1)
         # Generation
         output_sequences = generate_method_to_call(
-            input_ids=batch["input_ids"].to(args.device),
+            input_ids=batch["input_ids"].to(device),
             max_length=args.length + batch["input_ids"].shape[-1],
             temperature=args.temperature,
             top_k=args.k,
@@ -290,7 +275,8 @@ def main():
             # do_sample=True,
             num_beams=args.num_beams,
             num_return_sequences=args.num_return_sequences,
-            lazy_mode=True,
+            # lazy_mode=args.use_lazy_mode,
+            hpu_graphs=args.use_hpu_graphs,
         )
 
     if steps_progress_bar is not None:
