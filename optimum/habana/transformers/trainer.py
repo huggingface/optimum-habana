@@ -1100,6 +1100,7 @@ class GaudiTrainer(Trainer):
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
             logger.info("Using HPU graphs for inference.")
+            # Do not wrap the model in HPU graphs if it has already been done
             if not self.already_wrapped_for_hpu_graphs:
                 # TODO: delete the three following lines when SynapseAI 1.9 is released
                 from transformers.models.t5.modeling_t5 import T5Attention
@@ -1108,7 +1109,6 @@ class GaudiTrainer(Trainer):
 
                 T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
 
-                # Do not wrap the model in HPU graphs if it has already been done
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
                 model = wrap_in_hpu_graph(model)
@@ -1429,6 +1429,7 @@ class GaudiTrainer(Trainer):
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
             logger.info("Using HPU graphs for inference.")
+            # Do not wrap the model in HPU graphs if it has already been done
             if not self.already_wrapped_for_hpu_graphs:
                 # TODO: delete the three following lines when SynapseAI 1.9 is released
                 from transformers.models.t5.modeling_t5 import T5Attention
@@ -1437,7 +1438,6 @@ class GaudiTrainer(Trainer):
 
                 T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
 
-                # Do not wrap the model in HPU graphs if it has already been done
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
                 model = wrap_in_hpu_graph(model)
