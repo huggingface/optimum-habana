@@ -68,4 +68,5 @@ def adapt_transformers_to_gaudi(use_habana_mixed_precision: bool, is_distributed
         AlbertModel.forward = gaudi_albert_forward
 
     if is_distributed:
+        print("GPT22222222222222222222222")
         transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
