@@ -6,9 +6,9 @@
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 12,
-                "eval_f1": 92.2254,
-                "train_runtime": 1326.55,
-                "train_samples_per_second": 136.154,
+                "eval_f1": 92.2689,
+                "train_runtime": 1320.2253,
+                "train_samples_per_second": 136.879,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -16,9 +16,9 @@
             "multi_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 12,
-                "eval_f1": 91.8554,
-                "train_runtime": 304.8193,
-                "train_samples_per_second": 692.672,
+                "eval_f1": 91.8087,
+                "train_runtime": 286.1668,
+                "train_samples_per_second": 748.852,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -32,9 +32,9 @@
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 16,
-                "perplexity": 3.5267,
-                "train_runtime": 89.3939,
-                "train_samples_per_second": 277.588,
+                "perplexity": 3.6097,
+                "train_runtime": 70.472,
+                "train_samples_per_second": 440.838,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--ddp_find_unused_parameters True"

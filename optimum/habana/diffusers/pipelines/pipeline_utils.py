@@ -150,6 +150,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                             hmp_fp32_file.name,
                         )
                         self.hmp.convert(
+                            opt_level=self.gaudi_config.hmp_opt_level,
                             bf16_file_path=hmp_bf16_file.name,
                             fp32_file_path=hmp_fp32_file.name,
                             isVerbose=self.gaudi_config.hmp_is_verbose,
@@ -197,6 +198,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         self,
         save_directory: Union[str, os.PathLike],
         safe_serialization: bool = False,
+        variant: Optional[str] = None,
     ):
         """
         Save the pipeline and Gaudi configurations.
@@ -207,6 +209,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 Directory to which to save. Will be created if it doesn't exist.
             safe_serialization (`bool`, *optional*, defaults to `False`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
+            variant (`str`, *optional*):
+                If specified, weights are saved in the format pytorch_model.<variant>.bin.
         """
         self.save_config(save_directory)
         if hasattr(self, "gaudi_config"):
@@ -250,12 +254,15 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             # Call the save method with the argument safe_serialization only if it's supported
             save_method_signature = inspect.signature(save_method)
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
+            save_method_accept_variant = "variant" in save_method_signature.parameters
+
+            save_kwargs = {}
             if save_method_accept_safe:
-                save_method(
-                    os.path.join(save_directory, pipeline_component_name), safe_serialization=safe_serialization
-                )
-            else:
-                save_method(os.path.join(save_directory, pipeline_component_name))
+                save_kwargs["safe_serialization"] = safe_serialization
+            if save_method_accept_variant:
+                save_kwargs["variant"] = variant
+
+            save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
