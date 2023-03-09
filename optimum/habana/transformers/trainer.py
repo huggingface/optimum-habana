@@ -1102,12 +1102,15 @@ class GaudiTrainer(Trainer):
             logger.info("Using HPU graphs for inference.")
             # Do not wrap the model in HPU graphs if it has already been done
             if not self.already_wrapped_for_hpu_graphs:
-                # TODO: delete the three following lines when SynapseAI 1.9 is released
-                from transformers.models.t5.modeling_t5 import T5Attention
+                # TODO: delete the five following code lines when SynapseAI 1.9 is released
+                from transformers.models.t5.modeling_t5 import T5PreTrainedModel
 
-                from .models.t5 import _gaudi_relative_position_bucket
+                if isinstance(model, T5PreTrainedModel):
+                    from transformers.models.t5.modeling_t5 import T5Attention
 
-                T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
+                    from .models.t5 import _gaudi_relative_position_bucket
+
+                    T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
 
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
@@ -1431,12 +1434,15 @@ class GaudiTrainer(Trainer):
             logger.info("Using HPU graphs for inference.")
             # Do not wrap the model in HPU graphs if it has already been done
             if not self.already_wrapped_for_hpu_graphs:
-                # TODO: delete the three following lines when SynapseAI 1.9 is released
-                from transformers.models.t5.modeling_t5 import T5Attention
+                # TODO: delete the five following code lines when SynapseAI 1.9 is released
+                from transformers.models.t5.modeling_t5 import T5PreTrainedModel
 
-                from .models.t5 import _gaudi_relative_position_bucket
+                if isinstance(model, T5PreTrainedModel):
+                    from transformers.models.t5.modeling_t5 import T5Attention
 
-                T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
+                    from .models.t5 import _gaudi_relative_position_bucket
+
+                    T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
 
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
