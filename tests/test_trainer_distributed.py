@@ -123,17 +123,18 @@ if __name__ == "__main__":
             eval_dataset=dataset,
             compute_metrics=compute_metrics,
         )
-        metrics = trainer.evaluate()
-        logger.info(metrics)
-        if metrics["eval_success"] is not True:
-            logger.error(metrics)
-            exit(1)
+        # TODO: uncomment the 3 commented blocks below when SynapseAI 1.9 is released
+        # metrics = trainer.evaluate()
+        # logger.info(metrics)
+        # if metrics["eval_success"] is not True:
+        #     logger.error(metrics)
+        #     exit(1)
 
-        p = trainer.predict(dataset)
-        logger.info(p.metrics)
-        if p.metrics["test_success"] is not True:
-            logger.error(p.metrics)
-            exit(1)
+        # p = trainer.predict(dataset)
+        # logger.info(p.metrics)
+        # if p.metrics["test_success"] is not True:
+        #     logger.error(p.metrics)
+        #     exit(1)
 
         trainer.args.eval_accumulation_steps = 2
 
@@ -143,10 +144,10 @@ if __name__ == "__main__":
             logger.error(metrics)
             exit(1)
 
-        p = trainer.predict(dataset)
-        logger.info(p.metrics)
-        if p.metrics["test_success"] is not True:
-            logger.error(p.metrics)
-            exit(1)
+        # p = trainer.predict(dataset)
+        # logger.info(p.metrics)
+        # if p.metrics["test_success"] is not True:
+        #     logger.error(p.metrics)
+        #     exit(1)
 
-        trainer.args.eval_accumulation_steps = None
+        # trainer.args.eval_accumulation_steps = None

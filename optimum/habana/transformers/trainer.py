@@ -1100,20 +1100,23 @@ class GaudiTrainer(Trainer):
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
-            if self.args.local_rank == -1:
-                logger.info("Using HPU graphs for inference.")
-                if not self.already_wrapped_for_hpu_graphs:
-                    # Do not wrap the model in HPU graphs if it has already been done
-                    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+            logger.info("Using HPU graphs for inference.")
+            # Do not wrap the model in HPU graphs if it has already been done
+            if not self.already_wrapped_for_hpu_graphs:
+                # TODO: delete the five following code lines when SynapseAI 1.9 is released
+                from transformers.models.t5.modeling_t5 import T5PreTrainedModel
 
-                    model = wrap_in_hpu_graph(model)
-                    self.already_wrapped_for_hpu_graphs = True
-            else:
-                # Do not use HPU graphs for distributed runs
-                logger.warning(
-                    "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
-                    " performed in lazy mode."
-                )
+                if isinstance(model, T5PreTrainedModel):
+                    from transformers.models.t5.modeling_t5 import T5Attention
+
+                    from .models.t5 import _gaudi_relative_position_bucket
+
+                    T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
+
+                from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+                model = wrap_in_hpu_graph(model)
+                self.already_wrapped_for_hpu_graphs = True
 
         batch_size = self.args.eval_batch_size
 
@@ -1429,20 +1432,23 @@ class GaudiTrainer(Trainer):
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
-            if self.args.local_rank == -1:
-                logger.info("Using HPU graphs for inference.")
-                if not self.already_wrapped_for_hpu_graphs:
-                    # Do not wrap the model in HPU graphs if it has already been done
-                    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+            logger.info("Using HPU graphs for inference.")
+            # Do not wrap the model in HPU graphs if it has already been done
+            if not self.already_wrapped_for_hpu_graphs:
+                # TODO: delete the five following code lines when SynapseAI 1.9 is released
+                from transformers.models.t5.modeling_t5 import T5PreTrainedModel
 
-                    model = wrap_in_hpu_graph(model)
-                    self.already_wrapped_for_hpu_graphs = True
-            else:
-                # Do not use HPU graphs for distributed runs
-                logger.warning(
-                    "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
-                    " performed in lazy mode."
-                )
+                if isinstance(model, T5PreTrainedModel):
+                    from transformers.models.t5.modeling_t5 import T5Attention
+
+                    from .models.t5 import _gaudi_relative_position_bucket
+
+                    T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
+
+                from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+                model = wrap_in_hpu_graph(model)
+                self.already_wrapped_for_hpu_graphs = True
 
         batch_size = dataloader.batch_size
         num_examples = self.num_examples(dataloader)
