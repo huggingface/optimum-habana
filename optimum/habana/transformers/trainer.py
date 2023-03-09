@@ -81,7 +81,6 @@ from ..utils import (
 )
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
-from .modeling_utils import adapt_transformers_to_gaudi
 from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
 
@@ -208,10 +207,6 @@ class GaudiTrainer(Trainer):
         logging.set_verbosity(log_level)
         logging.enable_default_handler()
         logging.enable_explicit_format()
-
-        # Some methods needs to be tweaked to optimally run on Gaudi
-        print("HEEEEEEEEEERE", args.local_rank, args.local_rank != -1)
-        adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision, args.local_rank != -1)
 
         # Suppress PyTorch autocast warnings with Wav2Vec2
         # This is a bug in PyTorch

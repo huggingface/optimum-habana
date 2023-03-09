@@ -435,6 +435,13 @@ class GaudiTrainingArguments(TrainingArguments):
                     backend=self.xpu_backend, rank=rank, world_size=size, timeout=self.ddp_timeout_delta
                 )
         elif self.use_habana:
+            # Some methods needs to be tweaked to optimally run on Gaudi
+            # Calling this method here to be sure it is done before model instantiation
+            # Otherwise this will fail when some __init__ methods are overridden (cf. GPT2Attention)
+            from .modeling_utils import adapt_transformers_to_gaudi
+
+            adapt_transformers_to_gaudi()
+
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
             else:

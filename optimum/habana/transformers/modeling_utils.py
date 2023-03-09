@@ -31,7 +31,7 @@ from .models import (
 )
 
 
-def adapt_transformers_to_gaudi(use_habana_mixed_precision: bool, is_distributed: bool):
+def adapt_transformers_to_gaudi():
     """
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
@@ -58,15 +58,14 @@ def adapt_transformers_to_gaudi(use_habana_mixed_precision: bool, is_distributed
     GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
     GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
 
-    if use_habana_mixed_precision:
-        # When HMP is enabled, replace invert_attention_mask and get_extended_attention_mask
-        # so that HMP is disabled for specific parts of the code
-        ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
-        ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
-        # AlbertModel.forward does not rely on get_extended_attention_mask so it also needs
-        # to be replaced when using HMP
-        AlbertModel.forward = gaudi_albert_forward
+    # When HMP is enabled, replace invert_attention_mask and get_extended_attention_mask
+    # so that HMP is disabled for specific parts of the code
+    ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
+    ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
+    # AlbertModel.forward does not rely on get_extended_attention_mask so it also needs
+    # to be replaced when using HMP
+    AlbertModel.forward = gaudi_albert_forward
 
-    if is_distributed:
-        print("GPT22222222222222222222222")
-        transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
+    # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
+    # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
+    transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
