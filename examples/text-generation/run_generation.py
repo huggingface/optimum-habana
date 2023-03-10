@@ -18,20 +18,21 @@
 """
 
 import argparse
+import json
 import logging
 import os
 import tempfile
+from pathlib import Path
 
 import torch
 from datasets import Dataset
+from huggingface_hub import snapshot_download
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
-from transformers import BloomForCausalLM, BloomTokenizerFast, GPT2LMHeadModel, GPT2Tokenizer
-
-from optimum.habana import GaudiConfig
-from optimum.habana.utils import set_seed
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers.models.bloom.modeling_bloom import BloomBlock
+from transformers.utils import is_offline_mode
 
 
 logging.basicConfig(
@@ -43,15 +44,51 @@ logger = logging.getLogger(__name__)
 
 MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 
-MODEL_CLASSES = {
-    "bloom": (BloomForCausalLM, BloomTokenizerFast),
-    "gpt2": (GPT2LMHeadModel, GPT2Tokenizer),
-}
-
 
 def generate_dataset(prompt, batch_size=4, sequence_length=32, n_iterations=80):
     my_dict = {"prompt": [prompt] * batch_size * n_iterations}
     return Dataset.from_dict(my_dict)
+
+
+def get_repo_root(model_name_or_path, global_rank):
+    # checks if online or not
+    if is_offline_mode():
+        if global_rank == 0:
+            print("Offline mode: forcing local_files_only=True")
+
+    # download only on first process
+    if global_rank == 0:
+        snapshot_download(
+            model_name_or_path,
+            local_files_only=is_offline_mode(),
+            cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
+            ignore_patterns=["*.safetensors"],
+        )
+
+    torch.distributed.barrier()
+
+    return snapshot_download(
+        model_name_or_path,
+        local_files_only=is_offline_mode(),
+        cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
+        ignore_patterns=["*.safetensors"],
+    )
+
+
+def get_checkpoint_files(model_name_or_path, global_rank):
+    cached_repo_dir = get_repo_root(model_name_or_path, global_rank)
+
+    # extensions: .bin | .pt
+    # creates a list of paths from all downloaded files in cache dir
+    file_list = [str(entry) for entry in Path(cached_repo_dir).rglob("*.[bp][it][n]") if entry.is_file()]
+    return file_list
+
+
+def write_checkpoints_json(model_name_or_path, global_rank, checkpoints_json):
+    checkpoint_files = get_checkpoint_files(model_name_or_path, global_rank)
+    if global_rank == 0:
+        data = {"type": "BLOOM", "checkpoints": checkpoint_files, "version": 1.0}
+        json.dump(data, open(checkpoints_json, "w"))
 
 
 #
@@ -73,18 +110,11 @@ def main():
     # Arguments management
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model_type",
-        default=None,
-        type=str,
-        required=True,
-        help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
-    )
-    parser.add_argument(
         "--model_name_or_path",
         default=None,
         type=str,
         required=True,
-        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
+        help="Path to pre-trained model",
     )
     parser.add_argument("--prompt", type=str, default="")
     parser.add_argument("--length", type=int, default=128)
@@ -108,10 +138,14 @@ def main():
     parser.add_argument("--input_size", type=int, default=128, help="Length of the input sequence")
     parser.add_argument("--num_beams", type=int, default=1, help="Number of beams for text generation")
     parser.add_argument("--n_iterations", type=int, default=80, help="Number of inference iterations")
-    parser.add_argument("--bf16", action="store_true", help="Whether to use bf16 mixed-precision")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
-    # parser.add_argument("--use_lazy_mode", action="store_true", help="Whether to use lazy mode or not.")
     parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not.")
+    parser.add_argument(
+        "--gaudi_config_name_or_path",
+        default=None,
+        type=str,
+        help="Path to the Gaudi configuration",
+    )
 
     args = parser.parse_args()
 
@@ -119,13 +153,28 @@ def main():
     if not args.use_hpu_graphs:
         os.environ["PT_HPU_LAZY_MODE"] = "2"
 
-    device = torch.device("hpu")
-    # _n_gpu = 1
+    # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
+    use_deepspeed = "deepspeed" in os.environ["_"]
+    if use_deepspeed:
+        # Set necessary env variables
+        os.environ.setdefault("WA_BETA_ALIBI", "1")
+        os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
+        os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
+    # Device is HPU
+    args.device = "hpu"
+    # Get world size, rank and local rank
     from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
     world_size, rank, args.local_rank = initialize_distributed_hpu()
+    from optimum.habana.utils import set_seed
 
+    set_seed(args.seed)
+
+    # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
+    use_deepspeed = "deepspeed" in os.environ["_"]
+
+    # Initialize the various processes if this is a multi-device run
     if args.local_rank != -1:
         if not torch.distributed.is_initialized():
             torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
@@ -134,92 +183,97 @@ def main():
         logger.info("Single node run.")
 
     # Tweak generation so that it runs faster on Gaudi
+    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
     adapt_transformers_to_gaudi()
 
-    # Load Gaudi configuration from the hub to get the list of bf16 ops if necessary
-    if args.bf16:
-        # Default BERT Gaudi configuration uses some bf16 ops
-        gaudi_config_name = "bert-base-uncased"
-    else:
-        # Default gpt2 Gaudi configuration does not use any bf16 ops
-        gaudi_config_name = "gpt2"
-    gaudi_config = GaudiConfig.from_pretrained(f"Habana/{gaudi_config_name}")
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
 
-    logger.warning(f"device: {device}, n_hpu: {world_size}, bf16: {gaudi_config.use_habana_mixed_precision}")
-
-    set_seed(args.seed)
-
-    # Initialize the model and tokenizer
-    try:
-        args.model_type = args.model_type.lower()
-        model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    except KeyError:
-        raise KeyError(
-            f"The model {args.model_type} you specified is not supported. You are welcome to add it and open a PR :)"
-        )
-    tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
-
+    # Single device
     if args.local_rank == -1:
-        model = model_class.from_pretrained(args.model_name_or_path)
-        # Convert the model to have custom Gaudi generation
-        model = model.eval().to(device)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path)
+        model = model.eval().to(args.device)
+    # Multi device
+    else:
+        # DeepSpeed inference
+        if use_deepspeed:
+            if "bloom" not in args.model_name_or_path:
+                raise ValueError(
+                    f"DeepSpeed-inference on Gaudi is only available with BLOOM at the moment, got {args.model_name_or_path}."
+                )
 
-        # # Torch DDP in distributed mode
-        # if args.local_rank != -1:
-        #     kwargs = {}
-        #     kwargs["bucket_cap_mb"] = 230
-        #     kwargs["gradient_as_bucket_view"] = True
-        #     kwargs["find_unused_parameters"] = False
-        #     model_wrapped = torch.nn.parallel.DistributedDataParallel(
-        #         model,
-        #         device_ids=None,
-        #         output_device=None,
-        #         **kwargs,
-        #     )
-        # else:
-        # model_wrapped = model
+            import deepspeed
 
+            deepspeed.init_distributed(dist_backend="hccl")
+
+            config = AutoConfig.from_pretrained(args.model_name_or_path)
+
+            # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
+            with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta"):
+                model = AutoModelForCausalLM.from_config(config, torch_dtype=torch.bfloat16)
+            model = model.eval()
+
+            checkpoints_json = "checkpoints.json"
+            write_checkpoints_json(args.model_name_or_path, rank, checkpoints_json)
+            torch.distributed.barrier()
+
+            model = deepspeed.init_inference(
+                model,
+                mp_size=world_size,
+                dtype=torch.bfloat16,
+                injection_policy={BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")},
+                checkpoint=checkpoints_json,
+                args=args,
+                enable_cuda_graph=args.use_hpu_graphs,
+            )
+            model.module.split_lm_head()
+            model = model.module
+        # Torch DDP
+        else:
+            torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
+            model = torch.nn.parallel.DistributedDataParallel(model)
+
+    if not use_deepspeed:
         # Wrapper for HPU graphs
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
             model = wrap_in_hpu_graph(model)
-    else:
-        import deepspeed
 
-        # with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta"):
-        model = model_class.from_pretrained(args.model_name_or_path, torch_dtype=torch.bfloat16)
-        model = model.eval()
-        args.device = "hpu"
-        model = deepspeed.init_inference(
-            model, mp_size=world_size, dtype=torch.bfloat16, args=args, enable_cuda_graph=args.use_hpu_graphs
+        # Load Gaudi configuration
+        from optimum.habana import GaudiConfig
+
+        gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name_or_path)
+
+        # Tell Gaudi the bf16 ops to use
+        if gaudi_config.use_habana_mixed_precision:
+            from habana_frameworks.torch.hpex import hmp
+
+            # Open temporary files to write mixed-precision ops
+            with tempfile.NamedTemporaryFile() as hmp_bf16_file:
+                with tempfile.NamedTemporaryFile() as hmp_fp32_file:
+                    # hmp.convert needs ops to be written in text files
+                    gaudi_config.write_bf16_fp32_ops_to_text_files(
+                        hmp_bf16_file.name,
+                        hmp_fp32_file.name,
+                    )
+                    hmp.convert(
+                        bf16_file_path=hmp_bf16_file.name,
+                        fp32_file_path=hmp_fp32_file.name,
+                        isVerbose=gaudi_config.hmp_is_verbose,
+                    )
+
+    # if hasattr(model.config, "max_position_embeddings"):
+    #     max_position_embeddings = model.config.max_position_embeddings
+    # else:
+    #     max_position_embeddings = 1024
+
+    # args.length = adjust_length_to_model(args.length, max_sequence_length=max_position_embeddings)
+    if args.local_rank in [-1, 0]:
+        logger.info(f"Args: {args}")
+        logger.info(
+            f"device: {args.device}, n_hpu: {world_size}, bf16: {use_deepspeed or gaudi_config.use_habana_mixed_precision}"
         )
-
-    if hasattr(model.config, "max_position_embeddings"):
-        max_position_embeddings = model.config.max_position_embeddings
-    else:
-        max_position_embeddings = 1024
-
-    args.length = adjust_length_to_model(args.length, max_sequence_length=max_position_embeddings)
-    logger.info(f"Args: {args}")
-
-    # Tell Gaudi the bf16 ops to use
-    if gaudi_config.use_habana_mixed_precision:
-        from habana_frameworks.torch.hpex import hmp
-
-        # Open temporary files to write mixed-precision ops
-        with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-            with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                # hmp.convert needs ops to be written in text files
-                gaudi_config.write_bf16_fp32_ops_to_text_files(
-                    hmp_bf16_file.name,
-                    hmp_fp32_file.name,
-                )
-                hmp.convert(
-                    bf16_file_path=hmp_bf16_file.name,
-                    fp32_file_path=hmp_fp32_file.name,
-                    isVerbose=gaudi_config.hmp_is_verbose,
-                )
 
     # Generate the dataset to use
     prompt = "My name is Michael and I live in"
@@ -244,12 +298,6 @@ def main():
 
     dataloader = DataLoader(dataset=tokenized_dataset, sampler=sampler, batch_size=args.batch_size)
 
-    if args.local_rank != -1:
-        # With DDP the generate method of the model is accessed differently
-        generate_method_to_call = model_wrapped.module.generate
-    else:
-        generate_method_to_call = model_wrapped.generate
-
     # TQDM
     if args.local_rank in [-1, 0]:
         steps_progress_bar = tqdm(total=len(dataloader.dataset) // (world_size * args.batch_size))
@@ -265,8 +313,8 @@ def main():
         if steps_progress_bar is not None:
             steps_progress_bar.update(1)
         # Generation
-        output_sequences = generate_method_to_call(
-            input_ids=batch["input_ids"].to(device),
+        output_sequences = model.generate(
+            input_ids=batch["input_ids"].to(args.device),
             max_length=args.length + batch["input_ids"].shape[-1],
             temperature=args.temperature,
             top_k=args.k,
@@ -275,7 +323,6 @@ def main():
             # do_sample=True,
             num_beams=args.num_beams,
             num_return_sequences=args.num_return_sequences,
-            # lazy_mode=args.use_lazy_mode,
             hpu_graphs=args.use_hpu_graphs,
         )
 

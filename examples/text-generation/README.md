@@ -31,7 +31,6 @@ Example usage on 1 HPU:
 
 ```bash
 python run_generation.py \
-    --model_type=bloom \
     --model_name_or_path=bigscience/bloom-1b3 \
     --batch_size 4 \
     --length 64 \
@@ -45,8 +44,20 @@ Example usage on 8 HPUs:
 ```bash
 python ../gaudi_spawn.py --world_size 8 --use_mpi \
     run_generation.py \
-    --model_type=bloom \
     --model_name_or_path=bigscience/bloom-1b3 \
+    --batch_size 4 \
+    --length 64 \
+    --input_size 64 \
+    --n_iterations 80 \
+    --use_hpu_graphs
+```
+
+Example usage on 8 HPUs with DeepSpeed:
+
+```bash
+python ../gaudi_spawn.py --world_size 8 --use_deepspeed \
+    run_generation.py \
+    --model_name_or_path=bigscience/bloom-7b1 \
     --batch_size 4 \
     --length 64 \
     --input_size 64 \

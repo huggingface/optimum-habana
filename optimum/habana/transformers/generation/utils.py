@@ -358,10 +358,10 @@ class GaudiGenerationMixin(GenerationMixin):
         )
 
         # In lazy mode, import Habana torch to be able to add mark_step()
-        if lazy_mode and not hpu_graphs:
-            import habana_frameworks.torch.core as htcore
+        # if lazy_mode and not hpu_graphs:
+        import habana_frameworks.torch.core as htcore
 
-            self.htcore_generation = htcore
+        self.htcore_generation = htcore
 
         # 10. go into different generation modes
         if is_greedy_gen_mode:
@@ -912,7 +912,10 @@ class GaudiGenerationMixin(GenerationMixin):
         unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
 
         this_peer_finished = False  # used by synced_gpus only
+        ii = 0
         while True:
+            ii += 1
+            self.htcore_generation.mark_step()
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
@@ -979,8 +982,8 @@ class GaudiGenerationMixin(GenerationMixin):
             if eos_token_id is not None:
                 unfinished_sequences = unfinished_sequences.mul((sum(next_tokens != i for i in eos_token_id)).long())
 
-            if lazy_mode and not hpu_graphs:
-                self.htcore_generation.mark_step()
+            # if lazy_mode and not hpu_graphs:
+            #     self.htcore_generation.mark_step()
 
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
             if stopping_criteria(input_ids, scores) or (unfinished_sequences.max() == 0 and not lazy_mode):
@@ -1260,8 +1263,8 @@ class GaudiGenerationMixin(GenerationMixin):
             if eos_token_id is not None:
                 unfinished_sequences = unfinished_sequences.mul((sum(next_tokens != i for i in eos_token_id)).long())
 
-            if lazy_mode and not hpu_graphs:
-                self.htcore_generation.mark_step()
+            # if lazy_mode and not hpu_graphs:
+            #     self.htcore_generation.mark_step()
 
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
             if stopping_criteria(input_ids, scores) or (unfinished_sequences.max() == 0 and not lazy_mode):
@@ -1575,8 +1578,8 @@ class GaudiGenerationMixin(GenerationMixin):
             # increase cur_len
             cur_len = cur_len + 1
 
-            if lazy_mode and not hpu_graphs:
-                self.htcore_generation.mark_step()
+            # if lazy_mode and not hpu_graphs:
+            #     self.htcore_generation.mark_step()
 
             if stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
                 if not synced_gpus:
