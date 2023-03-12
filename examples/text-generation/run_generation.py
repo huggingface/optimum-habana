@@ -204,7 +204,7 @@ def main():
                 args=args,
                 enable_cuda_graph=args.use_hpu_graphs,
             )
-            model.module.split_lm_head()
+            # model.module.split_lm_head()
             model = model.module
         # Torch DDP
         else:
@@ -314,7 +314,8 @@ def main():
         return list(zip(outputs, total_new_tokens))
 
     # Compilation
-    print("Graph compilation...")
+    if rank == 0:
+        print("Graph compilation...")
     t0 = time.time()
     # The first two iterations take longer because of graph compilation
     for _ in range(2):
@@ -324,7 +325,8 @@ def main():
     torch_hpu.synchronize()
 
     total_new_tokens_generated = 0
-    print("Running generate...")
+    if rank == 0:
+        print("Running generate...")
     t0 = time.time()
     # Benchmark over n_iterations iterations
     for i in range(args.n_iterations):

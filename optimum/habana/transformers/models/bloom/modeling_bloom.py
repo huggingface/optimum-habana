@@ -7,7 +7,7 @@ import torch
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomModel, dropout_add
+from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomModel, BloomMLP, dropout_add
 from transformers.utils import logging
 
 
@@ -79,6 +79,24 @@ def gaudi_bloom_build_alibi_tensor(
         split_size = alibi.shape[0] // world_size
         alibi = alibi.split(split_size)[global_rank]
     return alibi.to(dtype)
+
+
+# def gaudi_dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
+#     """
+#     Dropout add function
+#     Args:
+#         x (`torch.tensor`, *required*):
+#             input tensor
+#         residual (`torch.tensor`, *required*):
+#             esidual tensor
+#         prob (`float`, *required*):
+#             dropout probability
+#         training (`bool`, *required*):
+#             training mode
+#     """
+#     out = F.dropout(x, p=prob, training=training) if training else x
+#     out = residual + out
+#     return out
 
 
 def gaudi_bloom_attention_forward(
@@ -180,6 +198,12 @@ def gaudi_bloom_attention_forward(
         outputs += (attention_probs,)
 
     return outputs
+
+
+# class GaudiBloomMLP(BloomMLP):
+#     def __init__(self, config):
+#         super().__init__(config)
+#         self.gelu_impl = torch.nn.GELU(approximate='tanh')
 
 
 def gaudi_bloom_block_forward(
@@ -386,11 +410,11 @@ class GaudiBloomModel(BloomModel):
 class GaudiBloomForCausalLM(BloomForCausalLM):
     def __init__(self, config):
         super().__init__(config)
-        self.lm_head_chunks = []
+        # self.lm_head_chunks = []
 
-    def split_lm_head(self):
-        N = 2
-        self.lm_head_chunks = [c.t() for c in self.lm_head.weight.chunk(N, dim=0)]
+    # def split_lm_head(self):
+    #     N = 2
+    #     self.lm_head_chunks = [c.t() for c in self.lm_head.weight.chunk(N, dim=0)]
 
     def prepare_inputs_for_generation(
         self,
@@ -466,10 +490,10 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         )
         hidden_states = transformer_outputs[0]
 
-        if len(self.lm_head_chunks) > 0:
-            lm_logits = torch.cat([torch.matmul(hidden_states, c) for c in self.lm_head_chunks], dim=-1)
-        else:
-            lm_logits = self.lm_head(hidden_states)
+        # if len(self.lm_head_chunks) > 0:
+        #     lm_logits = torch.cat([torch.matmul(hidden_states, c) for c in self.lm_head_chunks], dim=-1)
+        # else:
+        lm_logits = self.lm_head(hidden_states)
 
         loss = None
         if labels is not None:

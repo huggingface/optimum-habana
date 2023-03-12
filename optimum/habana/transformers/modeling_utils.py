@@ -23,6 +23,7 @@ from transformers.models.wav2vec2.modeling_wav2vec2 import Wav2Vec2Model
 from .generation import GaudiGenerationMixin
 from .models import (
     GaudiBloomForCausalLM,
+    # GaudiBloomMLP,
     GaudiBloomModel,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
@@ -66,6 +67,7 @@ def adapt_transformers_to_gaudi(use_habana_mixed_precision: bool = False):
     modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
     modeling_bloom.BloomBlock.forward = gaudi_bloom_block_forward
     modeling_bloom.BloomModel = GaudiBloomModel
+    # modeling_bloom.BloomMLP = GaudiBloomMLP
     modeling_bloom.BloomForCausalLM = GaudiBloomForCausalLM
 
     if use_habana_mixed_precision:
