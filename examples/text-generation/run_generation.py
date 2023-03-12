@@ -22,15 +22,14 @@ import json
 import logging
 import os
 import tempfile
+import time
 from pathlib import Path
 
 import torch
-from datasets import Dataset
+import torch.nn.functional as F
 from huggingface_hub import snapshot_download
-from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers.generation import GenerationConfig
 from transformers.models.bloom.modeling_bloom import BloomBlock
 from transformers.utils import is_offline_mode
 
@@ -43,11 +42,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
-
-
-def generate_dataset(prompt, batch_size=4, sequence_length=32, n_iterations=80):
-    my_dict = {"prompt": [prompt] * batch_size * n_iterations}
-    return Dataset.from_dict(my_dict)
 
 
 def get_repo_root(model_name_or_path, global_rank):
@@ -116,28 +110,9 @@ def main():
         required=True,
         help="Path to pre-trained model",
     )
-    parser.add_argument("--prompt", type=str, default="")
-    parser.add_argument("--length", type=int, default=128)
-    parser.add_argument("--stop_token", type=str, default=None, help="Token at which text generation is stopped")
-    parser.add_argument(
-        "--temperature",
-        type=float,
-        default=1.0,
-        help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
-    )
-    parser.add_argument(
-        "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
-    )
-    parser.add_argument("--k", type=int, default=0)
-    parser.add_argument("--p", type=float, default=0.9)
-    parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
-    parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
-    parser.add_argument("--seed", type=int, default=27, help="random seed for initialization")
-    parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+    parser.add_argument("--max_new_tokens", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size")
-    parser.add_argument("--input_size", type=int, default=128, help="Length of the input sequence")
-    parser.add_argument("--num_beams", type=int, default=1, help="Number of beams for text generation")
-    parser.add_argument("--n_iterations", type=int, default=80, help="Number of inference iterations")
+    parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
     parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not.")
     parser.add_argument(
@@ -163,13 +138,12 @@ def main():
 
     # Device is HPU
     args.device = "hpu"
+    import habana_frameworks.torch.hpu as torch_hpu
+
     # Get world size, rank and local rank
     from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
     world_size, rank, args.local_rank = initialize_distributed_hpu()
-    from optimum.habana.utils import set_seed
-
-    set_seed(args.seed)
 
     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
     use_deepspeed = "deepspeed" in os.environ["_"]
@@ -188,6 +162,10 @@ def main():
     adapt_transformers_to_gaudi()
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+    # print("HEEEEEEEERE", tokenizer.pad_token, tokenizer.eos_token)
+    # if tokenizer.pad_token is None:
+    #     tokenizer.pad_token = tokenizer.eos_token
+    #     tokenizer.padding_side = "left"
 
     # Single device
     if args.local_rank == -1:
@@ -275,87 +253,98 @@ def main():
             f"device: {args.device}, n_hpu: {world_size}, bf16: {use_deepspeed or gaudi_config.use_habana_mixed_precision}"
         )
 
-    # Generate the dataset to use
-    prompt = "My name is Michael and I live in"
-    dummy_dataset = generate_dataset(prompt, args.batch_size, args.input_size, args.n_iterations)
+    input_sentences = [
+        "DeepSpeed is a machine learning framework",
+        "He is working on",
+        "He has a",
+        "He got all",
+        "Everyone is happy and I can",
+        "The new movie that got Oscar this year",
+        "In the far far distance from our galaxy,",
+        "Peace is the only way",
+    ]
 
-    def tokenize_function(examples):
-        return tokenizer(examples["prompt"])
+    if args.batch_size > len(input_sentences):
+        # dynamically extend to support larger batch sizes
+        num_sentences_to_add = args.batch_size - len(input_sentences)
+        for i in range(num_sentences_to_add):
+            input_sentences.append(input_sentences[i % len(input_sentences)])
+    elif args.batch_size < len(input_sentences):
+        input_sentences = input_sentences[: args.batch_size]
 
-    tokenized_dataset = dummy_dataset.map(tokenize_function)
-    tokenized_dataset = tokenized_dataset.with_format("torch", columns=["input_ids", "attention_mask"])
+    generation_config = GenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        use_cache=False,
+    )
 
-    if args.local_rank != -1:
-        # In distributed mode, a distributed sampler is required
-        sampler = DistributedSampler(
-            tokenized_dataset,
-            num_replicas=world_size,
-            rank=args.local_rank,
-            seed=args.seed,
+    def generate():
+        """Returns a list of zipped outputs and number of new tokens."""
+
+        # Tokenization
+        input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+
+        # Pad inputs to have static shapes during genration, this gives better performance than dynamic shapes on HPUs
+        input_token_len = input_tokens.input_ids.shape[-1]
+        input_tokens["input_ids"] = F.pad(
+            input_tokens.input_ids, (0, args.max_new_tokens), value=model.config.pad_token_id
         )
-    else:
-        sampler = None
+        input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
+        # token_idx is the current index in the generation process, it is incremented each time a new token is generated
+        kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
 
-    dataloader = DataLoader(dataset=tokenized_dataset, sampler=sampler, batch_size=args.batch_size)
+        # Move inputs to target device(s)
+        for t in input_tokens:
+            if torch.is_tensor(input_tokens[t]):
+                input_tokens[t] = input_tokens[t].to(args.device)
 
-    # TQDM
-    if args.local_rank in [-1, 0]:
-        steps_progress_bar = tqdm(total=len(dataloader.dataset) // (world_size * args.batch_size))
-    else:
-        steps_progress_bar = None
-
-    if args.local_rank != -1:
-        # Synchronize all processes before generation in distributed mode
-        torch.distributed.barrier()
-
-    for batch in dataloader:
-        # Update TQDM bar
-        if steps_progress_bar is not None:
-            steps_progress_bar.update(1)
-        # Generation
-        output_sequences = model.generate(
-            input_ids=batch["input_ids"].to(args.device),
-            max_length=args.length + batch["input_ids"].shape[-1],
-            temperature=args.temperature,
-            top_k=args.k,
-            top_p=args.p,
-            repetition_penalty=args.repetition_penalty,
-            # do_sample=True,
-            num_beams=args.num_beams,
-            num_return_sequences=args.num_return_sequences,
+        outputs = model.generate(
+            **input_tokens,
+            **kwargs,
+            generation_config=generation_config,
+            lazy_mode=args.use_hpu_graphs,
             hpu_graphs=args.use_hpu_graphs,
         )
 
-    if steps_progress_bar is not None:
-        steps_progress_bar.close()
+        input_tokens_lengths = [x.shape[0] for x in input_tokens.input_ids]
+        output_tokens_lengths = [x.shape[0] for x in outputs]
 
-    # Remove the batch dimension when returning multiple sequences
-    if len(output_sequences.shape) > 2:
-        output_sequences.squeeze_()
+        total_new_tokens = [o - i for i, o in zip(input_tokens_lengths, output_tokens_lengths)]
+        outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
-    generated_sequences = []
+        return list(zip(outputs, total_new_tokens))
 
-    if args.local_rank != -1:
-        torch.distributed.barrier()
+    # Compilation
+    print("Graph compilation...")
+    t0 = time.time()
+    # The first two iterations take longer because of graph compilation
+    for _ in range(2):
+        generate()
+    compilation_duration = time.time() - t0
 
-    for generated_sequence_idx, generated_sequence in enumerate(output_sequences):
-        generated_sequence = generated_sequence.tolist()
+    torch_hpu.synchronize()
 
-        # Decode text
-        text = tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
+    total_new_tokens_generated = 0
+    print("Running generate...")
+    t0 = time.time()
+    # Benchmark over n_iterations iterations
+    for i in range(args.n_iterations):
+        generated = generate()
+    torch_hpu.synchronize()
+    total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+    throughput = total_new_tokens_generated / (time.time() - t0)
 
-        # Remove all text after the stop token
-        text = text[: text.find(args.stop_token) if args.stop_token else None]
-
-        # # Add the prompt at the beginning of the sequence. Remove the excess text that was used for pre-processing
-        # total_sequence = (
-        #     text[len(tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
-        # )
-
-        generated_sequences.append(text)
-        print(f"=== GENERATED SEQUENCE {generated_sequence_idx + 1}, process {args.local_rank} === {text}")
-
-    return generated_sequences
+    if rank == 0:
+        print("*** Summary ***")
+        print(f"Throughput (including tokenization) = {throughput} tokens/second")
+        print(f"Graph compilation duration = {compilation_duration} seconds")
+        print()
+        print("Input sentences:")
+        for i, input_sentence in enumerate(input_sentences):
+            print(f"{i+1}: {input_sentence}")
+        print()
+        print("Outputs:")
+        for i, (output, _) in enumerate(generated):
+            print(f"{i+1}: {output}")
 
 
 if __name__ == "__main__":

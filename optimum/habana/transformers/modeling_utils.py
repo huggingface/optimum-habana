@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import transformers.models.bloom.modeling_bloom as modeling_bloom
 from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.albert.modeling_albert import AlbertModel
@@ -21,7 +22,11 @@ from transformers.models.wav2vec2.modeling_wav2vec2 import Wav2Vec2Model
 
 from .generation import GaudiGenerationMixin
 from .models import (
+    GaudiBloomForCausalLM,
+    GaudiBloomModel,
     gaudi_albert_forward,
+    gaudi_bloom_attention_forward,
+    gaudi_bloom_block_forward,
     gaudi_get_extended_attention_mask,
     gaudi_invert_attention_mask,
     gaudi_vit_self_attention_forward,
@@ -49,12 +54,19 @@ def adapt_transformers_to_gaudi(use_habana_mixed_precision: bool = False):
 
     # Generation is modified to run faster in lazy mode
     GenerationMixin.generate = GaudiGenerationMixin.generate
+    GenerationMixin._update_model_kwargs_for_generation = GaudiGenerationMixin._update_model_kwargs_for_generation
     GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
     GenerationMixin.sample = GaudiGenerationMixin.sample
     GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
     GenerationMixin.beam_sample = GaudiGenerationMixin.beam_sample
     GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
     GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
+
+    # Optimization for BLOOM generation on Gaudi
+    modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
+    modeling_bloom.BloomBlock.forward = gaudi_bloom_block_forward
+    modeling_bloom.BloomModel = GaudiBloomModel
+    modeling_bloom.BloomForCausalLM = GaudiBloomForCausalLM
 
     if use_habana_mixed_precision:
         # When HMP is enabled, replace invert_attention_mask and get_extended_attention_mask
