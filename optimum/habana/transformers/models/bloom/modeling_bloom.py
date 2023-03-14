@@ -48,20 +48,20 @@ def gaudi_bloom_build_alibi_tensor(
             dtype of the output tensor
     """
     # batch_size, seq_length = attention_mask.shape
-    closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
-    base = torch.tensor(
-        2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
-    )
-    powers = torch.arange(1, 1 + closest_power_of_2, device=attention_mask.device, dtype=torch.int32)
-    slopes = torch.pow(base, powers)
+    # closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
+    # base = torch.tensor(
+    #     2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
+    # )
+    # powers = torch.arange(1, 1 + closest_power_of_2, device=attention_mask.device, dtype=torch.int32)
+    # slopes = torch.pow(base, powers)
 
-    if closest_power_of_2 != num_heads:
-        extra_base = torch.tensor(
-            2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
-        )
-        num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
-        extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, device=attention_mask.device, dtype=torch.int32)
-        slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
+    # if closest_power_of_2 != num_heads:
+    #     extra_base = torch.tensor(
+    #         2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
+    #     )
+    #     num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
+    #     extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, device=attention_mask.device, dtype=torch.int32)
+    #     slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
 
     # Note: alibi will added to the attention bias that will be applied to the query, key product of attention
     # => therefore alibi will have to be of shape (batch_size, num_heads, query_length, key_length)
@@ -81,22 +81,22 @@ def gaudi_bloom_build_alibi_tensor(
     return alibi.to(dtype)
 
 
-# def gaudi_dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
-#     """
-#     Dropout add function
-#     Args:
-#         x (`torch.tensor`, *required*):
-#             input tensor
-#         residual (`torch.tensor`, *required*):
-#             esidual tensor
-#         prob (`float`, *required*):
-#             dropout probability
-#         training (`bool`, *required*):
-#             training mode
-#     """
-#     out = F.dropout(x, p=prob, training=training) if training else x
-#     out = residual + out
-#     return out
+def gaudi_dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
+    """
+    Dropout add function
+    Args:
+        x (`torch.tensor`, *required*):
+            input tensor
+        residual (`torch.tensor`, *required*):
+            esidual tensor
+        prob (`float`, *required*):
+            dropout probability
+        training (`bool`, *required*):
+            training mode
+    """
+    out = F.dropout(x, p=prob, training=training) if training else x
+    out = residual + out
+    return out
 
 
 def gaudi_bloom_attention_forward(
@@ -128,7 +128,7 @@ def gaudi_bloom_attention_forward(
         #  - value: [batch_size * self.num_heads, kv_length, head_dim]
         if token_idx is not None:
             # HPU bug WA
-            past_key.index_add_(2, token_idx - 1, key_layer - torch.index_select(past_key, 1, token_idx - 1))
+            past_key.index_add_(2, token_idx - 1, key_layer - torch.index_select(past_key, 2, token_idx - 1))
             past_value.index_add_(1, token_idx - 1, value_layer - torch.index_select(past_value, 1, token_idx - 1))
             key_layer = past_key
             value_layer = past_value
@@ -151,6 +151,14 @@ def gaudi_bloom_attention_forward(
         beta=self.beta,
         alpha=self.inv_norm_factor,
     )
+    # matmul_result = (
+    #     self.inv_norm_factor
+    #     * torch.bmm(
+    #         query_layer.transpose(1, 2).reshape(-1, query_layer.shape[1], query_layer.shape[3]),
+    #         key_layer.permute(0, 2, 3, 1).reshape(-1, key_layer.shape[3], key_layer.shape[1]),
+    #     )
+    #     + self.beta * alibi
+    # )
 
     # change view to [batch_size, num_heads, q_length, kv_length]
     attention_scores = matmul_result.view(batch_size, self.num_heads, q_length, kv_length)
@@ -164,8 +172,8 @@ def gaudi_bloom_attention_forward(
     attention_probs = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(input_dtype)
 
     # [batch_size, num_heads, q_length, kv_length]
-    # if self.training:
-    attention_probs = self.attention_dropout(attention_probs)
+    if self.training:
+        attention_probs = self.attention_dropout(attention_probs)
 
     if head_mask is not None:
         attention_probs = attention_probs * head_mask
@@ -191,7 +199,7 @@ def gaudi_bloom_attention_forward(
     else:
         output_tensor = self.dense(context_layer)
 
-    output_tensor = dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
+    output_tensor = gaudi_dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
 
     outputs = (output_tensor, present)
     if output_attentions:
@@ -200,10 +208,10 @@ def gaudi_bloom_attention_forward(
     return outputs
 
 
-# class GaudiBloomMLP(BloomMLP):
-#     def __init__(self, config):
-#         super().__init__(config)
-#         self.gelu_impl = torch.nn.GELU(approximate='tanh')
+class GaudiBloomMLP(BloomMLP):
+    def __init__(self, config):
+        super().__init__(config)
+        self.gelu_impl = torch.nn.GELU(approximate="tanh")
 
 
 def gaudi_bloom_block_forward(
@@ -410,11 +418,11 @@ class GaudiBloomModel(BloomModel):
 class GaudiBloomForCausalLM(BloomForCausalLM):
     def __init__(self, config):
         super().__init__(config)
-        # self.lm_head_chunks = []
+        self.lm_head_chunks = []
 
-    # def split_lm_head(self):
-    #     N = 2
-    #     self.lm_head_chunks = [c.t() for c in self.lm_head.weight.chunk(N, dim=0)]
+    def split_lm_head(self):
+        N = 2
+        self.lm_head_chunks = [c.t() for c in self.lm_head.weight.chunk(N, dim=0)]
 
     def prepare_inputs_for_generation(
         self,
@@ -490,10 +498,10 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         )
         hidden_states = transformer_outputs[0]
 
-        # if len(self.lm_head_chunks) > 0:
-        #     lm_logits = torch.cat([torch.matmul(hidden_states, c) for c in self.lm_head_chunks], dim=-1)
-        # else:
-        lm_logits = self.lm_head(hidden_states)
+        if len(self.lm_head_chunks) > 0:
+            lm_logits = torch.cat([torch.matmul(hidden_states, c) for c in self.lm_head_chunks], dim=-1)
+        else:
+            lm_logits = self.lm_head(hidden_states)
 
         loss = None
         if labels is not None:

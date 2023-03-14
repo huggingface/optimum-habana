@@ -23,7 +23,7 @@ from transformers.models.wav2vec2.modeling_wav2vec2 import Wav2Vec2Model
 from .generation import GaudiGenerationMixin
 from .models import (
     GaudiBloomForCausalLM,
-    # GaudiBloomMLP,
+    GaudiBloomMLP,
     GaudiBloomModel,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,

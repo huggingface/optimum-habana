@@ -150,9 +150,9 @@ def main():
 
     # Initialize the various processes if this is a multi-device run
     if args.local_rank != -1:
-        if not torch.distributed.is_initialized():
-            torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
-            logger.info("Enabled distributed run.")
+        # if not torch.distributed.is_initialized():
+        #     torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
+        logger.info("Enabled distributed run.")
     else:
         logger.info("Single node run.")
 
@@ -274,7 +274,7 @@ def main():
 
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
-        use_cache=False,
+        use_cache=True,
     )
 
     def generate():
@@ -303,41 +303,33 @@ def main():
             generation_config=generation_config,
             lazy_mode=args.use_hpu_graphs,
             hpu_graphs=args.use_hpu_graphs,
-        )
-
-        input_tokens_lengths = [x.shape[0] for x in input_tokens.input_ids]
-        output_tokens_lengths = [x.shape[0] for x in outputs]
-
-        total_new_tokens = [o - i for i, o in zip(input_tokens_lengths, output_tokens_lengths)]
-        outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
-        return list(zip(outputs, total_new_tokens))
+        ).cpu()
+        return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
     # Compilation
     if rank == 0:
         print("Graph compilation...")
-    t0 = time.time()
+    t0 = time.perf_counter()
     # The first two iterations take longer because of graph compilation
     for _ in range(2):
         generate()
-    compilation_duration = time.time() - t0
-
     torch_hpu.synchronize()
+    compilation_duration = time.perf_counter() - t0
 
     total_new_tokens_generated = 0
     if rank == 0:
         print("Running generate...")
-    t0 = time.time()
+    t0 = time.perf_counter()
     # Benchmark over n_iterations iterations
     for i in range(args.n_iterations):
         generated = generate()
-    torch_hpu.synchronize()
+    duration = time.perf_counter() - t0
     total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
-    throughput = total_new_tokens_generated / (time.time() - t0)
+    throughput = total_new_tokens_generated / duration
 
     if rank == 0:
         print("*** Summary ***")
-        print(f"Throughput (including tokenization) = {throughput} tokens/second")
+        print(f"Throughput (including tokenization) = {throughput} tokens/second, {duration / args.n_iterations}")
         print(f"Graph compilation duration = {compilation_duration} seconds")
         print()
         print("Input sentences:")
@@ -345,7 +337,7 @@ def main():
             print(f"{i+1}: {input_sentence}")
         print()
         print("Outputs:")
-        for i, (output, _) in enumerate(generated):
+        for i, output in enumerate(generated):
             print(f"{i+1}: {output}")
 
 
