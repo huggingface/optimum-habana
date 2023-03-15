@@ -20,6 +20,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
 from transformers.trainer_utils import EvaluationStrategy, HubStrategy, IntervalStrategy, SchedulerType
@@ -253,6 +254,9 @@ class GaudiTrainingArguments(TrainingArguments):
                 FutureWarning,
             )
             self.optim = OptimizerNames.ADAFACTOR
+        if self.optim == OptimizerNames.ADAMW_TORCH_FUSED and is_torch_available():
+            if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
+                raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
 
         if self.report_to is None:
             logger.info(

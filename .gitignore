@@ -130,3 +130,6 @@ dmypy.json
 
 # SynapseAI logs
 .local.synapse_log*
+
+# ruff
+.ruff_cache

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
-from huggingface_hub import HfFolder, Repository, delete_repo, set_access_token
+from huggingface_hub import HfFolder, Repository, delete_repo
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
@@ -891,11 +891,15 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         logger = logging.get_logger()
         log_info_string = "Running training"
 
-        # test with the default log_level - should be warning and thus not log on the main process
+        # test with the default log_level - should be the same as before and thus we test depending on is_info
+        is_info = logging.get_verbosity() <= 20
         with CaptureLogger(logger) as cl:
             trainer = get_regression_trainer()
             trainer.train()
-        self.assertNotIn(log_info_string, cl.out)
+        if is_info:
+            self.assertIn(log_info_string, cl.out)
+        else:
+            self.assertNotIn(log_info_string, cl.out)
 
         # test with low log_level - lower than info
         with CaptureLogger(logger) as cl:
@@ -923,7 +927,13 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
     def test_can_resume_training(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            kwargs = {"output_dir": tmpdir, "train_len": 128, "save_steps": 5, "learning_rate": 0.1}
+            kwargs = {
+                "output_dir": tmpdir,
+                "train_len": 128,
+                "save_steps": 5,
+                "learning_rate": 0.1,
+                "logging_steps": 5,
+            }
             trainer = get_regression_trainer(**kwargs)
             # Disable FusedClipNorm because it makes the test fail
             trainer.gaudi_config.use_fused_clip_norm = False
@@ -1473,7 +1483,6 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._token = TOKEN
-        set_access_token(TOKEN)
         HfFolder.save_token(TOKEN)
 
     @classmethod
