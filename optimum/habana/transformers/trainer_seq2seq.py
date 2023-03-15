@@ -72,14 +72,6 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         )
         self._gen_kwargs = gen_kwargs
 
-        if self.args.use_hpu_graphs:
-            # Disable HPU graphs as generation needs to be fixed
-            self.args.use_hpu_graphs = False
-            logger.warning(
-                "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
-                " performed in lazy mode."
-            )
-
         return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def predict(
@@ -204,10 +196,17 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         else:
             generation_inputs = inputs[self.model.main_input_name]
 
-        generated_tokens = self.model.generate(
-            generation_inputs,
-            **gen_kwargs,
-        )
+        try:
+            generated_tokens = self.model.generate(
+                generation_inputs,
+                **gen_kwargs,
+            )
+        except RuntimeError as error:
+            if "cpu fallback is not supported during hpu graph capturing" in str(error):
+                error.args = (
+                    f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                )
+            raise error
         # Temporary hack to ensure the generation config is not initialized for each iteration of the evaluation loop
         # TODO: remove this hack when the legacy code that initializes generation_config from a model config is
         # removed in https://github.com/huggingface/transformers/blob/98d88b23f54e5a23e741833f1e973fdf600cc2c5/src/transformers/generation/utils.py#L1183
@@ -226,15 +225,22 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             torch.distributed.barrier()
 
         with torch.no_grad():
-            if has_labels:
-                with self.compute_loss_context_manager():
-                    outputs = model(**inputs)
-                if self.label_smoother is not None:
-                    loss = self.label_smoother(outputs, inputs["labels"]).mean().detach()
+            try:
+                if has_labels:
+                    with self.compute_loss_context_manager():
+                        outputs = model(**inputs)
+                    if self.label_smoother is not None:
+                        loss = self.label_smoother(outputs, inputs["labels"]).mean().detach()
+                    else:
+                        loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0]).mean().detach()
                 else:
-                    loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0]).mean().detach()
-            else:
-                loss = None
+                    loss = None
+            except RuntimeError as error:
+                if "cpu fallback is not supported during hpu graph capturing" in str(error):
+                    error.args = (
+                        f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                    )
+                raise error
 
         if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
             self.htcore.mark_step()
