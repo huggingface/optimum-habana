@@ -114,6 +114,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
+    parser.add_argument("--use_kv_cache", action="store_true", help="Whether to use the key/value cache for decoding. It should speed up generation.")
     parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not.")
     parser.add_argument(
         "--gaudi_config_name_or_path",
@@ -204,7 +205,7 @@ def main():
                 args=args,
                 enable_cuda_graph=args.use_hpu_graphs,
             )
-            # model.module.split_lm_head()
+            model.module.split_lm_head()
             model = model.module
         # Torch DDP
         else:
@@ -274,7 +275,7 @@ def main():
 
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
-        use_cache=True,
+        use_cache=args.use_kv_cache,
     )
 
     def generate():

@@ -67,7 +67,7 @@ def adapt_transformers_to_gaudi(use_habana_mixed_precision: bool = False):
     modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
     modeling_bloom.BloomBlock.forward = gaudi_bloom_block_forward
     modeling_bloom.BloomModel = GaudiBloomModel
-    # modeling_bloom.BloomMLP = GaudiBloomMLP
+    modeling_bloom.BloomMLP = GaudiBloomMLP
     modeling_bloom.BloomForCausalLM = GaudiBloomForCausalLM
 
     if use_habana_mixed_precision:

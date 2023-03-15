@@ -119,7 +119,9 @@ def gaudi_bloom_attention_forward(
     batch_size, q_length, _, _ = query_layer.shape
 
     query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
-    key_layer = key_layer.permute(0, 2, 3, 1).reshape(batch_size * self.num_heads, self.head_dim, q_length)
+    key_layer = (
+        key_layer.permute(0, 2, 3, 1).reshape(batch_size * self.num_heads, self.head_dim, q_length).contiguous()
+    )
     value_layer = value_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
     if layer_past is not None:
         past_key, past_value = layer_past
@@ -151,23 +153,15 @@ def gaudi_bloom_attention_forward(
         beta=self.beta,
         alpha=self.inv_norm_factor,
     )
-    # matmul_result = (
-    #     self.inv_norm_factor
-    #     * torch.bmm(
-    #         query_layer.transpose(1, 2).reshape(-1, query_layer.shape[1], query_layer.shape[3]),
-    #         key_layer.permute(0, 2, 3, 1).reshape(-1, key_layer.shape[3], key_layer.shape[1]),
-    #     )
-    #     + self.beta * alibi
-    # )
 
     # change view to [batch_size, num_heads, q_length, kv_length]
     attention_scores = matmul_result.view(batch_size, self.num_heads, q_length, kv_length)
 
     # cast attention scores to fp32, compute scaled softmax and cast back to initial dtype - [batch_size, num_heads, q_length, kv_length]
     input_dtype = attention_scores.dtype
-    # `float16` has a minimum value of -65504.0, whereas `bfloat16` and `float32` have a minimum value of `-3.4e+38`
-    if input_dtype == torch.float16:
-        attention_scores = attention_scores.to(torch.float)
+    # # `float16` has a minimum value of -65504.0, whereas `bfloat16` and `float32` have a minimum value of `-3.4e+38`
+    # if input_dtype == torch.float16:
+    #     attention_scores = attention_scores.to(torch.float)
     attn_weights = torch.masked_fill(attention_scores, attention_mask, torch.finfo(attention_scores.dtype).min)
     attention_probs = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(input_dtype)
 
