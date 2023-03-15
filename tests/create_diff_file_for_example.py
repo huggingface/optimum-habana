@@ -43,7 +43,7 @@ def _ask_yes_or_no_question(message: str) -> str:
 def diff(filename1: Path, filename2: Path) -> str:
     if not filename1.exists() or not filename2.exists():
         raise FileNotFoundError(
-            f"Cannot compute the diff because at least of one the file does not exist: {filename1} and/or {filename2}."
+            f"Cannot compute the diff because at least one of the files does not exist: {filename1} and/or {filename2}."
         )
     cmd_line = ["diff", str(filename1), str(filename2)]
     p = subprocess.Popen(cmd_line, stdout=subprocess.PIPE)
