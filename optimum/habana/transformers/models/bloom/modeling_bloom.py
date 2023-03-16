@@ -7,7 +7,7 @@ import torch
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomModel, BloomMLP, dropout_add
+from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomMLP, BloomModel
 from transformers.utils import logging
 
 

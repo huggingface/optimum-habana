@@ -66,10 +66,10 @@ class StaticMaxLengthCriteria(StoppingCriteria):
 
 class GaudiGenerationMixin(GenerationMixin):
     """
-    This class enables to perform fast generation in lazy mode.
+    This class enables to perform fast generation in lazy mode and with HPU graphs.
     The only difference with GenerationMixin is that the various generation
     methods will generate sequences whose size is max_length. Having constant
-    sizes allows to make the most of lazy mode.
+    sizes allows to make the most of lazy mode and HPU graphs.
     """
 
     def _update_model_kwargs_for_generation(
@@ -146,8 +146,8 @@ class GaudiGenerationMixin(GenerationMixin):
         model's default generation configuration. You can override any `generation_config` by passing the corresponding
         parameters to generate, e.g. `.generate(inputs, num_beams=4, do_sample=True)`.
 
-        For a complete overview of generate, check the [following
-        guide](https://huggingface.co/docs/transformers/en/main_classes/text_generation).
+        For an overview of generation strategies and code examples, check out the [following
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -236,6 +236,7 @@ class GaudiGenerationMixin(GenerationMixin):
             generation_config = self.generation_config
 
         generation_config = copy.deepcopy(generation_config)
+        generation_config.validate()
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
         self._validate_model_kwargs(model_kwargs.copy())
 
@@ -308,34 +309,28 @@ class GaudiGenerationMixin(GenerationMixin):
                 device=inputs_tensor.device,
             )
         else:
-            # if decoder-only then inputs_tensor has to be `input_ids`
-            input_ids = inputs_tensor
+            input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop("input_ids")
 
         # 6. Prepare `max_length` depending on other stopping criteria.
         input_ids_seq_length = input_ids.shape[-1]
         has_default_max_length = kwargs.get("max_length") is None and generation_config.max_length is not None
         if has_default_max_length and generation_config.max_new_tokens is None:
             warnings.warn(
-                (
-                    (
-                        "Neither `max_length` nor `max_new_tokens` has been set, `max_length` will default to"
-                        f" {generation_config.max_length} (`generation_config.max_length`). Controlling `max_length`"
-                        " via the config is deprecated and `max_length` will be removed from the config in v5 of"
-                        " Transformers -- we recommend using `max_new_tokens` to control the maximum length of the"
-                        " generation."
-                    ),
-                ),
+                f"Using `max_length`'s default ({generation_config.max_length}) to control the generation length. "
+                "This behaviour is deprecated and will be removed from the config in v5 of Transformers -- we"
+                " recommend using `max_new_tokens` to control the maximum length of the generation.",
                 UserWarning,
             )
-        elif has_default_max_length and generation_config.max_new_tokens is not None:
+        elif generation_config.max_new_tokens is not None:
             generation_config.max_length = generation_config.max_new_tokens + input_ids_seq_length
-        elif not has_default_max_length and generation_config.max_new_tokens is not None:
-            raise ValueError(
-                "Both `max_new_tokens` and `max_length` have been set but they serve the same purpose -- setting a"
-                " limit to the generated output length. Remove one of those arguments. Please refer to the"
-                " documentation for more information. "
-                "(https://huggingface.co/docs/transformers/main/en/main_classes/text_generation)"
-            )
+            if not has_default_max_length:
+                logger.warn(
+                    f"Both `max_new_tokens` (={generation_config.max_new_tokens}) and `max_length`(="
+                    f"{generation_config.max_length}) seem to have been set. `max_new_tokens` will take precedence. "
+                    "Please refer to the documentation for more information. "
+                    "(https://huggingface.co/docs/transformers/main/en/main_classes/text_generation)",
+                    UserWarning,
+                )
 
         if generation_config.min_length is not None and generation_config.min_length > generation_config.max_length:
             raise ValueError(
@@ -531,6 +526,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 length_penalty=generation_config.length_penalty,
                 do_early_stopping=generation_config.early_stopping,
                 num_beam_hyps_to_keep=generation_config.num_return_sequences,
+                max_length=generation_config.max_length,
             )
             # 12. interleave input_ids with `num_beams` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
@@ -567,6 +563,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 device=inputs_tensor.device,
                 length_penalty=generation_config.length_penalty,
                 do_early_stopping=generation_config.early_stopping,
+                max_length=generation_config.max_length,
             )
 
             # 13. interleave input_ids with `num_beams` additional sequences per batch
@@ -611,12 +608,12 @@ class GaudiGenerationMixin(GenerationMixin):
             beam_scorer = BeamSearchScorer(
                 batch_size=batch_size,
                 num_beams=generation_config.num_beams,
-                max_length=stopping_criteria.max_length,
                 device=inputs_tensor.device,
                 length_penalty=generation_config.length_penalty,
                 do_early_stopping=generation_config.early_stopping,
                 num_beam_hyps_to_keep=generation_config.num_return_sequences,
                 num_beam_groups=generation_config.num_beam_groups,
+                max_length=generation_config.max_length,
             )
             # 12. interleave input_ids with `num_beams` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
@@ -705,6 +702,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 length_penalty=generation_config.length_penalty,
                 do_early_stopping=generation_config.early_stopping,
                 num_beam_hyps_to_keep=generation_config.num_return_sequences,
+                max_length=generation_config.max_length,
             )
             # 12. interleave input_ids with `num_beams` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
@@ -755,7 +753,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.contrastive_search`] directly. Use
         generate() instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -778,8 +776,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 used to tell if the generation loop should stop.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -856,7 +854,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.greedy_search`] directly. Use generate()
         instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -875,8 +873,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -956,6 +954,7 @@ class GaudiGenerationMixin(GenerationMixin):
         eos_token_id = eos_token_id if eos_token_id is not None else self.generation_config.eos_token_id
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
+        eos_token_id_tensor = torch.tensor(eos_token_id).to(input_ids.device) if eos_token_id is not None else None
         output_scores = output_scores if output_scores is not None else self.generation_config.output_scores
         output_attentions = (
             output_attentions if output_attentions is not None else self.generation_config.output_attentions
@@ -1063,8 +1062,10 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
             # if eos_token was found in one sentence, set sentence to finished
-            if not ignore_eos and eos_token_id is not None:
-                unfinished_sequences = unfinished_sequences.mul((sum(next_tokens != i for i in eos_token_id)).long())
+            if not ignore_eos and eos_token_id_tensor is not None:
+                unfinished_sequences = unfinished_sequences.mul(
+                    next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
+                )
 
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
             if (not ignore_eos and unfinished_sequences.max() == 0) or stopping_criteria(input_ids, scores):
@@ -1119,7 +1120,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.sample`] directly. Use generate() instead.
         For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -1141,8 +1142,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -1218,7 +1219,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ... )
 
         >>> tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        ['Today is a beautiful day, and a wonderful day.\n\nI was lucky enough to meet the']
+        ['Today is a beautiful day, and we must do everything possible to make it a day of celebration.']
         ```"""
 
         logger.warning("Sampling is slow in lazy mode, eager mode should be preferred at the moment.")
@@ -1240,6 +1241,7 @@ class GaudiGenerationMixin(GenerationMixin):
         eos_token_id = eos_token_id if eos_token_id is not None else self.generation_config.eos_token_id
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
+        eos_token_id_tensor = torch.tensor(eos_token_id).to(input_ids.device) if eos_token_id is not None else None
         output_scores = output_scores if output_scores is not None else self.generation_config.output_scores
         output_attentions = (
             output_attentions if output_attentions is not None else self.generation_config.output_attentions
@@ -1349,8 +1351,10 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
             # if eos_token was found in one sentence, set sentence to finished
-            if eos_token_id is not None:
-                unfinished_sequences = unfinished_sequences.mul((sum(next_tokens != i for i in eos_token_id)).long())
+            if eos_token_id_tensor is not None:
+                unfinished_sequences = unfinished_sequences.mul(
+                    next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
+                )
 
             # if lazy_mode and not hpu_graphs:
             #     self.htcore_generation.mark_step()
@@ -1408,7 +1412,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.beam_search`] directly. Use generate()
         instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -1429,8 +1433,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -1738,7 +1742,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.beam_sample`] directly. Use generate()
         instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -1763,8 +1767,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -1879,7 +1883,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.group_beam_search`] directly. Use
         generate() instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -1900,8 +1904,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -2011,7 +2015,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.constrained_beam_search`] directly. Use
         generate() instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -2037,8 +2041,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.

@@ -72,14 +72,6 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         )
         self._gen_kwargs = gen_kwargs
 
-        if self.args.use_hpu_graphs:
-            # Disable HPU graphs as generation needs to be fixed
-            self.args.use_hpu_graphs = False
-            logger.warning(
-                "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
-                " performed in lazy mode."
-            )
-
         return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def predict(
@@ -191,23 +183,18 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             gen_kwargs["hpu_graphs"] if gen_kwargs.get("hpu_graphs") is not None else self.args.use_hpu_graphs
         )
 
-        if "attention_mask" in inputs:
-            gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
-        if "global_attention_mask" in inputs:
-            gen_kwargs["global_attention_mask"] = inputs.get("global_attention_mask", None)
+        # TODO (Joao): the following line is needed to keep a consistent result on SQUAD. Ideally, we should not block
+        # users from preparing a dataset with `decoder_input_ids`.
+        inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
+        try:
+            generated_tokens = self.model.generate(**inputs, **gen_kwargs)
+        except RuntimeError as error:
+            if "cpu fallback is not supported during hpu graph capturing" in str(error):
+                error.args = (
+                    f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                )
+            raise error
 
-        # prepare generation inputs
-        # some encoder-decoder models can have varying encoder's and thus
-        # varying model input names
-        if hasattr(self.model, "encoder") and self.model.encoder.main_input_name != self.model.main_input_name:
-            generation_inputs = inputs[self.model.encoder.main_input_name]
-        else:
-            generation_inputs = inputs[self.model.main_input_name]
-
-        generated_tokens = self.model.generate(
-            generation_inputs,
-            **gen_kwargs,
-        )
         # Temporary hack to ensure the generation config is not initialized for each iteration of the evaluation loop
         # TODO: remove this hack when the legacy code that initializes generation_config from a model config is
         # removed in https://github.com/huggingface/transformers/blob/98d88b23f54e5a23e741833f1e973fdf600cc2c5/src/transformers/generation/utils.py#L1183
@@ -226,15 +213,22 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             torch.distributed.barrier()
 
         with torch.no_grad():
-            if has_labels:
-                with self.compute_loss_context_manager():
-                    outputs = model(**inputs)
-                if self.label_smoother is not None:
-                    loss = self.label_smoother(outputs, inputs["labels"]).mean().detach()
+            try:
+                if has_labels:
+                    with self.compute_loss_context_manager():
+                        outputs = model(**inputs)
+                    if self.label_smoother is not None:
+                        loss = self.label_smoother(outputs, inputs["labels"]).mean().detach()
+                    else:
+                        loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0]).mean().detach()
                 else:
-                    loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0]).mean().detach()
-            else:
-                loss = None
+                    loss = None
+            except RuntimeError as error:
+                if "cpu fallback is not supported during hpu graph capturing" in str(error):
+                    error.args = (
+                        f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                    )
+                raise error
 
         if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
             self.htcore.mark_step()

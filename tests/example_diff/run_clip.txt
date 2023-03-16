@@ -14,9 +14,9 @@
 > from optimum.habana.utils import set_seed
 > 
 57c55
-< check_min_version("4.27.0.dev0")
+< check_min_version("4.28.0.dev0")
 ---
-> check_min_version("4.26.0")
+> check_min_version("4.27.0")
 230c228
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
