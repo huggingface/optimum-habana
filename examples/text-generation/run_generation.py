@@ -114,7 +114,11 @@ def main():
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
-    parser.add_argument("--use_kv_cache", action="store_true", help="Whether to use the key/value cache for decoding. It should speed up generation.")
+    parser.add_argument(
+        "--use_kv_cache",
+        action="store_true",
+        help="Whether to use the key/value cache for decoding. It should speed up generation.",
+    )
     parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not.")
     parser.add_argument(
         "--gaudi_config_name_or_path",
@@ -308,14 +312,15 @@ def main():
         return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
     # Compilation
-    if rank == 0:
-        print("Graph compilation...")
-    t0 = time.perf_counter()
-    # The first two iterations take longer because of graph compilation
-    for _ in range(2):
-        generate()
-    torch_hpu.synchronize()
-    compilation_duration = time.perf_counter() - t0
+    if args.use_hpu_graphs:
+        if rank == 0:
+            print("Graph compilation...")
+        t0 = time.perf_counter()
+        # The first two iterations take longer because of graph compilation
+        for _ in range(2):
+            generate()
+        torch_hpu.synchronize()
+        compilation_duration = time.perf_counter() - t0
 
     total_new_tokens_generated = 0
     if rank == 0:
@@ -331,7 +336,8 @@ def main():
     if rank == 0:
         print("*** Summary ***")
         print(f"Throughput (including tokenization) = {throughput} tokens/second, {duration / args.n_iterations}")
-        print(f"Graph compilation duration = {compilation_duration} seconds")
+        if args.use_hpu_graphs:
+            print(f"Graph compilation duration = {compilation_duration} seconds")
         print()
         print("Input sentences:")
         for i, input_sentence in enumerate(input_sentences):
