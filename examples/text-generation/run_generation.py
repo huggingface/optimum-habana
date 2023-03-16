@@ -44,14 +44,14 @@ logger = logging.getLogger(__name__)
 MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 
 
-def get_repo_root(model_name_or_path, global_rank):
+def get_repo_root(model_name_or_path, local_rank):
     # checks if online or not
     if is_offline_mode():
-        if global_rank == 0:
+        if local_rank == 0:
             print("Offline mode: forcing local_files_only=True")
 
     # download only on first process
-    if global_rank == 0:
+    if local_rank == 0:
         snapshot_download(
             model_name_or_path,
             local_files_only=is_offline_mode(),
@@ -69,8 +69,8 @@ def get_repo_root(model_name_or_path, global_rank):
     )
 
 
-def get_checkpoint_files(model_name_or_path, global_rank):
-    cached_repo_dir = get_repo_root(model_name_or_path, global_rank)
+def get_checkpoint_files(model_name_or_path, local_rank):
+    cached_repo_dir = get_repo_root(model_name_or_path, local_rank)
 
     # extensions: .bin | .pt
     # creates a list of paths from all downloaded files in cache dir
@@ -78,9 +78,9 @@ def get_checkpoint_files(model_name_or_path, global_rank):
     return file_list
 
 
-def write_checkpoints_json(model_name_or_path, global_rank, checkpoints_json):
-    checkpoint_files = get_checkpoint_files(model_name_or_path, global_rank)
-    if global_rank == 0:
+def write_checkpoints_json(model_name_or_path, local_rank, checkpoints_json):
+    checkpoint_files = get_checkpoint_files(model_name_or_path, local_rank)
+    if local_rank == 0:
         data = {"type": "BLOOM", "checkpoints": checkpoint_files, "version": 1.0}
         json.dump(data, open(checkpoints_json, "w"))
 
@@ -134,7 +134,8 @@ def main():
         os.environ["PT_HPU_LAZY_MODE"] = "2"
 
     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
-    use_deepspeed = "deepspeed" in os.environ["_"]
+    # For multi node, the value of the env variable WORLD_SIZE should be larger than 8
+    use_deepspeed = "deepspeed" in os.environ["_"] or int(os.environ["WORLD_SIZE"]) > 8
     if use_deepspeed:
         # Set necessary env variables
         os.environ.setdefault("WA_BETA_ALIBI", "1")
@@ -149,9 +150,6 @@ def main():
     from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
     world_size, rank, args.local_rank = initialize_distributed_hpu()
-
-    # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
-    use_deepspeed = "deepspeed" in os.environ["_"]
 
     # Initialize the various processes if this is a multi-device run
     if args.local_rank != -1:
@@ -197,7 +195,7 @@ def main():
             model = model.eval()
 
             checkpoints_json = "checkpoints.json"
-            write_checkpoints_json(args.model_name_or_path, rank, checkpoints_json)
+            write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
             torch.distributed.barrier()
 
             model = deepspeed.init_inference(
@@ -313,7 +311,7 @@ def main():
 
     # Compilation
     if args.use_hpu_graphs:
-        if rank == 0:
+        if args.local_rank == 0:
             print("Graph compilation...")
         t0 = time.perf_counter()
         # The first two iterations take longer because of graph compilation
@@ -323,7 +321,7 @@ def main():
         compilation_duration = time.perf_counter() - t0
 
     total_new_tokens_generated = 0
-    if rank == 0:
+    if args.local_rank == 0:
         print("Running generate...")
     t0 = time.perf_counter()
     # Benchmark over n_iterations iterations
