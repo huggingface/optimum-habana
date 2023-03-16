@@ -71,6 +71,11 @@ class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
         self.fill_match("scheduler.params.warmup_max_lr", args.learning_rate, "learning_rate")
         # total_num_steps - will get set in trainer_config_finalize
 
+        if args.save_on_each_node:
+            # deepspeed uses shared storage by default. Let's override this setting if save_on_each_node == True
+            self.config["checkpoint"] = self.config.get("checkpoint", {})
+            self.config["checkpoint"]["use_node_local_storage"] = args.save_on_each_node
+
         # deepspeed's default mode is fp16 unless there is a config that says differently
         if self.is_true("bf16.enabled"):
             self._dtype = torch.bfloat16
@@ -170,6 +175,6 @@ def deepspeed_init(trainer, num_training_steps, resume_from_checkpoint=None, inf
             if load_path is None:
                 raise ValueError(f"[deepspeed] failed to resume from checkpoint {resume_from_checkpoint}")
         else:
-            logger.info(f"{resume_from_checkpoint} doesn't have deepspeed checkpoints, doing nothing")
+            raise ValueError(f"Can't find a valid checkpoint at {resume_from_checkpoint}")
 
     return deepspeed_engine, optimizer, lr_scheduler
