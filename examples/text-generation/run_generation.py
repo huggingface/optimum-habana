@@ -135,7 +135,9 @@ def main():
 
     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
     # For multi node, the value of the env variable WORLD_SIZE should be larger than 8
-    use_deepspeed = "deepspeed" in os.environ["_"] or int(os.environ["WORLD_SIZE"]) > 8
+    use_deepspeed = "deepspeed" in os.environ["_"] or (
+        "WORLD_SIZE" in os.environ and int(os.environ["WORLD_SIZE"]) > 8
+    )
     if use_deepspeed:
         # Set necessary env variables
         os.environ.setdefault("WA_BETA_ALIBI", "1")
@@ -224,7 +226,8 @@ def main():
         # Load Gaudi configuration
         from optimum.habana import GaudiConfig
 
-        gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name_or_path)
+        # gaudi_config = GaudiConfig.from_pretrained("args.gaudi_config_name_or_path")
+        gaudi_config = GaudiConfig(use_habana_mixed_precision=True)
 
         # Tell Gaudi the bf16 ops to use
         if gaudi_config.use_habana_mixed_precision:
@@ -250,7 +253,7 @@ def main():
     #     max_position_embeddings = 1024
 
     # args.length = adjust_length_to_model(args.length, max_sequence_length=max_position_embeddings)
-    if args.local_rank in [-1, 0]:
+    if rank in [-1, 0]:
         logger.info(f"Args: {args}")
         logger.info(
             f"device: {args.device}, n_hpu: {world_size}, bf16: {use_deepspeed or gaudi_config.use_habana_mixed_precision}"
@@ -311,7 +314,7 @@ def main():
 
     # Compilation
     if args.use_hpu_graphs:
-        if args.local_rank == 0:
+        if rank in [-1, 0]:
             print("Graph compilation...")
         t0 = time.perf_counter()
         # The first two iterations take longer because of graph compilation
@@ -321,7 +324,7 @@ def main():
         compilation_duration = time.perf_counter() - t0
 
     total_new_tokens_generated = 0
-    if args.local_rank == 0:
+    if rank in [-1, 0]:
         print("Running generate...")
     t0 = time.perf_counter()
     # Benchmark over n_iterations iterations
@@ -331,9 +334,9 @@ def main():
     total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
     throughput = total_new_tokens_generated / duration
 
-    if rank == 0:
+    if rank in [-1, 0]:
         print("*** Summary ***")
-        print(f"Throughput (including tokenization) = {throughput} tokens/second, {duration / args.n_iterations}")
+        print(f"Throughput (including tokenization) = {throughput} tokens/second")
         if args.use_hpu_graphs:
             print(f"Graph compilation duration = {compilation_duration} seconds")
         print()
