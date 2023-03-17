@@ -126,6 +126,12 @@ def main():
         type=str,
         help="Path to the Gaudi configuration",
     )
+    parser.add_argument(
+        "--dataset_name",
+        default=None,
+        type=str,
+        help="Optional argument if you want to assess ypur model on a given dataset of the HF Hub.",
+    )
 
     args = parser.parse_args()
 
@@ -259,94 +265,139 @@ def main():
             f"device: {args.device}, n_hpu: {world_size}, bf16: {use_deepspeed or gaudi_config.use_habana_mixed_precision}"
         )
 
-    input_sentences = [
-        "DeepSpeed is a machine learning framework",
-        "He is working on",
-        "He has a",
-        "He got all",
-        "Everyone is happy and I can",
-        "The new movie that got Oscar this year",
-        "In the far far distance from our galaxy,",
-        "Peace is the only way",
-    ]
-
-    if args.batch_size > len(input_sentences):
-        # dynamically extend to support larger batch sizes
-        num_sentences_to_add = args.batch_size - len(input_sentences)
-        for i in range(num_sentences_to_add):
-            input_sentences.append(input_sentences[i % len(input_sentences)])
-    elif args.batch_size < len(input_sentences):
-        input_sentences = input_sentences[: args.batch_size]
-
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         use_cache=args.use_kv_cache,
     )
 
-    def generate():
-        """Returns a list of zipped outputs and number of new tokens."""
+    if args.dataset_name is None:
+        # Benchmark over the prompts below
+        input_sentences = [
+            "DeepSpeed is a machine learning framework",
+            "He is working on",
+            "He has a",
+            "He got all",
+            "Everyone is happy and I can",
+            "The new movie that got Oscar this year",
+            "In the far far distance from our galaxy,",
+            "Peace is the only way",
+        ]
 
-        # Tokenization
-        input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+        if args.batch_size > len(input_sentences):
+            # dynamically extend to support larger batch sizes
+            num_sentences_to_add = args.batch_size - len(input_sentences)
+            for i in range(num_sentences_to_add):
+                input_sentences.append(input_sentences[i % len(input_sentences)])
+        elif args.batch_size < len(input_sentences):
+            input_sentences = input_sentences[: args.batch_size]
 
-        # Pad inputs to have static shapes during genration, this gives better performance than dynamic shapes on HPUs
-        input_token_len = input_tokens.input_ids.shape[-1]
-        input_tokens["input_ids"] = F.pad(
-            input_tokens.input_ids, (0, args.max_new_tokens), value=model.config.pad_token_id
-        )
-        input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
-        # token_idx is the current index in the generation process, it is incremented each time a new token is generated
-        kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
+        def generate():
+            """Returns a list of zipped outputs and number of new tokens."""
 
-        # Move inputs to target device(s)
-        for t in input_tokens:
-            if torch.is_tensor(input_tokens[t]):
-                input_tokens[t] = input_tokens[t].to(args.device)
+            # Tokenization
+            input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
 
-        outputs = model.generate(
-            **input_tokens,
-            **kwargs,
-            generation_config=generation_config,
-            lazy_mode=args.use_hpu_graphs,
-            hpu_graphs=args.use_hpu_graphs,
-        ).cpu()
-        return tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            # Pad inputs to have static shapes during genration, this gives better performance than dynamic shapes on HPUs
+            input_token_len = input_tokens.input_ids.shape[-1]
+            input_tokens["input_ids"] = F.pad(
+                input_tokens.input_ids, (0, args.max_new_tokens), value=model.config.pad_token_id
+            )
+            input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
+            # token_idx is the current index in the generation process, it is incremented each time a new token is generated
+            kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
 
-    # Compilation
-    if args.use_hpu_graphs:
-        if rank in [-1, 0]:
-            print("Graph compilation...")
-        t0 = time.perf_counter()
-        # The first two iterations take longer because of graph compilation
-        for _ in range(2):
-            generate()
-        torch_hpu.synchronize()
-        compilation_duration = time.perf_counter() - t0
+            # Move inputs to target device(s)
+            for t in input_tokens:
+                if torch.is_tensor(input_tokens[t]):
+                    input_tokens[t] = input_tokens[t].to(args.device)
 
-    total_new_tokens_generated = 0
-    if rank in [-1, 0]:
-        print("Running generate...")
-    t0 = time.perf_counter()
-    # Benchmark over n_iterations iterations
-    for i in range(args.n_iterations):
-        generated = generate()
-    duration = time.perf_counter() - t0
-    total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
-    throughput = total_new_tokens_generated / duration
+            outputs = model.generate(
+                **input_tokens,
+                **kwargs,
+                generation_config=generation_config,
+                lazy_mode=args.use_hpu_graphs,
+                hpu_graphs=args.use_hpu_graphs,
+            ).cpu()
+            return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
-    if rank in [-1, 0]:
-        print("*** Summary ***")
-        print(f"Throughput (including tokenization) = {throughput} tokens/second")
+        # Compilation
         if args.use_hpu_graphs:
-            print(f"Graph compilation duration = {compilation_duration} seconds")
-        print()
-        print("Input sentences:")
-        for i, input_sentence in enumerate(input_sentences):
-            print(f"{i+1}: {input_sentence}")
-        print()
-        print("Outputs:")
-        for i, output in enumerate(generated):
-            print(f"{i+1}: {output}")
+            if rank in [-1, 0]:
+                print("Graph compilation...")
+            t0 = time.perf_counter()
+            # The first two iterations take longer because of graph compilation
+            for _ in range(2):
+                generate()
+            torch_hpu.synchronize()
+            compilation_duration = time.perf_counter() - t0
+
+        total_new_tokens_generated = 0
+        if rank in [-1, 0]:
+            print("Running generate...")
+        t0 = time.perf_counter()
+        # Benchmark over n_iterations iterations
+        for i in range(args.n_iterations):
+            generated = generate()
+        duration = time.perf_counter() - t0
+        total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+        throughput = total_new_tokens_generated / duration
+
+        if rank in [-1, 0]:
+            print("*** Summary ***")
+            print(f"Throughput (including tokenization) = {throughput} tokens/second")
+            if args.use_hpu_graphs:
+                print(f"Graph compilation duration = {compilation_duration} seconds")
+            print()
+            print("Input sentences:")
+            for i, input_sentence in enumerate(input_sentences):
+                print(f"{i+1}: {input_sentence}")
+            print()
+            print("Outputs:")
+            for i, output in enumerate(generated):
+                print(f"{i+1}: {output}")
+    else:
+        # Compute the perplexity over the given dataset
+        # Downloading and loading a dataset from the hub.
+        from datasets import load_dataset
+        from torch.utils.data import DataLoader
+        from tqdm import tqdm
+
+        raw_dataset = load_dataset(args.dataset_name)["test"]
+        prompt_length = 16
+
+        def preprocess_function(examples):
+            # Tokenize the texts
+            return tokenizer(examples["headline"], padding="max_length", max_length=prompt_length, truncation=True)
+
+        raw_dataset = raw_dataset.map(
+            preprocess_function,
+            batched=True,
+            desc="Running tokenizer on dataset",
+        )
+        raw_dataset = raw_dataset.remove_columns(["content", "category"])
+        raw_dataset.set_format(type="torch")
+
+        dataloader = DataLoader(raw_dataset, batch_size=args.batch_size)
+        for i, batch in enumerate(dataloader):
+            # Move inputs to target device(s)
+            batch["input_ids"] = F.pad(batch["input_ids"], (0, args.max_new_tokens), value=model.config.pad_token_id)
+            batch["attention_mask"] = F.pad(batch["attention_mask"], (0, args.max_new_tokens), value=0)
+            prompt = batch.pop("headline")
+            for t in batch:
+                if torch.is_tensor(batch[t]):
+                    batch[t] = batch[t].to(args.device)
+            batch["token_idx"] = torch.tensor(prompt_length, device=args.device)
+
+            outputs = model.generate(
+                **batch,
+                generation_config=generation_config,
+                lazy_mode=args.use_hpu_graphs,
+                hpu_graphs=args.use_hpu_graphs,
+            ).cpu()
+            print(
+                f"Sample {i+1}; Input: {prompt[0]}; Output: ",
+                tokenizer.batch_decode(outputs, skip_special_tokens=True)[0],
+            )
 
 
 if __name__ == "__main__":
