@@ -394,10 +394,11 @@ def main():
                 lazy_mode=args.use_hpu_graphs,
                 hpu_graphs=args.use_hpu_graphs,
             ).cpu()
-            print(
-                f"Sample {i+1}; Input: {prompt[0]}; Output: ",
-                tokenizer.batch_decode(outputs, skip_special_tokens=True)[0],
-            )
+            if rank in [-1, 0]:
+                print(
+                    f"Sample {i+1}; Input: {prompt[0]}; Output: ",
+                    tokenizer.batch_decode(outputs, skip_special_tokens=True)[0],
+                )
 
 
 if __name__ == "__main__":
