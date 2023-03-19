@@ -14,12 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Training a CLIP like dual encoder models using text and vision encoders in the library.
-The script can be used to train CLIP like models for languages other than English by using
-a text encoder pre-trained in the desired language. Currently this script supports the following vision
-and text models:
-Vision models: ViT(https://huggingface.co/models?filter=vit), CLIP (https://huggingface.co/models?filter=clip)
-Text models: BERT, ROBERTa (https://huggingface.co/models?filter=fill-mask)
+Training BridgeTower with a contrastive text-image loss.
 """
 
 import logging
@@ -37,13 +32,10 @@ from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Res
 from torchvision.transforms.functional import InterpolationMode
 from transformers import (
     AutoImageProcessor,
-    # AutoModel,
     AutoTokenizer,
     HfArgumentParser,
 )
-from transformers.models.bridgetower.modeling_bridgetower import (
-    BridgeTowerForContrastiveLearning,
-)
+from transformers.models.bridgetower.modeling_bridgetower import BridgeTowerForContrastiveLearning
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
@@ -55,7 +47,7 @@ from optimum.habana.utils import set_seed
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.26.0")
+check_min_version("4.27.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
 
@@ -214,13 +206,11 @@ def collate_fn(examples):
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     input_ids = torch.tensor([example["input_ids"] for example in examples], dtype=torch.long)
     attention_mask = torch.tensor([example["attention_mask"] for example in examples], dtype=torch.long)
-    labels = torch.tensor([1 for _ in examples], dtype=torch.long)
     return {
         "pixel_values": pixel_values,
         "input_ids": input_ids,
         "attention_mask": attention_mask,
-        # "return_loss": True,
-        "labels": labels,
+        "return_loss": True,
     }
 
 
