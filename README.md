@@ -53,7 +53,7 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 > ```bash
 > git clone https://github.com/huggingface/optimum-habana.git
 > cd optimum-habana
-> python setup.py install
+> pip install -e .
 > ```
 
 Last but not least, don't forget to install the requirements for every example:
