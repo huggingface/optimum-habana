@@ -41,7 +41,6 @@ from transformers.generation.utils import (
     SampleEncoderDecoderOutput,
     SampleOutput,
 )
-from transformers.pytorch_utils import torch_int_div
 
 from optimum.utils import logging
 
@@ -1547,7 +1546,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True
             )
 
-            next_indices = torch_int_div(next_tokens, vocab_size)
+            next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             next_tokens = next_tokens % vocab_size
 
             # stateless
