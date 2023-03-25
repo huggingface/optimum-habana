@@ -30,7 +30,7 @@ def main():
 
     parser.add_argument(
         "--model_name_or_path",
-        default="CompVis/stable-diffusion-v1-4",
+        default="runwayml/stable-diffusion-v1-5",
         type=str,
         help="Path to pre-trained model",
     )

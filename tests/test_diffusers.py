@@ -516,7 +516,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ]
         num_images_per_prompt = 11
         batch_size = 4
-        model_name = "CompVis/stable-diffusion-v1-4"
+        model_name = "runwayml/stable-diffusion-v1-5"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
