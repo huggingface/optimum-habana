@@ -28,7 +28,7 @@ Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stabili
 Here is how to generate images with one prompt:
 ```python
 python text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 20 \
     --batch_size 4 \
@@ -48,7 +48,7 @@ python text_to_image_generation.py \
 Here is how to generate images with several prompts:
 ```python
 python text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 20 \
     --batch_size 8 \
