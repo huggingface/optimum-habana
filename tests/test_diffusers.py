@@ -537,7 +537,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @slow
     def test_no_generation_regression(self):
-        model_name = "runwayml/stable-diffusion-v1-5"
+        model_name = "CompVis/stable-diffusion-v1-4"
         # fp32
         with hmp.disable_casts():
             scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
