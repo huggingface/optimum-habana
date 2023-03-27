@@ -478,7 +478,7 @@ class GaudiTrainingArguments(TrainingArguments):
                         torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
                         logger.info("Enabled distributed run.")
                 else:
-                    logger.info("Single node run.")
+                    logger.info("Single-device run.")
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
