@@ -31,7 +31,7 @@ logger = logging.get_logger(__name__)
 
 class DistributedRunner:
     """
-    Set up training hardware configurations and run distributed training commands.
+    Set up training/inference hardware configurations and run distributed commands.
     """
 
     def __init__(
@@ -83,34 +83,34 @@ class DistributedRunner:
         if hostfile is not None:
             if isinstance(self._hostfile, str):
                 self._hostfile = Path(self._hostfile)
-            # Multi-node training
+            # Multi-node run
             if use_deepspeed:
                 self.create_multi_node_setup()
             else:
                 raise ValueError(
-                    "A hostfile is specified to perform multi-node training. This requires to enable DeepSpeed with"
+                    "A hostfile is specified to perform a multi-node run. This requires to enable DeepSpeed with"
                     " `use_deepspeed=True`."
                 )
         elif self._world_size > 1:
-            # Distributed training
+            # Distributed run
             if use_deepspeed:
-                # Single-node multi-card training with DeepSpeed
+                # Single-node multi-card run with DeepSpeed
                 self.create_single_node_setup_deepspeed()
             elif use_mpi:
-                # Single-node multi-card training with MPI
+                # Single-node multi-card run with MPI
                 self._model_env_vars["MASTER_ADDR"] = "localhost"
                 self._model_env_vars["MASTER_PORT"] = "12345"
                 self.create_single_node_setup_mpirun()
             else:
-                # Single-node multi-card training with torch.distributed
+                # Single-node multi-card run with torch.distributed
                 self.create_single_node_setup()
         else:
-            # Single-card training
+            # Single-card run
             logger.warning(
-                "The run will be executed on one device only. Specify `world_size` >= 1 or `hostfile` to perform a"
+                "The run will be executed on one device only. Specify `world_size` > 1 or `hostfile` to perform a"
                 " distributed run."
             )
-            self.create_single_card_setup()
+            self.create_single_card_setup(use_deepspeed)
 
     def get_peval(self):
         cmd1 = "lscpu 2>/dev/null | awk '/Socket\(s\)/  { print $2 }'"
@@ -142,12 +142,15 @@ class DistributedRunner:
         peval, _, _ = self.get_peval()
         return f"--map-by {self._map_by}:PE={peval}"
 
-    def create_single_card_setup(self):
+    def create_single_card_setup(self, use_deepspeed=False):
         """
         Single-card setup.
         """
 
-        self._interpreter = f"{sys.executable} "
+        if use_deepspeed:
+            self._interpreter = "deepspeed --num_gpus 1 "
+        else:
+            self._interpreter = f"{sys.executable} "
 
     def create_single_node_setup_mpirun(self):
         """
@@ -247,10 +250,10 @@ class DistributedRunner:
                     if master_addr is None:
                         master_addr = hostname
                 except ValueError as err:
-                    logger.error("Hostfile is not formatted correctly, unable to proceed with training.")
+                    logger.error("Hostfile is not formatted correctly, unable to proceed with training/inference.")
                     raise err
                 if hostname in resource_pool:
-                    logger.error("Hostfile contains duplicate hosts, unable to proceed with training.")
+                    logger.error("Hostfile contains duplicate hosts, unable to proceed with training/inference.")
                     raise ValueError(f"Host {hostname} is already defined")
                 resource_pool[hostname] = slot_count
 
