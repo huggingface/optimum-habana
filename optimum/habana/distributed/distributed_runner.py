@@ -148,7 +148,7 @@ class DistributedRunner:
         """
 
         if use_deepspeed:
-            self._interpreter = f"deepspeed --num_gpus 1 "
+            self._interpreter = "deepspeed --num_gpus 1 "
         else:
             self._interpreter = f"{sys.executable} "
 

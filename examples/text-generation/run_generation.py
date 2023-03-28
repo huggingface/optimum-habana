@@ -29,10 +29,10 @@ import torch
 import torch.nn.functional as F
 from huggingface_hub import snapshot_download
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers.deepspeed import is_deepspeed_available
 from transformers.generation import GenerationConfig
 from transformers.models.bloom.modeling_bloom import BloomBlock
 from transformers.utils import is_offline_mode
-from transformers.deepspeed import is_deepspeed_available
 
 
 logging.basicConfig(

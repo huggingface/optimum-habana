@@ -16,47 +16,77 @@ limitations under the License.
 
 # Language generation
 
-Based on the script [`run_generation.py`](https://github.com/huggingface/transformers/blob/main/examples/pytorch/text-generation/run_generation.py).
+Conditional text generation with [BLOOM](https://huggingface.co/bigscience/bloom) and [BLOOMZ](https://huggingface.co/bigscience/bloomz) on Habana Gaudi. You can find more information about it in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom).
 
-Conditional text generation using the auto-regressive models of the library: GPT2 and BLOOM.
-A similar script is used for our official demo [Write With Transformer](https://transformer.huggingface.co), where you can try out the different models available in the library.
+
+## Requirements
 
 First, you should install the requirements:
 ```bash
-pip install git+https://github.com/huggingface/transformers.git
 pip install -r requirements.txt
 ```
 
-Then, if you intend to use BLOOM with DeepSpeed-inference, you should install DeepSpeed as follows:
+Then, since this example relies on [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html), you should install DeepSpeed as follows:
 ```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
 ```
 
-Example usage on 1 HPU:
 
-```bash
-python run_generation.py \
-    --model_name_or_path=bigscience/bloom-1b3 \
-    --batch_size 4 \
-    --use_hpu_graphs
+## Usage
+
+In this section, we present how to benchmark BLOOM and BLOOMZ on Habana Gaudi with this script. We also show how to use it to run generation on any dataset from the [Hugging Face Hub](https://huggingface.co/datasets).
+
+> The present script is currently limited to greedy generation.
+
+
+### Benchmark
+
+To run a benchmark and get the throughput of your model, you can run:
+```
+python ../gaudi_spawn.py --use_deepspeed --world_size number_of_devices run_generation.py \
+--model_name_or_path path_to_model \
+--max_new_tokens number_of_tokens_to_generate \
+--batch_size batch_size \
+--n_iterations number_of_iterations \
+--use_hpu_graphs \
+--use_kv_cache
+```
+with
+- `number_of_devices` the number of HPUs you want to use
+- `path_to_model` a model name on the Hugging Face Hub or a path to a model saved locally
+- `number_of_tokens_to_generate` the number of tokens to generate for each prompt
+- `batch_size` the size of the batches provided to the model
+- `number_of_iterations` the number of iterations to perform in the benchmark
+- `use_hpu_graphs` enables HPU graphs which are recommended for faster latencies
+- `use_kv_cache` enables a key-value cache to speed up the generation process.
+
+For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
+```
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path bigscience/bloom \
+--batch_size 1 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100
 ```
 
-Example usage on 8 HPUs:
 
-```bash
-python ../gaudi_spawn.py --world_size 8 --use_mpi \
-    run_generation.py \
-    --model_name_or_path=bigscience/bloom-1b3 \
-    --batch_size 4 \
-    --use_hpu_graphs
+### Use any dataset from the Hugging Face Hub
+
+You can also provide the name of a dataset from the Hugging Face Hub to perform generation on it with the argument `--dataset_name`.
+
+By default, the first column in the dataset of type `string` will be used as prompts. You can also select the column you want with the argument `--column_name`.
+
+Here is an example with [JulesBelveze/tldr_news](https://huggingface.co/datasets/JulesBelveze/tldr_news):
+```
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path bigscience/bloom \
+--batch_size 2 \
+--max_new_tokens 100 \
+--use_hpu_graphs \
+--use_kv_cache \
+--dataset_name JulesBelveze/tldr_news \
+--column_name content
 ```
 
-Example usage on 8 HPUs with DeepSpeed:
-
-```bash
-python ../gaudi_spawn.py --world_size 8 --use_deepspeed \
-    run_generation.py \
-    --model_name_or_path=bigscience/bloom-7b1 \
-    --batch_size 4 \
-    --use_hpu_graphs
-```
+> The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
