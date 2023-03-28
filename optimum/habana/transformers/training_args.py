@@ -142,6 +142,16 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    pipelining_fwd_bwd: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to add an additional mark_step between forward and backward for pipelining "
+                "host BWD building and HPU FWD computing."
+            )
+        },
+    )
+
     def __post_init__(self):
         if (self.use_lazy_mode or self.use_hpu_graphs or self.gaudi_config_name) and not self.use_habana:
             raise ValueError(
