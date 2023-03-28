@@ -47,28 +47,6 @@ def gaudi_bloom_build_alibi_tensor(
         dtype (`torch.dtype`, *optional*, default=`torch.bfloat16`):
             dtype of the output tensor
     """
-    # batch_size, seq_length = attention_mask.shape
-    # closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
-    # base = torch.tensor(
-    #     2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
-    # )
-    # powers = torch.arange(1, 1 + closest_power_of_2, device=attention_mask.device, dtype=torch.int32)
-    # slopes = torch.pow(base, powers)
-
-    # if closest_power_of_2 != num_heads:
-    #     extra_base = torch.tensor(
-    #         2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
-    #     )
-    #     num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
-    #     extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, device=attention_mask.device, dtype=torch.int32)
-    #     slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
-
-    # Note: alibi will added to the attention bias that will be applied to the query, key product of attention
-    # => therefore alibi will have to be of shape (batch_size, num_heads, query_length, key_length)
-    # => here we set (batch_size=1, num_heads=num_heads, query_length=1, key_length=max_length)
-    # => the query_length dimension will then be broadcasted correctly
-    # This is more or less identical to T5's relative position bias:
-    # https://github.com/huggingface/transformers/blob/f681437203baa7671de3174b0fa583c349d9d5e1/src/transformers/models/t5/modeling_t5.py#L527
     arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[:, None, :]
     alibi = slopes[..., None] * arange_tensor
     alibi = alibi.reshape(alibi.shape[0] * num_heads, 1, -1)
@@ -159,9 +137,6 @@ def gaudi_bloom_attention_forward(
 
     # cast attention scores to fp32, compute scaled softmax and cast back to initial dtype - [batch_size, num_heads, q_length, kv_length]
     input_dtype = attention_scores.dtype
-    # # `float16` has a minimum value of -65504.0, whereas `bfloat16` and `float32` have a minimum value of `-3.4e+38`
-    # if input_dtype == torch.float16:
-    #     attention_scores = attention_scores.to(torch.float)
     attn_weights = torch.masked_fill(attention_scores, attention_mask, torch.finfo(attention_scores.dtype).min)
     attention_probs = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(input_dtype)
 

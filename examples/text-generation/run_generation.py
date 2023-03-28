@@ -47,12 +47,12 @@ def get_repo_root(model_name_or_path, local_rank):
     """
     Downloads the specified model checkpoint and returns the repository where it was downloaded.
     """
-    # checks if online or not
+    # Checks if online or not
     if is_offline_mode():
         if local_rank == 0:
             print("Offline mode: forcing local_files_only=True")
 
-    # download only on first process
+    # Download only on first process
     if local_rank == 0:
         snapshot_download(
             model_name_or_path,
@@ -77,8 +77,8 @@ def get_checkpoint_files(model_name_or_path, local_rank):
     """
     cached_repo_dir = get_repo_root(model_name_or_path, local_rank)
 
-    # extensions: .bin | .pt
-    # creates a list of paths from all downloaded files in cache dir
+    # Extensions: .bin | .pt
+    # Creates a list of paths from all downloaded files in cache dir
     file_list = [str(entry) for entry in Path(cached_repo_dir).rglob("*.[bp][it][n]") if entry.is_file()]
     return file_list
 
@@ -101,11 +101,11 @@ def main():
         default=None,
         type=str,
         required=True,
-        help="Path to pre-trained model",
+        help="Path to pre-trained model.",
     )
     parser.add_argument("--max_new_tokens", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=1, help="Input batch size")
-    parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations")
+    parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
+    parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations.")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
     parser.add_argument(
         "--use_kv_cache",
