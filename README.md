@@ -49,13 +49,6 @@ Optimum Habana is a fast-moving project, and you may want to install it from sou
 pip install git+https://github.com/huggingface/optimum-habana.git
 ```
 
-> Alternatively, you can install the package without pip as follows:
-> ```bash
-> git clone https://github.com/huggingface/optimum-habana.git
-> cd optimum-habana
-> python setup.py install
-> ```
-
 Last but not least, don't forget to install the requirements for every example:
 
 ```bash
@@ -181,7 +174,7 @@ You can generate images from prompts using Stable Diffusion on Gaudi using the [
 + from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
 
-model_name = "CompVis/stable-diffusion-v1-4"
+model_name = "runwayml/stable-diffusion-v1-5"
 
 - scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 + scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
