@@ -47,7 +47,8 @@ python run_audio_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --half_precision_backend=hpu_amp
 ```
 
 On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96%**.
@@ -83,7 +84,8 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --half_precision_backend=hpu_amp
 ```
 
 On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.

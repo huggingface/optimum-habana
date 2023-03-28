@@ -57,7 +57,6 @@ UNSUPPORTED_ARGUMENTS = [
     "fp16_full_eval",
     "fp16_opt_level",
     "fsdp",
-    "half_precision_backend",  # not supported, Habana Mixed Precision should be used and specified in Gaudi configuration
     "mp_parameters",
     "sharded_ddp",
     "tf32",
@@ -175,6 +174,14 @@ class GaudiTrainingArguments(TrainingArguments):
                 "When using distributed training, the value of the flag `find_unused_parameters` passed to "
                 "`DistributedDataParallel`."
             )
+        },
+    )
+
+    half_precision_backend: str = field(
+        default="auto",
+        metadata={
+            "help": "The backend to be used for half precision.",
+            "choices": ["auto", "cuda_amp", "apex", "cpu_amp", "hpu_amp"],
         },
     )
 
