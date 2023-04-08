@@ -46,7 +46,7 @@
 >             f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
 >             " support it on HPUs yet."
 >         )
-695c705,709
+698c708,712
 <     data_collator = DataCollatorCTCWithPadding(processor=processor)
 ---
 >     data_collator = DataCollatorCTCWithPadding(
@@ -54,9 +54,9 @@
 >         pad_to_multiple_of=int(max_input_length),
 >         pad_to_multiple_of_labels=500,
 >     )
-698c712
+701c715
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-699a714
+702a717
 >         gaudi_config=gaudi_config,
