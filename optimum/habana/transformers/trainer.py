@@ -919,18 +919,16 @@ class GaudiTrainer(Trainer):
         np.random.set_state(checkpoint_rng_state["numpy"])
         torch.random.set_rng_state(checkpoint_rng_state["cpu"])
         if self.args.use_habana:
-            # TODO: uncomment the code block below when torch.hpu.random.get_rng_state_all is fixed in SynapseAI
-            # if self.args.local_rank != -1:
-            #     self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
-            # else:
-            #     try:
-            #         self.hpu_random.set_rng_state_all(checkpoint_rng_state["hpu"])
-            #     except Exception as e:
-            #         logger.info(
-            #             f"Didn't manage to set back the RNG states of the HPU because of the following error:\n {e}"
-            #             "\nThis won't yield the same results as if the training had not been interrupted."
-            #         )
-            self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
+            if self.args.local_rank != -1:
+                self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
+            else:
+                try:
+                    self.hpu_random.set_rng_state_all(checkpoint_rng_state["hpu"])
+                except Exception as e:
+                    logger.info(
+                        f"Didn't manage to set back the RNG states of the HPU because of the following error:\n {e}"
+                        "\nThis won't yield the same results as if the training had not been interrupted."
+                    )
 
     def _save_checkpoint(self, model, trial, metrics=None):
         # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
@@ -1000,13 +998,11 @@ class GaudiTrainer(Trainer):
         }
 
         if self.args.use_habana:
-            # TODO: uncomment the code block below when torch.hpu.random.get_rng_state_all is fixed in SynapseAI
-            # if self.args.local_rank == -1:
-            #     # In non distributed, we save the global HPU RNG state
-            #     rng_states["hpu"] = self.hpu_random.get_rng_state_all()
-            # else:
-            #     rng_states["hpu"] = self.hpu_random.get_rng_state()
-            rng_states["hpu"] = self.hpu_random.get_rng_state()
+            if self.args.local_rank == -1:
+                # In non distributed, we save the global HPU RNG state
+                rng_states["hpu"] = self.hpu_random.get_rng_state_all()
+            else:
+                rng_states["hpu"] = self.hpu_random.get_rng_state()
 
         # A process can arrive here before the process 0 has a chance to save the model, in which case output_dir may
         # not yet exist.
@@ -1099,16 +1095,6 @@ class GaudiTrainer(Trainer):
             logger.info("Using HPU graphs for inference.")
             # Do not wrap the model in HPU graphs if it has already been done
             if not self.already_wrapped_for_hpu_graphs:
-                # TODO: delete the five following code lines when SynapseAI 1.9 is released
-                from transformers.models.t5.modeling_t5 import T5PreTrainedModel
-
-                if isinstance(model, T5PreTrainedModel):
-                    from transformers.models.t5.modeling_t5 import T5Attention
-
-                    from .models.t5 import _gaudi_relative_position_bucket
-
-                    T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
-
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
                 model = wrap_in_hpu_graph(model)
@@ -1431,16 +1417,6 @@ class GaudiTrainer(Trainer):
             logger.info("Using HPU graphs for inference.")
             # Do not wrap the model in HPU graphs if it has already been done
             if not self.already_wrapped_for_hpu_graphs:
-                # TODO: delete the five following code lines when SynapseAI 1.9 is released
-                from transformers.models.t5.modeling_t5 import T5PreTrainedModel
-
-                if isinstance(model, T5PreTrainedModel):
-                    from transformers.models.t5.modeling_t5 import T5Attention
-
-                    from .models.t5 import _gaudi_relative_position_bucket
-
-                    T5Attention._relative_position_bucket = _gaudi_relative_position_bucket
-
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
                 model = wrap_in_hpu_graph(model)

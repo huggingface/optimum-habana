@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 Then, since this example relies on [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0
 ```
 
 
