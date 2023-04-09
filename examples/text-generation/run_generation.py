@@ -193,15 +193,23 @@ def main():
     torch.distributed.barrier()
 
     # Initialize the model
-    model = deepspeed.init_inference(
-        model,
-        mp_size=world_size,
-        dtype=torch.bfloat16,
-        injection_policy={BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")},
-        checkpoint=checkpoints_json,
-        args=args,
-        enable_cuda_graph=args.use_hpu_graphs,
-    )
+    if deepspeed.version >= "0.7.7+":
+        # for habana deepspeed 1.9+
+        kwargs = dict(dtype=torch.bfloat16, checkpoint=checkpoints_json)
+        kwargs["tensor_parallel"] = {"tp_size": world_size}
+        kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
+        kwargs["enable_cuda_graph"] = args.use_hpu_graphs
+        model = deepspeed.init_inference(model, **kwargs)
+    else:
+        model = deepspeed.init_inference(
+            model,
+            mp_size=world_size,
+            dtype=torch.bfloat16,
+            injection_policy={BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")},
+            checkpoint=checkpoints_json,
+            args=args,
+            enable_cuda_graph=args.use_hpu_graphs,
+        )
     model.module.split_lm_head()
     model = model.module
 
