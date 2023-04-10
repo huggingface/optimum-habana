@@ -13,12 +13,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  id-token: write # This is required for requesting the JWT
+  contents: read  # This is required for actions/checkout
+
 jobs:
   start-runner:
     name: Start self-hosted EC2 runner
     runs-on: ubuntu-20.04
-    permissions:
-      id-token: write # This is required for requesting the JWT
     env:
       AWS_REGION: us-east-1
       EC2_AMI_ID: ami-0afaecfa8c432542c
