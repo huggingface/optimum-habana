@@ -27,6 +27,7 @@ jobs:
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-b7533b96
       EC2_SECURITY_GROUP: sg-059956d687c7ec5c2
+      EC2_IAM_ROLE: optimum-ec2-github-actions-role
     outputs:
       label: ${{ steps.start-ec2-runner.outputs.label }}
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
@@ -47,6 +48,7 @@ jobs:
           ec2-instance-type: ${{ env.EC2_INSTANCE_TYPE }}
           subnet-id: ${{ env.EC2_SUBNET_ID }}
           security-group-id: ${{ env.EC2_SECURITY_GROUP }}
+          iam-role-name: ${{ env.EC2_IAM_ROLE }}
           aws-resource-tags: > # optional, requires additional permissions
             [
               {"Key": "Name", "Value": "optimum-habana-ci-fast-tests"},
