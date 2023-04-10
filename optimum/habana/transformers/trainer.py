@@ -144,6 +144,8 @@ class GaudiTrainer(Trainer):
             preprocess_logits_for_metrics,
         )
 
+        print("BLABLA")
+
         if gaudi_config is None:
             self.gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
         else:
