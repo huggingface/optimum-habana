@@ -49,7 +49,7 @@ python run_translation.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 If you get a terrible BLEU score, make sure that you didn't forget to use the `--source_prefix` argument.
@@ -84,7 +84,7 @@ python run_translation.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 The task of translation supports only custom JSONLINES files, with each line being a dictionary with the key `"translation"` and its value another dictionary whose keys is the language pair. For example:
@@ -117,7 +117,7 @@ python run_translation.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
  ```
 
 
@@ -148,7 +148,7 @@ python ../gaudi_spawn.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 
@@ -179,7 +179,7 @@ python ../gaudi_spawn.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 2 \
+    --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```
 

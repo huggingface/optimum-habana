@@ -318,7 +318,7 @@ class ExampleTesterBase(TestCase):
             "--use_habana",
             "--use_lazy_mode",
             "--use_hpu_graphs",
-            "--throughput_warmup_steps 2",
+            "--throughput_warmup_steps 3",
         ]
 
         if extra_command_line_arguments is not None:

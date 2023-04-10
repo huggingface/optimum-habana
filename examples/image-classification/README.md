@@ -46,7 +46,7 @@ python run_image_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 For Swin, you need to change/add the following arguments:
@@ -93,7 +93,7 @@ python run_image_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 Internally, the script will use the [`ImageFolder`](https://huggingface.co/docs/datasets/v2.0.0/en/image_process#imagefolder) feature which will automatically turn the folders into 🤗 Dataset objects.
@@ -193,7 +193,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 For Swin, you need to change/add the following arguments:
@@ -230,7 +230,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
-    --throughput_warmup_steps 2 \
+    --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```
 
