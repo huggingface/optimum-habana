@@ -41,6 +41,8 @@ def get_dtype(logits: Union[torch.Tensor, Tuple[torch.Tensor]]) -> Union[str, Li
         return logits_dtype
     elif isinstance(logits, tuple):
         return [get_dtype(logits_tensor) for logits_tensor in logits]
+    elif isinstance(logits, dict):
+        return {k: get_dtype(v) for k, v in logits.items()}
     else:
         raise TypeError(f"logits should be of type torch.Tensor or tuple, got {type(logits)} which is not supported")
 
