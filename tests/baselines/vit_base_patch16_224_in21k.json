@@ -11,7 +11,8 @@
                 "train_samples_per_second": 288.202,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--seed 1337"
+                    "--seed 1337",
+                    "--dataloader_num_workers 1"
                 ]
             },
             "multi_card": {
@@ -22,7 +23,8 @@
                 "train_samples_per_second": 1680.255,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--seed 1337"
+                    "--seed 1337",
+                    "--dataloader_num_workers 1"
                 ]
             }
         }

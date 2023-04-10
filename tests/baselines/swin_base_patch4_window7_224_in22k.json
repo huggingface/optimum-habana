@@ -12,7 +12,8 @@
                 "extra_arguments": [
                     "--remove_unused_columns False",
                     "--seed 1337",
-                    "--ignore_mismatched_sizes"
+                    "--ignore_mismatched_sizes",
+                    "--dataloader_num_workers 1"
                 ]
             },
             "multi_card": {
@@ -24,7 +25,8 @@
                 "extra_arguments": [
                     "--remove_unused_columns False",
                     "--seed 1337",
-                    "--ignore_mismatched_sizes"
+                    "--ignore_mismatched_sizes",
+                    "--dataloader_num_workers 1"
                 ]
             }
         }
