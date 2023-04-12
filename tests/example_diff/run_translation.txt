@@ -57,7 +57,7 @@
 >     trainer = GaudiSeq2SeqTrainer(
 565a583
 >         gaudi_config=gaudi_config,
-656,660d673
+658,662d675
 < 
 < 
 < def _mp_fn(index):
