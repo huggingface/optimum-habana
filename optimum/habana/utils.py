@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import random
+import subprocess
 import time
 from typing import Any, Dict
 
@@ -21,7 +22,18 @@ import numpy as np
 import torch
 from habana_frameworks.torch.hpu import memory_stats
 from habana_frameworks.torch.hpu import random as hpu_random
+from packaging import version
 from transformers.utils import is_torch_available
+
+from optimum.utils import logging
+
+from .version import __version__
+
+
+logger = logging.get_logger(__name__)
+
+
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.8.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -138,3 +150,39 @@ def set_seed(seed: int):
     if is_torch_available():
         torch.manual_seed(seed)
         hpu_random.manual_seed_all(seed)
+
+
+def check_synapse_version():
+    # Check the version of habana_frameworks
+    output = subprocess.run(
+        "pip list | grep habana-torch-plugin",
+        shell=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    habana_frameworks_version_number = version.parse(output.stdout.split("\n")[0].split(" ")[-1])
+    if (
+        habana_frameworks_version_number.major != CURRENTLY_VALIDATED_SYNAPSE_VERSION.major
+        or habana_frameworks_version_number.minor != CURRENTLY_VALIDATED_SYNAPSE_VERSION.minor
+    ):
+        logger.warning(
+            f"optimum-habana v{__version__} has been validated for SynapseAI v{CURRENTLY_VALIDATED_SYNAPSE_VERSION} but habana-frameworks v{habana_frameworks_version_number} was found, this could lead to undefined behavior!"
+        )
+
+    # Check driver version
+    output = subprocess.run(
+        "hl-smi",
+        shell=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    driver_version = version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
+    if (
+        driver_version.major != CURRENTLY_VALIDATED_SYNAPSE_VERSION.major
+        or driver_version.minor != CURRENTLY_VALIDATED_SYNAPSE_VERSION.minor
+    ):
+        logger.warning(
+            f"optimum-habana v{__version__} has been validated for SynapseAI v{CURRENTLY_VALIDATED_SYNAPSE_VERSION} but the driver version is v{driver_version}, this could lead to undefined behavior!"
+        )
