@@ -46,7 +46,7 @@ python run_image_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 2 \
     --dataloader_num_workers 1
 ```
 
@@ -94,7 +94,7 @@ python run_image_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 2 \
     --dataloader_num_workers 1
 ```
 
@@ -195,7 +195,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 2 \
     --dataloader_num_workers 1
 ```
 
@@ -234,8 +234,8 @@ python ../gaudi_spawn.py \
     --use_hpu_graphs \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 2 \
+    --dataloader_num_workers 1 \
     --deepspeed path_to_my_deepspeed_config
-    --dataloader_num_workers 1
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
