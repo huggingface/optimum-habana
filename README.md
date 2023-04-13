@@ -103,7 +103,7 @@ training_args = GaudiTrainingArguments(
   # same training arguments...
   use_habana=True,
   use_lazy_mode=True,  # whether to use lazy or eager mode
-  use_hpu_graphs=True,  # whether to use HPU graphs for inference
+  use_hpu_graphs_for_inference=True,  # whether to use HPU graphs for inference
   gaudi_config_name=path_to_gaudi_config,
 )
 

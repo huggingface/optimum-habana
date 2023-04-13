@@ -64,6 +64,7 @@ python run_speech_recognition_ctc.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name="Habana/wav2vec2" \
     --throughput_warmup_steps="3"
 ```
@@ -101,6 +102,7 @@ python ../gaudi_spawn.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3
 ```
@@ -147,6 +149,7 @@ python ../gaudi_spawn.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3\
     --deepspeed ../../tests/configs/deepspeed_zero_2.json

@@ -70,7 +70,7 @@ class TestGaudiTrainerDistributed(TestCasePlus):
         command_list += [output_dir]
         command_list += ["--use_habana"]
         command_list += ["--use_lazy_mode"]
-        command_list += ["--use_hpu_graphs"]
+        command_list += ["--use_hpu_graphs_for_inference"]
         command = [" ".join(command_list)]
 
         distributed_runner = DistributedRunner(

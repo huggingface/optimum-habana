@@ -106,7 +106,7 @@ python run_clip.py \
     --save_strategy epoch \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3
 ```
@@ -134,7 +134,7 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --save_strategy epoch \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3
 ```
@@ -162,7 +162,7 @@ python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --save_strategy epoch \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3
 ```

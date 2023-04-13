@@ -79,6 +79,7 @@ from transformers.utils import (
     is_safetensors_available,
 )
 
+from optimum.habana.distributed import all_reduce_gradients
 from optimum.utils import logging
 
 from ..utils import (
@@ -170,7 +171,7 @@ class GaudiTrainer(Trainer):
                     raise error
                 self.htcore = htcore
 
-            if self.args.use_hpu_graphs:
+            if self.args.use_hpu_graphs_for_inference:
                 self.already_wrapped_for_hpu_graphs = False
 
             if self.args.deepspeed:
@@ -386,7 +387,7 @@ class GaudiTrainer(Trainer):
         if not training:
             return model
 
-        if self.args.local_rank != -1:
+        if self.args.local_rank != -1 and self.args.distribution_strategy == "ddp":
             kwargs = {}
 
             kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
@@ -406,6 +407,11 @@ class GaudiTrainer(Trainer):
                 output_device=self.args.local_rank if self.args._n_gpu != 0 and not self.args.use_habana else None,
                 **kwargs,
             )
+
+        if self.args.use_hpu_graphs_for_training:
+            import habana_frameworks.torch as ht
+
+            ht.hpu.ModuleCacher()(model=model, inplace=True)
 
         # torch.compile() needs to be called after wrapping the model with FSDP or DDP
         # to ensure that it accounts for the graph breaks required by those wrappers
@@ -723,6 +729,15 @@ class GaudiTrainer(Trainer):
                     steps_trained_progress_bar = tqdm(total=steps_trained_in_current_epoch)
                     steps_trained_progress_bar.set_description("Skipping the first batches")
 
+        # In multi-worker training: broadcast model parameters from worker:0 to all the others.
+        # This must be done manually unless DistributedDataParallel is used.
+        if self.args.local_rank != -1 and self.args.distribution_strategy == "fast_ddp":
+            logger.debug(
+                f"Broadcasting the model parameters to assure that each of {self.args.world_size} workers start the training from the same point."
+            )
+            for param in model.parameters():
+                torch.distributed.broadcast(param.data, src=0)
+
         # Update the references
         self.callback_handler.model = self.model
         self.callback_handler.optimizer = self.optimizer
@@ -750,11 +765,7 @@ class GaudiTrainer(Trainer):
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
 
-        # set_to_none is not implemented for some optimizers
-        try:
-            model.zero_grad(set_to_none=True)
-        except TypeError:
-            model.zero_grad()
+        self._zero_model_grad(model)
 
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
@@ -820,8 +831,10 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
+                # Proceed with forward and backward passes.
                 if (
-                    ((step + 1) % args.gradient_accumulation_steps != 0)
+                    args.distribution_strategy == "ddp"
+                    and ((step + 1) % args.gradient_accumulation_steps != 0)
                     and args.local_rank != -1
                     and args._no_sync_in_gradient_accumulation
                 ):
@@ -830,6 +843,17 @@ class GaudiTrainer(Trainer):
                         tr_loss_step = self.training_step(model, inputs)
                 else:
                     tr_loss_step = self.training_step(model, inputs)
+
+                is_optimization_step = (step + 1) % args.gradient_accumulation_steps == 0 or (
+                    # last step in epoch but step is always smaller than gradient_accumulation_steps
+                    steps_in_epoch <= args.gradient_accumulation_steps
+                    and (step + 1) == steps_in_epoch
+                )
+
+                if args.local_rank != -1 and args.distribution_strategy == "fast_ddp" and is_optimization_step:
+                    all_reduce_gradients(
+                        model, use_hpu_graph=True
+                    )  # use HPU graphs for gradient fusion regardless of args.use_hpu_graphs_for_training setting
 
                 if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
                     # if loss is nan or inf simply add the average of previous logged losses
@@ -845,11 +869,7 @@ class GaudiTrainer(Trainer):
                 if self.deepspeed:
                     self.deepspeed.step()
 
-                if (step + 1) % args.gradient_accumulation_steps == 0 or (
-                    # last step in epoch but step is always smaller than gradient_accumulation_steps
-                    steps_in_epoch <= args.gradient_accumulation_steps
-                    and (step + 1) == steps_in_epoch
-                ):
+                if is_optimization_step:
                     # Gradient clipping
                     if args.max_grad_norm is not None and args.max_grad_norm > 0 and not self.deepspeed:
                         # deepspeed does its own clipping
@@ -890,11 +910,7 @@ class GaudiTrainer(Trainer):
                     if optimizer_was_run and not self.deepspeed:
                         self.lr_scheduler.step()
 
-                    # set_to_none is not implemented for some optimizers
-                    try:
-                        model.zero_grad(set_to_none=True)
-                    except TypeError:
-                        model.zero_grad()
+                    self._zero_model_grad(model)
 
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
@@ -1172,7 +1188,7 @@ class GaudiTrainer(Trainer):
         model.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
-        if args.use_hpu_graphs and not self.is_in_train:
+        if args.use_hpu_graphs_for_inference and not self.is_in_train:
             logger.info("Using HPU graphs for inference.")
             # Do not wrap the model in HPU graphs if it has already been done
             if not self.already_wrapped_for_hpu_graphs:
@@ -1439,11 +1455,11 @@ class GaudiTrainer(Trainer):
             except RuntimeError as error:
                 if "cpu fallback is not supported during hpu graph capturing" in str(error):
                     error.args = (
-                        f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                        f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs_for_inference=False`.",
                     )
                 raise error
 
-        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
+        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs_for_inference and not self.is_in_train):
             self.htcore.mark_step()
 
         if prediction_loss_only:
@@ -1494,7 +1510,7 @@ class GaudiTrainer(Trainer):
         model.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
-        if args.use_hpu_graphs and not self.is_in_train:
+        if args.use_hpu_graphs_for_inference and not self.is_in_train:
             logger.info("Using HPU graphs for inference.")
             # Do not wrap the model in HPU graphs if it has already been done
             if not self.already_wrapped_for_hpu_graphs:
@@ -1790,3 +1806,20 @@ class GaudiTrainer(Trainer):
         # Moving a model to HPU disconnects the tied weights, so we have to retie them.
         if self.args.use_habana and hasattr(model, "tie_weights"):
             model.tie_weights()
+
+    def _zero_model_grad(self, model):
+        if hasattr(model, "_zero_grad_kwargs"):
+            model.zero_grad(**model._zero_grad_kwargs)
+        else:
+            # Optimization based on setting gradients to None (instead of zeroing them out) may only be used when gradients are not recorded using HPU graphs.
+            # HPU graphs rely on fixed tensors - setting gradients to None will enforce their re-allocation during the backward pass each step.
+            set_to_none = (
+                self.args.local_rank == -1 or self.args.distribution_strategy == "ddp"
+            ) and not self.args.use_hpu_graphs_for_training
+
+            try:
+                model.zero_grad(set_to_none=set_to_none)
+                model._zero_grad_kwargs = {"set_to_none": set_to_none}
+            except TypeError:
+                model.zero_grad()
+                model._zero_grad_kwargs = {}

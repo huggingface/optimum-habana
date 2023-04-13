@@ -104,7 +104,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             do_eval=True,
             use_habana=True,
             use_lazy_mode=True,
-            use_hpu_graphs=True,
+            use_hpu_graphs_for_inference=True,
         )
 
         # instantiate trainer

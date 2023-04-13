@@ -54,14 +54,16 @@ python run_qa.py \
   --output_dir /tmp/squad/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs \
+  --use_hpu_graphs_for_inference \
+  --use_hpu_graphs_for_training \
+  --distribution_strategy fast_ddp \
   --throughput_warmup_steps 3
 ```
 
 Training with the previously defined hyper-parameters yields the following results:
 ```bash
-f1 = 92.9397
-exact_match = 86.6887
+f1 = 93.0848
+exact_match = 86.755
 ```
 
 
@@ -86,13 +88,15 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/squad_output/ \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training \
+    --distribution_strategy fast_ddp \
     --throughput_warmup_steps 3
 ```
 
 It runs in 11 minutes with BERT-large and yields the following results:
 ```bash
-f1 = 93.1666
+f1 = 93.1075
 exact_match = 86.8874
 ```
 
@@ -118,7 +122,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/squad_output/ \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```

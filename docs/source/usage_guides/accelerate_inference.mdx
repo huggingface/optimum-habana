@@ -21,7 +21,7 @@ It consists in capturing a series of operations (i.e. graphs) in a HPU stream an
 Thus, you can apply this to the `forward` method of your model to run it efficiently at inference.
 
 HPU Graphs are integrated into the [`GaudiTrainer`](../package_reference/trainer) and the [`GaudiStableDiffusionPipeline`](../package_reference/stable_diffusion_pipeline) so that one can use them very easily:
-- `GaudiTrainer` needs the training argument `use_hpu_graphs` to be set to `True` as follows:
+- `GaudiTrainer` needs the training argument `use_hpu_graphs_for_inference` to be set to `True` as follows:
 ```python
 from optimum.habana import GaudiTrainer, GaudiTrainingArguments
 
@@ -29,7 +29,7 @@ from optimum.habana import GaudiTrainer, GaudiTrainingArguments
 training_args = GaudiTrainingArguments(
     use_habana=True,
     use_lazy_mode=True,
-    use_hpu_graphs=True,
+    use_hpu_graphs_for_inference=True,
     gaudi_config_name=gaudi_config_name,
     ...
 )
