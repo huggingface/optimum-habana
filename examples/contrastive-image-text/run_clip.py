@@ -47,7 +47,7 @@ from transformers.utils.versions import require_version
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
-
+import evaluate
 
 logger = logging.getLogger(__name__)
 
@@ -337,6 +337,12 @@ def main():
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
+    metric = evaluate.load("accuracy")
+
+    def compute_metrics(p):
+        #mport pdb;pdb.set_trace()
+        return metric.compute(predictions=np.argmax(p.predictions, axis=1), references=p.label_ids)
+
     # Load image_processor, in this script we only use this to get the mean and std for normalization.
     image_processor = AutoImageProcessor.from_pretrained(
         model_args.image_processor_name or model_args.model_name_or_path,
@@ -504,6 +510,7 @@ def main():
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
+        compute_metrics=compute_metrics,
         data_collator=collate_fn,
     )
 
