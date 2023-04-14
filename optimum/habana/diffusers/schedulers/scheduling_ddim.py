@@ -42,6 +42,8 @@ class GaudiDDIMScheduler(DDIMScheduler):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
+        clip_sample_range (`float`, default `1.0`):
+            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         set_alpha_to_one (`bool`, default `True`):
             each diffusion step uses the value of alphas product at that step and at the previous one. For the final
             step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
@@ -54,6 +56,15 @@ class GaudiDDIMScheduler(DDIMScheduler):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
+        thresholding (`bool`, default `False`):
+            whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
+            Note that the thresholding method is unsuitable for latent-space diffusion models (such as
+            stable-diffusion).
+        dynamic_thresholding_ratio (`float`, default `0.995`):
+            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
+            (https://arxiv.org/abs/2205.11487). Valid only when `thresholding=True`.
+        sample_max_value (`float`, default `1.0`):
+            the threshold value for dynamic thresholding. Valid only when `thresholding=True`.
     """
 
     @register_to_config
@@ -68,6 +79,10 @@ class GaudiDDIMScheduler(DDIMScheduler):
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
+        thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
+        clip_sample_range: float = 1.0,
+        sample_max_value: float = 1.0,
     ):
         super().__init__(
             num_train_timesteps,
@@ -197,32 +212,37 @@ class GaudiDDIMScheduler(DDIMScheduler):
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+            pred_epsilon = model_output
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
+            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
         elif self.config.prediction_type == "v_prediction":
             pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
-            # predict V
-            model_output = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+            pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
                 " `v_prediction`"
             )
 
-        # 4. Clip "predicted x_0"
-        if self.config.clip_sample:
-            pred_original_sample = torch.clamp(pred_original_sample, -1, 1)
+        # 4. Clip or threshold "predicted x_0"
+        if self.config.thresholding:
+            pred_original_sample = self._threshold_sample(pred_original_sample)
+        elif self.config.clip_sample:
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
+            )
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
         std_dev_t = eta * variance ** (0.5)
 
         if use_clipped_model_output:
-            # the model_output is always re-derived from the clipped x_0 in Glide
-            model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+            # the pred_epsilon is always re-derived from the clipped x_0 in Glide
+            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
+        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * pred_epsilon
 
         # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
@@ -243,7 +263,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
                 if device.type == "hpu":
                     variance_noise = variance_noise.to(device)
 
-            prev_sample = prev_sample + variance ** (0.5) * eta * variance_noise
+            prev_sample = prev_sample + std_dev_t * variance_noise
 
         if not return_dict:
             return (prev_sample,)
