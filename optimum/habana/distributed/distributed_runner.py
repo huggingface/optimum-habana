@@ -178,7 +178,7 @@ class DistributedRunner:
         use_env_param = "--use_env" if self._use_env else ""
 
         self._interpreter = (
-            f"{sys.executable} -um torch.distributed.launch --nproc_per_node={self._world_size} {use_env_param} "
+            f"{sys.executable} -um torch.distributed.run --nproc_per_node={self._world_size} {use_env_param} "
         )
 
     def create_multi_node_setup(self):

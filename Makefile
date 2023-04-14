@@ -22,12 +22,12 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
 # Run code quality checks
 style_check:
-	black --check .
-	ruff .
+	black --check . setup.py
+	ruff . setup.py
 
 style:
-	black .
-	ruff . --fix
+	black . setup.py
+	ruff . setup.py --fix
 
 # Run unit and integration tests
 fast_tests:

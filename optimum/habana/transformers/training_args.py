@@ -30,7 +30,13 @@ from transformers.training_args import (
     default_logdir,
     get_int_from_env,
 )
-from transformers.utils import ccl_version, get_full_repo_name, is_accelerate_available, is_psutil_available
+from transformers.utils import (
+    ccl_version,
+    get_full_repo_name,
+    is_accelerate_available,
+    is_psutil_available,
+    is_safetensors_available,
+)
 
 from optimum.utils import logging
 
@@ -236,6 +242,17 @@ class GaudiTrainingArguments(TrainingArguments):
                     "--load_best_model_at_end requires the saving steps to be a round multiple of the evaluation "
                     f"steps, but found {self.save_steps}, which is not a round multiple of {self.eval_steps}."
                 )
+
+        safetensors_available = is_safetensors_available()
+        if self.save_safetensors and not safetensors_available:
+            raise ValueError(f"--save_safetensors={self.save_safetensors} requires safetensors to be installed!")
+        if not self.save_safetensors and safetensors_available:
+            logger.info(
+                f"Found safetensors installation, but --save_safetensors={self.save_safetensors}. "
+                f"Safetensors should be a preferred weights saving format due to security and performance reasons. "
+                f"If your model cannot be saved by safetensors please feel free to open an issue at "
+                f"https://github.com/huggingface/safetensors!"
+            )
 
         if self.load_best_model_at_end and self.metric_for_best_model is None:
             self.metric_for_best_model = "loss"
