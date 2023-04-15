@@ -13,7 +13,8 @@
                     "--remove_unused_columns False",
                     "--seed 1337",
                     "--ignore_mismatched_sizes",
-                    "--dataloader_num_workers 1"
+                    "--dataloader_num_workers 1",
+                    "--pipelining_fwd_bwd True"
                 ]
             },
             "multi_card": {
@@ -26,7 +27,8 @@
                     "--remove_unused_columns False",
                     "--seed 1337",
                     "--ignore_mismatched_sizes",
-                    "--dataloader_num_workers 1"
+                    "--dataloader_num_workers 1",
+                    "--pipelining_fwd_bwd True"
                 ]
             }
         }
