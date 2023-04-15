@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from transformers.trainer_callback import TrainerCallback
     from transformers.trainer_utils import EvalPrediction, PredictionOutput
 
+    from .gaudi_configuration import GaudiConfig
     from .training_args import GaudiTrainingArguments
 
 
@@ -44,6 +45,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
     def __init__(
         self,
         model: Union["PreTrainedModel", torch.nn.Module] = None,
+        gaudi_config: "GaudiConfig" = None,
         args: "GaudiTrainingArguments" = None,
         data_collator: Optional["DataCollator"] = None,
         train_dataset: Optional[Dataset] = None,
@@ -57,6 +59,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
     ):
         super().__init__(
             model=model,
+            gaudi_config=gaudi_config,
             args=args,
             data_collator=data_collator,
             train_dataset=train_dataset,
