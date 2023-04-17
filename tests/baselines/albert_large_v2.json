@@ -4,7 +4,7 @@
         "eval_batch_size": 4,
         "distribution": {
             "single_card": {
-                "learning_rate": 5e-5,
+                "learning_rate": 6e-5,
                 "train_batch_size": 32,
                 "eval_f1": 92.1747,
                 "train_runtime": 3080.4994,

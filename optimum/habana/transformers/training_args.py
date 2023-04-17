@@ -99,7 +99,7 @@ class GaudiTrainingArguments(TrainingArguments):
             "help": (
                 "Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N,"
                 " the first N steps will not be considered in the calculation of the throughput. This is especially"
-                " useful in lazy mode."
+                " useful in lazy mode where the first two or three training iterations typically take longer."
             )
         },
     )
@@ -493,9 +493,13 @@ class GaudiTrainingArguments(TrainingArguments):
                 if not is_deepspeed_available():
                     raise ImportError(
                         "--deepspeed requires deepspeed: `pip install"
-                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0`."
+                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
                     )
                 import deepspeed
+
+                if world_size > 1:
+                    os.environ["HLS_MODULE_ID"] = str(self.local_rank)
+                    os.environ["ID"] = str(rank)
 
                 deepspeed.init_distributed(dist_backend="hccl", timeout=timedelta(seconds=self.ddp_timeout))
                 logger.info("DeepSpeed is enabled.")

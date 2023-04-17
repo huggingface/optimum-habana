@@ -29,9 +29,7 @@ import torch
 import torch.nn.functional as F
 from huggingface_hub import snapshot_download
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from transformers.deepspeed import is_deepspeed_available
 from transformers.generation import GenerationConfig
-from transformers.models.bloom.modeling_bloom import BloomBlock
 from transformers.utils import is_offline_mode
 
 
@@ -139,7 +137,6 @@ def main():
     # )
     # if use_deepspeed:
     # Set necessary env variables
-    os.environ.setdefault("WA_BETA_ALIBI", "1")
     os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
     os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
@@ -153,9 +150,11 @@ def main():
     world_size, rank, args.local_rank = initialize_distributed_hpu()
 
     # Check if DeepSpeed is installed
+    from transformers.deepspeed import is_deepspeed_available
+
     if not is_deepspeed_available():
         raise ImportError(
-            "This script requires deepspeed: `pip install" " git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0`."
+            "This script requires deepspeed: `pip install" " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
         )
     import deepspeed
 
@@ -193,15 +192,13 @@ def main():
     torch.distributed.barrier()
 
     # Initialize the model
-    model = deepspeed.init_inference(
-        model,
-        mp_size=world_size,
-        dtype=torch.bfloat16,
-        injection_policy={BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")},
-        checkpoint=checkpoints_json,
-        args=args,
-        enable_cuda_graph=args.use_hpu_graphs,
-    )
+    from transformers.models.bloom.modeling_bloom import BloomBlock
+
+    ds_inference_kwargs = {"dtype": torch.bfloat16, "checkpoint": checkpoints_json}
+    ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
+    ds_inference_kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
+    ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
+    model = deepspeed.init_inference(model, **ds_inference_kwargs)
     model.module.split_lm_head()
     model = model.module
 

@@ -48,8 +48,8 @@ You can also discard the last batch with `dataloader_drop_last=True`.
 
 <Tip>
 
-In lazy mode, the first couple of training iterations may be slower due to graph compilations.
-To not take them into account in the computation of the throughput at the end of the training, you can add the following training argument: `throughput_warmup_steps=2`.
+In lazy mode, the first two or three training iterations may be slower due to graph compilations.
+To not take them into account in the computation of the throughput at the end of the training, you can add the following training argument: `throughput_warmup_steps=3`.
 
 </Tip>
 

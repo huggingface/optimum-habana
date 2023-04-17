@@ -47,15 +47,18 @@ def gaudi_bloom_build_alibi_tensor(
         dtype (`torch.dtype`, *optional*, default=`torch.bfloat16`):
             dtype of the output tensor
     """
-    arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[:, None, :]
-    alibi = slopes[..., None] * arange_tensor
-    alibi = alibi.reshape(alibi.shape[0] * num_heads, 1, -1)
+    batch_size = attention_mask.size()[0]
+    max_seq_len = attention_mask.size()[1]
+    alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_seq_len, device=attention_mask.device).unsqueeze(
+        0
+    ).unsqueeze(0).expand(num_heads, -1, -1)
 
-    if os.environ.get("WA_BETA_ALIBI", "0") == "1":
-        global_rank = int(os.environ.get("RANK", 0))
-        world_size = int(os.environ.get("WORLD_SIZE", 1))
-        split_size = alibi.shape[0] // world_size
-        alibi = alibi.split(split_size)[global_rank]
+    # Select the part of the tensor that corresponds to our tensor parallel index.
+    tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
+    tp_index = int(os.environ.get("RANK", 0))
+    alibi = alibi.reshape((tp_world_size, -1, *alibi.shape[1:]))[tp_index]
+
+    alibi = alibi.repeat(batch_size, 1, 1)
     return alibi.to(dtype)
 
 

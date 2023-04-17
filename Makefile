@@ -21,11 +21,11 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 .PHONY:	style test
 
 # Run code quality checks
-style_check:
+style_check: clean
 	black --check . setup.py
 	ruff . setup.py
 
-style:
+style: clean
 	black . setup.py
 	ruff . setup.py --fix
 
@@ -49,7 +49,7 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
@@ -92,6 +92,12 @@ clean:
 	find . -name "habana_log.livealloc.log_*" -type f -delete
 	find . -name .lock -type f -delete
 	find . -name .graph_dumps -type d -delete
+	rm -rf regression/
+	rm -rf tmp_trainer/
+	rm -rf test/
+	rm -rf build/
+	rm -rf dist/
+	rm -rf optimum_habana.egg-info/
 
 test_installs:
 	python -m pip install .[tests]
