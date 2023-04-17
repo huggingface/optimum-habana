@@ -21,11 +21,11 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 .PHONY:	style test
 
 # Run code quality checks
-style_check:
+style_check: clean
 	black --check . setup.py
 	ruff . setup.py
 
-style:
+style: clean
 	black . setup.py
 	ruff . setup.py --fix
 
@@ -92,6 +92,12 @@ clean:
 	find . -name "habana_log.livealloc.log_*" -type f -delete
 	find . -name .lock -type f -delete
 	find . -name .graph_dumps -type d -delete
+	rm -rf regression/
+	rm -rf tmp_trainer/
+	rm -rf test/
+	rm -rf build/
+	rm -rf dist/
+	rm -rf optimum_habana.egg-info/
 
 test_installs:
 	python -m pip install .[tests]

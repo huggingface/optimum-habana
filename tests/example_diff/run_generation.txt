@@ -15,7 +15,7 @@
 > from pathlib import Path
 25d27
 < import numpy as np
-27,43c29,35
+27,43c29,33
 < 
 < from transformers import (
 <     CTRLLMHeadModel,
@@ -37,11 +37,9 @@
 > import torch.nn.functional as F
 > from huggingface_hub import snapshot_download
 > from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-> from transformers.deepspeed import is_deepspeed_available
 > from transformers.generation import GenerationConfig
-> from transformers.models.bloom.modeling_bloom import BloomBlock
 > from transformers.utils import is_offline_mode
-53,216d44
+53,216d42
 < MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 < 
 < MODEL_CLASSES = {
@@ -206,7 +204,7 @@
 <         ],
 <         -1,
 <     )
-218,222c46,61
+218,222c44,59
 <     if model.config.use_cache:
 <         jit_inputs = (
 <             dummy_input["input_ids"].to(model.device),
@@ -229,7 +227,7 @@
 >             local_files_only=is_offline_mode(),
 >             cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
 >             ignore_patterns=["*.safetensors"],
-224,231d62
+224,231d60
 <     else:
 <         jit_inputs = (
 <             dummy_input["input_ids"].to(model.device),
@@ -238,12 +236,12 @@
 < 
 <     return jit_inputs
 < 
-233,234c64
+233,234c62
 < class _ModelFallbackWrapper(GenerationMixin):
 <     __slots__ = ("_optimized", "_default")
 ---
 >     torch.distributed.barrier()
-236,259c66,71
+236,259c64,69
 <     def __init__(self, optimized, default):
 <         self._optimized = optimized
 <         self._default = default
@@ -275,10 +273,10 @@
 >         cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
 >         ignore_patterns=["*.safetensors"],
 >     )
-261,262d72
+261,262d70
 <     def __getattr__(self, item):
 <         return getattr(self._default, item)
-264,279c74,93
+264,279c72,91
 <     def prepare_inputs_for_generation(
 <         self, input_ids, past_key_values=None, inputs_embeds=None, use_cache=None, **kwargs
 <     ):
@@ -316,9 +314,9 @@
 >     if local_rank == 0:
 >         data = {"type": "BLOOM", "checkpoints": checkpoint_files, "version": 1.0}
 >         json.dump(data, open(checkpoints_json, "w"))
-282a97
+282a95
 >     # Arguments management
-285,291d99
+285,291d97
 <         "--model_type",
 <         default=None,
 <         type=str,
@@ -326,7 +324,7 @@
 <         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 <     )
 <     parser.add_argument(
-296,307c104
+296,307c102
 <         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 <     )
 < 
@@ -341,18 +339,18 @@
 <         help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
 ---
 >         help="Path to pre-trained model.",
-308a106,109
+308a104,107
 >     parser.add_argument("--max_new_tokens", type=int, default=100)
 >     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
 >     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations.")
 >     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
-310c111,113
+310c109,111
 <         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
 ---
 >         "--use_kv_cache",
 >         action="store_true",
 >         help="Whether to use the key/value cache for decoding. It should speed up generation.",
-312,321c115
+312,321c113
 <     parser.add_argument("--k", type=int, default=0)
 <     parser.add_argument("--p", type=float, default=0.9)
 < 
@@ -365,7 +363,7 @@
 <     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
 ---
 >     parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not.")
-323,325c117,120
+323,325c115,118
 <         "--fp16",
 <         action="store_true",
 <         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
@@ -374,23 +372,23 @@
 >         default=None,
 >         type=str,
 >         help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
-328c123,126
+328c121,124
 <         "--jit", type=bool, default=False, help="Whether or not to use jit trace to accelerate inference"
 ---
 >         "--column_name",
 >         default=None,
 >         type=str,
 >         help="Optional argument if you want to assess your model on a given dataset of the HF Hub, this will be the name of the column to use as prompts for generation.",
-330,333d127
+330,333d125
 <     args = parser.parse_args()
 < 
 <     args.device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
 <     args.n_gpu = 0 if args.no_cuda else torch.cuda.device_count()
-335c129
+335c127
 <     logger.warning(f"device: {args.device}, n_gpu: {args.n_gpu}, 16-bits training: {args.fp16}")
 ---
 >     args = parser.parse_args()
-337c131,160
+337c129,159
 <     set_seed(args)
 ---
 >     # Disable lazy mode if HPU graphs are not used
@@ -404,7 +402,6 @@
 >     # )
 >     # if use_deepspeed:
 >     # Set necessary env variables
->     os.environ.setdefault("WA_BETA_ALIBI", "1")
 >     os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
 >     os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 > 
@@ -418,12 +415,14 @@
 >     world_size, rank, args.local_rank = initialize_distributed_hpu()
 > 
 >     # Check if DeepSpeed is installed
+>     from transformers.deepspeed import is_deepspeed_available
+> 
 >     if not is_deepspeed_available():
 >         raise ImportError(
 >             "This script requires deepspeed: `pip install" " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
 >         )
 >     import deepspeed
-339,364c162,163
+339,364c161,162
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -453,7 +452,7 @@
 ---
 >     # Initialize process(es) for DeepSpeed
 >     deepspeed.init_distributed(dist_backend="hccl")
-366,369c165,166
+366,369c164,165
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
 <         else:
@@ -461,7 +460,7 @@
 ---
 >     # Tweak generation so that it runs faster on Gaudi
 >     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-371,372c168,179
+371,372c167,178
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 ---
@@ -477,19 +476,19 @@
 >     if "bloom" not in args.model_name_or_path:
 >         raise ValueError(
 >             f"DeepSpeed-inference on Gaudi is only available with BLOOM at the moment, got {args.model_name_or_path}."
-374,377d180
+374,377d179
 <     else:
 <         prefix = args.prefix if args.prefix else args.padding_text
 <         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
 <     encoded_prompt = encoded_prompt.to(args.device)
-379,382c182
+379,382c181
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 <     else:
 <         input_ids = encoded_prompt
 ---
 >     config = AutoConfig.from_pretrained(args.model_name_or_path)
-384,404c184,203
+384,404c183,212
 <     if args.jit:
 <         jit_input_texts = ["jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -524,22 +523,16 @@
 >     torch.distributed.barrier()
 > 
 >     # Initialize the model
->     model = deepspeed.init_inference(
->         model,
->         mp_size=world_size,
->         dtype=torch.bfloat16,
->         injection_policy={BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")},
->         checkpoint=checkpoints_json,
->         args=args,
->         enable_cuda_graph=args.use_hpu_graphs,
-405a205,206
+>     from transformers.models.bloom.modeling_bloom import BloomBlock
+> 
+>     ds_inference_kwargs = {"dtype": torch.bfloat16, "checkpoint": checkpoints_json}
+>     ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
+>     ds_inference_kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
+>     ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
+>     model = deepspeed.init_inference(model, **ds_inference_kwargs)
 >     model.module.split_lm_head()
 >     model = model.module
-407,409c208,216
-<     # Remove the batch dimension when returning multiple sequences
-<     if len(output_sequences.shape) > 2:
-<         output_sequences.squeeze_()
----
+> 
 >     if rank in [-1, 0]:
 >         logger.info(f"Args: {args}")
 >         logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: True")
@@ -548,8 +541,11 @@
 >     generation_config = GenerationConfig(
 >         max_new_tokens=args.max_new_tokens,
 >         use_cache=args.use_kv_cache,
->     )
-411c218,319
+407,411c215,316
+<     # Remove the batch dimension when returning multiple sequences
+<     if len(output_sequences.shape) > 2:
+<         output_sequences.squeeze_()
+< 
 <     generated_sequences = []
 ---
 >     if args.dataset_name is None:
@@ -654,7 +650,7 @@
 >         else:
 >             split = "train"
 >         raw_dataset = raw_dataset[split]
-413,415c321,331
+413,415c318,328
 <     for generated_sequence_idx, generated_sequence in enumerate(output_sequences):
 <         print(f"=== GENERATED SEQUENCE {generated_sequence_idx + 1} ===")
 <         generated_sequence = generated_sequence.tolist()
@@ -670,19 +666,19 @@
 >                 )
 >         else:
 >             column_name = args.column_name
-417,418c333,334
+417,418c330,331
 <         # Decode text
 <         text = tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
 ---
 >         # Remove unused columns
 >         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
-420,421c336,337
+420,421c333,334
 <         # Remove all text after the stop token
 <         text = text[: text.find(args.stop_token) if args.stop_token else None]
 ---
 >         # Set the prompt length to 16
 >         prompt_length = 16
-423,425c339,346
+423,425c336,343
 <         # Add the prompt at the beginning of the sequence. Remove the excess text that was used for pre-processing
 <         total_sequence = (
 <             prompt_text + text[len(tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
@@ -695,7 +691,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-427,431c348,385
+427,431c345,382
 < 
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
