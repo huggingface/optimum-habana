@@ -92,6 +92,28 @@ If these operators are not specified, their default values are set to be the one
 ]
 ```
 
+## Pipelining forward and backward passes
+
+There are two stages when running models on Habana HPU: python code interpretation on CPU and HPU recipe computation. The HPU computation stage can be triggered manually or when a copy to the CPU is requested, and generally HPU computation is triggered after `loss.backward()` to make the CPU code interpretation and HPU recipe computation overlap as shown in the following illustration:
+
+```
+CPU:...forward + backward   ...optimizer  ...forward + backward   ...optimizer  ...
+HPU:........................forward + backward...optimizer......forward + backward...optimizer
+```
+
+However, when CPU code interpretation takes longer than HPU computation, it becomes the bottleneck and HPU computation can not be triggered until CPU code interpretation is done. So one potential optimization for such cases is to trigger the HPU *forward* computation right after the CPU *forward* interpretation and before the CPU *backward* interpretation. You can see an example below where the CPU *backward* interpretation overlaps with the HPU *forward* computation:
+
+```
+CPU:...forward   ...backward   ...optimizer  ...forward   ...backward   ...optimizer   ...
+HPU:.............forward.......backward......optimizer......forward.....backward.......optimizer
+```
+
+To enable this optimization, you can set the following training argument `--pipelining_fwd_bwd True`.
+
+### Recommendations
+
+- When training models on Habana Gaudi2, we suggest to enable this feature because Gaudi2 is faster than Gaudi1.
+- When training models that require large device memory, we suggest to disable this optimization because it will increase the HPU memory usage.
 
 ## Custom Operators
 
