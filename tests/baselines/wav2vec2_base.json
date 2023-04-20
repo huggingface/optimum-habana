@@ -6,9 +6,9 @@
             "multi_card": {
                 "learning_rate": 3e-4,
                 "train_batch_size": 16,
-                "eval_accuracy": 0.8149,
-                "train_runtime": 756.2029,
-                "train_samples_per_second": 331.178,
+                "eval_accuracy": 0.8089,
+                "train_runtime": 744.1441,
+                "train_samples_per_second": 341.903,
                 "extra_arguments": [
                     "--audio_column_name audio",
                     "--label_column_name language",
