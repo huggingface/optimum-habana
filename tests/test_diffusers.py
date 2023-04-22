@@ -31,7 +31,7 @@ from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline,
 from optimum.habana.utils import set_seed
 
 
-THROUGHPUT_BASELINE = 0.277
+THROUGHPUT_BASELINE = 0.282
 
 
 class GaudiPipelineUtilsTester(TestCase):
