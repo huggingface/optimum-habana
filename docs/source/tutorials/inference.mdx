@@ -16,13 +16,13 @@ limitations under the License.
 
 # Run Inference
 
-Here we show how to run inference-only workloads on Gaudi.
+This section shows how to run inference-only workloads on Gaudi.
 For more advanced information about how to speed up inference, check out [this guide](../usage_guides/accelerate_inference).
 
 
 ## With GaudiTrainer
 
-Here is a template to perform inference with a `GaudiTrainer` instance where we want to compute the accuracy over the given dataset:
+You can find below a template to perform inference with a `GaudiTrainer` instance where we want to compute the accuracy over the given dataset:
 
 ```python
 import evaluate
@@ -50,7 +50,7 @@ trainer = GaudiTrainer(
 metrics = trainer.evaluate()
 ```
 
-The variable `my_args` should contain some inference-specific arguments, you can take a look [here](https://huggingface.co/docs/transformers/main/en/main_classes/trainer#transformers.TrainingArguments.set_evaluate) to see the arguments that can be interested to set for inference.
+The variable `my_args` should contain some inference-specific arguments, you can take a look [here](https://huggingface.co/docs/transformers/main/en/main_classes/trainer#transformers.TrainingArguments.set_evaluate) to see the arguments that can be interesting to set for inference.
 
 
 ## In our examples
