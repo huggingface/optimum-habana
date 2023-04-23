@@ -260,3 +260,23 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
+
+
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with ViT on Cifar10 on 1 Gaudi card with the following command:
+```bash
+python run_image_classification.py \
+    --model_name_or_path google/vit-base-patch16-224-in21k \
+    --dataset_name cifar10 \
+    --output_dir /tmp/outputs/ \
+    --remove_unused_columns False \
+    --do_eval \
+    --per_device_eval_batch_size 64 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/vit \
+    --dataloader_num_workers 1

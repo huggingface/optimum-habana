@@ -1,0 +1,72 @@
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# Run Inference
+
+Here we show how to run inference-only workloads on Gaudi.
+For more advanced information about how to speed up inference, check out [this guide](../usage_guides/accelerate_inference).
+
+
+## With GaudiTrainer
+
+Here is a template to perform inference with a `GaudiTrainer` instance where we want to compute the accuracy over the given dataset:
+
+```python
+import evaluate
+
+metric = evaluate.load("accuracy")
+
+# You can define your custom compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
+# predictions and label_ids field) and has to return a dictionary string to float.
+def my_compute_metrics(p: EvalPrediction):
+    return metric.compute(predictions=np.argmax(p.predictions, axis=1), references=p.label_ids)
+
+# Trainer initialization
+trainer = GaudiTrainer(
+        model=my_model,
+        gaudi_config=my_gaudi_config,
+        args=my_args,
+        train_dataset=None,
+        eval_dataset=eval_dataset,
+        compute_metrics=my_compute_metrics,
+        tokenizer=my_tokenizer,
+        data_collator=my_data_collator,
+    )
+
+# Run inference
+metrics = trainer.evaluate()
+```
+
+The variable `my_args` should contain some inference-specific arguments, you can take a look [here](https://huggingface.co/docs/transformers/main/en/main_classes/trainer#transformers.TrainingArguments.set_evaluate) to see the arguments that can be interested to set for inference.
+
+
+## In our examples
+
+All [our examples](https://github.com/huggingface/optimum-habana/tree/main/examples) contain instructions for running inference with a given model on a given dataset.
+The reasoning is the same for every example: run the example script with `--do_eval` and `--per_device_eval_batch_size` and without `--do_train`.
+A simple template is the following:
+```bash
+python path_to_the_example_script \
+  --model_name_or_path my_model_name \
+  --gaudi_config_name my_gaudi_config_name \
+  --dataset_name my_dataset_name \
+  --do_eval \
+  --per_device_eval_batch_size my_batch_size \
+  --output_dir path_to_my_output_dir \
+  --use_habana \
+  --use_lazy_mode \
+  --use_hpu_graphs
+```
