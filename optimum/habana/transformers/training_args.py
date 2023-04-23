@@ -152,6 +152,11 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    non_blocking_data_copy: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to enable async data copy when preparing inputs.")},
+    )
+
     def __post_init__(self):
         if (self.use_lazy_mode or self.use_hpu_graphs or self.gaudi_config_name) and not self.use_habana:
             raise ValueError(
