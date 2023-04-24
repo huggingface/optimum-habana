@@ -80,18 +80,18 @@ scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler"
 
 pipeline = GaudiStableDiffusionPipeline.from_pretrained(
     model_name,
-    height=768,
-    width=768,
     scheduler=scheduler,
     use_habana=True,
     use_hpu_graphs=True,
-    gaudi_config="Habana/stable-diffusion",
+    gaudi_config="Habana/stable-diffusion-2",
 )
 
 outputs = pipeline(
     ["An image of a squirrel in Picasso style"],
     num_images_per_prompt=10,
     batch_size=2,
+    height=768,
+    width=768,
 )
 ```
 
