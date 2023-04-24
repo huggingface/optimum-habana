@@ -81,6 +81,6 @@ python text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion-2
 ```
 
-> There are two different checkpoints for Stable Diffusion v2:
+> There are two different checkpoints for Stable Diffusion 2:
 > - use [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) for generating 768x768 images
 > - use [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base) for generating 512x512 images
