@@ -236,3 +236,8 @@ Please refer to Habana Gaudi's official [installation guide](https://docs.habana
 > Tests should be run in a Docker container based on Habana Docker images.
 >
 > The current version has been validated for SynapseAI 1.9.
+
+
+## Development
+
+Check the [contributor guide](https://github.com/huggingface/optimum/blob/main/CONTRIBUTING.md) for instructions.
