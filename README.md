@@ -240,4 +240,4 @@ Please refer to Habana Gaudi's official [installation guide](https://docs.habana
 
 ## Development
 
-Check the [contributor guide](https://github.com/huggingface/transformers/blob/main/CONTRIBUTING.md) for instructions.
+Check the [contributor guide](https://github.com/huggingface/optimum/blob/main/CONTRIBUTING.md) for instructions.
