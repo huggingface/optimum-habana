@@ -74,12 +74,14 @@ Here is an example:
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
 
-model_name = "stabilityai/stable-diffusion-2-base"
+model_name = "stabilityai/stable-diffusion-2-1"
 
 scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
 pipeline = GaudiStableDiffusionPipeline.from_pretrained(
     model_name,
+    height=768,
+    width=768,
     scheduler=scheduler,
     use_habana=True,
     use_hpu_graphs=True,
@@ -88,7 +90,16 @@ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
 
 outputs = pipeline(
     ["An image of a squirrel in Picasso style"],
-    num_images_per_prompt=16,
-    batch_size=4,
+    num_images_per_prompt=10,
+    batch_size=2,
 )
 ```
+
+<Tip>
+
+There are two different checkpoints for Stable Diffusion v2:
+
+- use [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) for generating 768x768 images
+- use [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base) for generating 512x512 images
+
+</Tip>
