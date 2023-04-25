@@ -153,8 +153,10 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     use_fused_gelu: Optional[bool] = field(
-        default=False,
-        metadata={"help": ("Whether to use the original PyTorch GELU, which could be mapped to Gaudi fused GELU kernel.")},
+        default=True,
+        metadata={
+            "help": ("Whether to use the original PyTorch GELU, which could be mapped to Gaudi fused GELU kernel.")
+        },
     )
 
     def __post_init__(self):
