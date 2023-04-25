@@ -404,6 +404,10 @@ def main():
             config.update_from_string(model_args.config_overrides)
             logger.info(f"New config: {config}")
 
+    if hasattr(config, "activation_function"):
+        if config.activation_function in ["gelu_fast", "gelu_new", "gelu_python"] and training_args.use_fused_gelu:
+            config.activation_function = "gelu"
+
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
         "use_fast": model_args.use_fast_tokenizer,

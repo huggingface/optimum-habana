@@ -152,6 +152,11 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    use_fused_gelu: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to use original pytorch gelu, which could be mapped to Gaudi fused gelu kernel")},
+    )
+
     def __post_init__(self):
         if (self.use_lazy_mode or self.use_hpu_graphs or self.gaudi_config_name) and not self.use_habana:
             raise ValueError(
