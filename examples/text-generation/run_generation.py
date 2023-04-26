@@ -148,18 +148,20 @@ def main():
 
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path)
+        args.dtype = torch.bfloat16
         is_bloom = model_is_bloom(config)
 
-        # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
-        with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta" if is_bloom else "hpu"):
-            model = AutoModelForCausalLM.from_config(config, torch_dtype=torch.bfloat16)
+        if is_bloom:
+            # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
+            with deepspeed.OnDevice(dtype=args.dtype, device="meta"):
+                model = AutoModelForCausalLM.from_config(config, torch_dtype=args.dtype)
+        else:
+            with deepspeed.OnDevice(dtype=args.dtype, device=args.device):
+                model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=args.dtype)
         model = model.eval()
 
-        # Make sure all devices/nodes have access to the model checkpoints
-        torch.distributed.barrier()
-
         # Initialize the model
-        ds_inference_kwargs = {"dtype": torch.bfloat16}  # , "checkpoint": checkpoints_json}
+        ds_inference_kwargs = {"dtype": args.dtype}
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
@@ -167,6 +169,10 @@ def main():
         if is_bloom:
             checkpoints_json = "checkpoints.json"
             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
+
+            # Make sure all devices/nodes have access to the model checkpoints
+            torch.distributed.barrier()
+
             from transformers.models.bloom.modeling_bloom import BloomBlock
 
             ds_inference_kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
