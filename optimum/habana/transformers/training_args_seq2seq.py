@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 from transformers.generation.configuration_utils import GenerationConfig
-from transformers.utils import add_start_docstrings
 
 from optimum.utils import logging
 
@@ -29,9 +28,11 @@ logger = logging.get_logger(__name__)
 
 
 @dataclass
-@add_start_docstrings(GaudiTrainingArguments.__doc__)
 class GaudiSeq2SeqTrainingArguments(GaudiTrainingArguments):
     """
+    GaudiSeq2SeqTrainingArguments is built on top of the Tranformers' [Seq2SeqTrainingArguments](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Seq2SeqTrainingArguments)
+    to enable deployment on Habana's Gaudi.
+
     Args:
         sortish_sampler (`bool`, *optional*, defaults to `False`):
             Whether to use a *sortish sampler* or not. Only possible if the underlying datasets are *Seq2SeqDataset*
@@ -46,15 +47,15 @@ class GaudiSeq2SeqTrainingArguments(GaudiTrainingArguments):
         generation_num_beams (`int`, *optional*):
             The `num_beams` to use on each evaluation loop when `predict_with_generate=True`. Will default to the
             `num_beams` value of the model configuration.
-        generation_config (`str` or `Path` or [`~generation.GenerationConfig`], *optional*):
-            Allows to load a [`~generation.GenerationConfig`] from the `from_pretrained` method. This can be either:
+        generation_config (`str` or `Path` or [`transformers.generation.GenerationConfig`], *optional*):
+            Allows to load a [`transformers.generation.GenerationConfig`] from the `from_pretrained` method. This can be either:
 
             - a string, the *model id* of a pretrained model configuration hosted inside a model repo on
               huggingface.co. Valid model ids can be located at the root-level, like `bert-base-uncased`, or namespaced
               under a user or organization name, like `dbmdz/bert-base-german-cased`.
             - a path to a *directory* containing a configuration file saved using the
-              [`~GenerationConfig.save_pretrained`] method, e.g., `./my_model_directory/`.
-            - a [`~generation.GenerationConfig`] object.
+              [`transformers.GenerationConfig.save_pretrained`] method, e.g., `./my_model_directory/`.
+            - a [`transformers.generation.GenerationConfig`] object.
     """
 
     sortish_sampler: bool = field(default=False, metadata={"help": "Whether to use SortishSampler or not."})
