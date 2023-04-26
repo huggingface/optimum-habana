@@ -58,7 +58,8 @@ def write_checkpoints_json(model_name_or_path, local_rank, checkpoints_json):
         json.dump(data, open(checkpoints_json, "w"))
 
 
-def model_is_bloom(model):
-    from transformers.models.bloom import BloomForCausalLM
-
-    return isinstance(model, BloomForCausalLM)
+def model_is_bloom(config):
+    """
+    Checks if the given config belongs to a BLOOM-like model.
+    """
+    return "bloom" in config.architectures[0].lower()

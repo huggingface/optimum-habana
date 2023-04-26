@@ -112,10 +112,6 @@ def main():
         # Initialize process(es) for DeepSpeed
         deepspeed.init_distributed(dist_backend="hccl")
         logger.info("DeepSpeed is enabled.")
-    # elif args.local_rank != -1:
-    #     if not torch.distributed.is_initialized():
-    #         torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
-    #         logger.info("Enabled distributed run.")
     else:
         if args.gaudi_config_name_or_path is None:
             logger.warning(
@@ -150,59 +146,47 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
 
-    # # # Single device
-    # # if args.local_rank == -1:
-    # #     model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path)
-    # #     model = model.eval().to(args.device)
-    # # else:
-    # if "bloom" not in args.model_name_or_path:
-    #     raise ValueError(
-    #         f"DeepSpeed-inference on Gaudi is only available with BLOOM at the moment, got {args.model_name_or_path}."
-    #     )
-
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path)
+        is_bloom = model_is_bloom(config)
 
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
-        with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta"):
+        with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta" if is_bloom else "hpu"):
             model = AutoModelForCausalLM.from_config(config, torch_dtype=torch.bfloat16)
         model = model.eval()
-
-        checkpoints_json = "checkpoints.json"
-        write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
 
         # Make sure all devices/nodes have access to the model checkpoints
         torch.distributed.barrier()
 
         # Initialize the model
-        ds_inference_kwargs = {"dtype": torch.bfloat16, "checkpoint": checkpoints_json}
+        ds_inference_kwargs = {"dtype": torch.bfloat16}  # , "checkpoint": checkpoints_json}
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
-        is_bloom = model_is_bloom(model)
-
+        # BLOOM is managed differently
         if is_bloom:
+            checkpoints_json = "checkpoints.json"
+            write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
             from transformers.models.bloom.modeling_bloom import BloomBlock
 
             ds_inference_kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
+            ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         if is_bloom:
             model.module.split_lm_head()
         model = model.module
-    # elif args.local_rank != -1:
-    #     pass
     else:
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path)
         model = model.eval().to(args.device)
-        is_bloom = model_is_bloom(model)
+        is_bloom = model_is_bloom(model.config)
 
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
             model = wrap_in_hpu_graph(model)
 
-    # Some models like GPT2 do not have a PAD token so we have to set it
+    # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id

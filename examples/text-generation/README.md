@@ -100,7 +100,7 @@ python run_generation.py \
 --use_hpu_graphs \
 --use_kv_cache \
 --dataset_name JulesBelveze/tldr_news \
---column_name content
+--column_name content \
 --gaudi_config_name_or_path Habana/gpt2
 ```
 
