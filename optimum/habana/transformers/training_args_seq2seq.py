@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 from transformers.generation.configuration_utils import GenerationConfig
-from transformers.utils import add_start_docstrings
 
 from optimum.utils import logging
 
@@ -29,9 +28,11 @@ logger = logging.get_logger(__name__)
 
 
 @dataclass
-@add_start_docstrings(GaudiTrainingArguments.__doc__)
 class GaudiSeq2SeqTrainingArguments(GaudiTrainingArguments):
     """
+    GaudiSeq2SeqTrainingArguments is built on top of the Tranformers' Seq2SeqTrainingArguments
+    to enable deployment on Habana's Gaudi.
+
     Args:
         sortish_sampler (`bool`, *optional*, defaults to `False`):
             Whether to use a *sortish sampler* or not. Only possible if the underlying datasets are *Seq2SeqDataset*
