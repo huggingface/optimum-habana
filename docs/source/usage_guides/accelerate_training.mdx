@@ -115,6 +115,12 @@ To enable this optimization, you can set the following training argument `--pipe
 - When training models on Habana Gaudi2, we suggest to enable this feature because Gaudi2 is faster than Gaudi1.
 - When training models that require large device memory, we suggest to disable this optimization because it will increase the HPU memory usage.
 
+## Non-Blocking Data Copy
+
+This optimization is well-suited for models with a high cost of copying data from the host to the device. You can enable it with the argument `non_blocking_data_copy`.
+
+**We recommend to use it on Gaudi2** where the host can continue to execute other tasks (e.g. graph building) to get a better pipelining between the host and the device. On first-generation Gaudi, the device executing time is longer so one should not expect to get any speedup.
+
 ## Custom Operators
 
 Habana provides a few custom operators that achieve better performance than their PyTorch counterparts on Gaudi.
