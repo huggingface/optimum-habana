@@ -18,6 +18,7 @@ import copy
 import importlib
 import inspect
 import os
+import sys
 import tempfile
 from typing import Optional, Union
 
@@ -213,13 +214,9 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             variant (`str`, *optional*):
                 If specified, weights are saved in the format pytorch_model.<variant>.bin.
         """
-        self.save_config(save_directory)
-        if hasattr(self, "gaudi_config"):
-            self.gaudi_config.save_pretrained(save_directory)
-
         model_index_dict = dict(self.config)
-        model_index_dict.pop("_class_name")
-        model_index_dict.pop("_diffusers_version")
+        model_index_dict.pop("_class_name", None)
+        model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
@@ -246,7 +243,13 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             save_method_name = None
             # search for the model's base class in GAUDI_LOADABLE_CLASSES
             for library_name, library_classes in GAUDI_LOADABLE_CLASSES.items():
-                library = importlib.import_module(library_name)
+                if library_name in sys.modules:
+                    library = importlib.import_module(library_name)
+                else:
+                    logger.info(
+                        f"{library_name} is not installed. Cannot save {pipeline_component_name} as {library_classes} from {library_name}"
+                    )
+
                 for base_class, save_load_methods in library_classes.items():
                     class_candidate = getattr(library, base_class, None)
                     if class_candidate is not None and issubclass(model_cls, class_candidate):
@@ -255,6 +258,12 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                         break
                 if save_method_name is not None:
                     break
+
+            if save_method_name is None:
+                logger.warn(f"self.{pipeline_component_name}={sub_model} of type {type(sub_model)} cannot be saved.")
+                # make sure that unsaveable components are not tried to be loaded afterward
+                self.register_to_config(**{pipeline_component_name: (None, None)})
+                continue
 
             save_method = getattr(sub_model, save_method_name)
 
@@ -270,6 +279,11 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 save_kwargs["variant"] = variant
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
+
+        # finally save the config
+        self.save_config(save_directory)
+        if hasattr(self, "gaudi_config"):
+            self.gaudi_config.save_pretrained(save_directory)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
