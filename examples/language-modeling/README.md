@@ -44,7 +44,7 @@ python run_clm.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 This takes about 13 minutes to train on a single HPU. It reaches
@@ -66,7 +66,7 @@ python run_clm.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 
@@ -89,7 +89,7 @@ python ../gaudi_spawn.py \
     --use_hpu_graphs \
     --gradient_checkpointing \
     --use_cache False \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 This takes about 4 minutes to train on 8 HPUs. It reaches
@@ -120,7 +120,7 @@ python run_mlm.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 To run on your own training and validation files, use the following command:
@@ -139,7 +139,7 @@ python run_mlm.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 If your dataset is organized with one sample per line, you can use the `--line_by_line` flag (otherwise the script
@@ -165,7 +165,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 
@@ -189,7 +189,7 @@ python run_clm.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 
@@ -215,7 +215,7 @@ python run_clm.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/gpt2 \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 <!-- This feature is only available in `run_clm.py` and `run_mlm.py`. -->
@@ -242,7 +242,7 @@ python ../gaudi_spawn.py \
     --use_hpu_graphs \
     --gradient_checkpointing \
     --use_cache False \
-    --throughput_warmup_steps 2 \
+    --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```
 
@@ -271,3 +271,8 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ## Streaming
 
 To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` to the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
+
+
+## Low Cpu Memory Usage
+
+To use low cpu memory mode which can be very useful for LLM, add `--low_cpu_mem_usage` to the command line.

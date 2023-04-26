@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import dataclasses
+import json
 import math
 import os
 import random
@@ -22,6 +23,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from itertools import product
 from pathlib import Path
 from typing import Optional, Union
 
@@ -40,13 +42,20 @@ from transformers.testing_utils import (
     get_tests_dir,
     is_staging_test,
     require_optuna,
+    require_safetensors,
     require_sentencepiece,
     require_tokenizers,
     require_torch,
 )
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 from transformers.training_args import OptimizerNames
-from transformers.utils import WEIGHTS_NAME
+from transformers.utils import (
+    SAFE_WEIGHTS_INDEX_NAME,
+    SAFE_WEIGHTS_NAME,
+    WEIGHTS_INDEX_NAME,
+    WEIGHTS_NAME,
+    is_safetensors_available,
+)
 from transformers.utils.hp_naming import TrialShortNamer
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
@@ -62,6 +71,9 @@ if is_torch_available():
     from transformers.modeling_utils import unwrap_model
 
     from optimum.habana import GaudiTrainer
+
+    if is_safetensors_available():
+        import safetensors.torch
 
 
 PATH_SAMPLE_TEXT = f"{get_tests_dir()}/fixtures/sample_text.txt"
@@ -299,8 +311,9 @@ if is_torch_available():
 
 
 class GaudiTrainerIntegrationCommon:
-    def check_saved_checkpoints(self, output_dir, freq, total, is_pretrained=True):
-        file_list = [WEIGHTS_NAME, "training_args.bin", "optimizer.pt", "scheduler.pt", "trainer_state.json"]
+    def check_saved_checkpoints(self, output_dir, freq, total, is_pretrained=True, safe_weights=False):
+        weights_file = WEIGHTS_NAME if not safe_weights else SAFE_WEIGHTS_NAME
+        file_list = [weights_file, "training_args.bin", "optimizer.pt", "scheduler.pt", "trainer_state.json"]
         if is_pretrained:
             file_list.append("config.json")
             file_list.append("gaudi_config.json")
@@ -311,7 +324,7 @@ class GaudiTrainerIntegrationCommon:
                 self.assertTrue(os.path.isfile(os.path.join(checkpoint, filename)))
 
     def check_best_model_has_been_loaded(
-        self, output_dir, freq, total, trainer, metric, greater_is_better=False, is_pretrained=True
+        self, output_dir, freq, total, trainer, metric, greater_is_better=False, is_pretrained=True, safe_weights=False
     ):
         checkpoint = os.path.join(output_dir, f"checkpoint-{(total // freq) * freq}")
         log_history = TrainerState.load_from_json(os.path.join(checkpoint, "trainer_state.json")).log_history
@@ -325,7 +338,10 @@ class GaudiTrainerIntegrationCommon:
             best_model.to(trainer.args.device)
         else:
             best_model = RegressionModel()
-            state_dict = torch.load(os.path.join(checkpoint, WEIGHTS_NAME))
+            if not safe_weights:
+                state_dict = torch.load(os.path.join(checkpoint, WEIGHTS_NAME))
+            else:
+                state_dict = safetensors.torch.load_file(os.path.join(checkpoint, SAFE_WEIGHTS_NAME))
             best_model.load_state_dict(state_dict)
             best_model.to(trainer.args.device)
         self.assertTrue(torch.allclose(best_model.a, trainer.model.a))
@@ -348,6 +364,44 @@ class GaudiTrainerIntegrationCommon:
                 _ = log.pop(key, None)
                 _ = log1.pop(key, None)
             self.assertEqual(log, log1)
+
+    def convert_to_sharded_checkpoint(self, folder, save_safe=False, load_safe=False):
+        # Converts a checkpoint of a regression model to a sharded checkpoint.
+        if load_safe:
+            loader = safetensors.torch.load_file
+            weights_file = os.path.join(folder, SAFE_WEIGHTS_NAME)
+        else:
+            loader = torch.load
+            weights_file = os.path.join(folder, WEIGHTS_NAME)
+
+        if save_safe:
+            extension = "safetensors"
+            saver = safetensors.torch.save_file
+            index_file = os.path.join(folder, SAFE_WEIGHTS_INDEX_NAME)
+            shard_name = SAFE_WEIGHTS_NAME
+        else:
+            extension = "bin"
+            saver = torch.save
+            index_file = os.path.join(folder, WEIGHTS_INDEX_NAME)
+            shard_name = WEIGHTS_NAME
+
+        state_dict = loader(weights_file)
+
+        os.remove(weights_file)
+        keys = list(state_dict.keys())
+
+        shard_files = [
+            shard_name.replace(f".{extension}", f"-{idx+1:05d}-of-{len(keys):05d}.{extension}")
+            for idx in range(len(keys))
+        ]
+        index = {"metadata": {}, "weight_map": {key: shard_files[i] for i, key in enumerate(keys)}}
+
+        with open(index_file, "w", encoding="utf-8") as f:
+            content = json.dumps(index, indent=2, sort_keys=True) + "\n"
+            f.write(content)
+
+        for param_name, shard_file in zip(keys, shard_files):
+            saver({param_name: state_dict[param_name]}, os.path.join(folder, shard_file))
 
 
 @require_torch
@@ -925,6 +979,26 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             trainer.train()
             self.check_saved_checkpoints(tmpdir, 5, int(self.n_epochs * 64 / self.batch_size), False)
 
+    @require_safetensors
+    def test_safe_checkpoints(self):
+        for save_safetensors in [True, False]:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                trainer = get_regression_trainer(output_dir=tmpdir, save_steps=5, save_safetensors=save_safetensors)
+                trainer.train()
+                self.check_saved_checkpoints(
+                    tmpdir, 5, int(self.n_epochs * 64 / self.batch_size), safe_weights=save_safetensors
+                )
+
+            # With a regular model that is not a PreTrainedModel
+            with tempfile.TemporaryDirectory() as tmpdir:
+                trainer = get_regression_trainer(
+                    output_dir=tmpdir, save_steps=5, pretrained=False, save_safetensors=save_safetensors
+                )
+                trainer.train()
+                self.check_saved_checkpoints(
+                    tmpdir, 5, int(self.n_epochs * 64 / self.batch_size), False, safe_weights=save_safetensors
+                )
+
     def test_can_resume_training(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             kwargs = {
@@ -1074,6 +1148,41 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
 
         trainer.train(resume_from_checkpoint=False)
+
+    @require_safetensors
+    def test_resume_training_with_safe_checkpoint(self):
+        # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
+        # save_steps, the checkpoint will resume training at epoch 2 or more (so the data seen by the model
+        # won't be the same since the training dataloader is shuffled).
+
+        for initial_safe in [False, True]:
+            for loaded_safe in [False, True]:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    trainer = get_regression_trainer(
+                        output_dir=tmpdir,
+                        train_len=128,
+                        save_steps=5,
+                        learning_rate=0.1,
+                        save_safetensors=initial_safe,
+                    )
+                    trainer.train()
+                    (a, b) = trainer.model.a.item(), trainer.model.b.item()
+                    state = dataclasses.asdict(trainer.state)
+
+                    checkpoint = os.path.join(tmpdir, "checkpoint-5")
+                    self.convert_to_sharded_checkpoint(checkpoint, load_safe=initial_safe, save_safe=loaded_safe)
+
+                    # Reinitialize trainer
+                    trainer = get_regression_trainer(
+                        output_dir=tmpdir, train_len=128, save_steps=5, learning_rate=0.1, save_safetensors=loaded_safe
+                    )
+
+                    trainer.train(resume_from_checkpoint=checkpoint)
+                    (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
+                    state1 = dataclasses.asdict(trainer.state)
+                    self.assertEqual(a, a1)
+                    self.assertEqual(b, b1)
+                    self.check_trainer_state_are_the_same(state, state1)
 
     def test_resume_training_with_gradient_accumulation(self):
         # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
@@ -1232,6 +1341,30 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             trainer.train()
             self.check_saved_checkpoints(tmpdir, 5, total, is_pretrained=False)
             self.check_best_model_has_been_loaded(tmpdir, 5, total, trainer, "eval_loss", is_pretrained=False)
+
+    @require_safetensors
+    def test_load_best_model_from_safetensors(self):
+        total = int(self.n_epochs * 64 / self.batch_size)
+        for save_safetensors, pretrained in product([False, True], [False, True]):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                trainer = get_regression_trainer(
+                    a=1.5,
+                    b=2.5,
+                    output_dir=tmpdir,
+                    learning_rate=0.1,
+                    eval_steps=5,
+                    evaluation_strategy="steps",
+                    save_steps=5,
+                    load_best_model_at_end=True,
+                    save_safetensors=save_safetensors,
+                    pretrained=pretrained,
+                )
+                self.assertFalse(trainer.args.greater_is_better)
+                trainer.train()
+                self.check_saved_checkpoints(tmpdir, 5, total, is_pretrained=pretrained, safe_weights=save_safetensors)
+                self.check_best_model_has_been_loaded(
+                    tmpdir, 5, total, trainer, "eval_loss", is_pretrained=pretrained, safe_weights=save_safetensors
+                )
 
     def test_training_iterable_dataset(self):
         config = RegressionModelConfig()
