@@ -76,7 +76,7 @@ class GaudiTrainingArguments(TrainingArguments):
         use_habana (`bool`, *optional*, defaults to `False`):
             Whether to use Habana's HPU for running the model.
         gaudi_config_name (`str`, *optional*):
-            Pretrained Gaudi config name or path if not the same as model_name.
+            Pretrained Gaudi config name or path.
         use_lazy_mode (`bool`, *optional*, defaults to `False`):
             Whether to use lazy mode for running the model.
         use_hpu_graphs (`bool`, *optional*, defaults to `False`):
@@ -99,7 +99,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
     gaudi_config_name: Optional[str] = field(
         default=None,
-        metadata={"help": "Pretrained Gaudi config name or path if not the same as model_name."},
+        metadata={"help": "Pretrained Gaudi config name or path."},
     )
 
     use_lazy_mode: Optional[bool] = field(

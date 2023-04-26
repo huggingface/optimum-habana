@@ -123,7 +123,7 @@ If the workload of the data loader is heavy, you can increase the number of work
 You can enable this with the training argument [`--dataloader_num_workers N`](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments.dataloader_num_workers) with `N` being the number of workers to use.
 
 **We recommend using it with datasets containing images.**
-Besides, using `--dataloader_num_workers 1` should help in most cases as it enables to perform the data loading in a thread different from the main one.
+Besides, using `--dataloader_num_workers 1` should help in most cases as it enables to perform data loading in a thread different from the main one.
 
 
 ## Non-Blocking Data Copy
