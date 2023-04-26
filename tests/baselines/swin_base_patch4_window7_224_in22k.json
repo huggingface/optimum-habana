@@ -14,7 +14,8 @@
                     "--seed 1337",
                     "--ignore_mismatched_sizes",
                     "--dataloader_num_workers 1",
-                    "--pipelining_fwd_bwd True"
+                    "--pipelining_fwd_bwd True",
+                    "--non_blocking_data_copy True"
                 ]
             },
             "multi_card": {
@@ -28,7 +29,8 @@
                     "--seed 1337",
                     "--ignore_mismatched_sizes",
                     "--dataloader_num_workers 1",
-                    "--pipelining_fwd_bwd True"
+                    "--pipelining_fwd_bwd True",
+                    "--non_blocking_data_copy True"
                 ]
             }
         }
