@@ -102,7 +102,9 @@ CPU:...forward + backward   ...optimizer  ...forward + backward   ...optimizer  
 HPU:........................forward + backward...optimizer......forward + backward...optimizer
 ```
 
-However, when CPU code interpretation takes longer than HPU computation, it becomes the bottleneck and HPU computation can not be triggered until CPU code interpretation is done. So one potential optimization for such cases is to trigger the HPU *forward* computation right after the CPU *forward* interpretation and before the CPU *backward* interpretation. You can see an example below where the CPU *backward* interpretation overlaps with the HPU *forward* computation:
+However, when CPU code interpretation takes longer than HPU computation, it becomes the bottleneck and HPU computation can not be triggered until CPU code interpretation is done.
+So one potential optimization for such cases is to trigger the HPU *forward* computation right after the CPU *forward* interpretation and before the CPU *backward* interpretation.
+You can see an example below where the CPU *backward* interpretation overlaps with the HPU *forward* computation:
 
 ```
 CPU:...forward   ...backward   ...optimizer  ...forward   ...backward   ...optimizer   ...

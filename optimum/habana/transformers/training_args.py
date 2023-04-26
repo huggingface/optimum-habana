@@ -69,7 +69,7 @@ UNSUPPORTED_ARGUMENTS = [
 @dataclass
 class GaudiTrainingArguments(TrainingArguments):
     """
-    GaudiTrainingArguments is built on top of the Tranformers' TrainingArguments
+    GaudiTrainingArguments is built on top of the Tranformers' [TrainingArguments](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments)
     to enable deployment on Habana's Gaudi.
 
     Args:
@@ -82,11 +82,11 @@ class GaudiTrainingArguments(TrainingArguments):
         use_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to use HPU graphs for performing inference.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
-            Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N,
+            Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,
             the first N steps will not be considered in the calculation of the throughput. This is especially
             useful in lazy mode where the first two or three iterations typically take longer.
         pipelining_fwd_bwd (`bool`, *optional*, defaults to `False`):
-            Whether to add an additional mark_step between forward and backward for pipelining
+            Whether to add an additional `mark_step` between forward and backward for pipelining
             host backward building and HPU forward computing.
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
@@ -116,7 +116,7 @@ class GaudiTrainingArguments(TrainingArguments):
         default=0,
         metadata={
             "help": (
-                "Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N,"
+                "Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,"
                 " the first N steps will not be considered in the calculation of the throughput. This is especially"
                 " useful in lazy mode where the first two or three iterations typically take longer."
             )
@@ -127,7 +127,7 @@ class GaudiTrainingArguments(TrainingArguments):
         default=False,
         metadata={
             "help": (
-                "Whether to add an additional mark_step between forward and backward for pipelining "
+                "Whether to add an additional `mark_step` between forward and backward for pipelining "
                 "host backward building and HPU forward computing."
             )
         },
