@@ -444,6 +444,10 @@ class MultiCardAudioClassificationExampleTester(
     TASK_NAME = "common_language"
 
 
+# class SpeechRecognitionExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc"):
+#     TASK_NAME = "librispeech_asr"
+
+
 # class MultiCardSpeechRecognitionExampleTester(
 #     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 # ):
