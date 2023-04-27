@@ -75,7 +75,7 @@ with
 - `use_kv_cache` enables a key-value cache to speed up the generation process.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
-```
+```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path bigscience/bloom \
 --batch_size 1 \
@@ -92,7 +92,7 @@ You can also provide the name of a dataset from the Hugging Face Hub to perform 
 By default, the first column in the dataset of type `string` will be used as prompts. You can also select the column you want with the argument `--column_name`.
 
 Here is an example with [JulesBelveze/tldr_news](https://huggingface.co/datasets/JulesBelveze/tldr_news):
-```
+```bash
 python run_generation.py \
 --model_name_or_path gpt2 \
 --batch_size 2 \
