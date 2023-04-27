@@ -31,7 +31,7 @@ metric = evaluate.load("accuracy")
 
 # You can define your custom compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
 # predictions and label_ids field) and has to return a dictionary string to float.
-def my_compute_metrics(p: EvalPrediction):
+def my_compute_metrics(p):
     return metric.compute(predictions=np.argmax(p.predictions, axis=1), references=p.label_ids)
 
 # Trainer initialization
@@ -53,7 +53,7 @@ metrics = trainer.evaluate()
 The variable `my_args` should contain some inference-specific arguments, you can take a look [here](https://huggingface.co/docs/transformers/main/en/main_classes/trainer#transformers.TrainingArguments.set_evaluate) to see the arguments that can be interesting to set for inference.
 
 
-## In our examples
+## In our Examples
 
 All [our examples](https://github.com/huggingface/optimum-habana/tree/main/examples) contain instructions for running inference with a given model on a given dataset.
 The reasoning is the same for every example: run the example script with `--do_eval` and `--per_device_eval_batch_size` and without `--do_train`.
