@@ -19,5 +19,29 @@
                 ]
             }
         }
+    },
+    "squad_v2": {
+        "num_train_epochs": 2,
+        "eval_batch_size": 33,
+        "distribution": {
+            "multi_card": {
+                "learning_rate": 2e-4,
+                "train_batch_size": 16,
+                "eval_f1": 64.2839,
+                "train_runtime": 279.7253,
+                "train_samples_per_second": 1120.23,
+                "extra_arguments": [
+                    "--context_column context",
+                    "--question_column question",
+                    "--answer_column answers",
+                    "--version_2_with_negative",
+                    "--max_seq_length 384",
+                    "--predict_with_generate",
+                    "--ignore_pad_token_for_loss False",
+                    "--pad_to_max_length",
+                    "--save_strategy epoch"
+                ]
+            }
+        }
     }
 }
