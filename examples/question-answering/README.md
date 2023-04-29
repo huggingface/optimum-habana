@@ -97,7 +97,7 @@ exact_match = 86.8874
 ```
 
 
-## Using DeepSpeed
+### Using DeepSpeed
 
 Similarly to multi-card training, here is how you would fine-tune the BERT large model (with whole word masking) on the SQuAD dataset using DeepSpeed with 8 HPUs:
 
@@ -158,3 +158,40 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 | ALBERT XXL (single-card)   | 5e-6 | 2 | 12 | 2 |
 | ALBERT XXL (multi-card)    | 5e-5 | 2 | 12 | 2 |
 | DistilBERT                 | 5e-5 | 3 | 8  | 8 |
+
+
+## Fine-tuning T5 on SQuAD2.0
+
+The [`run_seq2seq_qa.py`](https://github.com/huggingface/optimum-habana/blob/main/examples/question-answering/run_seq2seq_qa.py) script is meant for encoder-decoder (also called seq2seq) Transformer models, such as T5 or BART. These models are generative, rather than discriminative. This means that they learn to generate the correct answer, rather than predicting the start and end position of the tokens of the answer.
+
+The following command fine-tunes T5 on the SQuAD2.0 dataset:
+
+```bash
+python run_seq2seq_qa.py \
+  --model_name_or_path t5-small \
+  --gaudi_config_name Habana/t5 \
+  --dataset_name squad_v2 \
+  --version_2_with_negative \
+  --context_column context \
+  --question_column question \
+  --answer_column answers \
+  --do_train \
+  --do_eval \
+  --per_device_train_batch_size 16 \
+  --per_device_eval_batch_size 33 \
+  --learning_rate 3e-5 \
+  --num_train_epochs 2 \
+  --max_seq_length 384 \
+  --doc_stride 128 \
+  --output_dir /tmp/seq2seq_squad/ \
+  --predict_with_generate \
+  --use_habana \
+  --use_lazy_mode \
+  --use_hpu_graphs \
+  --ignore_pad_token_for_loss False \
+  --pad_to_max_length \
+  --save_strategy epoch \
+  --throughput_warmup_steps 3
+```
+
+For multi-card and DeepSpeed runs, you can use `python ../gaudi_spawn.py --world_size 8 --use_mpi` and `python ../gaudi_spawn.py --world_size 8 --use_deepspeed` as shown in the previous sections.
