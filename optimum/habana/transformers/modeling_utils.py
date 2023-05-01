@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import transformers.models.gpt2.modeling_gpt2
+import transformers.models.bloom.modeling_bloom as modeling_bloom
+import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
 from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.albert.modeling_albert import AlbertModel
@@ -22,8 +23,13 @@ from transformers.models.wav2vec2.modeling_wav2vec2 import Wav2Vec2Model
 
 from .generation import GaudiGenerationMixin
 from .models import (
+    GaudiBloomForCausalLM,
+    GaudiBloomMLP,
+    GaudiBloomModel,
     GaudiGPT2Attention,
     gaudi_albert_forward,
+    gaudi_bloom_attention_forward,
+    gaudi_bloom_block_forward,
     gaudi_get_extended_attention_mask,
     gaudi_invert_attention_mask,
     gaudi_vit_self_attention_forward,
@@ -51,12 +57,20 @@ def adapt_transformers_to_gaudi():
 
     # Generation is modified to run faster in lazy mode
     GenerationMixin.generate = GaudiGenerationMixin.generate
+    GenerationMixin._update_model_kwargs_for_generation = GaudiGenerationMixin._update_model_kwargs_for_generation
     GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
     GenerationMixin.sample = GaudiGenerationMixin.sample
     GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
     GenerationMixin.beam_sample = GaudiGenerationMixin.beam_sample
     GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
     GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
+
+    # Optimization for BLOOM generation on Gaudi
+    modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
+    modeling_bloom.BloomBlock.forward = gaudi_bloom_block_forward
+    modeling_bloom.BloomModel = GaudiBloomModel
+    modeling_bloom.BloomMLP = GaudiBloomMLP
+    modeling_bloom.BloomForCausalLM = GaudiBloomForCausalLM
 
     # Replace invert_attention_mask and get_extended_attention_mask
     # so that HMP is disabled for specific parts of the code
@@ -67,4 +81,4 @@ def adapt_transformers_to_gaudi():
 
     # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
     # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
-    transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
+    modeling_gpt2.GPT2Attention = GaudiGPT2Attention

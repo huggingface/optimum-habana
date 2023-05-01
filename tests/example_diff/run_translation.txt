@@ -13,9 +13,9 @@
 > from optimum.habana.utils import set_seed
 > 
 55c54
-< check_min_version("4.28.0.dev0")
+< check_min_version("4.29.0.dev0")
 ---
-> check_min_version("4.27.0")
+> check_min_version("4.28.0")
 100a100,108
 >     use_cache: bool = field(
 >         default=True,
@@ -57,7 +57,7 @@
 >     trainer = GaudiSeq2SeqTrainer(
 565a583
 >         gaudi_config=gaudi_config,
-656,660d673
+658,662d675
 < 
 < 
 < def _mp_fn(index):

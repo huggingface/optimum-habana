@@ -40,7 +40,7 @@ pip install optimum[habana]
 
 > To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0
 >```
 
 Optimum Habana is a fast-moving project, and you may want to install it from source:
@@ -48,13 +48,6 @@ Optimum Habana is a fast-moving project, and you may want to install it from sou
 ```bash
 pip install git+https://github.com/huggingface/optimum-habana.git
 ```
-
-> Alternatively, you can install the package without pip as follows:
-> ```bash
-> git clone https://github.com/huggingface/optimum-habana.git
-> cd optimum-habana
-> python setup.py install
-> ```
 
 Last but not least, don't forget to install the requirements for every example:
 
@@ -181,7 +174,7 @@ You can generate images from prompts using Stable Diffusion on Gaudi using the [
 + from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
 
-model_name = "CompVis/stable-diffusion-v1-4"
+model_name = "runwayml/stable-diffusion-v1-5"
 
 - scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 + scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
@@ -221,12 +214,13 @@ The following model architectures, tasks and device distributions have been vali
 | ALBERT | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
 | DistilBERT |:heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering)</li><li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
 | GPT2             | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li> |
-| T5 | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li> |
+| T5 | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
 | ViT | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
 | Swin | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
 | Wav2Vec2 | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[audio classification](https://github.com/huggingface/optimum-habana/tree/main/examples/audio-classification)</li><li>[speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition)</li> |
 | Stable Diffusion | :heavy_check_mark: | ✗ | ✗ | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | CLIP | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/main/examples/contrastive-image-text)</li> |
+| BLOOM(Z) | ✗ | ✗ | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 
 </div>
 
@@ -241,4 +235,9 @@ Please refer to Habana Gaudi's official [installation guide](https://docs.habana
 
 > Tests should be run in a Docker container based on Habana Docker images.
 >
-> The current version has been validated for SynapseAI 1.8.
+> The current version has been validated for SynapseAI 1.9.
+
+
+## Development
+
+Check the [contributor guide](https://github.com/huggingface/optimum/blob/main/CONTRIBUTING.md) for instructions.

@@ -47,7 +47,7 @@ python run_summarization.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 Only T5 models `t5-small`, `t5-base`, `t5-large`, `t5-3b` and `t5-11b` must use an additional argument: `--source_prefix "summarize: "`.
@@ -78,7 +78,7 @@ python run_summarization.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 The task of summarization also supports custom CSV and JSONLINES formats.
@@ -163,7 +163,7 @@ python ../gaudi_spawn.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 
@@ -191,7 +191,7 @@ python ../gaudi_spawn.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 2 \
+    --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```
 

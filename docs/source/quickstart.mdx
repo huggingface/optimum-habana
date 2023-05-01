@@ -102,7 +102,7 @@ Here is how to use it and the differences with the 🤗 Diffusers library:
 + from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
 
-model_name = "CompVis/stable-diffusion-v1-4"
+model_name = "runwayml/stable-diffusion-v1-5"
 
 - scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 + scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
@@ -116,7 +116,7 @@ model_name = "CompVis/stable-diffusion-v1-4"
 +   gaudi_config="Habana/stable-diffusion",
 )
 
-outputs = generator(
+outputs = pipeline(
     ["An image of a squirrel in Picasso style"],
     num_images_per_prompt=16,
 +   batch_size=4,

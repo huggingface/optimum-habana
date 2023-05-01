@@ -1,27 +1,28 @@
-18d17
-< 
-32a32
+29a30
 > import transformers
-38,39d37
+32,33d32
 < 
 < import transformers
-45,47d42
-<     Trainer,
-<     TrainingArguments,
+40,41d38
+<     Seq2SeqTrainingArguments,
 <     set_seed,
-52a48,50
-> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+46a44,46
+> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
-57c55
+49c49
 < check_min_version("4.29.0.dev0")
 ---
 > check_min_version("4.28.0")
-230c228
-<     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+168c168
+<                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
 ---
->     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-258a257,263
+>                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on HPU)."
+268c268
+<     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+---
+>     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
+297a298,304
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -29,18 +30,18 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-261,262c266,268
+300,301c307,309
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-399d404
-<     image_transformations = torch.jit.script(image_transformations)
-496c501
-<     trainer = Trainer(
----
->     trainer = GaudiTrainer(
-497a503
+645a654
 >         gaudi_config=gaudi_config,
+719,723d727
+< 
+< 
+< def _mp_fn(index):
+<     # For xla_spawn (TPUs)
+<     main()

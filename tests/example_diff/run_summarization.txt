@@ -18,9 +18,9 @@
 > from optimum.habana.utils import set_seed
 > 
 55c55
-< check_min_version("4.28.0.dev0")
+< check_min_version("4.29.0.dev0")
 ---
-> check_min_version("4.27.0")
+> check_min_version("4.28.0")
 119a120,128
 >     use_cache: bool = field(
 >         default=True,
@@ -35,11 +35,11 @@
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-299c308
+307c316
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-328a338,344
+336a346,352
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -47,16 +47,16 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-331,332c347,349
+339,340c355,357
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-412a430
+420a438
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-603,608c621,629
+611,616c629,637
 <     data_collator = DataCollatorForSeq2Seq(
 <         tokenizer,
 <         model=model,
@@ -73,13 +73,13 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-653c674
+661c682
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-654a676
+662a684
 >         gaudi_config=gaudi_config,
-735,739d756
+745,749d766
 < 
 < 
 < def _mp_fn(index):

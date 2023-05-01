@@ -31,7 +31,7 @@ from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline,
 from optimum.habana.utils import set_seed
 
 
-THROUGHPUT_BASELINE = 0.277
+THROUGHPUT_BASELINE = 0.282
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -216,7 +216,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             image_slice = image[-3:, -3:, -1]
 
             self.assertEqual(image.shape, (64, 64, 3))
-            expected_slice = np.array([0.5643, 0.6017, 0.4799, 0.5267, 0.5584, 0.4641, 0.5159, 0.4963, 0.4791])
+            expected_slice = np.array([0.5756, 0.6118, 0.5005, 0.5041, 0.5471, 0.4726, 0.4976, 0.4865, 0.4864])
 
             self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
@@ -516,7 +516,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ]
         num_images_per_prompt = 11
         batch_size = 4
-        model_name = "CompVis/stable-diffusion-v1-4"
+        model_name = "runwayml/stable-diffusion-v1-5"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(

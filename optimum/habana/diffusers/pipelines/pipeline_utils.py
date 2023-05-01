@@ -18,11 +18,13 @@ import copy
 import importlib
 import inspect
 import os
+import sys
 import tempfile
 from typing import Optional, Union
 
 import torch
 from diffusers.pipelines import DiffusionPipeline
+from diffusers.utils import is_compiled_module
 
 from optimum.utils import logging
 
@@ -82,22 +84,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         super().__init__()
 
         self.use_habana = use_habana
-        # HPU graphs and Gaudi configuration require `use_habana` to be True
-        if not use_habana:
-            if use_hpu_graphs:
-                raise ValueError(
-                    "`use_hpu_graphs` is True but `use_habana` is False, please set `use_habana=True` to use HPU"
-                    " graphs."
-                )
-            if gaudi_config is not None:
-                raise ValueError(
-                    "Got a non-None `gaudi_config` but `use_habana` is False, please set `use_habana=True` to use this"
-                    " Gaudi configuration."
-                )
-        self.use_hpu_graphs = use_hpu_graphs
-        self.gaudi_config = gaudi_config
-
         if self.use_habana:
+            self.use_hpu_graphs = use_hpu_graphs
             if self.use_hpu_graphs:
                 logger.info("Enabled HPU graphs.")
             else:
@@ -156,6 +144,16 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                             isVerbose=self.gaudi_config.hmp_is_verbose,
                         )
         else:
+            if use_hpu_graphs:
+                raise ValueError(
+                    "`use_hpu_graphs` is True but `use_habana` is False, please set `use_habana=True` to use HPU"
+                    " graphs."
+                )
+            if gaudi_config is not None:
+                raise ValueError(
+                    "Got a non-None `gaudi_config` but `use_habana` is False, please set `use_habana=True` to use this"
+                    " Gaudi configuration."
+                )
             logger.info("Running on CPU.")
             self._device = torch.device("cpu")
 
@@ -168,6 +166,10 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             if module is None:
                 register_dict = {name: (None, None)}
             else:
+                # register the original module, not the dynamo compiled one
+                if is_compiled_module(module):
+                    module = module._orig_mod
+
                 library = module.__module__.split(".")[0]
                 if library == "optimum":
                     library = "optimum.habana.diffusers.schedulers"
@@ -212,13 +214,9 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             variant (`str`, *optional*):
                 If specified, weights are saved in the format pytorch_model.<variant>.bin.
         """
-        self.save_config(save_directory)
-        if hasattr(self, "gaudi_config"):
-            self.gaudi_config.save_pretrained(save_directory)
-
         model_index_dict = dict(self.config)
-        model_index_dict.pop("_class_name")
-        model_index_dict.pop("_diffusers_version")
+        model_index_dict.pop("_class_name", None)
+        model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
@@ -236,10 +234,22 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             sub_model = getattr(self, pipeline_component_name)
             model_cls = sub_model.__class__
 
+            # Dynamo wraps the original model in a private class.
+            # I didn't find a public API to get the original class.
+            if is_compiled_module(sub_model):
+                sub_model = sub_model._orig_mod
+                model_cls = sub_model.__class__
+
             save_method_name = None
             # search for the model's base class in GAUDI_LOADABLE_CLASSES
             for library_name, library_classes in GAUDI_LOADABLE_CLASSES.items():
-                library = importlib.import_module(library_name)
+                if library_name in sys.modules:
+                    library = importlib.import_module(library_name)
+                else:
+                    logger.info(
+                        f"{library_name} is not installed. Cannot save {pipeline_component_name} as {library_classes} from {library_name}"
+                    )
+
                 for base_class, save_load_methods in library_classes.items():
                     class_candidate = getattr(library, base_class, None)
                     if class_candidate is not None and issubclass(model_cls, class_candidate):
@@ -248,6 +258,12 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                         break
                 if save_method_name is not None:
                     break
+
+            if save_method_name is None:
+                logger.warn(f"self.{pipeline_component_name}={sub_model} of type {type(sub_model)} cannot be saved.")
+                # make sure that unsaveable components are not tried to be loaded afterward
+                self.register_to_config(**{pipeline_component_name: (None, None)})
+                continue
 
             save_method = getattr(sub_model, save_method_name)
 
@@ -263,6 +279,11 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 save_kwargs["variant"] = variant
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
+
+        # finally save the config
+        self.save_config(save_directory)
+        if hasattr(self, "gaudi_config"):
+            self.gaudi_config.save_pretrained(save_directory)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
