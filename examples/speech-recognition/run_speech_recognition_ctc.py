@@ -427,30 +427,29 @@ def main():
     # 1. First, let's load the dataset
     raw_datasets = DatasetDict()
 
-    if training_args.do_train:
-        raw_datasets["train"] = load_dataset(
-            data_args.dataset_name,
-            data_args.dataset_config_name,
-            split=data_args.train_split_name,
-            use_auth_token=data_args.use_auth_token,
+    raw_datasets["train"] = load_dataset(
+        data_args.dataset_name,
+        data_args.dataset_config_name,
+        split=data_args.train_split_name,
+        use_auth_token=data_args.use_auth_token,
+    )
+
+    if data_args.audio_column_name not in raw_datasets["train"].column_names:
+        raise ValueError(
+            f"--audio_column_name '{data_args.audio_column_name}' not found in dataset '{data_args.dataset_name}'."
+            " Make sure to set `--audio_column_name` to the correct audio column - one of"
+            f" {', '.join(raw_datasets['train'].column_names)}."
         )
 
-        if data_args.audio_column_name not in raw_datasets["train"].column_names:
-            raise ValueError(
-                f"--audio_column_name '{data_args.audio_column_name}' not found in dataset '{data_args.dataset_name}'."
-                " Make sure to set `--audio_column_name` to the correct audio column - one of"
-                f" {', '.join(raw_datasets['train'].column_names)}."
-            )
+    if data_args.text_column_name not in raw_datasets["train"].column_names:
+        raise ValueError(
+            f"--text_column_name {data_args.text_column_name} not found in dataset '{data_args.dataset_name}'. "
+            "Make sure to set `--text_column_name` to the correct text column - one of "
+            f"{', '.join(raw_datasets['train'].column_names)}."
+        )
 
-        if data_args.text_column_name not in raw_datasets["train"].column_names:
-            raise ValueError(
-                f"--text_column_name {data_args.text_column_name} not found in dataset '{data_args.dataset_name}'. "
-                "Make sure to set `--text_column_name` to the correct text column - one of "
-                f"{', '.join(raw_datasets['train'].column_names)}."
-            )
-
-        if data_args.max_train_samples is not None:
-            raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
+    if data_args.max_train_samples is not None:
+        raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
 
     if training_args.do_eval:
         raw_datasets["eval"] = load_dataset(
