@@ -37,7 +37,7 @@ class GeluToFusedGelu(ReversibleTransformation):
             if node.op == "call_module":
                 module = graph_module.get_submodule(node.target)
                 if isinstance(module, GELU_CLASSES_TO_TRACK):
-                    if hasattr(module, "act") and getattr(module, "act") == torch.nn.functional.gelu:
+                    if getattr(module, "act", None) == torch.nn.functional.gelu:
                         # GELUActivation does not necessarily rely on torch.nn.functional.gelu
                         # If it does, no need to change anything so break the loop
                         break
