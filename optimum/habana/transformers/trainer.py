@@ -226,6 +226,40 @@ class GaudiTrainer(Trainer):
             "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
         )
 
+        if train_dataset is not None:
+            import inspect
+
+            from optimum.habana.fx import GeluToFusedGelu, symbolic_trace
+
+            transformation = GeluToFusedGelu()
+
+            input_names_for_tracing = list(train_dataset.features.keys())
+            for i, name in enumerate(input_names_for_tracing[:]):
+                if name == "image":
+                    input_names_for_tracing[i] = "pixel_values"
+
+            training_traced = symbolic_trace(
+                model,
+                input_names=input_names_for_tracing,
+            )
+            transformed_training_traced = transformation(training_traced)
+            self.training_fwd = transformed_training_traced.forward
+
+            input_names_for_tracing = []
+            sig = inspect.signature(model.forward)
+            for name in list(eval_dataset.features.keys()):
+                if name == "image":
+                    input_names_for_tracing.append("pixel_values")
+                elif name in set(sig.parameters.keys()):
+                    input_names_for_tracing.append(name)
+
+            eval_traced = symbolic_trace(
+                model,
+                input_names=input_names_for_tracing,
+            )
+            transformed_eval_traced = transformation(eval_traced)
+            self.eval_fwd = transformed_eval_traced.forward
+
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
@@ -492,6 +526,8 @@ class GaudiTrainer(Trainer):
         inner_training_loop = find_executable_batch_size(
             self._inner_training_loop, self._train_batch_size, args.auto_find_batch_size
         )
+
+        self.model.forward = self.training_fwd
 
         return inner_training_loop(
             args=args,
@@ -1170,6 +1206,8 @@ class GaudiTrainer(Trainer):
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
         model.eval()
+
+        model.forward = self.eval_fwd
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
