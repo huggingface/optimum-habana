@@ -36,9 +36,7 @@ class OptimumHabanaTracer(HFTracer):
     """
 
     def is_leaf_module(self, m: torch.nn.Module, module_qualified_name: str) -> bool:
-        if isinstance(m, GELU_CLASSES_TO_TRACK):
-            return True
-        return super().is_leaf_module(m, module_qualified_name)
+        return isinstance(m, GELU_CLASSES_TO_TRACK) or super().is_leaf_module(m, module_qualified_name)
 
 
 def symbolic_trace(

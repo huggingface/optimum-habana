@@ -33,7 +33,6 @@ class GeluToFusedGelu(ReversibleTransformation):
     """
 
     def transform(self, graph_module: "GraphModule") -> "GraphModule":
-        self.original_gelu_module = None
         for node in graph_module.graph.nodes:
             if node.op == "call_module":
                 module = graph_module.get_submodule(node.target)
@@ -45,8 +44,7 @@ class GeluToFusedGelu(ReversibleTransformation):
                     parent_name, _, name = node.target.rpartition(".")
                     parent_module = graph_module.get_submodule(parent_name)
                     # Keep track of the original GELU module to be able to reverse the transformation
-                    if self.original_gelu_module is None:
-                        self.original_gelu_module = getattr(parent_module, name)
+                    node.original_gelu_module = getattr(parent_module, name)
                     # Set the GELU module to GELUActivation()
                     setattr(parent_module, name, GELUActivation())
                     self.mark_as_transformed(node)
@@ -59,6 +57,7 @@ class GeluToFusedGelu(ReversibleTransformation):
                 parent_name, _, name = node.target.rpartition(".")
                 parent_module = graph_module.get_submodule(parent_name)
                 # Set the GELU module back to what it originally was
-                setattr(parent_module, name, self.original_gelu_module)
+                if hasattr(node, "original_gelu_module"):
+                    setattr(parent_module, name, node.original_gelu_module)
                 self.mark_as_restored(node)
         return graph_module
