@@ -12,6 +12,8 @@
       title: Single-HPU Training
     - local: tutorials/distributed
       title: Distributed Training
+    - local: tutorials/inference
+      title: Run Inference
     - local: tutorials/stable_diffusion
       title: Stable Diffusion
     title: Tutorials

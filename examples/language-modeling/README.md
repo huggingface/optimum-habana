@@ -268,6 +268,26 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```
 
 
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with GPT2 on the Wikitext dataset on 1 Gaudi card with the following command:
+```bash
+python run_clm.py \
+    --model_name_or_path gpt2 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_eval_batch_size 4 \
+    --do_eval \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs
+```
+
+
 ## Streaming
 
 To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` to the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.

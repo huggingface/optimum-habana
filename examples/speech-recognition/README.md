@@ -64,7 +64,6 @@ python run_speech_recognition_ctc.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
     --gaudi_config_name="Habana/wav2vec2" \
     --throughput_warmup_steps="3"
 ```
@@ -102,7 +101,6 @@ python ../gaudi_spawn.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3
 ```
@@ -149,7 +147,6 @@ python ../gaudi_spawn.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3\
     --deepspeed ../../tests/configs/deepspeed_zero_2.json
@@ -159,3 +156,27 @@ python ../gaudi_spawn.py \
 
 > If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
 > Resampling with the `datasets` library is not supported on HPUs yet.
+
+
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with Wav2Vec2 on the Librispeech dataset on 1 Gaudi card with the following command:
+```bash
+python run_speech_recognition_ctc.py \
+    --dataset_name="librispeech_asr" \
+    --model_name_or_path="facebook/wav2vec2-large-lv60" \
+    --dataset_config_name="clean" \
+    --train_split_name="train.100" \
+    --eval_split_name="validation" \
+    --output_dir="/tmp/wav2vec2-librispeech-clean-100h-demo-dist" \
+    --preprocessing_num_workers="64" \
+    --overwrite_output_dir \
+    --text_column_name="text" \
+    --chars_to_ignore , ? . ! - \; \: \" “ % ‘ ” \
+    --do_eval \
+    --use_habana \
+    --use_lazy_mode \
+    --gaudi_config_name="Habana/wav2vec2"
+```

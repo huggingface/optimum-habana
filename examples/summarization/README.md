@@ -215,3 +215,28 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
     }
 }
 ```
+
+
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with T5 on the CNN-DailyMail dataset on 1 Gaudi card with the following command:
+```bash
+python run_summarization.py \
+    --model_name_or_path t5-small \
+    --do_eval \
+    --dataset_name cnn_dailymail \
+    --dataset_config "3.0.0" \
+    --source_prefix "summarize: " \
+    --output_dir /tmp/tst-summarization \
+    --per_device_eval_batch_size 4 \
+    --overwrite_output_dir \
+    --predict_with_generate \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/t5 \
+    --ignore_pad_token_for_loss False \
+    --pad_to_max_length
+```

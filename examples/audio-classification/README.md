@@ -136,6 +136,31 @@ python ../gaudi_spawn.py \
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
 
 
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with Wav2Vec2 on the Keyword Spotting subset on 1 Gaudi card with the following command:
+```bash
+python run_audio_classification.py \
+    --model_name_or_path facebook/wav2vec2-base \
+    --dataset_name superb \
+    --dataset_config_name ks \
+    --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
+    --overwrite_output_dir \
+    --remove_unused_columns False \
+    --do_eval \
+    --max_length_seconds 1 \
+    --attention_mask False \
+    --per_device_eval_batch_size 256 \
+    --dataloader_num_workers 4 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/wav2vec2
+```
+
+
 ## Sharing your model on 🤗 Hub
 
 0. If you haven't already, [sign up](https://huggingface.co/join) for a 🤗 account
