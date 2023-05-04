@@ -36,17 +36,66 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-466c471
+425,431c430,435
+<     if training_args.do_train:
+<         raw_datasets["train"] = load_dataset(
+<             data_args.dataset_name,
+<             data_args.dataset_config_name,
+<             split=data_args.train_split_name,
+<             use_auth_token=data_args.use_auth_token,
+<         )
+---
+>     raw_datasets["train"] = load_dataset(
+>         data_args.dataset_name,
+>         data_args.dataset_config_name,
+>         split=data_args.train_split_name,
+>         use_auth_token=data_args.use_auth_token,
+>     )
+433,438c437,442
+<         if data_args.audio_column_name not in raw_datasets["train"].column_names:
+<             raise ValueError(
+<                 f"--audio_column_name '{data_args.audio_column_name}' not found in dataset '{data_args.dataset_name}'."
+<                 " Make sure to set `--audio_column_name` to the correct audio column - one of"
+<                 f" {', '.join(raw_datasets['train'].column_names)}."
+<             )
+---
+>     if data_args.audio_column_name not in raw_datasets["train"].column_names:
+>         raise ValueError(
+>             f"--audio_column_name '{data_args.audio_column_name}' not found in dataset '{data_args.dataset_name}'."
+>             " Make sure to set `--audio_column_name` to the correct audio column - one of"
+>             f" {', '.join(raw_datasets['train'].column_names)}."
+>         )
+440,445c444,449
+<         if data_args.text_column_name not in raw_datasets["train"].column_names:
+<             raise ValueError(
+<                 f"--text_column_name {data_args.text_column_name} not found in dataset '{data_args.dataset_name}'. "
+<                 "Make sure to set `--text_column_name` to the correct text column - one of "
+<                 f"{', '.join(raw_datasets['train'].column_names)}."
+<             )
+---
+>     if data_args.text_column_name not in raw_datasets["train"].column_names:
+>         raise ValueError(
+>             f"--text_column_name {data_args.text_column_name} not found in dataset '{data_args.dataset_name}'. "
+>             "Make sure to set `--text_column_name` to the correct text column - one of "
+>             f"{', '.join(raw_datasets['train'].column_names)}."
+>         )
+447,448c451,452
+<         if data_args.max_train_samples is not None:
+<             raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
+---
+>     if data_args.max_train_samples is not None:
+>         raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
+466c470
 <         f'[{"".join(data_args.chars_to_ignore)}]' if data_args.chars_to_ignore is not None else None
 ---
 >         f'[{"".join(data_args.chars_to_ignore).replace(" ", "")}]' if data_args.chars_to_ignore is not None else None
-595a601,605
+595a600,604
 >         raise RuntimeError(
 >             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
 >             f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
 >             " support it on HPUs yet."
 >         )
-698c708,712
+698c707,711
 <     data_collator = DataCollatorCTCWithPadding(processor=processor)
 ---
 >     data_collator = DataCollatorCTCWithPadding(
@@ -54,9 +103,9 @@
 >         pad_to_multiple_of=int(max_input_length),
 >         pad_to_multiple_of_labels=500,
 >     )
-701c715
+701c714
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-702a717
+702a716
 >         gaudi_config=gaudi_config,

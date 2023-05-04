@@ -35,13 +35,13 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
 >         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-517c524
+514c521
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-518a526
+515a523
 >         gaudi_config=gaudi_config,
-618,622d625
+615,619d622
 < 
 < 
 < def _mp_fn(index):
