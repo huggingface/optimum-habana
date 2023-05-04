@@ -47,7 +47,7 @@ python run_audio_classification.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 On a single HPU, this script should run in ~13 minutes and yield an accuracy of **97.96%**.
@@ -83,7 +83,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.
@@ -95,7 +95,7 @@ On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.4
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -127,13 +127,38 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 2 \
+    --throughput_warmup_steps 3 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json
 ```
 
 [The documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) provides more information about how to use DeepSpeed within Optimum Habana.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
+
+
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with Wav2Vec2 on the Keyword Spotting subset on 1 Gaudi card with the following command:
+```bash
+python run_audio_classification.py \
+    --model_name_or_path facebook/wav2vec2-base \
+    --dataset_name superb \
+    --dataset_config_name ks \
+    --output_dir /tmp/wav2vec2-base-ft-keyword-spotting \
+    --overwrite_output_dir \
+    --remove_unused_columns False \
+    --do_eval \
+    --max_length_seconds 1 \
+    --attention_mask False \
+    --per_device_eval_batch_size 256 \
+    --dataloader_num_workers 4 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/wav2vec2
+```
 
 
 ## Sharing your model on 🤗 Hub

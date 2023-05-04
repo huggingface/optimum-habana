@@ -3,19 +3,17 @@
 19c18,19
 < 
 ---
-> Conditional text generation with BLOOM/BLOOMZ and DeepSpeed-inference.
+> Conditional text generation on Habana Gaudi/Gaudi2.
 > """
-21a22
-> import json
-23c24,26
+23c23,25
 < from typing import Tuple
 ---
 > import os
+> import tempfile
 > import time
-> from pathlib import Path
-25d27
+25d26
 < import numpy as np
-27,43c29,35
+27,43c28,31
 < 
 < from transformers import (
 <     CTRLLMHeadModel,
@@ -35,13 +33,10 @@
 < from transformers.modeling_outputs import CausalLMOutputWithPast
 ---
 > import torch.nn.functional as F
-> from huggingface_hub import snapshot_download
+> from checkpoint_utils import model_is_bloom, write_checkpoints_json
 > from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-> from transformers.deepspeed import is_deepspeed_available
 > from transformers.generation import GenerationConfig
-> from transformers.models.bloom.modeling_bloom import BloomBlock
-> from transformers.utils import is_offline_mode
-53,216d44
+53,280d40
 < MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 < 
 < MODEL_CLASSES = {
@@ -206,30 +201,13 @@
 <         ],
 <         -1,
 <     )
-218,222c46,61
+< 
 <     if model.config.use_cache:
 <         jit_inputs = (
 <             dummy_input["input_ids"].to(model.device),
 <             past_key_values,
 <             dummy_input["attention_mask"].to(model.device),
----
-> def get_repo_root(model_name_or_path, local_rank):
->     """
->     Downloads the specified model checkpoint and returns the repository where it was downloaded.
->     """
->     # Checks if online or not
->     if is_offline_mode():
->         if local_rank == 0:
->             print("Offline mode: forcing local_files_only=True")
-> 
->     # Download only on first process
->     if local_rank == 0:
->         snapshot_download(
->             model_name_or_path,
->             local_files_only=is_offline_mode(),
->             cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
->             ignore_patterns=["*.safetensors"],
-224,231d62
+<         )
 <     else:
 <         jit_inputs = (
 <             dummy_input["input_ids"].to(model.device),
@@ -238,12 +216,10 @@
 < 
 <     return jit_inputs
 < 
-233,234c64
+< 
 < class _ModelFallbackWrapper(GenerationMixin):
 <     __slots__ = ("_optimized", "_default")
----
->     torch.distributed.barrier()
-236,259c66,71
+< 
 <     def __init__(self, optimized, default):
 <         self._optimized = optimized
 <         self._default = default
@@ -268,17 +244,10 @@
 <             attentions=None,
 <         )
 <         return fixed_output
----
->     return snapshot_download(
->         model_name_or_path,
->         local_files_only=is_offline_mode(),
->         cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
->         ignore_patterns=["*.safetensors"],
->     )
-261,262d72
+< 
 <     def __getattr__(self, item):
 <         return getattr(self._default, item)
-264,279c74,93
+< 
 <     def prepare_inputs_for_generation(
 <         self, input_ids, past_key_values=None, inputs_embeds=None, use_cache=None, **kwargs
 <     ):
@@ -295,38 +264,23 @@
 <         beam_idx at every generation step.
 <         """
 <         return self._default._reorder_cache(past_key_values, beam_idx)
----
-> def get_checkpoint_files(model_name_or_path, local_rank):
->     """
->     Gets the list of files for the specified model checkpoint.
->     """
->     cached_repo_dir = get_repo_root(model_name_or_path, local_rank)
-> 
->     # Extensions: .bin | .pt
->     # Creates a list of paths from all downloaded files in cache dir
->     file_list = [str(entry) for entry in Path(cached_repo_dir).rglob("*.[bp][it][n]") if entry.is_file()]
->     return file_list
-> 
-> 
-> def write_checkpoints_json(model_name_or_path, local_rank, checkpoints_json):
->     """
->     Dumps metadata into a JSON file for DeepSpeed-inference.
->     """
->     checkpoint_files = get_checkpoint_files(model_name_or_path, local_rank)
->     if local_rank == 0:
->         data = {"type": "BLOOM", "checkpoints": checkpoint_files, "version": 1.0}
->         json.dump(data, open(checkpoints_json, "w"))
-282a97
+< 
+282a43
 >     # Arguments management
-285,291d99
+285c46
 <         "--model_type",
-<         default=None,
-<         type=str,
-<         required=True,
+---
+>         "--model_name_or_path",
+289c50
 <         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
-<     )
-<     parser.add_argument(
-296,307c104
+---
+>         help="Path to pre-trained model (on the HF Hub or locally).",
+292c53
+<         "--model_name_or_path",
+---
+>         "--gaudi_config_name_or_path",
+295,307c56
+<         required=True,
 <         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 <     )
 < 
@@ -340,19 +294,19 @@
 <         default=1.0,
 <         help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
 ---
->         help="Path to pre-trained model.",
-308a106,109
+>         help="Path to Gaudi configuration (on the HF Hub or locally).",
+308a58,61
 >     parser.add_argument("--max_new_tokens", type=int, default=100)
 >     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
 >     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations.")
 >     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
-310c111,113
+310c63,65
 <         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
 ---
 >         "--use_kv_cache",
 >         action="store_true",
 >         help="Whether to use the key/value cache for decoding. It should speed up generation.",
-312,321c115
+312,321c67
 <     parser.add_argument("--k", type=int, default=0)
 <     parser.add_argument("--p", type=float, default=0.9)
 < 
@@ -365,7 +319,7 @@
 <     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
 ---
 >     parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not.")
-323,325c117,120
+323,325c69,72
 <         "--fp16",
 <         action="store_true",
 <         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
@@ -374,56 +328,23 @@
 >         default=None,
 >         type=str,
 >         help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
-328c123,126
+328c75,78
 <         "--jit", type=bool, default=False, help="Whether or not to use jit trace to accelerate inference"
 ---
 >         "--column_name",
 >         default=None,
 >         type=str,
 >         help="Optional argument if you want to assess your model on a given dataset of the HF Hub, this will be the name of the column to use as prompts for generation.",
-330,333d127
+330,333d79
 <     args = parser.parse_args()
 < 
 <     args.device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
 <     args.n_gpu = 0 if args.no_cuda else torch.cuda.device_count()
-335c129
+335,350c81
 <     logger.warning(f"device: {args.device}, n_gpu: {args.n_gpu}, 16-bits training: {args.fp16}")
----
->     args = parser.parse_args()
-337c131,160
+< 
 <     set_seed(args)
----
->     # Disable lazy mode if HPU graphs are not used
->     if not args.use_hpu_graphs:
->         os.environ["PT_HPU_LAZY_MODE"] = "2"
-> 
->     # # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
->     # # For multi node, the value of the env variable WORLD_SIZE should be larger than 8
->     # use_deepspeed = "deepspeed" in os.environ["_"] or (
->     #     "WORLD_SIZE" in os.environ and int(os.environ["WORLD_SIZE"]) > 8
->     # )
->     # if use_deepspeed:
->     # Set necessary env variables
->     os.environ.setdefault("WA_BETA_ALIBI", "1")
->     os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
->     os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
-> 
->     # Device is HPU
->     args.device = "hpu"
->     import habana_frameworks.torch.hpu as torch_hpu
-> 
->     # Get world size, rank and local rank
->     from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
-> 
->     world_size, rank, args.local_rank = initialize_distributed_hpu()
-> 
->     # Check if DeepSpeed is installed
->     if not is_deepspeed_available():
->         raise ImportError(
->             "This script requires deepspeed: `pip install" " git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0`."
->         )
->     import deepspeed
-339,364c162,163
+< 
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -436,60 +357,154 @@
 <         tokenizer.pad_token = tokenizer.eos_token
 <     model = model_class.from_pretrained(args.model_name_or_path)
 <     model.to(args.device)
-< 
+---
+>     args = parser.parse_args()
+352,353c83,110
 <     if args.fp16:
 <         model.half()
-< 
+---
+>     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
+>     # For multi node, the value of the env variable WORLD_SIZE should be larger than 8
+>     use_deepspeed = "deepspeed" in os.environ["_"] or (
+>         "WORLD_SIZE" in os.environ and int(os.environ["WORLD_SIZE"]) > 8
+>     )
+>     if use_deepspeed:
+>         # Set necessary env variables
+>         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
+>         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
+> 
+>     # Device is HPU
+>     args.device = "hpu"
+>     import habana_frameworks.torch.hpu as torch_hpu
+> 
+>     # Get world size, rank and local rank
+>     from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+> 
+>     world_size, rank, args.local_rank = initialize_distributed_hpu()
+> 
+>     if use_deepspeed:
+>         # Check if DeepSpeed is installed
+>         from transformers.deepspeed import is_deepspeed_available
+> 
+>         if not is_deepspeed_available():
+>             raise ImportError(
+>                 "This script requires deepspeed: `pip install" " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
+>             )
+>         import deepspeed
+355,356c112,122
 <     args.length = adjust_length_to_model(args.length, max_sequence_length=model.config.max_position_embeddings)
 <     logger.info(args)
-< 
+---
+>         # Initialize process(es) for DeepSpeed
+>         deepspeed.init_distributed(dist_backend="hccl")
+>         logger.info("DeepSpeed is enabled.")
+>     else:
+>         if args.gaudi_config_name_or_path is None:
+>             gaudi_config = None
+>             logger.warning(
+>                 "`--gaudi_config_name_or_path` was not specified so not using Habana Mixed Precision for this run."
+>             )
+>         else:
+>             from optimum.habana import GaudiConfig
+358c124
 <     prompt_text = args.prompt if args.prompt else input("Model prompt >>> ")
-< 
+---
+>             gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name_or_path)
+360,364c126,127
 <     # Different models need different input formatting and/or extra arguments
 <     requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
 <     if requires_preprocessing:
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
 ---
->     # Initialize process(es) for DeepSpeed
->     deepspeed.init_distributed(dist_backend="hccl")
-366,369c165,166
+>             if gaudi_config.use_habana_mixed_precision:
+>                 from habana_frameworks.torch.hpex import hmp
+366,367c129,160
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
-<         else:
-<             tokenizer_kwargs = {}
 ---
+>                 # Open temporary files to mixed-precision write ops
+>                 with tempfile.NamedTemporaryFile() as hmp_bf16_file:
+>                     with tempfile.NamedTemporaryFile() as hmp_fp32_file:
+>                         # hmp.convert needs ops to be written in text files
+>                         gaudi_config.write_bf16_fp32_ops_to_text_files(
+>                             hmp_bf16_file.name,
+>                             hmp_fp32_file.name,
+>                         )
+>                         hmp.convert(
+>                             opt_level=gaudi_config.hmp_opt_level,
+>                             bf16_file_path=hmp_bf16_file.name,
+>                             fp32_file_path=hmp_fp32_file.name,
+>                             isVerbose=gaudi_config.hmp_is_verbose,
+>                         )
+>         logger.info("Single-device run.")
+> 
 >     # Tweak generation so that it runs faster on Gaudi
 >     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-371,372c168,179
-<         encoded_prompt = tokenizer.encode(
-<             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
----
+> 
 >     adapt_transformers_to_gaudi()
 > 
 >     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
 > 
->     # # Single device
->     # if args.local_rank == -1:
->     #     model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path)
->     #     model = model.eval().to(args.device)
->     # else:
->     if "bloom" not in args.model_name_or_path:
->         raise ValueError(
->             f"DeepSpeed-inference on Gaudi is only available with BLOOM at the moment, got {args.model_name_or_path}."
-374,377d180
-<     else:
+>     if use_deepspeed:
+>         config = AutoConfig.from_pretrained(args.model_name_or_path)
+>         args.dtype = torch.bfloat16
+>         is_bloom = model_is_bloom(config)
+> 
+>         if is_bloom:
+>             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
+>             with deepspeed.OnDevice(dtype=args.dtype, device="meta"):
+>                 model = AutoModelForCausalLM.from_config(config, torch_dtype=args.dtype)
+369,373c162,187
+<             tokenizer_kwargs = {}
+< 
+<         encoded_prompt = tokenizer.encode(
+<             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
+<         )
+---
+>             with deepspeed.OnDevice(dtype=args.dtype, device=args.device):
+>                 model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=args.dtype)
+>         model = model.eval()
+> 
+>         # Initialize the model
+>         ds_inference_kwargs = {"dtype": args.dtype}
+>         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
+>         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
+> 
+>         # BLOOM is managed differently
+>         if is_bloom:
+>             checkpoints_json = "checkpoints.json"
+>             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
+> 
+>             # Make sure all devices/nodes have access to the model checkpoints
+>             torch.distributed.barrier()
+> 
+>             from transformers.models.bloom.modeling_bloom import BloomBlock
+> 
+>             ds_inference_kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
+>             ds_inference_kwargs["checkpoint"] = checkpoints_json
+> 
+>         model = deepspeed.init_inference(model, **ds_inference_kwargs)
+>         if is_bloom:
+>             model.module.split_lm_head()
+>         model = model.module
+375,377c189,191
 <         prefix = args.prefix if args.prefix else args.padding_text
 <         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
 <     encoded_prompt = encoded_prompt.to(args.device)
-379,382c182
+---
+>         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path)
+>         model = model.eval().to(args.device)
+>         is_bloom = model_is_bloom(model.config)
+379,382c193,194
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 <     else:
 <         input_ids = encoded_prompt
 ---
->     config = AutoConfig.from_pretrained(args.model_name_or_path)
-384,404c184,203
+>         if args.use_hpu_graphs:
+>             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+384,405c196
 <     if args.jit:
 <         jit_input_texts = ["jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -511,46 +526,41 @@
 <         repetition_penalty=args.repetition_penalty,
 <         do_sample=True,
 <         num_return_sequences=args.num_return_sequences,
+<     )
 ---
->     # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
->     with deepspeed.OnDevice(dtype=torch.bfloat16, device="meta"):
->         model = AutoModelForCausalLM.from_config(config, torch_dtype=torch.bfloat16)
->     model = model.eval()
-> 
->     checkpoints_json = "checkpoints.json"
->     write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
-> 
->     # Make sure all devices/nodes have access to the model checkpoints
->     torch.distributed.barrier()
-> 
->     # Initialize the model
->     model = deepspeed.init_inference(
->         model,
->         mp_size=world_size,
->         dtype=torch.bfloat16,
->         injection_policy={BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")},
->         checkpoint=checkpoints_json,
->         args=args,
->         enable_cuda_graph=args.use_hpu_graphs,
-405a205,206
->     model.module.split_lm_head()
->     model = model.module
-407,409c208,216
+>             model = wrap_in_hpu_graph(model)
+407,409c198,201
 <     # Remove the batch dimension when returning multiple sequences
 <     if len(output_sequences.shape) > 2:
 <         output_sequences.squeeze_()
 ---
+>     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
+>     if tokenizer.pad_token is None:
+>         tokenizer.pad_token = tokenizer.eos_token
+>         model.generation_config.pad_token_id = model.generation_config.eos_token_id
+411c203,204
+<     generated_sequences = []
+---
 >     if rank in [-1, 0]:
 >         logger.info(f"Args: {args}")
->         logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: True")
+413,415c206,215
+<     for generated_sequence_idx, generated_sequence in enumerate(output_sequences):
+<         print(f"=== GENERATED SEQUENCE {generated_sequence_idx + 1} ===")
+<         generated_sequence = generated_sequence.tolist()
+---
+>         use_bf16 = False
+>         if use_deepspeed or (gaudi_config is not None and gaudi_config.use_habana_mixed_precision):
+>             use_bf16 = True
+>         logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: {use_bf16}")
 > 
 >     # Generation configuration
 >     generation_config = GenerationConfig(
 >         max_new_tokens=args.max_new_tokens,
 >         use_cache=args.use_kv_cache,
 >     )
-411c218,319
-<     generated_sequences = []
+417,418c217,320
+<         # Decode text
+<         text = tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
 ---
 >     if args.dataset_name is None:
 >         # Benchmark over the prompts below
@@ -585,8 +595,11 @@
 >                 input_tokens.input_ids, (0, args.max_new_tokens), value=model.config.pad_token_id
 >             )
 >             input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
->             # token_idx is the current index in the generation process, it is incremented each time a new token is generated
->             kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
+>             if is_bloom:
+>                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
+>                 kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
+>             else:
+>                 kwargs = {}
 > 
 >             # Move inputs to target device(s)
 >             for t in input_tokens:
@@ -597,21 +610,20 @@
 >                 **input_tokens,
 >                 **kwargs,
 >                 generation_config=generation_config,
->                 lazy_mode=args.use_hpu_graphs,
+>                 lazy_mode=True,
 >                 hpu_graphs=args.use_hpu_graphs,
 >             ).cpu()
 >             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 > 
 >         # Compilation
->         if args.use_hpu_graphs:
->             if rank in [-1, 0]:
->                 logger.info("Graph compilation...")
->             t0 = time.perf_counter()
->             # The first two iterations take longer because of graph compilation
->             for _ in range(2):
->                 generate()
->             torch_hpu.synchronize()
->             compilation_duration = time.perf_counter() - t0
+>         if rank in [-1, 0]:
+>             logger.info("Graph compilation...")
+>         t0 = time.perf_counter()
+>         # The first three iterations take longer because of graph compilation
+>         for _ in range(3):
+>             generate()
+>         torch_hpu.synchronize()
+>         compilation_duration = time.perf_counter() - t0
 > 
 >         total_new_tokens_generated = 0
 >         if rank in [-1, 0]:
@@ -654,10 +666,9 @@
 >         else:
 >             split = "train"
 >         raw_dataset = raw_dataset[split]
-413,415c321,331
-<     for generated_sequence_idx, generated_sequence in enumerate(output_sequences):
-<         print(f"=== GENERATED SEQUENCE {generated_sequence_idx + 1} ===")
-<         generated_sequence = generated_sequence.tolist()
+420,421c322,332
+<         # Remove all text after the stop token
+<         text = text[: text.find(args.stop_token) if args.stop_token else None]
 ---
 >         if args.column_name is None:
 >             # If no column name is given, take the first column that has strings
@@ -670,22 +681,22 @@
 >                 )
 >         else:
 >             column_name = args.column_name
-417,418c333,334
-<         # Decode text
-<         text = tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
----
->         # Remove unused columns
->         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
-420,421c336,337
-<         # Remove all text after the stop token
-<         text = text[: text.find(args.stop_token) if args.stop_token else None]
----
->         # Set the prompt length to 16
->         prompt_length = 16
-423,425c339,346
+423,426c334,335
 <         # Add the prompt at the beginning of the sequence. Remove the excess text that was used for pre-processing
 <         total_sequence = (
 <             prompt_text + text[len(tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
+<         )
+---
+>         # Remove unused columns
+>         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
+428,429c337,338
+<         generated_sequences.append(total_sequence)
+<         print(total_sequence)
+---
+>         # Set the prompt length to 16
+>         prompt_length = 16
+431c340,387
+<     return generated_sequences
 ---
 >         def preprocess_function(examples):
 >             # Tokenize the texts
@@ -695,13 +706,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-427,431c348,385
-< 
-<         generated_sequences.append(total_sequence)
-<         print(total_sequence)
-< 
-<     return generated_sequences
----
+>         )
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
@@ -721,8 +726,9 @@
 >             for t in batch:
 >                 if torch.is_tensor(batch[t]):
 >                     batch[t] = batch[t].to(args.device)
->             # token_idx is the current index in the generation process, it is incremented each time a new token is generated
->             batch["token_idx"] = torch.tensor(prompt_length, device=args.device)
+>             if is_bloom:
+>                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
+>                 batch["token_idx"] = torch.tensor(prompt_length, device=args.device)
 > 
 >             # Generate new sequences
 >             outputs = model.generate(

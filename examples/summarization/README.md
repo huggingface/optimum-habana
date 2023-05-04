@@ -47,7 +47,7 @@ python run_summarization.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 Only T5 models `t5-small`, `t5-base`, `t5-large`, `t5-3b` and `t5-11b` must use an additional argument: `--source_prefix "summarize: "`.
@@ -78,7 +78,7 @@ python run_summarization.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 The task of summarization also supports custom CSV and JSONLINES formats.
@@ -163,7 +163,7 @@ python ../gaudi_spawn.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 
@@ -191,7 +191,7 @@ python ../gaudi_spawn.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 2 \
+    --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```
 
@@ -214,4 +214,29 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
         "contiguous_gradients": false
     }
 }
+```
+
+
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with T5 on the CNN-DailyMail dataset on 1 Gaudi card with the following command:
+```bash
+python run_summarization.py \
+    --model_name_or_path t5-small \
+    --do_eval \
+    --dataset_name cnn_dailymail \
+    --dataset_config "3.0.0" \
+    --source_prefix "summarize: " \
+    --output_dir /tmp/tst-summarization \
+    --per_device_eval_batch_size 4 \
+    --overwrite_output_dir \
+    --predict_with_generate \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/t5 \
+    --ignore_pad_token_for_loss False \
+    --pad_to_max_length
 ```

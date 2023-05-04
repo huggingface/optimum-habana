@@ -44,6 +44,7 @@ TESTS_REQUIRE = [
     "optuna",
     "sentencepiece",
     "datasets",
+    "safetensors",
 ]
 
 QUALITY_REQUIRES = [
