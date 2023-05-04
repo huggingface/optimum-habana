@@ -213,6 +213,6 @@ def get_driver_version():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    if output.stdout:
+    if not output.stderr:
         return version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
     return None
