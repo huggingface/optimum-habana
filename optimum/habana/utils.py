@@ -33,7 +33,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.8.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.9.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -153,15 +153,15 @@ def set_seed(seed: int):
 
 
 def check_synapse_version():
+    """
+    Checks whether the versions of SynapseAI and drivers have been validated for the current version of Optimum Habana.
+    """
+    # Change the logging format
+    logging.enable_default_handler()
+    logging.enable_explicit_format()
+
     # Check the version of habana_frameworks
-    output = subprocess.run(
-        "pip list | grep habana-torch-plugin",
-        shell=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    habana_frameworks_version_number = version.parse(output.stdout.split("\n")[0].split(" ")[-1])
+    habana_frameworks_version_number = get_habana_frameworks_version()
     if (
         habana_frameworks_version_number.major != CURRENTLY_VALIDATED_SYNAPSE_VERSION.major
         or habana_frameworks_version_number.minor != CURRENTLY_VALIDATED_SYNAPSE_VERSION.minor
@@ -171,14 +171,7 @@ def check_synapse_version():
         )
 
     # Check driver version
-    output = subprocess.run(
-        "hl-smi",
-        shell=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    driver_version = version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
+    driver_version = get_driver_version()
     if (
         driver_version.major != CURRENTLY_VALIDATED_SYNAPSE_VERSION.major
         or driver_version.minor != CURRENTLY_VALIDATED_SYNAPSE_VERSION.minor
@@ -186,3 +179,31 @@ def check_synapse_version():
         logger.warning(
             f"optimum-habana v{__version__} has been validated for SynapseAI v{CURRENTLY_VALIDATED_SYNAPSE_VERSION} but the driver version is v{driver_version}, this could lead to undefined behavior!"
         )
+
+
+def get_habana_frameworks_version():
+    """
+    Returns the installed version of SynapseAI.
+    """
+    output = subprocess.run(
+        "pip list | grep habana-torch-plugin",
+        shell=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return version.parse(output.stdout.split("\n")[0].split(" ")[-1])
+
+
+def get_driver_version():
+    """
+    Returns the driver version.
+    """
+    output = subprocess.run(
+        "hl-smi",
+        shell=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
