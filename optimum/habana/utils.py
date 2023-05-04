@@ -172,12 +172,19 @@ def check_synapse_version():
 
     # Check driver version
     driver_version = get_driver_version()
-    if (
-        driver_version.major != CURRENTLY_VALIDATED_SYNAPSE_VERSION.major
-        or driver_version.minor != CURRENTLY_VALIDATED_SYNAPSE_VERSION.minor
-    ):
+    # This check is needed to make sure an error is not raised while building the documentation
+    # Because the doc is built on an instance that does not have `hl-smi`
+    if driver_version is not None:
+        if (
+            driver_version.major != CURRENTLY_VALIDATED_SYNAPSE_VERSION.major
+            or driver_version.minor != CURRENTLY_VALIDATED_SYNAPSE_VERSION.minor
+        ):
+            logger.warning(
+                f"optimum-habana v{__version__} has been validated for SynapseAI v{CURRENTLY_VALIDATED_SYNAPSE_VERSION} but the driver version is v{driver_version}, this could lead to undefined behavior!"
+            )
+    else:
         logger.warning(
-            f"optimum-habana v{__version__} has been validated for SynapseAI v{CURRENTLY_VALIDATED_SYNAPSE_VERSION} but the driver version is v{driver_version}, this could lead to undefined behavior!"
+            "Could not run `hl-smi`, please follow the installation guide: https://docs.habana.ai/en/latest/Installation_Guide/index.html."
         )
 
 
@@ -206,4 +213,6 @@ def get_driver_version():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    return version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
+    if output.stdout:
+        return version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
+    return None
