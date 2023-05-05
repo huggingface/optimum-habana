@@ -226,6 +226,11 @@ class GaudiTrainer(Trainer):
             "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
         )
 
+        # HPU graphs training optimization, where FW+BWD passes are scheduled on HPU for execution within milliseconds.
+        self._recorded_fwbwd_graph = None
+        self._recorded_fwbwd_inputs = None
+        self._recorded_fwbwd_output = None
+
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
@@ -387,25 +392,8 @@ class GaudiTrainer(Trainer):
             return model
 
         if self.args.local_rank != -1:
-            kwargs = {}
-
-            kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
-            if self.args.ddp_find_unused_parameters and self.args.gradient_checkpointing:
-                logger.warning(
-                    "ddp_find_unused_parameters and gradient_checkpointing are both True, which may lead to an error:"
-                    " https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021"
-                )
-            kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
-
-            if self.args.use_habana:
-                kwargs["gradient_as_bucket_view"] = True
-
-            model = torch.nn.parallel.DistributedDataParallel(
-                model,
-                device_ids=[self.args.local_rank] if self.args._n_gpu != 0 and not self.args.use_habana else None,
-                output_device=self.args.local_rank if self.args._n_gpu != 0 and not self.args.use_habana else None,
-                **kwargs,
-            )
+            from .fastddp import FastDistributedDataParallel
+            model = FastDistributedDataParallel(model, fusion_buffer_dtype=torch.bfloat16)
 
         # torch.compile() needs to be called after wrapping the model with FSDP or DDP
         # to ensure that it accounts for the graph breaks required by those wrappers
@@ -722,6 +710,10 @@ class GaudiTrainer(Trainer):
                 if self.is_local_process_zero() and not args.disable_tqdm:
                     steps_trained_progress_bar = tqdm(total=steps_trained_in_current_epoch)
                     steps_trained_progress_bar.set_description("Skipping the first batches")
+        elif self.args.world_size > 1:
+            logger.info("As in multi-worker training, broadcasting the initial model from worker:0 to the rest of the collective group.")
+            for param in model.parameters():
+                torch.distributed.broadcast(param.data, src=0)
 
         # Update the references
         self.callback_handler.model = self.model
@@ -752,7 +744,7 @@ class GaudiTrainer(Trainer):
 
         # set_to_none is not implemented for some optimizers
         try:
-            model.zero_grad(set_to_none=True)
+            model.zero_grad(set_to_none=False)
         except TypeError:
             model.zero_grad()
 
@@ -820,16 +812,15 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                if (
-                    ((step + 1) % args.gradient_accumulation_steps != 0)
-                    and args.local_rank != -1
-                    and args._no_sync_in_gradient_accumulation
-                ):
-                    # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
-                    with model.no_sync():
-                        tr_loss_step = self.training_step(model, inputs)
-                else:
-                    tr_loss_step = self.training_step(model, inputs)
+                tr_loss_step = self._take_training_step_fwbwd(model, inputs)
+
+                if self.args.world_size > 1:
+                    if (step + 1) % args.gradient_accumulation_steps == 0 or (
+                        # last step in epoch but step is always smaller than gradient_accumulation_steps
+                        steps_in_epoch <= args.gradient_accumulation_steps
+                        and (step + 1) == steps_in_epoch
+                    ):
+                        model.all_reduce_gradients()
 
                 if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):
                     # if loss is nan or inf simply add the average of previous logged losses
@@ -892,7 +883,7 @@ class GaudiTrainer(Trainer):
 
                     # set_to_none is not implemented for some optimizers
                     try:
-                        model.zero_grad(set_to_none=True)
+                        model.zero_grad(set_to_none=False)
                     except TypeError:
                         model.zero_grad()
 
@@ -971,6 +962,28 @@ class GaudiTrainer(Trainer):
         self.control = self.callback_handler.on_train_end(args, self.state, self.control)
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
+
+    def _take_training_step_fwbwd(self, model, inputs):
+        if self._recorded_fwbwd_graph is None:
+            self._recorded_fwbwd_output = torch.zeros(size=(1,), dtype=torch.bfloat16, device='hpu:0')
+
+            self._recorded_fwbwd_inputs = {}
+            for inp_k, inp_v in inputs.items():
+                self._recorded_fwbwd_inputs[inp_k] = torch.zeros(size=inp_v.shape, dtype=inp_v.dtype, device='hpu:0')
+
+            import habana_frameworks.torch as ht
+            self._recorded_fwbwd_graph = ht.hpu.HPUGraph()
+            s = ht.hpu.Stream()
+            with ht.hpu.stream(s):
+                self._recorded_fwbwd_graph.capture_begin()
+                self._recorded_fwbwd_output.copy_(self.training_step(model, self._recorded_fwbwd_inputs), non_blocking=True)
+                self._recorded_fwbwd_graph.capture_end()
+
+        for inp_k, inp_v in inputs.items():
+            self._recorded_fwbwd_inputs[inp_k].copy_(inp_v, non_blocking=True)
+
+        self._recorded_fwbwd_graph.replay()
+        return self._recorded_fwbwd_output
 
     def _load_rng_state(self, checkpoint):
         # Load RNG states from `checkpoint`
