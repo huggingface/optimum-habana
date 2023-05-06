@@ -33,7 +33,7 @@ Finally, you will need to specify a [Gaudi configuration](https://huggingface.co
 ```python
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
-model_name = "CompVis/stable-diffusion-v1-4"
+model_name = "runwayml/stable-diffusion-v1-5"
 
 scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
@@ -74,7 +74,7 @@ Here is an example:
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 
 
-model_name = "stabilityai/stable-diffusion-2-base"
+model_name = "stabilityai/stable-diffusion-2-1"
 
 scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
@@ -83,12 +83,23 @@ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
     scheduler=scheduler,
     use_habana=True,
     use_hpu_graphs=True,
-    gaudi_config="Habana/stable-diffusion",
+    gaudi_config="Habana/stable-diffusion-2",
 )
 
 outputs = pipeline(
     ["An image of a squirrel in Picasso style"],
-    num_images_per_prompt=16,
-    batch_size=4,
+    num_images_per_prompt=10,
+    batch_size=2,
+    height=768,
+    width=768,
 )
 ```
+
+<Tip>
+
+There are two different checkpoints for Stable Diffusion 2:
+
+- use [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) for generating 768x768 images
+- use [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base) for generating 512x512 images
+
+</Tip>

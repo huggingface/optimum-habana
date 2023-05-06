@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2022 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,22 +13,107 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from copy import deepcopy
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.utils.data import Dataset
 from transformers.deepspeed import is_deepspeed_zero3_enabled
-from transformers.trainer_utils import PredictionOutput
+from transformers.generation.configuration_utils import GenerationConfig
 
 from optimum.utils import logging
 
 from .trainer import GaudiTrainer
 
 
+if TYPE_CHECKING:
+    from transformers.data.data_collator import DataCollator
+    from transformers.modeling_utils import PreTrainedModel
+    from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+    from transformers.trainer_callback import TrainerCallback
+    from transformers.trainer_utils import EvalPrediction, PredictionOutput
+
+    from .gaudi_configuration import GaudiConfig
+    from .training_args import GaudiTrainingArguments
+
+
 logger = logging.get_logger(__name__)
 
 
 class GaudiSeq2SeqTrainer(GaudiTrainer):
+    def __init__(
+        self,
+        model: Union["PreTrainedModel", torch.nn.Module] = None,
+        gaudi_config: "GaudiConfig" = None,
+        args: "GaudiTrainingArguments" = None,
+        data_collator: Optional["DataCollator"] = None,
+        train_dataset: Optional[Dataset] = None,
+        eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
+        tokenizer: Optional["PreTrainedTokenizerBase"] = None,
+        model_init: Optional[Callable[[], "PreTrainedModel"]] = None,
+        compute_metrics: Optional[Callable[["EvalPrediction"], Dict]] = None,
+        callbacks: Optional[List["TrainerCallback"]] = None,
+        optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
+        preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+    ):
+        super().__init__(
+            model=model,
+            gaudi_config=gaudi_config,
+            args=args,
+            data_collator=data_collator,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            model_init=model_init,
+            compute_metrics=compute_metrics,
+            callbacks=callbacks,
+            optimizers=optimizers,
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+        )
+
+        # Override self.model.generation_config if a GenerationConfig is specified in args.
+        # Priority: args.generation_config > model.generation_config > default GenerationConfig.
+        if self.args.generation_config is not None:
+            gen_config = self.load_generation_config(self.args.generation_config)
+            self.model.generation_config = gen_config
+
+    @staticmethod
+    def load_generation_config(gen_config_arg: Union[str, GenerationConfig]) -> GenerationConfig:
+        """
+        Loads a `~generation.GenerationConfig` from the `GaudiSeq2SeqTrainingArguments.generation_config` arguments.
+
+        Args:
+            gen_config_arg (`str` or [`~generation.GenerationConfig`]):
+                `GaudiSeq2SeqTrainingArguments.generation_config` argument.
+
+        Returns:
+            A `~generation.GenerationConfig`.
+        """
+
+        # GenerationConfig provided, nothing to do
+        if isinstance(gen_config_arg, GenerationConfig):
+            return deepcopy(gen_config_arg)
+
+        # str or Path
+        pretrained_model_name = Path(gen_config_arg) if isinstance(gen_config_arg, str) else gen_config_arg
+        config_file_name = None
+
+        # Figuring if it is path pointing to a file, pointing to a directory or else a model id or URL
+        # This step is required in order to determine config_file_name
+        if pretrained_model_name.is_file():
+            config_file_name = pretrained_model_name.name
+            pretrained_model_name = pretrained_model_name.parent
+        # dir path
+        elif pretrained_model_name.is_dir():
+            pass
+        # model id or URL
+        else:
+            pretrained_model_name = gen_config_arg
+
+        gen_config = GenerationConfig.from_pretrained(pretrained_model_name, config_file_name)
+        return gen_config
+
     def evaluate(
         self,
         eval_dataset: Optional[Dataset] = None,
@@ -71,14 +157,6 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         )
         self._gen_kwargs = gen_kwargs
 
-        if self.args.use_hpu_graphs:
-            # Disable HPU graphs as generation needs to be fixed
-            self.args.use_hpu_graphs = False
-            logger.warning(
-                "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
-                " performed in lazy mode."
-            )
-
         return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def predict(
@@ -87,7 +165,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "test",
         **gen_kwargs,
-    ) -> PredictionOutput:
+    ) -> "PredictionOutput":
         """
         Run prediction and returns predictions and potential metrics.
         Depending on the dataset and your use case, your test dataset may contain labels. In that case, this method
@@ -172,6 +250,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         inputs = self._prepare_inputs(inputs)
 
         # XXX: adapt synced_gpus for fairscale as well
+        # Priority (handled in generate):
+        # gen_kwargs > model.generation_config > default GenerationConfig()
         gen_kwargs = self._gen_kwargs.copy()
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
             gen_kwargs["max_length"] = self.model.config.max_length
@@ -190,69 +270,70 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             gen_kwargs["hpu_graphs"] if gen_kwargs.get("hpu_graphs") is not None else self.args.use_hpu_graphs
         )
 
-        if "attention_mask" in inputs:
-            gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
-        if "global_attention_mask" in inputs:
-            gen_kwargs["global_attention_mask"] = inputs.get("global_attention_mask", None)
+        # TODO (Joao): the following line is needed to keep a consistent result on SQUAD. Ideally, we should not block
+        # users from preparing a dataset with `decoder_input_ids`.
+        inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
+        try:
+            generated_tokens = self.model.generate(**inputs, **gen_kwargs)
+        except RuntimeError as error:
+            if "cpu fallback is not supported during hpu graph capturing" in str(error):
+                error.args = (
+                    f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                )
+            raise error
 
-        # prepare generation inputs
-        # some encoder-decoder models can have varying encoder's and thus
-        # varying model input names
-        if hasattr(self.model, "encoder") and self.model.encoder.main_input_name != self.model.main_input_name:
-            generation_inputs = inputs[self.model.encoder.main_input_name]
-        else:
-            generation_inputs = inputs[self.model.main_input_name]
-
-        generated_tokens = self.model.generate(
-            generation_inputs,
-            **gen_kwargs,
-        )
         # Temporary hack to ensure the generation config is not initialized for each iteration of the evaluation loop
         # TODO: remove this hack when the legacy code that initializes generation_config from a model config is
         # removed in https://github.com/huggingface/transformers/blob/98d88b23f54e5a23e741833f1e973fdf600cc2c5/src/transformers/generation/utils.py#L1183
         if self.model.generation_config._from_model_config:
             self.model.generation_config._from_model_config = False
+
+        # Retrieves GenerationConfig from model.generation_config
+        gen_config = self.model.generation_config
         # in case the batch is shorter than max length, the output should be padded
-        if gen_kwargs.get("max_length") is not None and generated_tokens.shape[-1] < gen_kwargs["max_length"]:
-            generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
-        elif gen_kwargs.get("max_new_tokens") is not None and generated_tokens.shape[-1] < (
-            gen_kwargs["max_new_tokens"] + 1
-        ):
-            generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_new_tokens"] + 1)
+        if generated_tokens.shape[-1] < gen_config.max_length:
+            generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_config.max_length)
+        elif gen_config.max_new_tokens is not None and generated_tokens.shape[-1] < gen_config.max_new_tokens + 1:
+            generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_config.max_new_tokens + 1)
 
         # Different processes may have different generation work in eager mode, hence this sync
         if not self.args.use_lazy_mode and self.args.local_rank != -1:
             torch.distributed.barrier()
 
         with torch.no_grad():
-            if has_labels:
-                with self.compute_loss_context_manager():
-                    outputs = model(**inputs)
-                if self.label_smoother is not None:
-                    loss = self.label_smoother(outputs, inputs["labels"]).mean().detach()
+            try:
+                if has_labels:
+                    with self.compute_loss_context_manager():
+                        outputs = model(**inputs)
+                    if self.label_smoother is not None:
+                        loss = self.label_smoother(outputs, inputs["labels"]).mean().detach()
+                    else:
+                        loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0]).mean().detach()
                 else:
-                    loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0]).mean().detach()
-            else:
-                loss = None
+                    loss = None
+            except RuntimeError as error:
+                if "cpu fallback is not supported during hpu graph capturing" in str(error):
+                    error.args = (
+                        f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                    )
+                raise error
 
         if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
             self.htcore.mark_step()
 
         if self.args.prediction_loss_only:
-            return (loss, None, None)
+            return loss, None, None
 
         if has_labels:
             labels = inputs["labels"]
-            if gen_kwargs.get("max_length") is not None and labels.shape[-1] < gen_kwargs["max_length"]:
-                labels = self._pad_tensors_to_max_len(labels, gen_kwargs["max_length"])
-            elif gen_kwargs.get("max_new_tokens") is not None and labels.shape[-1] < (
-                gen_kwargs["max_new_tokens"] + 1
-            ):
-                labels = self._pad_tensors_to_max_len(labels, (gen_kwargs["max_new_tokens"] + 1))
+            if labels.shape[-1] < gen_config.max_length:
+                labels = self._pad_tensors_to_max_len(labels, gen_config.max_length)
+            elif gen_config.max_new_tokens is not None and labels.shape[-1] < gen_config.max_new_tokens + 1:
+                labels = self._pad_tensors_to_max_len(labels, gen_config.max_new_tokens + 1)
         else:
             labels = None
 
-        return (loss, generated_tokens, labels)
+        return loss, generated_tokens, labels
 
     def _pad_tensors_to_max_len(self, tensor, max_length):
         if self.tokenizer is not None and hasattr(self.tokenizer, "pad_token_id"):

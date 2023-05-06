@@ -6,23 +6,29 @@
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 32,
-                "eval_accuracy": 0.99,
-                "train_runtime": 770.1643,
-                "train_samples_per_second": 286.915,
+                "eval_accuracy": 0.9901,
+                "train_runtime": 722.512,
+                "train_samples_per_second": 304.223,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--seed 1337"
+                    "--seed 1337",
+                    "--dataloader_num_workers 1",
+                    "--pipelining_fwd_bwd True",
+                    "--non_blocking_data_copy True"
                 ]
             },
             "multi_card": {
                 "learning_rate": 2e-4,
                 "train_batch_size": 64,
-                "eval_accuracy": 0.9897,
-                "train_runtime": 178.1801,
-                "train_samples_per_second": 1680.255,
+                "eval_accuracy": 0.9895,
+                "train_runtime": 143.6464,
+                "train_samples_per_second": 2484.32,
                 "extra_arguments": [
                     "--remove_unused_columns False",
-                    "--seed 1337"
+                    "--seed 1337",
+                    "--dataloader_num_workers 1",
+                    "--pipelining_fwd_bwd True",
+                    "--non_blocking_data_copy True"
                 ]
             }
         }

@@ -23,4 +23,7 @@ from .transformers import (
     GaudiTrainer,
     GaudiTrainingArguments,
 )
+from .utils import check_synapse_version
 from .version import __version__
+
+check_synapse_version()

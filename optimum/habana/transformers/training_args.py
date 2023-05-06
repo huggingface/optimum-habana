@@ -1,16 +1,17 @@
-#  Copyright 2022 The HuggingFace Team. All rights reserved.
+# coding=utf-8
+# Copyright 2022 The HuggingFace Team. All rights reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import os
 import warnings
@@ -19,6 +20,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
 from transformers.trainer_utils import EvaluationStrategy, HubStrategy, IntervalStrategy, SchedulerType
@@ -28,7 +30,13 @@ from transformers.training_args import (
     default_logdir,
     get_int_from_env,
 )
-from transformers.utils import ccl_version, get_full_repo_name, is_accelerate_available, is_psutil_available
+from transformers.utils import (
+    ccl_version,
+    get_full_repo_name,
+    is_accelerate_available,
+    is_psutil_available,
+    is_safetensors_available,
+)
 
 from optimum.utils import logging
 
@@ -61,59 +69,94 @@ UNSUPPORTED_ARGUMENTS = [
 @dataclass
 class GaudiTrainingArguments(TrainingArguments):
     """
-    GaudiTrainingArguments is built on top of the tranformers' TrainingArguments
+    GaudiTrainingArguments is built on top of the Tranformers' [TrainingArguments](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments)
     to enable deployment on Habana's Gaudi.
+
+    Args:
+        use_habana (`bool`, *optional*, defaults to `False`):
+            Whether to use Habana's HPU for running the model.
+        gaudi_config_name (`str`, *optional*):
+            Pretrained Gaudi config name or path.
+        use_lazy_mode (`bool`, *optional*, defaults to `False`):
+            Whether to use lazy mode for running the model.
+        use_hpu_graphs (`bool`, *optional*, defaults to `False`):
+            Whether to use HPU graphs for performing inference.
+        throughput_warmup_steps (`int`, *optional*, defaults to 0):
+            Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,
+            the first N steps will not be considered in the calculation of the throughput. This is especially
+            useful in lazy mode where the first two or three iterations typically take longer.
+        pipelining_fwd_bwd (`bool`, *optional*, defaults to `False`):
+            Whether to add an additional `mark_step` between forward and backward for pipelining
+            host backward building and HPU forward computing.
+        non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
+            Whether to enable async data copy when preparing inputs.
     """
 
     use_habana: Optional[bool] = field(
         default=False,
-        metadata={"help": "Whether to use Habana's HPU for training the model."},
+        metadata={"help": "Whether to use Habana's HPU for running the model."},
     )
 
     gaudi_config_name: Optional[str] = field(
         default=None,
-        metadata={"help": "Pretrained Gaudi config name or path if not the same as model_name."},
+        metadata={"help": "Pretrained Gaudi config name or path."},
     )
 
-    use_lazy_mode: bool = field(
+    use_lazy_mode: Optional[bool] = field(
         default=False,
-        metadata={"help": "Whether to use lazy mode for training the model."},
+        metadata={"help": "Whether to use lazy mode for running the model."},
     )
 
-    use_hpu_graphs: bool = field(
+    use_hpu_graphs: Optional[bool] = field(
         default=False,
         metadata={"help": "Whether to use HPU graphs for performing inference."},
     )
 
-    throughput_warmup_steps: int = field(
+    throughput_warmup_steps: Optional[int] = field(
         default=0,
         metadata={
             "help": (
-                "Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N,"
+                "Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,"
                 " the first N steps will not be considered in the calculation of the throughput. This is especially"
-                " useful in lazy mode."
+                " useful in lazy mode where the first two or three iterations typically take longer."
             )
         },
     )
 
+    pipelining_fwd_bwd: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to add an additional `mark_step` between forward and backward for pipelining "
+                "host backward building and HPU forward computing."
+            )
+        },
+    )
+
+    non_blocking_data_copy: Optional[bool] = field(
+        default=False,
+        metadata={"help": ("Whether to enable async data copy when preparing inputs.")},
+    )
+
     # Overriding the default value of optim because 'adamw_hf' is deprecated
-    optim: Union[OptimizerNames, str] = field(
+    optim: Optional[Union[OptimizerNames, str]] = field(
         default="adamw_torch",
         metadata={"help": "The optimizer to use."},
     )
 
-    # Override the default value of epsilon to be consistent with Habana FusedAdamW
-    adam_epsilon: float = field(
+    # Overriding the default value of epsilon to be consistent with Habana FusedAdamW
+    adam_epsilon: Optional[float] = field(
         default=1e-6,
         metadata={"help": "Epsilon for AdamW optimizer."},
     )
 
-    # Override logging_nan_inf_filter to make False the default value
-    logging_nan_inf_filter: bool = field(
+    # Overriding logging_nan_inf_filter to make False the default value
+    logging_nan_inf_filter: Optional[bool] = field(
         default=False,
         metadata={"help": "Filter nan and inf losses for logging."},
     )
 
+    # Overriding ddp_bucket_cap_mb to make 230 the default value
     ddp_bucket_cap_mb: Optional[int] = field(
         default=230,
         metadata={
@@ -124,6 +167,7 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    # Overriding ddp_find_unused_parameters to make False the default value
     ddp_find_unused_parameters: Optional[bool] = field(
         default=False,
         metadata={
@@ -152,7 +196,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.fp16 or self.fp16_full_eval:
             raise ValueError(
                 "--fp16, --fp16_backend, --fp16_full_eval, --fp16_opt_level and --half_precision_backend are not"
-                " supported by optimum-habana. Mixed-precision training can be enabled in your Gaudi configuration."
+                " supported by optimum-habana. Mixed-precision can be enabled in your Gaudi configuration."
             )
         if self.fsdp:
             raise ValueError("--fsdp is not supported by optimum-habana.")
@@ -235,6 +279,17 @@ class GaudiTrainingArguments(TrainingArguments):
                     f"steps, but found {self.save_steps}, which is not a round multiple of {self.eval_steps}."
                 )
 
+        safetensors_available = is_safetensors_available()
+        if self.save_safetensors and not safetensors_available:
+            raise ValueError(f"--save_safetensors={self.save_safetensors} requires safetensors to be installed!")
+        if not self.save_safetensors and safetensors_available:
+            logger.info(
+                f"Found safetensors installation, but --save_safetensors={self.save_safetensors}. "
+                f"Safetensors should be a preferred weights saving format due to security and performance reasons. "
+                f"If your model cannot be saved by safetensors please feel free to open an issue at "
+                f"https://github.com/huggingface/safetensors!"
+            )
+
         if self.load_best_model_at_end and self.metric_for_best_model is None:
             self.metric_for_best_model = "loss"
         if self.greater_is_better is None and self.metric_for_best_model is not None:
@@ -252,6 +307,9 @@ class GaudiTrainingArguments(TrainingArguments):
                 FutureWarning,
             )
             self.optim = OptimizerNames.ADAFACTOR
+        if self.optim == OptimizerNames.ADAMW_TORCH_FUSED and is_torch_available():
+            if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
+                raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
 
         if self.report_to is None:
             logger.info(
@@ -434,6 +492,13 @@ class GaudiTrainingArguments(TrainingArguments):
                     backend=self.xpu_backend, rank=rank, world_size=size, timeout=self.ddp_timeout_delta
                 )
         elif self.use_habana:
+            # Some methods needs to be tweaked to optimally run on Gaudi
+            # Calling this method here to be sure it is done before model instantiation
+            # Otherwise this will fail when some __init__ methods are overridden (cf. GPT2Attention)
+            from .modeling_utils import adapt_transformers_to_gaudi
+
+            adapt_transformers_to_gaudi()
+
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
             else:
@@ -454,9 +519,13 @@ class GaudiTrainingArguments(TrainingArguments):
                 if not is_deepspeed_available():
                     raise ImportError(
                         "--deepspeed requires deepspeed: `pip install"
-                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.8.0`."
+                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
                     )
                 import deepspeed
+
+                if world_size > 1:
+                    os.environ["HLS_MODULE_ID"] = str(self.local_rank)
+                    os.environ["ID"] = str(rank)
 
                 deepspeed.init_distributed(dist_backend="hccl", timeout=timedelta(seconds=self.ddp_timeout))
                 logger.info("DeepSpeed is enabled.")
@@ -466,7 +535,7 @@ class GaudiTrainingArguments(TrainingArguments):
                         torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
                         logger.info("Enabled distributed run.")
                 else:
-                    logger.info("Single node run.")
+                    logger.info("Single-device run.")
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."

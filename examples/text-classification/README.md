@@ -53,7 +53,7 @@ python run_glue.py \
   --use_habana \
   --use_lazy_mode \
   --use_hpu_graphs \
-  --throughput_warmup_steps 2
+  --throughput_warmup_steps 3
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
@@ -80,7 +80,7 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs \
-    --throughput_warmup_steps 2
+    --throughput_warmup_steps 3
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
@@ -107,7 +107,7 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs \
-    --throughput_warmup_steps 2 \
+    --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```
 
@@ -133,3 +133,22 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
+
+
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with BERT on GLUE on 1 Gaudi card with the following command:
+```bash
+python run_glue.py \
+  --model_name_or_path bert-large-uncased-whole-word-masking \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
+  --task_name mrpc \
+  --do_eval \
+  --max_seq_length 128 \
+  --output_dir ./output/mrpc/ \
+  --use_habana \
+  --use_lazy_mode \
+  --use_hpu_graphs
+```

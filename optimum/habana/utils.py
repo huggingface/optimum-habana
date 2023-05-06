@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import random
+import subprocess
 import time
 from typing import Any, Dict
 
@@ -21,7 +22,18 @@ import numpy as np
 import torch
 from habana_frameworks.torch.hpu import memory_stats
 from habana_frameworks.torch.hpu import random as hpu_random
+from packaging import version
 from transformers.utils import is_torch_available
+
+from optimum.utils import logging
+
+from .version import __version__
+
+
+logger = logging.get_logger(__name__)
+
+
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.9.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -138,3 +150,69 @@ def set_seed(seed: int):
     if is_torch_available():
         torch.manual_seed(seed)
         hpu_random.manual_seed_all(seed)
+
+
+def check_synapse_version():
+    """
+    Checks whether the versions of SynapseAI and drivers have been validated for the current version of Optimum Habana.
+    """
+    # Change the logging format
+    logging.enable_default_handler()
+    logging.enable_explicit_format()
+
+    # Check the version of habana_frameworks
+    habana_frameworks_version_number = get_habana_frameworks_version()
+    if (
+        habana_frameworks_version_number.major != CURRENTLY_VALIDATED_SYNAPSE_VERSION.major
+        or habana_frameworks_version_number.minor != CURRENTLY_VALIDATED_SYNAPSE_VERSION.minor
+    ):
+        logger.warning(
+            f"optimum-habana v{__version__} has been validated for SynapseAI v{CURRENTLY_VALIDATED_SYNAPSE_VERSION} but habana-frameworks v{habana_frameworks_version_number} was found, this could lead to undefined behavior!"
+        )
+
+    # Check driver version
+    driver_version = get_driver_version()
+    # This check is needed to make sure an error is not raised while building the documentation
+    # Because the doc is built on an instance that does not have `hl-smi`
+    if driver_version is not None:
+        if (
+            driver_version.major != CURRENTLY_VALIDATED_SYNAPSE_VERSION.major
+            or driver_version.minor != CURRENTLY_VALIDATED_SYNAPSE_VERSION.minor
+        ):
+            logger.warning(
+                f"optimum-habana v{__version__} has been validated for SynapseAI v{CURRENTLY_VALIDATED_SYNAPSE_VERSION} but the driver version is v{driver_version}, this could lead to undefined behavior!"
+            )
+    else:
+        logger.warning(
+            "Could not run `hl-smi`, please follow the installation guide: https://docs.habana.ai/en/latest/Installation_Guide/index.html."
+        )
+
+
+def get_habana_frameworks_version():
+    """
+    Returns the installed version of SynapseAI.
+    """
+    output = subprocess.run(
+        "pip list | grep habana-torch-plugin",
+        shell=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return version.parse(output.stdout.split("\n")[0].split(" ")[-1])
+
+
+def get_driver_version():
+    """
+    Returns the driver version.
+    """
+    output = subprocess.run(
+        "hl-smi",
+        shell=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if output.returncode == 0:
+        return version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
+    return None

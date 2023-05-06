@@ -37,15 +37,15 @@ from transformers import (
 from transformers.testing_utils import slow
 
 from .utils import (
+    MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION,
+    MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING,
+    MODELS_TO_TEST_FOR_IMAGE_CLASSIFICATION,
+    MODELS_TO_TEST_FOR_MASKED_LANGUAGE_MODELING,
+    MODELS_TO_TEST_FOR_QUESTION_ANSWERING,
+    MODELS_TO_TEST_FOR_SEQ2SEQ,
+    MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION,
+    MODELS_TO_TEST_FOR_SPEECH_RECOGNITION,
     MODELS_TO_TEST_MAPPING,
-    VALID_MODELS_FOR_AUDIO_CLASSIFICATION,
-    VALID_MODELS_FOR_CAUSAL_LANGUAGE_MODELING,
-    VALID_MODELS_FOR_IMAGE_CLASSIFICATION,
-    VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING,
-    VALID_MODELS_FOR_QUESTION_ANSWERING,
-    VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION,
-    VALID_MODELS_FOR_SPEECH_RECOGNITION,
-    VALID_SEQ2SEQ_MODELS,
 )
 
 
@@ -66,7 +66,7 @@ def _get_supported_models_for_script(
     Args:
         models_to_test: mapping between a model type and a tuple (model_name_or_path, gaudi_config_name).
         task_mapping: mapping between a model config and a model class.
-        valid_models_for_task: list of supported models for a specific task.
+        valid_models_for_task: list of models to test for a specific task.
     Returns:
         A list of models that are supported for the task.
         Each element of the list follows the same format: (model_type, (model_name_or_path, gaudi_config_name)).
@@ -88,42 +88,47 @@ _SCRIPT_TO_MODEL_MAPPING = {
     "run_qa": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_QUESTION_ANSWERING_MAPPING,
-        VALID_MODELS_FOR_QUESTION_ANSWERING,
+        MODELS_TO_TEST_FOR_QUESTION_ANSWERING,
     ),
     "run_glue": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
-        VALID_MODELS_FOR_SEQUENCE_CLASSIFICATION,
+        MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION,
     ),
     "run_clm": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
-        VALID_MODELS_FOR_CAUSAL_LANGUAGE_MODELING,
+        MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING,
     ),
     "run_summarization": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
-        VALID_SEQ2SEQ_MODELS,
+        MODELS_TO_TEST_FOR_SEQ2SEQ,
     ),
     "run_image_classification": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
-        VALID_MODELS_FOR_IMAGE_CLASSIFICATION,
+        MODELS_TO_TEST_FOR_IMAGE_CLASSIFICATION,
     ),
     "run_mlm": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_MASKED_LM_MAPPING,
-        VALID_MODELS_FOR_MASKED_LANGUAGE_MODELING,
+        MODELS_TO_TEST_FOR_MASKED_LANGUAGE_MODELING,
     ),
     "run_audio_classification": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,
-        VALID_MODELS_FOR_AUDIO_CLASSIFICATION,
+        MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION,
     ),
     "run_speech_recognition_ctc": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CTC_MAPPING,
-        VALID_MODELS_FOR_SPEECH_RECOGNITION,
+        MODELS_TO_TEST_FOR_SPEECH_RECOGNITION,
+    ),
+    "run_seq2seq_qa": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
+        MODELS_TO_TEST_FOR_SEQ2SEQ,
     ),
 }
 
@@ -318,7 +323,7 @@ class ExampleTesterBase(TestCase):
             "--use_habana",
             "--use_lazy_mode",
             "--use_hpu_graphs",
-            "--throughput_warmup_steps 2",
+            "--throughput_warmup_steps 3",
         ]
 
         if extra_command_line_arguments is not None:
@@ -444,6 +449,10 @@ class MultiCardAudioClassificationExampleTester(
     TASK_NAME = "common_language"
 
 
+# class SpeechRecognitionExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc"):
+#     TASK_NAME = "librispeech_asr"
+
+
 # class MultiCardSpeechRecognitionExampleTester(
 #     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 # ):
@@ -454,3 +463,9 @@ class MultiCardSummarizationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
 ):
     TASK_NAME = "cnn_dailymail"
+
+
+class MultiCardSeq2SeqQuestionAnsweringExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_seq2seq_qa", multi_card=True
+):
+    TASK_NAME = "squad_v2"

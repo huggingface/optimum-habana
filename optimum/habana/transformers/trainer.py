@@ -1,16 +1,17 @@
-#  Copyright 2022 The HuggingFace Team. All rights reserved.
+# coding=utf-8
+# Copyright 2022 The HuggingFace Team. All rights reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import copy
 import math
@@ -21,6 +22,7 @@ import sys
 import tempfile
 import time
 import warnings
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -39,10 +41,14 @@ from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
+    DistributedLengthGroupedSampler,
+    DistributedSamplerWithLoop,
     DistributedTensorGatherer,
     IterableDatasetShard,
+    LengthGroupedSampler,
     SequentialDistributedSampler,
     find_batch_size,
+    get_model_param_count,
     get_parameter_names,
     nested_concat,
     nested_detach,
@@ -65,7 +71,13 @@ from transformers.trainer_utils import (
     has_length,
 )
 from transformers.training_args import TrainingArguments
-from transformers.utils import CONFIG_NAME, WEIGHTS_NAME
+from transformers.utils import (
+    CONFIG_NAME,
+    SAFE_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    is_datasets_available,
+    is_safetensors_available,
+)
 
 from optimum.utils import logging
 
@@ -77,9 +89,16 @@ from ..utils import (
 )
 from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
-from .modeling_utils import adapt_transformers_to_gaudi
 from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
+
+
+if is_datasets_available():
+    import datasets
+
+
+if is_safetensors_available():
+    import safetensors.torch
 
 
 if TYPE_CHECKING:
@@ -179,6 +198,7 @@ class GaudiTrainer(Trainer):
                             hmp_fp32_file.name,
                         )
                         self.hmp.convert(
+                            opt_level=self.gaudi_config.hmp_opt_level,
                             bf16_file_path=hmp_bf16_file.name,
                             fp32_file_path=hmp_fp32_file.name,
                             isVerbose=self.gaudi_config.hmp_is_verbose,
@@ -200,14 +220,91 @@ class GaudiTrainer(Trainer):
         logging.enable_default_handler()
         logging.enable_explicit_format()
 
-        # Some methods needs to be tweaked to optimally run on Gaudi
-        adapt_transformers_to_gaudi(self.gaudi_config.use_habana_mixed_precision)
-
         # Suppress PyTorch autocast warnings with Wav2Vec2
         # This is a bug in PyTorch
         warnings.filterwarnings(
             "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
         )
+
+    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
+        if self.train_dataset is None or not has_length(self.train_dataset):
+            return None
+
+        generator = None
+        if self.args.world_size <= 1:
+            generator = torch.Generator()
+            # for backwards compatibility, we generate a seed here (which is sampled from a generator seeded with
+            # `args.seed`) if data_seed isn't provided.
+            # Further on in this method, we default to `args.seed` instead.
+            if self.args.data_seed is None:
+                seed = int(torch.empty((), dtype=torch.int64).random_().item())
+            else:
+                seed = self.args.data_seed
+            generator.manual_seed(seed)
+
+        seed = self.args.data_seed if self.args.data_seed is not None else self.args.seed
+
+        # Build the sampler.
+        if self.args.group_by_length:
+            if is_datasets_available() and isinstance(self.train_dataset, datasets.Dataset):
+                lengths = (
+                    self.train_dataset[self.args.length_column_name]
+                    if self.args.length_column_name in self.train_dataset.column_names
+                    else None
+                )
+            else:
+                lengths = None
+            model_input_name = self.tokenizer.model_input_names[0] if self.tokenizer is not None else None
+            if self.args.world_size <= 1:
+                return LengthGroupedSampler(
+                    self.args.train_batch_size * self.args.gradient_accumulation_steps,
+                    dataset=self.train_dataset,
+                    lengths=lengths,
+                    model_input_name=model_input_name,
+                    generator=generator,
+                )
+            else:
+                return DistributedLengthGroupedSampler(
+                    self.args.train_batch_size * self.args.gradient_accumulation_steps,
+                    dataset=self.train_dataset,
+                    num_replicas=self.args.world_size,
+                    rank=self.args.process_index,
+                    lengths=lengths,
+                    model_input_name=model_input_name,
+                    seed=seed,
+                )
+
+        else:
+            if self.args.world_size <= 1:
+                num_samples = len(self.train_dataset)
+                if (
+                    self.args.use_lazy_mode
+                    and not self.args.dataloader_drop_last
+                    and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
+                ):
+                    # Make the total number of samples divisible by the batch size in lazy mode if needed
+                    num_samples += (
+                        self.args.per_device_train_batch_size
+                        - len(self.train_dataset) % self.args.per_device_train_batch_size
+                    )
+                return RandomSampler(self.train_dataset, num_samples=num_samples, generator=generator)
+            else:
+                if self.args.use_lazy_mode and not self.args.dataloader_drop_last:
+                    # Use a loop for HPUs when drop_last is False to have all batches have the same size
+                    return DistributedSamplerWithLoop(
+                        self.train_dataset,
+                        batch_size=self.args.per_device_train_batch_size,
+                        num_replicas=self.args.world_size,
+                        rank=self.args.process_index,
+                        seed=seed,
+                    )
+                else:
+                    return DistributedSampler(
+                        self.train_dataset,
+                        num_replicas=self.args.world_size,
+                        rank=self.args.process_index,
+                        seed=seed,
+                    )
 
     def create_optimizer(self):
         """
@@ -310,6 +407,11 @@ class GaudiTrainer(Trainer):
                 **kwargs,
             )
 
+        # torch.compile() needs to be called after wrapping the model with FSDP or DDP
+        # to ensure that it accounts for the graph breaks required by those wrappers
+        if self.args.torch_compile:
+            model = torch.compile(model, backend=self.args.torch_compile_backend, mode=self.args.torch_compile_mode)
+
         return model
 
     def train(
@@ -378,7 +480,7 @@ class GaudiTrainer(Trainer):
             if resume_from_checkpoint is None:
                 raise ValueError(f"No valid checkpoint found in output directory ({args.output_dir})")
 
-        if resume_from_checkpoint is not None:
+        if resume_from_checkpoint is not None and args.deepspeed is None:
             self._load_from_checkpoint(resume_from_checkpoint)
 
         # If model was re-initialized, put it on the right device and update self.model_wrapped
@@ -397,6 +499,72 @@ class GaudiTrainer(Trainer):
             trial=trial,
             ignore_keys_for_eval=ignore_keys_for_eval,
         )
+
+    def _prepare_input(self, data: Union[torch.Tensor, Any]) -> Union[torch.Tensor, Any]:
+        """
+        Prepares one `data` before feeding it to the model, be it a tensor or a nested list/dictionary of tensors.
+        Compared to Transformers, it is also possible to enable non-blocking data copy.
+        """
+        if isinstance(data, Mapping):
+            return type(data)({k: self._prepare_input(v) for k, v in data.items()})
+        elif isinstance(data, (tuple, list)):
+            return type(data)(self._prepare_input(v) for v in data)
+        elif isinstance(data, torch.Tensor):
+            kwargs = {"device": self.args.device}
+            if self.deepspeed and (torch.is_floating_point(data) or torch.is_complex(data)):
+                # NLP models inputs are int/uint and those get adjusted to the right dtype of the
+                # embedding. Other models such as wav2vec2's inputs are already float and thus
+                # may need special handling to match the dtypes of the model
+                kwargs.update({"dtype": self.args.hf_deepspeed_config.dtype()})
+            if self.args.non_blocking_data_copy:
+                return data.to(**kwargs, non_blocking=True)
+            else:
+                return data.to(**kwargs)
+        return data
+
+    def training_step(self, model: torch.nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+        """
+        Perform a training step on a batch of inputs.
+
+        Subclass and override to inject custom behavior.
+
+        Args:
+            model (`torch.nn.Module`):
+                The model to train.
+            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
+                The inputs and targets of the model.
+
+                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
+                argument `labels`. Check your model's documentation for all accepted arguments.
+
+        Return:
+            `torch.Tensor`: The tensor with training loss on this batch.
+        """
+        model.train()
+        inputs = self._prepare_inputs(inputs)
+
+        with self.compute_loss_context_manager():
+            loss = self.compute_loss(model, inputs)
+
+        if self.args.n_gpu > 1:
+            loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
+        if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
+            # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
+            loss = loss / self.args.gradient_accumulation_steps
+
+        if self.args.pipelining_fwd_bwd:
+            self.htcore.mark_step()
+
+        if self.do_grad_scaling:
+            self.scaler.scale(loss).backward()
+        elif self.deepspeed:
+            # loss gets scaled under gradient_accumulation_steps in deepspeed
+            loss = self.deepspeed.backward(loss)
+        else:
+            loss.backward()
+
+        return loss.detach()
 
     def _inner_training_loop(
         self,
@@ -515,15 +683,13 @@ class GaudiTrainer(Trainer):
 
         # Train!
         logger.info("***** Running training *****")
-        logger.info(f"  Num examples = {num_examples}")
-        logger.info(f"  Num Epochs = {num_train_epochs}")
-        logger.info(f"  Instantaneous batch size per device = {args.per_device_train_batch_size}")
-        logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size}")
+        logger.info(f"  Num examples = {num_examples:,}")
+        logger.info(f"  Num Epochs = {num_train_epochs:,}")
+        logger.info(f"  Instantaneous batch size per device = {args.per_device_train_batch_size:,}")
+        logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size:,}")
         logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
-        logger.info(f"  Total optimization steps = {max_steps}")
-        logger.info(
-            f"  Number of trainable parameters = {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
-        )
+        logger.info(f"  Total optimization steps = {max_steps:,}")
+        logger.info(f"  Number of trainable parameters = {get_model_param_count(model, trainable_only=True):,}")
 
         self.state.epoch = 0
         start_time = time.time()
@@ -834,18 +1000,16 @@ class GaudiTrainer(Trainer):
         np.random.set_state(checkpoint_rng_state["numpy"])
         torch.random.set_rng_state(checkpoint_rng_state["cpu"])
         if self.args.use_habana:
-            # TODO: uncomment the code block below when torch.hpu.random.get_rng_state_all is fixed in SynapseAI
-            # if self.args.local_rank != -1:
-            #     self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
-            # else:
-            #     try:
-            #         self.hpu_random.set_rng_state_all(checkpoint_rng_state["hpu"])
-            #     except Exception as e:
-            #         logger.info(
-            #             f"Didn't manage to set back the RNG states of the HPU because of the following error:\n {e}"
-            #             "\nThis won't yield the same results as if the training had not been interrupted."
-            #         )
-            self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
+            if self.args.local_rank != -1:
+                self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
+            else:
+                try:
+                    self.hpu_random.set_rng_state_all(checkpoint_rng_state["hpu"])
+                except Exception as e:
+                    logger.info(
+                        f"Didn't manage to set back the RNG states of the HPU because of the following error:\n {e}"
+                        "\nThis won't yield the same results as if the training had not been interrupted."
+                    )
 
     def _save_checkpoint(self, model, trial, metrics=None):
         # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
@@ -915,13 +1079,11 @@ class GaudiTrainer(Trainer):
         }
 
         if self.args.use_habana:
-            # TODO: uncomment the code block below when torch.hpu.random.get_rng_state_all is fixed in SynapseAI
-            # if self.args.local_rank == -1:
-            #     # In non distributed, we save the global HPU RNG state
-            #     rng_states["hpu"] = self.hpu_random.get_rng_state_all()
-            # else:
-            #     rng_states["hpu"] = self.hpu_random.get_rng_state()
-            rng_states["hpu"] = self.hpu_random.get_rng_state()
+            if self.args.local_rank == -1:
+                # In non distributed, we save the global HPU RNG state
+                rng_states["hpu"] = self.hpu_random.get_rng_state_all()
+            else:
+                rng_states["hpu"] = self.hpu_random.get_rng_state()
 
         # A process can arrive here before the process 0 has a chance to save the model, in which case output_dir may
         # not yet exist.
@@ -1011,20 +1173,13 @@ class GaudiTrainer(Trainer):
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
-            if self.args.local_rank == -1:
-                logger.info("Using HPU graphs for inference.")
-                if not self.already_wrapped_for_hpu_graphs:
-                    # Do not wrap the model in HPU graphs if it has already been done
-                    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+            logger.info("Using HPU graphs for inference.")
+            # Do not wrap the model in HPU graphs if it has already been done
+            if not self.already_wrapped_for_hpu_graphs:
+                from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-                    model = wrap_in_hpu_graph(model)
-                    self.already_wrapped_for_hpu_graphs = True
-            else:
-                # Do not use HPU graphs for distributed runs
-                logger.warning(
-                    "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
-                    " performed in lazy mode."
-                )
+                model = wrap_in_hpu_graph(model)
+                self.already_wrapped_for_hpu_graphs = True
 
         batch_size = self.args.eval_batch_size
 
@@ -1220,7 +1375,7 @@ class GaudiTrainer(Trainer):
         Perform an evaluation step on `model` using `inputs`.
         Subclass and override to inject custom behavior.
         Args:
-            model (`nn.Module`):
+            model (`torch.nn.Module`):
                 The model to evaluate.
             inputs (`Dict[str, Union[torch.Tensor, Any]]`):
                 The inputs and targets of the model.
@@ -1228,7 +1383,7 @@ class GaudiTrainer(Trainer):
                 argument `labels`. Check your model's documentation for all accepted arguments.
             prediction_loss_only (`bool`):
                 Whether or not to return the loss only.
-            ignore_keys (`Lst[str]`, *optional*):
+            ignore_keys (`List[str]`, *optional*):
                 A list of keys in the output of your model (if it is a dictionary) that should be ignored when
                 gathering predictions.
         Return:
@@ -1340,20 +1495,13 @@ class GaudiTrainer(Trainer):
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
         if args.use_hpu_graphs and not self.is_in_train:
-            if self.args.local_rank == -1:
-                logger.info("Using HPU graphs for inference.")
-                if not self.already_wrapped_for_hpu_graphs:
-                    # Do not wrap the model in HPU graphs if it has already been done
-                    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+            logger.info("Using HPU graphs for inference.")
+            # Do not wrap the model in HPU graphs if it has already been done
+            if not self.already_wrapped_for_hpu_graphs:
+                from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-                    model = wrap_in_hpu_graph(model)
-                    self.already_wrapped_for_hpu_graphs = True
-            else:
-                # Do not use HPU graphs for distributed runs
-                logger.warning(
-                    "HPU graphs have not been validated for distributed runs yet. Disabling it, inference will be"
-                    " performed in lazy mode."
-                )
+                model = wrap_in_hpu_graph(model)
+                self.already_wrapped_for_hpu_graphs = True
 
         batch_size = dataloader.batch_size
         num_examples = self.num_examples(dataloader)
@@ -1514,12 +1662,19 @@ class GaudiTrainer(Trainer):
         # They can then be reloaded using `from_pretrained()`
         if not isinstance(self.model, PreTrainedModel):
             if isinstance(unwrap_model(self.model), PreTrainedModel):
-                unwrap_model(self.model).save_pretrained(output_dir, state_dict=state_dict)
+                unwrap_model(self.model).save_pretrained(
+                    output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
+                )
             else:
                 logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
-                torch.save(state_dict, os.path.join(output_dir, WEIGHTS_NAME))
+                if self.args.save_safetensors:
+                    safetensors.torch.save_file(state_dict, os.path.join(output_dir, SAFE_WEIGHTS_NAME))
+                else:
+                    torch.save(state_dict, os.path.join(output_dir, WEIGHTS_NAME))
         else:
-            self.model.save_pretrained(output_dir, state_dict=state_dict)
+            self.model.save_pretrained(
+                output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
+            )
 
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
@@ -1539,7 +1694,7 @@ class GaudiTrainer(Trainer):
 
         output_dir = self.args.output_dir
         # To avoid a new synchronization of all model weights, we just copy the file from the checkpoint folder
-        modeling_files = [CONFIG_NAME, WEIGHTS_NAME, GAUDI_CONFIG_NAME]
+        modeling_files = [CONFIG_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_NAME, GAUDI_CONFIG_NAME]
         for modeling_file in modeling_files:
             if os.path.isfile(os.path.join(checkpoint_folder, modeling_file)):
                 shutil.copy(os.path.join(checkpoint_folder, modeling_file), os.path.join(output_dir, modeling_file))
@@ -1574,8 +1729,9 @@ class GaudiTrainer(Trainer):
     def _load_best_model(self):
         logger.info(f"Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).")
         best_model_path = os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME)
+        best_safe_model_path = os.path.join(self.state.best_model_checkpoint, SAFE_WEIGHTS_NAME)
         model = self.model
-        if os.path.exists(best_model_path):
+        if os.path.exists(best_model_path) or os.path.exists(best_safe_model_path):
             # TODO: the code below does not work with Habana DeepSpeed
             # if self.deepspeed:
 
@@ -1597,7 +1753,11 @@ class GaudiTrainer(Trainer):
             #     self.lr_scheduler = lr_scheduler
             # else:
             # We load the model state dict on the CPU to avoid an OOM error.
-            state_dict = torch.load(best_model_path, map_location="cpu")
+            if self.args.save_safetensors and os.path.isfile(best_safe_model_path):
+                state_dict = safetensors.torch.load_file(best_safe_model_path, device="cpu")
+            else:
+                state_dict = torch.load(best_model_path, map_location="cpu")
+
             # If the model is on the GPU, it still works!
             load_result = model.load_state_dict(state_dict, strict=False)
             self._issue_warnings_after_load(load_result)

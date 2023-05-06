@@ -1,3 +1,19 @@
+# coding=utf-8
+# Copyright 2022 The HuggingFace Inc. team.
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -6,6 +22,7 @@ import numpy as np
 import torch
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from habana_frameworks.torch.hpex import hmp
+from parameterized import parameterized
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from transformers.testing_utils import slow
 
@@ -14,7 +31,7 @@ from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline,
 from optimum.habana.utils import set_seed
 
 
-THROUGHPUT_BASELINE = 0.229
+THROUGHPUT_BASELINE = 0.282
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -199,7 +216,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             image_slice = image[-3:, -3:, -1]
 
             self.assertEqual(image.shape, (64, 64, 3))
-            expected_slice = np.array([0.5643, 0.6017, 0.4799, 0.5267, 0.5584, 0.4641, 0.5159, 0.4963, 0.4791])
+            expected_slice = np.array([0.5756, 0.6118, 0.5005, 0.5041, 0.5471, 0.4726, 0.4976, 0.4865, 0.4864])
 
             self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
@@ -239,6 +256,36 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertIsNone(pipe.safety_checker)
         image = pipe("example prompt", num_inference_steps=2).images[0]
         self.assertIsNotNone(image)
+
+    @parameterized.expand(["pil", "np", "latent"])
+    def test_stable_diffusion_output_types(self, output_type):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig()
+
+        sd_pipe = GaudiStableDiffusionPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        num_prompts = 2
+        num_images_per_prompt = 3
+
+        outputs = sd_pipe(
+            num_prompts * [prompt],
+            num_images_per_prompt=num_images_per_prompt,
+            num_inference_steps=2,
+            output_type=output_type,
+        )
+
+        self.assertEqual(len(outputs.images), 2 * 3)
+        # TODO: enable safety checker
+        # if output_type == "latent":
+        #     self.assertIsNone(outputs.nsfw_content_detected)
+        # else:
+        #     self.assertEqual(len(outputs.nsfw_content_detected), 2 * 3)
 
     # TODO: enable this test when PNDMScheduler is adapted to Gaudi
     # def test_stable_diffusion_negative_prompt(self):
@@ -469,7 +516,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ]
         num_images_per_prompt = 11
         batch_size = 4
-        model_name = "CompVis/stable-diffusion-v1-4"
+        model_name = "runwayml/stable-diffusion-v1-5"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(

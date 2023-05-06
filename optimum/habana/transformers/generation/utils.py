@@ -17,15 +17,20 @@
 import copy
 import inspect
 import warnings
-from typing import Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import torch
 import torch.distributed as dist
+from transformers.deepspeed import is_deepspeed_zero3_enabled
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.configuration_utils import GenerationConfig
 from transformers.generation.logits_process import LogitsProcessorList
-from transformers.generation.stopping_criteria import StoppingCriteriaList, validate_stopping_criteria
+from transformers.generation.stopping_criteria import (
+    StoppingCriteria,
+    StoppingCriteriaList,
+    validate_stopping_criteria,
+)
 from transformers.generation.utils import (
     BeamSampleOutput,
     BeamSearchDecoderOnlyOutput,
@@ -41,21 +46,86 @@ from transformers.generation.utils import (
     SampleEncoderDecoderOutput,
     SampleOutput,
 )
-from transformers.pytorch_utils import torch_int_div
+from transformers.utils import ModelOutput
 
 from optimum.utils import logging
+
+
+if TYPE_CHECKING:
+    from .streamers import BaseStreamer
 
 
 logger = logging.get_logger(__name__)
 
 
+class StaticMaxLengthCriteria(StoppingCriteria):
+    def __init__(self, max_steps: int):
+        self.max_steps = max_steps
+        self.cur_step = 0
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        self.cur_step += 1
+        return self.cur_step >= self.max_steps
+
+
 class GaudiGenerationMixin(GenerationMixin):
     """
-    This class enables to perform fast generation in lazy mode.
+    This class enables to perform fast generation in lazy mode and with HPU graphs.
     The only difference with GenerationMixin is that the various generation
     methods will generate sequences whose size is max_length. Having constant
-    sizes allows to make the most of lazy mode.
+    sizes allows to make the most of lazy mode and HPU graphs.
     """
+
+    def _update_model_kwargs_for_generation(
+        self,
+        outputs: ModelOutput,
+        model_kwargs: Dict[str, Any],
+        is_encoder_decoder: bool = False,
+        standardize_cache_format: bool = False,
+    ) -> Dict[str, Any]:
+        # update past_key_values
+        model_kwargs["past_key_values"] = self._extract_past_from_model_output(
+            outputs, standardize_cache_format=standardize_cache_format
+        )
+
+        # update token_type_ids with last value
+        if "token_type_ids" in model_kwargs:
+            token_type_ids = model_kwargs["token_type_ids"]
+            model_kwargs["token_type_ids"] = torch.cat([token_type_ids, token_type_ids[:, -1].unsqueeze(-1)], dim=-1)
+
+        token_idx = model_kwargs.get("token_idx", None)
+
+        if not is_encoder_decoder:
+            # update attention mask
+            if "attention_mask" in model_kwargs:
+                attention_mask = model_kwargs["attention_mask"]
+                if token_idx is not None:
+                    attention_mask.index_fill_(1, token_idx, 1)
+                else:
+                    attention_mask = torch.cat(
+                        [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
+                    )
+                model_kwargs["attention_mask"] = attention_mask
+        else:
+            # update decoder attention mask
+            if "decoder_attention_mask" in model_kwargs:
+                decoder_attention_mask = model_kwargs["decoder_attention_mask"]
+                if token_idx is not None:
+                    decoder_attention_mask.index_fill_(1, token_idx, 1)
+                else:
+                    decoder_attention_mask = torch.cat(
+                        [
+                            decoder_attention_mask,
+                            decoder_attention_mask.new_ones((decoder_attention_mask.shape[0], 1)),
+                        ],
+                        dim=-1,
+                    )
+                model_kwargs["decoder_attention_mask"] = decoder_attention_mask
+
+        if token_idx is not None:
+            token_idx.add_(1)
+
+        return model_kwargs
 
     @torch.no_grad()
     def generate(
@@ -65,9 +135,11 @@ class GaudiGenerationMixin(GenerationMixin):
         logits_processor: Optional[LogitsProcessorList] = None,
         stopping_criteria: Optional[StoppingCriteriaList] = None,
         prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], List[int]]] = None,
-        synced_gpus: Optional[bool] = False,
+        synced_gpus: Optional[bool] = None,
+        streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
         hpu_graphs: Optional[bool] = False,
+        ignore_eos: Optional[bool] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -79,8 +151,8 @@ class GaudiGenerationMixin(GenerationMixin):
         model's default generation configuration. You can override any `generation_config` by passing the corresponding
         parameters to generate, e.g. `.generate(inputs, num_beams=4, do_sample=True)`.
 
-        For a complete overview of generate, check the [following
-        guide](https://huggingface.co/docs/transformers/en/main_classes/text_generation).
+        For an overview of generation strategies and code examples, check out the [following
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -114,12 +186,19 @@ class GaudiGenerationMixin(GenerationMixin):
                 on the batch ID `batch_id` and the previously generated tokens `inputs_ids`. This argument is useful
                 for constrained generation conditioned on the prefix, as described in [Autoregressive Entity
                 Retrieval](https://arxiv.org/abs/2010.00904).
-            synced_gpus (`bool`, *optional*, defaults to `False`):
-                Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
+            synced_gpus (`bool`, *optional*):
+                Whether to continue running the while loop until max_length. Unless overridden this flag will be set to
+                `True` under DeepSpeed ZeRO Stage 3 multiple GPUs environment to avoid hanging if one GPU finished
+                generating before other GPUs. Otherwise it'll be set to `False`.
+            streamer (`BaseStreamer`, *optional*):
+                Streamer object that will be used to stream the generated sequences. Generated tokens are passed
+                through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
             hpu_graphs (`bool`, *optional*, defaults to `False`):
                 Whether to use HPU graphs for inference.
+            ignore_eos (`bool`, *optional*):
+                Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
             kwargs:
                 Ad hoc parametrization of `generate_config` and/or additional model-specific kwargs that will be
                 forwarded to the `forward` function of the model. If the model is an encoder-decoder model, encoder
@@ -141,8 +220,20 @@ class GaudiGenerationMixin(GenerationMixin):
                     - [`transformers.generation.BeamSearchEncoderDecoderOutput`],
                     - [`transformers.generation.BeamSampleEncoderDecoderOutput`]
         """
+        if synced_gpus is None:
+            if is_deepspeed_zero3_enabled() and dist.get_world_size() > 1:
+                synced_gpus = True
+            else:
+                synced_gpus = False
+
         # 1. Handle `generation_config` and kwargs that might update it, and validate the `.generate()` call
         self._validate_model_class()
+        if hpu_graphs and not lazy_mode:
+            raise ValueError(
+                "`hpu_graphs` is True but `lazy_mode` is False. HPU graphs require `lazy_mode` to be set to True."
+            )
+        if ignore_eos is None:
+            ignore_eos = lazy_mode
 
         # priority: `generation_config` argument > `model.generation_config` (the default generation config)
         if generation_config is None:
@@ -161,6 +252,7 @@ class GaudiGenerationMixin(GenerationMixin):
             generation_config = self.generation_config
 
         generation_config = copy.deepcopy(generation_config)
+        generation_config.validate()
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
         self._validate_model_kwargs(model_kwargs.copy())
 
@@ -232,42 +324,43 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs=model_kwargs,
                 device=inputs_tensor.device,
             )
+
+            # conditional generation for multi-modal models.
+            if "input_ids" in model_kwargs and model_input_name == "pixel_values":
+                input_ids = torch.cat([input_ids, model_kwargs.pop("input_ids")], dim=-1)
         else:
-            # if decoder-only then inputs_tensor has to be `input_ids`
-            input_ids = inputs_tensor
+            input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop("input_ids")
+
+        if streamer is not None:
+            streamer.put(input_ids.cpu())
 
         # 6. Prepare `max_length` depending on other stopping criteria.
         input_ids_seq_length = input_ids.shape[-1]
         has_default_max_length = kwargs.get("max_length") is None and generation_config.max_length is not None
         if has_default_max_length and generation_config.max_new_tokens is None:
             warnings.warn(
-                (
-                    (
-                        "Neither `max_length` nor `max_new_tokens` has been set, `max_length` will default to"
-                        f" {generation_config.max_length} (`generation_config.max_length`). Controlling `max_length`"
-                        " via the config is deprecated and `max_length` will be removed from the config in v5 of"
-                        " Transformers -- we recommend using `max_new_tokens` to control the maximum length of the"
-                        " generation."
-                    ),
-                ),
+                f"Using `max_length`'s default ({generation_config.max_length}) to control the generation length. "
+                "This behaviour is deprecated and will be removed from the config in v5 of Transformers -- we"
+                " recommend using `max_new_tokens` to control the maximum length of the generation.",
                 UserWarning,
             )
-        elif has_default_max_length and generation_config.max_new_tokens is not None:
+        elif generation_config.max_new_tokens is not None:
             generation_config.max_length = generation_config.max_new_tokens + input_ids_seq_length
-        elif not has_default_max_length and generation_config.max_new_tokens is not None:
-            raise ValueError(
-                "Both `max_new_tokens` and `max_length` have been set but they serve the same purpose -- setting a"
-                " limit to the generated output length. Remove one of those arguments. Please refer to the"
-                " documentation for more information. "
-                "(https://huggingface.co/docs/transformers/main/en/main_classes/text_generation)"
-            )
+            if not has_default_max_length:
+                logger.warn(
+                    f"Both `max_new_tokens` (={generation_config.max_new_tokens}) and `max_length`(="
+                    f"{generation_config.max_length}) seem to have been set. `max_new_tokens` will take precedence. "
+                    "Please refer to the documentation for more information. "
+                    "(https://huggingface.co/docs/transformers/main/en/main_classes/text_generation)",
+                    UserWarning,
+                )
 
         if generation_config.min_length is not None and generation_config.min_length > generation_config.max_length:
             raise ValueError(
                 f"Unfeasible length constraints: the minimum length ({generation_config.min_length}) is larger than"
                 f" the maximum length ({generation_config.max_length})"
             )
-        if input_ids_seq_length >= generation_config.max_length:
+        if input_ids_seq_length >= generation_config.max_length and "token_idx" not in model_kwargs:
             input_ids_string = "decoder_input_ids" if self.config.is_encoder_decoder else "input_ids"
             logger.warning(
                 f"Input length of {input_ids_string} is {input_ids_seq_length}, but `max_length` is set to"
@@ -281,7 +374,8 @@ class GaudiGenerationMixin(GenerationMixin):
         )
 
         is_contrastive_search_gen_mode = (
-            generation_config.top_k is not None
+            (generation_config.num_beams == 1)
+            and generation_config.top_k is not None
             and generation_config.top_k > 1
             and generation_config.do_sample is False
             and generation_config.penalty_alpha is not None
@@ -330,6 +424,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 "Diverse beam search cannot be used in sampling mode. Make sure that `do_sample` is set to `False`."
             )
 
+        if streamer is not None and (generation_config.num_beams > 1):
+            raise ValueError(
+                "`streamer` cannot be used with beam search (yet!). Make sure that `num_beams` is set to 1."
+            )
+
         if self.device.type != input_ids.device.type:
             warnings.warn(
                 (
@@ -356,9 +455,16 @@ class GaudiGenerationMixin(GenerationMixin):
         stopping_criteria = self._get_stopping_criteria(
             generation_config=generation_config, stopping_criteria=stopping_criteria
         )
+        if "token_idx" in model_kwargs:
+            if generation_config.max_new_tokens is not None:
+                stopping_criteria.append(StaticMaxLengthCriteria(generation_config.max_new_tokens))
+            else:
+                raise ValueError(
+                    "You need to set `max_new_tokens` in your generation configuration to use static shapes."
+                )
 
         # In lazy mode, import Habana torch to be able to add mark_step()
-        if lazy_mode and not hpu_graphs:
+        if lazy_mode:
             import habana_frameworks.torch.core as htcore
 
             self.htcore_generation = htcore
@@ -381,8 +487,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_scores=generation_config.output_scores,
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                streamer=streamer,
                 lazy_mode=lazy_mode,
-                hpu_graphs=hpu_graphs,
+                ignore_eos=ignore_eos,
                 **model_kwargs,
             )
 
@@ -404,6 +511,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_scores=generation_config.output_scores,
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                streamer=streamer,
                 **model_kwargs,
             )
 
@@ -430,8 +538,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_scores=generation_config.output_scores,
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                streamer=streamer,
                 lazy_mode=lazy_mode,
-                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -450,6 +558,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 length_penalty=generation_config.length_penalty,
                 do_early_stopping=generation_config.early_stopping,
                 num_beam_hyps_to_keep=generation_config.num_return_sequences,
+                max_length=generation_config.max_length,
             )
             # 12. interleave input_ids with `num_beams` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
@@ -470,7 +579,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
-                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -487,6 +595,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 device=inputs_tensor.device,
                 length_penalty=generation_config.length_penalty,
                 do_early_stopping=generation_config.early_stopping,
+                max_length=generation_config.max_length,
             )
 
             # 13. interleave input_ids with `num_beams` additional sequences per batch
@@ -510,7 +619,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
-                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -532,12 +640,12 @@ class GaudiGenerationMixin(GenerationMixin):
             beam_scorer = BeamSearchScorer(
                 batch_size=batch_size,
                 num_beams=generation_config.num_beams,
-                max_length=stopping_criteria.max_length,
                 device=inputs_tensor.device,
                 length_penalty=generation_config.length_penalty,
                 do_early_stopping=generation_config.early_stopping,
                 num_beam_hyps_to_keep=generation_config.num_return_sequences,
                 num_beam_groups=generation_config.num_beam_groups,
+                max_length=generation_config.max_length,
             )
             # 12. interleave input_ids with `num_beams` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
@@ -558,7 +666,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
-                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -627,6 +734,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 length_penalty=generation_config.length_penalty,
                 do_early_stopping=generation_config.early_stopping,
                 num_beam_hyps_to_keep=generation_config.num_return_sequences,
+                max_length=generation_config.max_length,
             )
             # 12. interleave input_ids with `num_beams` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
@@ -647,7 +755,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
-                hpu_graphs=hpu_graphs,
                 **model_kwargs,
             )
 
@@ -667,8 +774,8 @@ class GaudiGenerationMixin(GenerationMixin):
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
+        streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
-        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[ContrastiveSearchOutput, torch.LongTensor]:
         r"""
@@ -679,7 +786,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.contrastive_search`] directly. Use
         generate() instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -702,8 +809,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 used to tell if the generation loop should stop.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -716,10 +823,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether or not to return a [`transformers.generationutils.ModelOutput`] instead of a plain tuple.
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
+            streamer (`BaseStreamer`, *optional*):
+                Streamer object that will be used to stream the generated sequences. Generated tokens are passed
+                through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            hpu_graphs (`bool`, *optional*, defaults to `False`):
-                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -770,8 +878,9 @@ class GaudiGenerationMixin(GenerationMixin):
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
+        streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
-        hpu_graphs: Optional[bool] = False,
+        ignore_eos: Optional[bool] = None,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, torch.LongTensor]:
         r"""
@@ -782,7 +891,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.greedy_search`] directly. Use generate()
         instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -801,8 +910,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -815,10 +924,13 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether or not to return a [`transformers.generationutils.ModelOutput`] instead of a plain tuple.
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
+            streamer (`BaseStreamer`, *optional*):
+                Streamer object that will be used to stream the generated sequences. Generated tokens are passed
+                through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            hpu_graphs (`bool`, *optional*, defaults to `False`):
-                Whether to use HPU graphs for inference.
+            ignore_eos (`bool`, *optional*):
+                Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -882,6 +994,7 @@ class GaudiGenerationMixin(GenerationMixin):
         eos_token_id = eos_token_id if eos_token_id is not None else self.generation_config.eos_token_id
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
+        eos_token_id_tensor = torch.tensor(eos_token_id).to(input_ids.device) if eos_token_id is not None else None
         output_scores = output_scores if output_scores is not None else self.generation_config.output_scores
         output_attentions = (
             output_attentions if output_attentions is not None else self.generation_config.output_attentions
@@ -909,10 +1022,14 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # keep track of which sequences are already finished
-        unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
+        if not ignore_eos:
+            unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
 
         this_peer_finished = False  # used by synced_gpus only
         while True:
+            if lazy_mode:
+                self.htcore_generation.mark_step()
+
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
@@ -937,7 +1054,11 @@ class GaudiGenerationMixin(GenerationMixin):
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
 
-            next_token_logits = outputs.logits[:, -1, :]
+            token_idx = model_kwargs.get("token_idx", None)
+            if token_idx is not None and outputs.logits.shape[-2] > 1:
+                next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1)
+            else:
+                next_token_logits = outputs.logits[:, -1, :]
 
             # pre-process distribution
             next_tokens_scores = logits_processor(input_ids, next_token_logits)
@@ -964,32 +1085,40 @@ class GaudiGenerationMixin(GenerationMixin):
             next_tokens = torch.argmax(next_tokens_scores, dim=-1)
 
             # finished sentences should have their next token be a padding token
-            if eos_token_id is not None:
+            if not ignore_eos and eos_token_id is not None:
                 if pad_token_id is None:
                     raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
-            input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+            if token_idx is not None:
+                input_ids.index_copy_(
+                    1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
+                )
+            else:
+                input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+            if streamer is not None:
+                streamer.put(next_tokens.cpu())
             model_kwargs = self._update_model_kwargs_for_generation(
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
 
             # if eos_token was found in one sentence, set sentence to finished
-            if eos_token_id is not None:
-                unfinished_sequences = unfinished_sequences.mul((sum(next_tokens != i for i in eos_token_id)).long())
-
-            if lazy_mode and not hpu_graphs:
-                self.htcore_generation.mark_step()
+            if not ignore_eos and eos_token_id_tensor is not None:
+                unfinished_sequences = unfinished_sequences.mul(
+                    next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
+                )
 
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
-            if stopping_criteria(input_ids, scores) or (unfinished_sequences.max() == 0 and not lazy_mode):
+            if (not ignore_eos and unfinished_sequences.max() == 0) or stopping_criteria(input_ids, scores):
                 if not synced_gpus:
                     break
                 else:
                     this_peer_finished = True
 
-        # input_ids = self._pad_tensors_to_max_len_lazy(input_ids, pad_token_id, 128)
+        if streamer is not None:
+            streamer.end()
+
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
                 return GreedySearchEncoderDecoderOutput(
@@ -1025,8 +1154,8 @@ class GaudiGenerationMixin(GenerationMixin):
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
+        streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
-        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[SampleOutput, torch.LongTensor]:
         r"""
@@ -1037,7 +1166,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.sample`] directly. Use generate() instead.
         For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -1059,8 +1188,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -1073,10 +1202,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether or not to return a [`transformers.generationutils.ModelOutput`] instead of a plain tuple.
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
+            streamer (`BaseStreamer`, *optional*):
+                Streamer object that will be used to stream the generated sequences. Generated tokens are passed
+                through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            hpu_graphs (`bool`, *optional*, defaults to `False`):
-                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1138,7 +1268,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ... )
 
         >>> tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        ['Today is a beautiful day, and a wonderful day.\n\nI was lucky enough to meet the']
+        ['Today is a beautiful day, and we must do everything possible to make it a day of celebration.']
         ```"""
 
         logger.warning("Sampling is slow in lazy mode, eager mode should be preferred at the moment.")
@@ -1160,6 +1290,7 @@ class GaudiGenerationMixin(GenerationMixin):
         eos_token_id = eos_token_id if eos_token_id is not None else self.generation_config.eos_token_id
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
+        eos_token_id_tensor = torch.tensor(eos_token_id).to(input_ids.device) if eos_token_id is not None else None
         output_scores = output_scores if output_scores is not None else self.generation_config.output_scores
         output_attentions = (
             output_attentions if output_attentions is not None else self.generation_config.output_attentions
@@ -1187,11 +1318,14 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # keep track of which sequences are already finished
-        unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
+        unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
 
         this_peer_finished = False  # used by synced_gpus only
         # auto-regressive generation
         while True:
+            if lazy_mode:
+                self.htcore_generation.mark_step()
+
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
@@ -1216,7 +1350,11 @@ class GaudiGenerationMixin(GenerationMixin):
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
 
-            next_token_logits = outputs.logits[:, -1, :]
+            token_idx = model_kwargs.get("token_idx", None)
+            if token_idx is not None and outputs.logits.shape[-2] > 1:
+                next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1)
+            else:
+                next_token_logits = outputs.logits[:, -1, :]
 
             # pre-process distribution
             next_token_scores = logits_processor(input_ids, next_token_logits)
@@ -1251,17 +1389,26 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
-            input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+            if token_idx is not None:
+                input_ids.index_copy_(
+                    1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
+                )
+            else:
+                input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+            if streamer is not None:
+                streamer.put(next_tokens.cpu())
             model_kwargs = self._update_model_kwargs_for_generation(
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
 
             # if eos_token was found in one sentence, set sentence to finished
-            if eos_token_id is not None:
-                unfinished_sequences = unfinished_sequences.mul((sum(next_tokens != i for i in eos_token_id)).long())
+            if eos_token_id_tensor is not None:
+                unfinished_sequences = unfinished_sequences.mul(
+                    next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
+                )
 
-            if lazy_mode and not hpu_graphs:
-                self.htcore_generation.mark_step()
+            # if lazy_mode and not hpu_graphs:
+            #     self.htcore_generation.mark_step()
 
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
             if stopping_criteria(input_ids, scores) or (unfinished_sequences.max() == 0 and not lazy_mode):
@@ -1269,6 +1416,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
                 else:
                     this_peer_finished = True
+
+        if streamer is not None:
+            streamer.end()
 
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
@@ -1306,7 +1456,6 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
-        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
         r"""
@@ -1317,7 +1466,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.beam_search`] directly. Use generate()
         instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -1338,8 +1487,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -1354,8 +1503,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            hpu_graphs (`bool`, *optional*, defaults to `False`):
-                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1543,7 +1690,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True
             )
 
-            next_indices = torch_int_div(next_tokens, vocab_size)
+            next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             next_tokens = next_tokens % vocab_size
 
             # stateless
@@ -1575,8 +1722,8 @@ class GaudiGenerationMixin(GenerationMixin):
             # increase cur_len
             cur_len = cur_len + 1
 
-            if lazy_mode and not hpu_graphs:
-                self.htcore_generation.mark_step()
+            # if lazy_mode and not hpu_graphs:
+            #     self.htcore_generation.mark_step()
 
             if stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
                 if not synced_gpus:
@@ -1639,7 +1786,6 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
-        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[BeamSampleOutput, torch.LongTensor]:
         r"""
@@ -1650,7 +1796,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.beam_sample`] directly. Use generate()
         instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -1675,8 +1821,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -1691,8 +1837,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            hpu_graphs (`bool`, *optional*, defaults to `False`):
-                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1793,7 +1937,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.group_beam_search`] directly. Use
         generate() instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -1814,8 +1958,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -1830,8 +1974,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            hpu_graphs (`bool`, *optional*, defaults to `False`):
-                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs that will be forwarded to the `forward` function of the model. If
                 model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1917,7 +2059,6 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = None,
         lazy_mode: Optional[bool] = False,
-        hpu_graphs: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
         r"""
@@ -1928,7 +2069,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         In most cases, you do not need to call [`~generation.GenerationMixin.constrained_beam_search`] directly. Use
         generate() instead. For an overview of generation strategies and code examples, check the [following
-        guide](./generation_strategies).
+        guide](../generation_strategies).
 
         </Tip>
 
@@ -1954,8 +2095,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 tokens. The maximum length of the sequence to be generated.
             pad_token_id (`int`, *optional*):
                 The id of the *padding* token.
-            eos_token_id (`int`, *optional*):
-                The id of the *end-of-sequence* token.
+            eos_token_id (`Union[int, List[int]]`, *optional*):
+                The id of the *end-of-sequence* token. Optionally, use a list to set multiple *end-of-sequence* tokens.
             output_attentions (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more details.
@@ -1970,8 +2111,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            hpu_graphs (`bool`, *optional*, defaults to `False`):
-                Whether to use HPU graphs for inference.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.

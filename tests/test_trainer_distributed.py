@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2022 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -122,6 +123,7 @@ if __name__ == "__main__":
             eval_dataset=dataset,
             compute_metrics=compute_metrics,
         )
+
         metrics = trainer.evaluate()
         logger.info(metrics)
         if metrics["eval_success"] is not True:

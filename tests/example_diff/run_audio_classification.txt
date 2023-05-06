@@ -21,9 +21,9 @@
 > from optimum.habana.utils import set_seed
 > 
 48c41
-< check_min_version("4.27.0.dev0")
+< check_min_version("4.29.0.dev0")
 ---
-> check_min_version("4.26.0")
+> check_min_version("4.28.0")
 164,166d156
 <     freeze_feature_extractor: Optional[bool] = field(
 <         default=None, metadata={"help": "Whether to freeze the feature extractor layers of the model."}
@@ -67,41 +67,31 @@
 >     # Max input length
 >     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
 > 
-294a281
+296a283
 > 
-299,300c286,293
-<             output_batch["input_values"].append(wav)
-<         output_batch["labels"] = list(batch[data_args.label_column_name])
+302c289,295
+<         inputs = feature_extractor(subsampled_wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
->             preprocessed_audio = feature_extractor(
->                 wav,
->                 max_length=max_length,
->                 sampling_rate=feature_extractor.sampling_rate,
->                 padding="max_length",
->                 truncation=True,
->             )
->             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-301a295
->         output_batch["labels"] = list(batch[data_args.label_column_name])
-306a301
-> 
-309,310c304,311
-<             output_batch["input_values"].append(wav)
-<         output_batch["labels"] = list(batch[data_args.label_column_name])
+>         inputs = feature_extractor(
+>             subsampled_wavs,
+>             max_length=max_length,
+>             sampling_rate=feature_extractor.sampling_rate,
+>             padding="max_length",
+>             truncation=True,
+>         )
+311c304,310
+<         inputs = feature_extractor(wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
->             preprocessed_audio = feature_extractor(
->                 wav,
->                 max_length=max_length,
->                 sampling_rate=feature_extractor.sampling_rate,
->                 padding="max_length",
->                 truncation=True,
->             )
->             output_batch["input_values"].append(preprocessed_audio["input_values"][0])
-311a313
->         output_batch["labels"] = list(batch[data_args.label_column_name])
-373c375
+>         inputs = feature_extractor(
+>             wavs,
+>             max_length=max_length,
+>             sampling_rate=feature_extractor.sampling_rate,
+>             padding="max_length",
+>             truncation=True,
+>         )
+376c375
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-374a377
+377a377
 >         gaudi_config=gaudi_config,

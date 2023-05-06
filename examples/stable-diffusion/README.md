@@ -28,7 +28,7 @@ Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stabili
 Here is how to generate images with one prompt:
 ```python
 python text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 20 \
     --batch_size 4 \
@@ -48,7 +48,7 @@ python text_to_image_generation.py \
 Here is how to generate images with several prompts:
 ```python
 python text_to_image_generation.py \
-    --model_name_or_path CompVis/stable-diffusion-v1-4 \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 20 \
     --batch_size 8 \
@@ -65,19 +65,25 @@ python text_to_image_generation.py \
 
 ### Stable Diffusion 2
 
-[Stable Diffusion 2](https://huggingface.co/docs/diffusers/v0.9.0/en/api/pipelines/stable_diffusion_2) can also be used to generate images with this script. Here is an example for a single prompt:
+[Stable Diffusion 2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion_2) can also be used to generate images with this script. Here is an example for a single prompt:
 
 ```python
 python text_to_image_generation.py \
-    --model_name_or_path stabilityai/stable-diffusion-2-base \
+    --model_name_or_path stabilityai/stable-diffusion-2-1 \
     --prompts "An image of a squirrel in Picasso style" \
-    --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --num_images_per_prompt 10 \
+    --batch_size 2 \
+    --height 768 \
+    --width 768 \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion
+    --gaudi_config Habana/stable-diffusion-2
 ```
+
+> There are two different checkpoints for Stable Diffusion 2:
+> - use [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) for generating 768x768 images
+> - use [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base) for generating 512x512 images
 
 
 ## Textual Inversion
