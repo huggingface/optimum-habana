@@ -4,13 +4,15 @@ import math
 import os
 import random
 import tempfile
+import warnings
 from pathlib import Path
 from typing import Optional
 
-import datasets
 import diffusers
 import numpy as np
+import sys
 import PIL
+import time
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -18,12 +20,14 @@ import transformers
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import create_repo, upload_folder
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
+from pathlib import Path
 from PIL import Image
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, RandomSampler
+from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -54,15 +58,76 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.16.0")
 
 
 logger = get_logger(__name__)
 
 
-def save_progress(text_encoder, placeholder_token_id, args, save_path):
+def save_model_card(repo_id: str, images=None, base_model=str, repo_folder=None):
+    img_str = ""
+    for i, image in enumerate(images):
+        image.save(Path(repo_folder, f"image_{i}.png"))
+        img_str += f"![img_{i}](./image_{i}.png)\n"
+
+    yaml = f"""
+---
+license: creativeml-openrail-m
+base_model: {base_model}
+tags:
+- stable-diffusion
+- stable-diffusion-diffusers
+- text-to-image
+- diffusers
+- textual_inversion
+inference: true
+---
+    """
+    model_card = f"""
+# Textual inversion text2image fine-tuning - {repo_id}
+These are textual inversion adaption weights for {base_model}. You can find some example images in the following. \n
+{img_str}
+"""
+    with open(Path(repo_folder, "README.md"), "w") as f:
+        f.write(yaml + model_card)
+
+
+def log_validation(text_encoder, tokenizer, unet, vae, args, weight_dtype, epoch):
+    logger.info(
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
+    )
+    # Create pipeline (note: unet and vae are loaded again in float32)
+    pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        unet=unet,
+        vae=vae,
+        safety_checker=None,
+        revision=args.revision,
+        torch_dtype=weight_dtype,
+    )
+    pipeline.scheduler = GaudiDDIMScheduler.from_config(pipeline.scheduler.config)
+    # pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    # Run inference
+    generator = None if args.seed is None else torch.Generator(device="cpu").manual_seed(args.seed)
+    images = []
+    for _ in range(args.num_validation_images):
+        image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+        images.append(image)
+
+    del pipeline
+    return images
+
+
+def save_progress(text_encoder, placeholder_token_ids, args, save_path):
     logger.info("Saving embeddings")
-    learned_embeds = text_encoder.get_input_embeddings().weight[placeholder_token_id]
+    learned_embeds = text_encoder.get_input_embeddings().weight[
+        min(placeholder_token_ids) : max(placeholder_token_ids) + 1
+    ]
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, save_path)
 
@@ -80,6 +145,12 @@ def parse_args():
         action="store_true",
         default=False,
         help="Save only the embeddings for the new concept.",
+    )
+    parser.add_argument(
+        "--num_vectors",
+        type=int,
+        default=1,
+        help="How many textual inversion vectors shall be used to learn the concept.",
     )
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -133,7 +204,7 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution."
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
@@ -142,8 +213,8 @@ def parse_args():
     parser.add_argument(
         "--max_train_steps",
         type=int,
-        default=5000,
-        help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
+        default=None,
+        help="Total number of training steps to perform. If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -166,7 +237,7 @@ def parse_args():
         "--scale_lr",
         action="store_true",
         default=False,
-        help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
+        help="Scale the learning rate by the number of HPUs, gradient accumulation steps, and batch size.",
     )
     parser.add_argument(
         "--lr_scheduler",
@@ -179,6 +250,14 @@ def parse_args():
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--dataloader_num_workers",
+        type=int,
+        default=0,
+        help=(
+            "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
+        ),
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
@@ -193,21 +272,44 @@ def parse_args():
         help="The name of the repository to keep in sync with the local `output_dir`.",
     )
     parser.add_argument(
-        "--logging_dir",
-        type=str,
-        default="logs",
-        help=(
-            "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
-            " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
-        ),
-    )
-    parser.add_argument(
         "--report_to",
         type=str,
         default="tensorboard",
         help=(
             'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
+        ),
+    )
+    parser.add_argument(
+        "--validation_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is used during validation to verify that the model is learning.",
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=4,
+        help="Number of images that should be generated during validation with `validation_prompt`.",
+    )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=100,
+        help=(
+            "Run validation every X steps. Validation consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`"
+            " and logging the images."
+        ),
+    )
+    parser.add_argument(
+        "--validation_epochs",
+        type=int,
+        default=None,
+        help=(
+            "Deprecated in favor of validation_steps. Run validation every X epochs. Validation consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`"
+            " and logging the images."
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
@@ -338,7 +440,7 @@ class TextualInversionDataset(Dataset):
         self.center_crop = center_crop
         self.flip_p = flip_p
 
-        self.image_paths = [os.path.join(self.data_root, file_path) for file_path in os.listdir(self.data_root)]
+        self.image_paths = [file_path for file_path in self.data_root.iterdir()]
 
         self.num_images = len(self.image_paths)
         self._length = self.num_images
@@ -382,7 +484,10 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            (h, w,) = (
+            (
+                h,
+                w,
+            ) = (
                 img.shape[0],
                 img.shape[1],
             )
@@ -399,19 +504,8 @@ class TextualInversionDataset(Dataset):
         return example
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
-
-
 def main():
     args = parse_args()
-    logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -432,6 +526,7 @@ def main():
     from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
     world_size, rank, args.local_rank = initialize_distributed_hpu()
+    is_main_process = rank in [-1, 0]
 
     if args.local_rank != -1:
         if not torch.distributed.is_initialized():
@@ -460,12 +555,10 @@ def main():
                     isVerbose=gaudi_config.hmp_is_verbose,
                 )
 
-    if args.local_rank == 0:
-        datasets.utils.logging.set_verbosity_warning()
+    if is_main_process:
         transformers.utils.logging.set_verbosity_warning()
         diffusers.utils.logging.set_verbosity_info()
     else:
-        datasets.utils.logging.set_verbosity_error()
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 
@@ -481,21 +574,15 @@ def main():
         set_seed(args.seed)
 
     # Handle the repository creation in the main process
-    if rank == 0:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+    if is_main_process:
+        if args.output_dir is not None:
+            args.output_dir = Path(args.output_dir)
+            args.output_dir.mkdir(parents=True, exist_ok=True)
 
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
-            os.makedirs(args.output_dir, exist_ok=True)
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or args.output_dir.name, exist_ok=True, token=args.hub_token
+            ).repo_id
 
     # Load tokenizer
     if args.tokenizer_name:
@@ -514,8 +601,19 @@ def main():
     )
 
     # Add the placeholder token in tokenizer
-    num_added_tokens = tokenizer.add_tokens(args.placeholder_token)
-    if num_added_tokens == 0:
+    placeholder_tokens = [args.placeholder_token]
+
+    if args.num_vectors < 1:
+        raise ValueError(f"--num_vectors has to be larger or equal to 1, but is {args.num_vectors}")
+
+    # Add dummy tokens for multi-vector
+    additional_tokens = []
+    for i in range(1, args.num_vectors):
+        additional_tokens.append(f"{args.placeholder_token}_{i}")
+    placeholder_tokens += additional_tokens
+
+    num_added_tokens = tokenizer.add_tokens(placeholder_tokens)
+    if num_added_tokens != args.num_vectors:
         raise ValueError(
             f"The tokenizer already contains the token {args.placeholder_token}. Please pass a different"
             " `placeholder_token` that is not already in the tokenizer."
@@ -528,14 +626,16 @@ def main():
         raise ValueError("The initializer token must be a single token.")
 
     initializer_token_id = token_ids[0]
-    placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
+    placeholder_token_ids = tokenizer.convert_tokens_to_ids(placeholder_tokens)
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
 
     # Initialise the newly added placeholder token with the embeddings of the initializer token
     token_embeds = text_encoder.get_input_embeddings().weight.data
-    token_embeds[placeholder_token_id] = token_embeds[initializer_token_id]
+    with torch.no_grad():
+        for token_id in placeholder_token_ids:
+            token_embeds[token_id] = token_embeds[initializer_token_id].clone()
 
     # Freeze vae and unet
     vae.requires_grad_(False)
@@ -572,7 +672,7 @@ def main():
 
     # Dataset and DataLoaders creation:
     train_dataset = TextualInversionDataset(
-        data_root=args.train_data_dir,
+        data_root=Path(args.train_data_dir),
         tokenizer=tokenizer,
         size=args.resolution,
         placeholder_token=args.placeholder_token,
@@ -581,7 +681,28 @@ def main():
         center_crop=args.center_crop,
         set="train",
     )
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
+    if world_size <= 1:
+        print("AAA")
+        train_sampler = RandomSampler(train_dataset)
+    else:
+        print("BBB")
+        train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=args.train_batch_size,
+        # shuffle=True,
+        num_workers=args.dataloader_num_workers,
+        sampler=train_sampler,
+    )
+    if args.validation_epochs is not None:
+        warnings.warn(
+            f"FutureWarning: You are doing logging with validation_epochs={args.validation_epochs}."
+            " Deprecated validation_epochs in favor of `validation_steps`"
+            f"Setting `args.validation_steps` to {args.validation_epochs * len(train_dataset)}",
+            FutureWarning,
+            stacklevel=2,
+        )
+        args.validation_steps = args.validation_epochs * len(train_dataset)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -597,11 +718,6 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    # # Prepare everything with our `accelerator`.
-    # text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-    #     text_encoder, optimizer, train_dataloader, lr_scheduler
-    # )
-
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -613,6 +729,11 @@ def main():
     vae.to(device, dtype=weight_dtype)
     text_encoder.to(device)
 
+    if args.local_rank != -1:
+        text_encoder_wrapped = torch.nn.parallel.DistributedDataParallel(text_encoder)
+    else:
+        text_encoder_wrapped = text_encoder
+
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -620,21 +741,17 @@ def main():
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
-    # # We need to initialize the trackers we use, and also store our configuration.
-    # # The trackers initializes automatically on the main process.
-    # if rank == 0:
-    #     accelerator.init_trackers("textual_inversion", config=vars(args))
-
     # Train!
     total_batch_size = args.train_batch_size * world_size * args.gradient_accumulation_steps
 
-    logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num Epochs = {args.num_train_epochs}")
-    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
-    logger.info(f"  Total optimization steps = {args.max_train_steps}")
+    if rank in [-1, 0]:
+        logger.info("***** Running training *****")
+        logger.info(f"  Num examples = {len(train_dataset)}")
+        logger.info(f"  Num Epochs = {args.num_train_epochs}")
+        logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
+        logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+        logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+        logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
     first_epoch = 0
 
@@ -657,15 +774,18 @@ def main():
     #     resume_step = resume_global_step % num_update_steps_per_epoch
 
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not args.local_rank == 0)
+    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not is_main_process, file=sys.stdout)
     progress_bar.set_description("Steps")
 
     # keep original embeddings as reference
     orig_embeds_params = text_encoder.get_input_embeddings().weight.data.clone()
 
     for epoch in range(first_epoch, args.num_train_epochs):
-        text_encoder.train()
+        text_encoder_wrapped.train()
         for step, batch in enumerate(train_dataloader):
+            if global_step == 3:
+                t0 = time.perf_counter()
+            optimization_step_was_done = False
             batch = to_device_dtype(batch, target_device=device)
 
             # Skip steps until we reach the resumed step
@@ -676,7 +796,7 @@ def main():
 
             # Convert images to latent space
             latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
-            latents = latents * 0.18215
+            latents = latents * vae.config.scaling_factor
 
             # Sample noise that we'll add to the latents
             noise = torch.randn_like(latents)
@@ -690,7 +810,7 @@ def main():
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
             # Get the text embedding for conditioning
-            encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+            encoder_hidden_states = text_encoder_wrapped(batch["input_ids"])[0]
 
             # Predict the noise residual
             model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
@@ -716,35 +836,51 @@ def main():
                     htcore.mark_step()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
-                index_no_updates = torch.arange(len(tokenizer)) != placeholder_token_id
+                index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
+                index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
+
                 with torch.no_grad():
                     text_encoder.get_input_embeddings().weight[index_no_updates] = orig_embeds_params[index_no_updates]
 
-            progress_bar.update(1)
-            global_step += 1
-            if global_step % args.save_steps == 0:
-                save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
-                save_progress(text_encoder, placeholder_token_id, args, save_path)
+                optimization_step_was_done = True
 
-            # if global_step % args.checkpointing_steps == 0:
-            #     if rank==0:
-            #         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-            #         accelerator.save_state(save_path)
-            #         logger.info(f"Saved state to {save_path}")
+            if optimization_step_was_done:
+                images = []
+                progress_bar.update(1)
+                global_step += 1
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+                if is_main_process:
+                    if global_step % args.save_steps == 0:
+                        save_path = args.output_dir / f"learned_embeds-steps-{global_step}.bin"
+                        save_progress(text_encoder, placeholder_token_ids, args, save_path)
+
+                    # if global_step % args.checkpointing_steps == 0:
+                    #     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                    #     accelerator.save_state(save_path)
+                    #     logger.info(f"Saved state to {save_path}")
+
+                    if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                        images = log_validation(text_encoder, tokenizer, unet, vae, args, weight_dtype, epoch)
+
+            logs = {"loss": format(loss.detach().item(), ".4f"), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             # accelerator.log(logs, step=global_step)
 
             if global_step >= args.max_train_steps:
                 break
 
+    duration = time.perf_counter() - t0
+    throughput = args.max_train_steps * total_batch_size / duration
+
     # Create the pipeline using the trained modules and save it.
     if args.local_rank != -1:
         torch.distributed.barrier()
-    if rank == 0:
+    if is_main_process:
+        progress_bar.close()
+        logger.info(f"Throughput = {throughput} samples/s")
+        logger.info(f"Train runtime = {duration} seconds")
         if args.push_to_hub and args.only_save_embeds:
-            logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
+            logger.warning("Enabling full model saving because --push_to_hub=True was specified.")
             save_full_model = True
         else:
             save_full_model = not args.only_save_embeds
@@ -755,14 +891,28 @@ def main():
                 vae=vae,
                 unet=unet,
                 tokenizer=tokenizer,
+                use_habana=True,
+                use_hpu_graphs=False,
+                gaudi_config=args.gaudi_config_name,
             )
             pipeline.save_pretrained(args.output_dir)
         # Save the newly trained embeddings
-        save_path = os.path.join(args.output_dir, "learned_embeds.bin")
-        save_progress(text_encoder, placeholder_token_id, args, save_path)
+        save_path = args.output_dir / "learned_embeds.bin"
+        save_progress(text_encoder, placeholder_token_ids, args, save_path)
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            save_model_card(
+                repo_id,
+                images=images,
+                base_model=args.pretrained_model_name_or_path,
+                repo_folder=args.output_dir,
+            )
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
 
 if __name__ == "__main__":

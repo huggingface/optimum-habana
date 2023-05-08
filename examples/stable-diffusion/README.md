@@ -88,14 +88,46 @@ python text_to_image_generation.py \
 
 ## Textual Inversion
 
-### Build a dataset
+### Cat toy example
 
-Download 3-4 images from [here](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and save them in a directory. This will be our training data.
+<!-- First, let's login so that we can upload the checkpoint to the Hub during training:
 
+```bash
+huggingface-cli login
+``` -->
 
-### Launch training
+Now let's get our dataset. For this example, we will use some cat images: https://huggingface.co/datasets/diffusers/cat_toy_example .
 
-Launch training with the following command:
+Let's first download it locally:
+
+```py
+from huggingface_hub import snapshot_download
+
+local_dir = "./cat"
+snapshot_download("diffusers/cat_toy_example", local_dir=local_dir, repo_type="dataset", ignore_patterns=".gitattributes")
+```
+
+This will be our training data.
+Now we can launch the training using:
+
+```bash
+python textual_inversion.py \
+  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
+  --train_data_dir="./cat" \
+  --learnable_property="object" \
+  --placeholder_token="<cat-toy>" --initializer_token="toy" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --max_train_steps=3000 \
+  --learning_rate=5.0e-04 --scale_lr \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --output_dir="/tmp/textual_inversion_cat" \
+  --use_lazy_mode \
+  --gaudi_config_name Habana/stable-diffusion
+```
+
 ```bash
 python textual_inversion.py \
   --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
@@ -115,3 +147,19 @@ python textual_inversion.py \
   --use_lazy_mode \
   --gaudi_config_name Habana/stable-diffusion
 ```
+
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
+A full training run takes ~1 hour on one V100 GPU.
+
+**Note**: As described in [the official paper](https://arxiv.org/abs/2208.01618)
+only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
+However, one can also add multiple embedding vectors for the placeholder token
+to increase the number of fine-tuneable parameters. This can help the model to learn
+more complex details. To use multiple embedding vectors, you can define `--num_vectors`
+to a number larger than one, *e.g.*:
+```
+--num_vectors 5
+```
+
+The saved textual inversion vectors will then be larger in size compared to the default case.
