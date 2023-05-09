@@ -166,3 +166,28 @@ python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3
 ```
+
+
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with CLIP on COCO on 1 Gaudi card with the following command:
+```bash
+python run_clip.py \
+    --output_dir ./clip-roberta-finetuned \
+    --model_name_or_path ./clip-roberta \
+    --data_dir $PWD/data \
+    --dataset_name ydshieh/coco_dataset_script \
+    --dataset_config_name=2017 \
+    --image_column image_path \
+    --caption_column caption \
+    --remove_unused_columns=False \
+    --do_eval \
+    --per_device_eval_batch_size="64" \
+    --overwrite_output_dir \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs \
+    --gaudi_config_name Habana/clip
+```

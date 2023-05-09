@@ -145,7 +145,28 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```
 
 
-### Recommended Hyperparameters for Mixed Precision
+## Inference
+
+To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
+
+For instance, you can run inference with BERT on SQuAD on 1 Gaudi card with the following command:
+```bash
+python run_qa.py \
+  --model_name_or_path bert-large-uncased-whole-word-masking \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
+  --dataset_name squad \
+  --do_eval \
+  --per_device_eval_batch_size 8 \
+  --max_seq_length 384 \
+  --doc_stride 128 \
+  --output_dir /tmp/squad/ \
+  --use_habana \
+  --use_lazy_mode \
+  --use_hpu_graphs
+```
+
+
+## Recommended Hyperparameters for Mixed Precision
 
 | | learning_rate | num_train_epochs | per_device_train_batch_size | per_device_eval_batch_size |
 |----------------------------|:----:|:--:|:-:|:-:|
