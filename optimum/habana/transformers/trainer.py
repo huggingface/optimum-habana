@@ -142,7 +142,6 @@ class GaudiTrainer(Trainer):
             logger.info(f"No `GaudiTrainingArguments` passed, using `output_dir={output_dir}`.")
             args = GaudiTrainingArguments(output_dir=output_dir)
 
-        from dataclasses import asdict
         if args.half_precision_backend is not None and args.half_precision_backend == 'hpu_amp':
             delattr(args, 'half_precision_backend')
             self.use_hpu_amp = True
