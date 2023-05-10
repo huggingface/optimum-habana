@@ -74,7 +74,7 @@ with
 - `number_of_iterations` the number of iterations to perform in the benchmark
 - `use_hpu_graphs` enables HPU graphs which are recommended for faster latencies
 - `use_kv_cache` enables a key-value cache to speed up the generation process.
-- `enable_sampling` enables sampling algorithm for the generation process.
+- `do_sample` enables sampling algorithm for the generation process.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
