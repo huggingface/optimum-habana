@@ -33,6 +33,7 @@ from .models import (
     gaudi_bloom_block_forward,
     gaudi_conv1d_forward,
     gaudi_get_extended_attention_mask,
+    gaudi_gpt2_forward,
     gaudi_invert_attention_mask,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
@@ -86,3 +87,4 @@ def adapt_transformers_to_gaudi():
     # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
     # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
     modeling_gpt2.GPT2Attention = GaudiGPT2Attention
+    modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
