@@ -63,7 +63,7 @@ python (../gaudi_spawn.py --use_deepspeed --world_size number_of_devices) run_ge
 --n_iterations number_of_iterations \
 --use_hpu_graphs \
 --use_kv_cache \
---do_sample enable_sampling
+--do_sample
 ```
 with
 - `number_of_devices` the number of HPUs you want to use
