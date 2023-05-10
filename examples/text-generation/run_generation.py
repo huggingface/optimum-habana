@@ -77,11 +77,9 @@ def main():
         type=str,
         help="Optional argument if you want to assess your model on a given dataset of the HF Hub, this will be the name of the column to use as prompts for generation.",
     )
-
     parser.add_argument(
         "--do_sample",
-        default=False,
-        type=bool,
+        action="store_true",
         help="Whether to use sampling for generation.",
     )
 
