@@ -78,6 +78,13 @@ def main():
         help="Optional argument if you want to assess your model on a given dataset of the HF Hub, this will be the name of the column to use as prompts for generation.",
     )
 
+    parser.add_argument(
+        "--do_sample",
+        default=False,
+        type=bool,
+        help="Whether to use sampling for generation.",
+    )
+
     args = parser.parse_args()
 
     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
@@ -212,6 +219,7 @@ def main():
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         use_cache=args.use_kv_cache,
+        do_sample=args.do_sample,
     )
 
     if args.dataset_name is None:
