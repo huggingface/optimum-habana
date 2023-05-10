@@ -1806,16 +1806,11 @@ class GaudiTrainer(Trainer):
         A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
         arguments, depending on the situation. Modified by Habana to include using `autocast` on Gaudi devices.
         """
-        if self.use_cuda_amp or self.use_cpu_amp or self.use_hpu_amp:
-            if version.parse(version.parse(torch.__version__).base_version) >= version.parse("1.10"):
-                if self.use_cpu_amp:
-                    ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=self.amp_dtype)
-                elif self.use_hpu_amp:
-                    ctx_manager = torch.autocast(device_type='hpu', dtype=torch.bfloat16, enabled=True)
-                else:
-                    ctx_manager = torch.cuda.amp.autocast(cache_enabled=cache_enabled, dtype=self.amp_dtype)
+        if self.use_cpu_amp or self.use_hpu_amp:
+            if self.use_cpu_amp:
+                ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=self.amp_dtype)
             else:
-                ctx_manager = torch.cuda.amp.autocast()
+                ctx_manager = torch.autocast(device_type='hpu', dtype=torch.bfloat16, enabled=True)
         else:
             import contextlib
             ctx_manager = contextlib.nullcontext() if sys.version_info >= (3, 7) else contextlib.suppress()
