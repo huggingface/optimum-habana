@@ -168,7 +168,7 @@ class GaudiTrainer(Trainer):
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
-            if self.gaudi_config.disable_autocast ==True:
+            if self.gaudi_config.use_torch_autocast == False:
                 self.use_hpu_amp = False
 
             if self.args.use_lazy_mode:
