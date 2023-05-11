@@ -29,7 +29,7 @@ from datasets import load_dataset
 from PIL import Image
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
-from torchvision.transforms.functional import InterpolationMode
+from torchvision.transforms.functional import InterpolationMode, to_tensor
 from transformers import (
     AutoImageProcessor,
     AutoTokenizer,
@@ -361,6 +361,14 @@ def main():
     # set seed for torch dataloaders
     set_seed(training_args.seed)
 
+    # Create validation and test splits if they don't exist yet
+    if "test" not in dataset:
+        dataset = dataset["train"].train_test_split(test_size=0.4, shuffle=True, seed=training_args.seed)
+        if "validation" not in dataset:
+            buffer_dataset = dataset["test"].train_test_split(test_size=0.5, shuffle=False)
+            dataset["validation"] = buffer_dataset["train"]
+            dataset["test"] = buffer_dataset["test"]
+
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
     if training_args.do_train:
@@ -407,8 +415,16 @@ def main():
         examples["attention_mask"] = text_inputs.attention_mask
         return examples
 
+    def get_image(image_or_path):
+        if isinstance(image_or_path, str):
+            # If the argument is a path to an image file, read it
+            return read_image(image_or_path, mode=ImageReadMode.RGB)
+        else:
+            # If the argument is already an image, convert it into a tensor
+            return to_tensor(image_or_path)
+
     def transform_images(examples):
-        images = [read_image(image_file, mode=ImageReadMode.RGB) for image_file in examples[image_column]]
+        images = [get_image(image_file) for image_file in examples[image_column]]
         examples["pixel_values"] = [image_transformations(image) for image in images]
         return examples
 
@@ -417,7 +433,7 @@ def main():
         valid_images = []
         for image_file in examples[image_column]:
             try:
-                Image.open(image_file)
+                get_image(image_file)
                 valid_images.append(True)
             except Exception:
                 valid_images.append(False)
@@ -511,6 +527,8 @@ def main():
             checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()
+        tokenizer.save_pretrained(training_args.output_dir)
+        image_processor.save_pretrained(training_args.output_dir)
         trainer.log_metrics("train", train_result.metrics)
         trainer.save_metrics("train", train_result.metrics)
         trainer.save_state()
@@ -518,10 +536,16 @@ def main():
     # 10. Evaluation
     if training_args.do_eval:
         metrics = trainer.evaluate()
-        trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
+        trainer.log_metrics("validation", metrics)
+        trainer.save_metrics("validation", metrics)
 
-    # 11. Write Training Stats and push to hub.
+    # 11. Test
+    if training_args.do_predict:
+        metrics = trainer.evaluate(eval_dataset=test_dataset)
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
+
+    # 12. Write Training Stats and push to hub.
     kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "contrastive-image-text-modeling"}
     if data_args.dataset_name is not None:
         kwargs["dataset_tags"] = data_args.dataset_name
