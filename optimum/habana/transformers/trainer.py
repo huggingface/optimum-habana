@@ -70,13 +70,14 @@ from transformers.trainer_utils import (
     get_last_checkpoint,
     has_length,
 )
-from transformers.training_args import TrainingArguments
+from transformers.training_args import TrainingArguments, ParallelMode
 from transformers.utils import (
     CONFIG_NAME,
     SAFE_WEIGHTS_NAME,
     WEIGHTS_NAME,
     is_datasets_available,
     is_safetensors_available,
+    is_torch_tpu_available,
 )
 
 from optimum.utils import logging
@@ -413,6 +414,50 @@ class GaudiTrainer(Trainer):
             model = torch.compile(model, backend=self.args.torch_compile_backend, mode=self.args.torch_compile_mode)
 
         return model
+
+    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch, ignore_keys_for_eval):
+        if self.control.should_log:
+            if is_torch_tpu_available():
+                xm.mark_step()
+
+            logs: Dict[str, float] = {}
+
+            # all_gather + mean() to get average loss over all processes
+            tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
+
+            # reset tr_loss to zero
+            tr_loss -= tr_loss
+            logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            logs["learning_rate"] = self._get_learning_rate()
+
+            self._total_loss_scalar += tr_loss_scalar
+            self._globalstep_last_logged = self.state.global_step
+            self.store_flos()
+
+            self.log(logs)
+
+        metrics = None
+        if self.control.should_evaluate:
+            if isinstance(self.eval_dataset, dict):
+                metrics = {}
+                for eval_dataset_name, eval_dataset in self.eval_dataset.items():
+                    dataset_metrics = self.evaluate(
+                        eval_dataset=eval_dataset,
+                        ignore_keys=ignore_keys_for_eval,
+                        metric_key_prefix=f"eval_{eval_dataset_name}",
+                    )
+                    metrics.update(dataset_metrics)
+            else:
+                metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+            self._report_to_hp_search(trial, self.state.global_step, metrics)
+
+        if self.control.should_save:
+            if self.args.throughput_rm_save_ckpt_time:
+                save_start = time.time()
+            self._save_checkpoint(model, trial, metrics=metrics)
+            if self.args.throughput_rm_save_ckpt_time:
+                self.save_ckpt_time += (time.time() - save_start)
+            self.control = self.callback_handler.on_save(self.args, self.state, self.control)
 
     def train(
         self,
@@ -773,7 +818,10 @@ class GaudiTrainer(Trainer):
                     # Otherwise we need to call the whooooole sampler cause there is some random operation added
                     # AT THE VERY END!
                     _ = list(train_dataloader.sampler)
-
+        if self.args.throughput_rm_save_ckpt_time:
+            self.save_ckpt_time = 0
+        else:
+            self.save_ckpt_time = None
         for epoch in range(epochs_trained, num_train_epochs):
             if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
                 train_dataloader.sampler.set_epoch(epoch)
@@ -947,6 +995,7 @@ class GaudiTrainer(Trainer):
             num_samples=num_samples_for_speed_metrics,
             num_steps=num_steps_for_speed_metrics,
             start_time_after_warmup=start_time_after_warmup,
+            save_ckpt_time=self.save_ckpt_time,
         )
         self.store_flos()
         metrics["total_flos"] = self.state.total_flos
