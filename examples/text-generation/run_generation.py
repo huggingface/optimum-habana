@@ -82,6 +82,11 @@ def main():
         action="store_true",
         help="Whether to use sampling for generation.",
     )
+    parser.add_argument(
+        "--use_torch_autocast",
+        action="store_true",
+        help="Whether to use PyTorch Autocast for a mixed-precision run.",
+    )
 
     args = parser.parse_args()
 
@@ -117,18 +122,25 @@ def main():
         # Initialize process(es) for DeepSpeed
         deepspeed.init_distributed(dist_backend="hccl")
         logger.info("DeepSpeed is enabled.")
+        args.use_torch_autocast = False
     else:
         if args.gaudi_config_name_or_path is None:
             gaudi_config = None
-            logger.warning(
-                "`--gaudi_config_name_or_path` was not specified so not using Habana Mixed Precision for this run."
-            )
+            if not args.use_torch_autocast:
+                logger.warning(
+                    "`--gaudi_config_name_or_path` and `--use_torch_autocast` were not specified so not using mixed precision for this run."
+                )
         else:
             from optimum.habana import GaudiConfig
 
             gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name_or_path)
 
             if gaudi_config.use_habana_mixed_precision:
+                if args.use_torch_autocast:
+                    raise ValueError(
+                        "`--use_torch_autocast` and `gaudi_config.use_habana_mixed_precision` are both `True`. You must choose one or the other to perform a mixed-precision run."
+                    )
+
                 from habana_frameworks.torch.hpex import hmp
 
                 # Open temporary files to mixed-precision write ops
@@ -209,7 +221,11 @@ def main():
         logger.info(f"Args: {args}")
 
         use_bf16 = False
-        if use_deepspeed or (gaudi_config is not None and gaudi_config.use_habana_mixed_precision):
+        if (
+            use_deepspeed
+            or args.use_torch_autocast
+            or (gaudi_config is not None and gaudi_config.use_habana_mixed_precision)
+        ):
             use_bf16 = True
         logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: {use_bf16}")
 
@@ -264,13 +280,14 @@ def main():
                 if torch.is_tensor(input_tokens[t]):
                     input_tokens[t] = input_tokens[t].to(args.device)
 
-            outputs = model.generate(
-                **input_tokens,
-                **kwargs,
-                generation_config=generation_config,
-                lazy_mode=True,
-                hpu_graphs=args.use_hpu_graphs,
-            ).cpu()
+            with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.use_torch_autocast):
+                outputs = model.generate(
+                    **input_tokens,
+                    **kwargs,
+                    generation_config=generation_config,
+                    lazy_mode=True,
+                    hpu_graphs=args.use_hpu_graphs,
+                ).cpu()
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         # Compilation

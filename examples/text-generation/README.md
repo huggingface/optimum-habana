@@ -58,6 +58,7 @@ To run a benchmark and get the throughput of your model, you can run:
 python (../gaudi_spawn.py --use_deepspeed --world_size number_of_devices) run_generation.py \
 --model_name_or_path path_to_model \
 --gaudi_config_name_or_path path_to_gaudi_config \
+--use_torch_autocast \
 --max_new_tokens number_of_tokens_to_generate \
 --batch_size batch_size \
 --n_iterations number_of_iterations \
@@ -69,6 +70,7 @@ with
 - `number_of_devices` the number of HPUs you want to use
 - `path_to_model` a model name on the Hugging Face Hub or a path to a model saved locally
 - `path_to_gaudi_config` a Gaudi configuration on the Hugging Face Hub or a path to a Gaudi configuration saved locally, this is not used if the run is launched with DeepSpeed-inference
+- `use_torch_autocast` enables [PyTorch Autocast](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Mixed_Precision/Autocast.html) for running mixed-precision generation (mutually exclusive with `gaudi_config_name_or_path`)
 - `number_of_tokens_to_generate` the number of tokens to generate for each prompt
 - `batch_size` the size of the batches provided to the model
 - `number_of_iterations` the number of iterations to perform in the benchmark
