@@ -239,6 +239,7 @@ def main():
     if args.dataset_name is None:
         # Benchmark over the prompts below
         input_sentences = [
+            "def print_hello_world():",
             "DeepSpeed is a machine learning framework",
             "He is working on",
             "He has a",
