@@ -15,6 +15,7 @@
 
 import transformers.models.bloom.modeling_bloom as modeling_bloom
 import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
+from transformers import pytorch_utils
 from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.albert.modeling_albert import AlbertModel
@@ -30,7 +31,9 @@ from .models import (
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
     gaudi_bloom_block_forward,
+    gaudi_conv1d_forward,
     gaudi_get_extended_attention_mask,
+    gaudi_gpt2_forward,
     gaudi_invert_attention_mask,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
@@ -45,6 +48,8 @@ def adapt_transformers_to_gaudi():
     Args:
         use_habana_mixed_precision (bool): whether HMP is used or not.
     """
+    # optimize Conv1D
+    pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
 
     # Optimization tweak for ViT
     ViTSelfAttention.forward = gaudi_vit_self_attention_forward
@@ -82,3 +87,4 @@ def adapt_transformers_to_gaudi():
     # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
     # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
     modeling_gpt2.GPT2Attention = GaudiGPT2Attention
+    modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward

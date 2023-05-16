@@ -93,3 +93,18 @@ def gaudi_get_extended_attention_mask(
     extended_attention_mask = extended_attention_mask * torch.finfo(extended_attention_mask.dtype).min
 
     return extended_attention_mask
+
+
+def gaudi_conv1d_forward(self, x):
+    """
+    Same as https://github.com/huggingface/transformers/blob/3335724376319a0c453049d0cd883504f530ff52/src/transformers/pytorch_utils.py#L100
+    but moves reshape before view for tpc auto fusion.
+    """
+    size_out = x.size()[:-1] + (self.nf,)
+    x = torch.mm(x.view(-1, x.size(-1)), self.weight)
+    x = x.view(size_out)
+    bias_shape = [1 for _ in x.shape]
+    bias_shape[-1] = self.nf
+    bias = self.bias.view(bias_shape)
+    x = x + bias
+    return x

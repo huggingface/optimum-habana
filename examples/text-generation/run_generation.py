@@ -77,6 +77,11 @@ def main():
         type=str,
         help="Optional argument if you want to assess your model on a given dataset of the HF Hub, this will be the name of the column to use as prompts for generation.",
     )
+    parser.add_argument(
+        "--do_sample",
+        action="store_true",
+        help="Whether to use sampling for generation.",
+    )
 
     args = parser.parse_args()
 
@@ -212,6 +217,7 @@ def main():
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         use_cache=args.use_kv_cache,
+        do_sample=args.do_sample,
     )
 
     if args.dataset_name is None:

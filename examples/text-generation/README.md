@@ -62,7 +62,8 @@ python (../gaudi_spawn.py --use_deepspeed --world_size number_of_devices) run_ge
 --batch_size batch_size \
 --n_iterations number_of_iterations \
 --use_hpu_graphs \
---use_kv_cache
+--use_kv_cache \
+--do_sample
 ```
 with
 - `number_of_devices` the number of HPUs you want to use
@@ -73,6 +74,7 @@ with
 - `number_of_iterations` the number of iterations to perform in the benchmark
 - `use_hpu_graphs` enables HPU graphs which are recommended for faster latencies
 - `use_kv_cache` enables a key-value cache to speed up the generation process.
+- `do_sample` enables sampling algorithm for the generation process.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
