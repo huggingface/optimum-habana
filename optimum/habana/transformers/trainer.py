@@ -142,11 +142,13 @@ class GaudiTrainer(Trainer):
             logger.info(f"No `GaudiTrainingArguments` passed, using `output_dir={output_dir}`.")
             args = GaudiTrainingArguments(output_dir=output_dir)
 
-        if args.half_precision_backend is not None and args.half_precision_backend == 'hpu_amp':
-            delattr(args, 'half_precision_backend')
+        self.use_hpu_amp = False
+        self.use_cpu_amp = False
+        if args.half_precision_backend == 'hpu_amp':
             self.use_hpu_amp = True
         else:
-            self.use_hpu_amp = False
+            self.use_cpu_amp = True
+        delattr(args, 'half_precision_backend')
 
         super().__init__(
             model,
@@ -1804,15 +1806,13 @@ class GaudiTrainer(Trainer):
     def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
         """
         A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
-        arguments, depending on the situation. Modified by Habana to include using `autocast` on Gaudi devices.
+        arguments, depending on the situation. Modified by Habana to enable using `autocast` on Gaudi devices.
         """
-        if self.use_cpu_amp or self.use_hpu_amp:
-            if self.use_cpu_amp:
-                ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=self.amp_dtype)
-            else:
-                ctx_manager = torch.autocast(device_type='hpu', dtype=torch.bfloat16, enabled=True)
+        if self.use_cpu_amp:
+            ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=torch.bfloat16)
+        elif self.use_hpu_amp:
+            ctx_manager = torch.autocast(device_type='hpu', dtype=torch.bfloat16, enabled=True)
         else:
             import contextlib
             ctx_manager = contextlib.nullcontext() if sys.version_info >= (3, 7) else contextlib.suppress()
-
         return ctx_manager

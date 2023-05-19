@@ -178,10 +178,10 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     half_precision_backend: str = field(
-        default="auto",
+        default="cpu_amp",
         metadata={
             "help": "The backend to be used for half precision.",
-            "choices": ["auto", "cuda_amp", "apex", "cpu_amp", "hpu_amp"],
+            "choices": ["cpu_amp", "hpu_amp"],
         },
     )
 
