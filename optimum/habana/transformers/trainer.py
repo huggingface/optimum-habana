@@ -70,7 +70,7 @@ from transformers.trainer_utils import (
     get_last_checkpoint,
     has_length,
 )
-from transformers.training_args import TrainingArguments, ParallelMode
+from transformers.training_args import TrainingArguments
 from transformers.utils import (
     CONFIG_NAME,
     SAFE_WEIGHTS_NAME,
