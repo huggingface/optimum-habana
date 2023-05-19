@@ -70,7 +70,7 @@ def speed_metrics(
     num_samples: int = None,
     num_steps: int = None,
     start_time_after_warmup: float = None,
-    save_ckpt_time: float = None,
+    log_evaluate_save_time: float = None,
 ) -> Dict[str, float]:
     """
     Measure and return speed performance metrics.
@@ -83,7 +83,7 @@ def speed_metrics(
         num_samples (int, optional): number of samples processed. Defaults to None.
         num_steps (int, optional): number of steps performed. Defaults to None.
         start_time_after_warmup (float, optional): time after warmup steps have been performed. Defaults to None.
-        save_ckpt_time (float, optional): time save checkpoint have been performed. Defaults to None.
+        log_evaluate_save_time (float, optional): time spent to log, evaluate and save. Defaults to None.
 
     Returns:
         Dict[str, float]: dictionary with performance metrics.
@@ -92,9 +92,9 @@ def speed_metrics(
     runtime = time.time() - start_time
     result = {f"{split}_runtime": round(runtime, 4)}
 
-    # Adjust runtime if save ckpt time is not included
-    if save_ckpt_time is not None:
-        runtime = runtime - save_ckpt_time
+    # Adjust runtime if log_evaluate_save_time should not be included
+    if log_evaluate_save_time is not None:
+        runtime = runtime - log_evaluate_save_time
 
     # Adjust runtime if there were warmup steps
     if start_time_after_warmup is not None:

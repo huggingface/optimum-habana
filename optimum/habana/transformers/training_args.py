@@ -125,9 +125,9 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
-    throughput_rm_save_ckpt_time:  bool = field(
+    adjust_throughput:  bool = field(
         default=False,
-        metadata={"help": "Whether to remove save checkpoint time from throughput calculation."},
+        metadata={"help": "Whether to remove the time taken for logging, evaluating and saving from throughput calculation."},
     )
 
     pipelining_fwd_bwd: Optional[bool] = field(
