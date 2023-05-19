@@ -172,6 +172,7 @@ class GaudiTrainer(Trainer):
         if self.args.use_habana:
             if self.gaudi_config.use_torch_autocast == False:
                 self.use_hpu_amp = False
+                self.use_cpu_amp = False
 
             if self.args.use_lazy_mode:
                 try:
@@ -192,7 +193,7 @@ class GaudiTrainer(Trainer):
                 # To avoid warnings about parallelism in tokenizers
                 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-            if self.gaudi_config.use_habana_mixed_precision and not self.use_hpu_amp:
+            if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
                 try:
                     from habana_frameworks.torch.hpex import hmp
                 except ImportError as error:
