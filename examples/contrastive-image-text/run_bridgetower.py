@@ -26,10 +26,9 @@ from typing import Optional
 import torch
 import transformers
 from datasets import load_dataset
-from PIL import Image
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
-from torchvision.transforms.functional import InterpolationMode, to_tensor
+from torchvision.transforms.functional import InterpolationMode, to_grayscale, to_tensor
 from transformers import (
     AutoImageProcessor,
     AutoTokenizer,
@@ -421,6 +420,8 @@ def main():
             return read_image(image_or_path, mode=ImageReadMode.RGB)
         else:
             # If the argument is already an image, convert it into a tensor
+            if len(image_or_path.getbands()) == 1:
+                image_or_path = to_grayscale(image_or_path, num_output_channels=3)
             return to_tensor(image_or_path)
 
     def transform_images(examples):
