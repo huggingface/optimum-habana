@@ -15,9 +15,17 @@
 
 import transformers.models.bloom.modeling_bloom as modeling_bloom
 import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
+from transformers import pytorch_utils
 from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.albert.modeling_albert import AlbertModel
+from transformers.models.esm.modeling_esmfold import (
+    EsmFoldAttention,
+    EsmFoldingTrunk,
+    EsmFoldSelfAttention,
+    EsmForProteinFolding,
+)
+from transformers.models.esm.openfold_utils import rigid_utils
 from transformers.models.vit.modeling_vit import ViTSelfAttention
 from transformers.models.wav2vec2.modeling_wav2vec2 import Wav2Vec2Model
 
@@ -27,11 +35,19 @@ from .models import (
     GaudiBloomMLP,
     GaudiBloomModel,
     GaudiGPT2Attention,
+    _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
     gaudi_bloom_block_forward,
+    gaudi_conv1d_forward,
+    gaudi_esm_for_protein_folding_forward,
+    gaudi_esmfold_self_attention_forward,
+    gaudi_esmfolding_trunk_forward,
     gaudi_get_extended_attention_mask,
+    gaudi_gpt2_forward,
     gaudi_invert_attention_mask,
+    gaudi_rot_matmul,
+    gaudi_rot_vec_mul,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
 )
@@ -45,6 +61,8 @@ def adapt_transformers_to_gaudi():
     Args:
         use_habana_mixed_precision (bool): whether HMP is used or not.
     """
+    # optimize Conv1D
+    pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
 
     # Optimization tweak for ViT
     ViTSelfAttention.forward = gaudi_vit_self_attention_forward
@@ -82,3 +100,12 @@ def adapt_transformers_to_gaudi():
     # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
     # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
     modeling_gpt2.GPT2Attention = GaudiGPT2Attention
+    modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
+
+    # Optimization for EsmFold on Gaudi
+    EsmFoldingTrunk.forward = gaudi_esmfolding_trunk_forward
+    EsmForProteinFolding.forward = gaudi_esm_for_protein_folding_forward
+    EsmFoldAttention._wrap_up = _gaudi_esmfold_attention_wrap_up
+    EsmFoldSelfAttention.forward = gaudi_esmfold_self_attention_forward
+    rigid_utils.rot_matmul = gaudi_rot_matmul
+    rigid_utils.rot_vec_mul = gaudi_rot_vec_mul

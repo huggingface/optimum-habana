@@ -21,7 +21,6 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 import argparse
 import logging
 import os
-import tempfile
 import time
 
 import torch
@@ -50,10 +49,9 @@ def main():
         help="Path to pre-trained model (on the HF Hub or locally).",
     )
     parser.add_argument(
-        "--gaudi_config_name_or_path",
-        default=None,
-        type=str,
-        help="Path to Gaudi configuration (on the HF Hub or locally).",
+        "--bf16",
+        action="store_true",
+        help="Whether to perform generation in bf16 precision.",
     )
     parser.add_argument("--max_new_tokens", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
@@ -76,6 +74,11 @@ def main():
         default=None,
         type=str,
         help="Optional argument if you want to assess your model on a given dataset of the HF Hub, this will be the name of the column to use as prompts for generation.",
+    )
+    parser.add_argument(
+        "--do_sample",
+        action="store_true",
+        help="Whether to use sampling for generation.",
     )
 
     args = parser.parse_args()
@@ -113,33 +116,6 @@ def main():
         deepspeed.init_distributed(dist_backend="hccl")
         logger.info("DeepSpeed is enabled.")
     else:
-        if args.gaudi_config_name_or_path is None:
-            gaudi_config = None
-            logger.warning(
-                "`--gaudi_config_name_or_path` was not specified so not using Habana Mixed Precision for this run."
-            )
-        else:
-            from optimum.habana import GaudiConfig
-
-            gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name_or_path)
-
-            if gaudi_config.use_habana_mixed_precision:
-                from habana_frameworks.torch.hpex import hmp
-
-                # Open temporary files to mixed-precision write ops
-                with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                    with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                        # hmp.convert needs ops to be written in text files
-                        gaudi_config.write_bf16_fp32_ops_to_text_files(
-                            hmp_bf16_file.name,
-                            hmp_fp32_file.name,
-                        )
-                        hmp.convert(
-                            opt_level=gaudi_config.hmp_opt_level,
-                            bf16_file_path=hmp_bf16_file.name,
-                            fp32_file_path=hmp_fp32_file.name,
-                            isVerbose=gaudi_config.hmp_is_verbose,
-                        )
         logger.info("Single-device run.")
 
     # Tweak generation so that it runs faster on Gaudi
@@ -149,22 +125,26 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
 
+    if use_deepspeed or args.bf16:
+        model_dtype = torch.bfloat16
+    else:
+        model_dtype = torch.float
+
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path)
-        args.dtype = torch.bfloat16
         is_bloom = model_is_bloom(config)
 
         if is_bloom:
             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
-            with deepspeed.OnDevice(dtype=args.dtype, device="meta"):
-                model = AutoModelForCausalLM.from_config(config, torch_dtype=args.dtype)
+            with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
+                model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
-            with deepspeed.OnDevice(dtype=args.dtype, device=args.device):
-                model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=args.dtype)
+            with deepspeed.OnDevice(dtype=model_dtype, device=args.device):
+                model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval()
 
         # Initialize the model
-        ds_inference_kwargs = {"dtype": args.dtype}
+        ds_inference_kwargs = {"dtype": model_dtype}
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
@@ -186,7 +166,7 @@ def main():
             model.module.split_lm_head()
         model = model.module
     else:
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval().to(args.device)
         is_bloom = model_is_bloom(model.config)
 
@@ -202,16 +182,13 @@ def main():
 
     if rank in [-1, 0]:
         logger.info(f"Args: {args}")
-
-        use_bf16 = False
-        if use_deepspeed or (gaudi_config is not None and gaudi_config.use_habana_mixed_precision):
-            use_bf16 = True
-        logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: {use_bf16}")
+        logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: {use_deepspeed or args.bf16}")
 
     # Generation configuration
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         use_cache=args.use_kv_cache,
+        do_sample=args.do_sample,
     )
 
     if args.dataset_name is None:
