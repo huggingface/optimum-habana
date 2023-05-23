@@ -82,6 +82,19 @@ You can find examples of Gaudi configurations in the [Habana model repository on
 }
 ```
 
+To instantiate yourself a Gaudi configuration in your script, you can do the following
+```python
+from optimum.habana import GaudiConfig
+
+gaudi_config = GaudiConfig.from_pretrained(
+    gaudi_config_name,
+    cache_dir=model_args.cache_dir,
+    revision=model_args.model_revision,
+    use_auth_token=True if model_args.use_auth_token else None,
+)
+```
+and pass it to the trainer with the `gaudi_config` argument.
+
 
 ## GaudiConfig
 

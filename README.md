@@ -100,46 +100,7 @@ Here is an example:
 )
 ```
 
-where `gaudi_config_name` is the name of a model from the [Hub](https://huggingface.co/Habana) (Gaudi configurations are stored in model repositories). You can also give the path to a custom Gaudi configuration written in a JSON file such as this one:
-```json
-{
-  "use_habana_mixed_precision": true,
-  "hmp_is_verbose": false,
-  "use_fused_adam": true,
-  "use_fused_clip_norm": true,
-  "hmp_bf16_ops": [
-    "add",
-    "addmm",
-    "bmm",
-    "div",
-    "dropout",
-    "gelu",
-    "iadd",
-    "linear",
-    "layer_norm",
-    "matmul",
-    "mm",
-    "rsub",
-    "softmax",
-    "truediv"
-  ],
-  "hmp_fp32_ops": [
-    "embedding",
-    "nll_loss",
-    "log_softmax"
-  ]
-}
-```
-
-If you prefer to instantiate a Gaudi configuration to work on it before giving it to the trainer, you can do it as follows:
-```python
-gaudi_config = GaudiConfig.from_pretrained(
-    gaudi_config_name,
-    cache_dir=model_args.cache_dir,
-    revision=model_args.model_revision,
-    use_auth_token=True if model_args.use_auth_token else None,
-)
-```
+where `gaudi_config_name` is the name of a model from the [Hub](https://huggingface.co/Habana) (Gaudi configurations are stored in model repositories) or a path to a local Gaudi configuration file (you can see [here](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config) how to write your own).
 
 
 #### Diffusers Interface
