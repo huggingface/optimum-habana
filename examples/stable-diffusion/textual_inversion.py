@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import math
 import os
@@ -141,7 +142,6 @@ def parse_args():
     parser.add_argument(
         "--only_save_embeds",
         action="store_true",
-        default=False,
         help="Save only the embeddings for the new concept.",
     )
     parser.add_argument(
@@ -234,7 +234,6 @@ def parse_args():
     parser.add_argument(
         "--scale_lr",
         action="store_true",
-        default=False,
         help="Scale the learning rate by the number of HPUs, gradient accumulation steps, and batch size.",
     )
     parser.add_argument(
@@ -332,7 +331,6 @@ def parse_args():
     parser.add_argument(
         "--use_lazy_mode",
         action="store_true",
-        default=False,
         help="Whether to use lazy mode.",
     )
     parser.add_argument(
@@ -350,6 +348,11 @@ def parse_args():
             " first N steps will not be considered in the calculation of the throughput. This is especially useful in"
             " lazy mode."
         ),
+    )
+    parser.add_argument(
+        "--dataloader_drop_last",
+        action="store_true",
+        help="Whether to drop the last batch. This will avoid an extra graph compilation in lazy mode if the dataset size is not a multiple of the product of the batch size and the number of devices.",
     )
 
     args = parser.parse_args()
@@ -689,6 +692,7 @@ def main():
         # shuffle=True,
         num_workers=args.dataloader_num_workers,
         sampler=train_sampler,
+        drop_last=args.dataloader_drop_last,
     )
     if args.validation_epochs is not None:
         warnings.warn(
@@ -843,6 +847,12 @@ def main():
         progress_bar.close()
         logger.info(f"Throughput = {throughput} samples/s")
         logger.info(f"Train runtime = {duration} seconds")
+        metrics = {
+            "train_samples_per_second": throughput,
+            "train_runtime": duration,
+        }
+        with (args.output_dir / "speed_metrics.json").open(mode="w") as file:
+            json.dump(metrics, file)
         if args.push_to_hub and args.only_save_embeds:
             logger.warning("Enabling full model saving because --push_to_hub=True was specified.")
             save_full_model = True

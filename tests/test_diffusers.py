@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+import os
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -22,6 +25,7 @@ import numpy as np
 import torch
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from habana_frameworks.torch.hpex import hmp
+from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from transformers.testing_utils import slow
@@ -562,3 +566,81 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
             self.assertEqual(image.shape, (512, 512, 3))
             self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
+
+    @slow
+    def test_textual_inversion(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "textual_inversion.py"
+        )
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            snapshot_download(
+                "diffusers/cat_toy_example", local_dir=data_dir, repo_type="dataset", ignore_patterns=".gitattributes"
+            )
+            with tempfile.TemporaryDirectory() as run_dir:
+                cmd_line = [
+                    "python3",
+                    f"{path_to_script.parent.parent / 'gaudi_spawn.py'}",
+                    "--use_mpi",
+                    "--world_size",
+                    "8",
+                    f"{path_to_script}",
+                    "--pretrained_model_name_or_path runwayml/stable-diffusion-v1-5",
+                    f"--train_data_dir {data_dir}",
+                    '--learnable_property "object"',
+                    '--placeholder_token "<cat-toy>"',
+                    '--initializer_token "toy"',
+                    "--resolution 512",
+                    "--train_batch_size 4",
+                    "--num_train_epochs 20",
+                    "--learning_rate 5.0e-04",
+                    "--scale_lr",
+                    '--lr_scheduler "constant"',
+                    "--lr_warmup_steps 0",
+                    f"--output_dir {run_dir}",
+                    "--use_lazy_mode",
+                    "--gaudi_config_name Habana/stable-diffusion-training",
+                    "--throughput_warmup_steps 3",
+                    "--dataloader_drop_last",
+                ]
+
+                # Run textual inversion
+                p = subprocess.Popen(cmd_line)
+                return_code = p.wait()
+
+                # Ensure the run finished without any issue
+                self.assertEqual(return_code, 0)
+
+                # Assess throughput
+                with open(Path(run_dir) / "speed_metrics.json") as fp:
+                    results = json.load(fp)
+                self.assertGreaterEqual(results["train_samples_per_second"], 0.95 * 55.28)
+                self.assertLessEqual(results["train_runtime"], 1.05 * 208.38)
+
+                # Assess generated image
+                with hmp.disable_casts():
+                    pipe = GaudiStableDiffusionPipeline.from_pretrained(
+                        run_dir,
+                        torch_dtype=torch.bfloat16,
+                        use_habana=True,
+                        use_hpu_graphs=True,
+                        gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+                    )
+                    prompt = "A <cat-toy> backpack"
+                    set_seed(27)
+                    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5, output_type="np").images[0]
+
+                    expected_slice = np.array(
+                        [
+                            0.08398438,
+                            0.0859375,
+                            0.11523438,
+                            0.08789062,
+                            0.09765625,
+                            0.09570312,
+                            0.11328125,
+                            0.1171875,
+                            0.13085938,
+                        ]
+                    )
+                    self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
