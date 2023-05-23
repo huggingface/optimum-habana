@@ -47,7 +47,10 @@ from transformers.utils.versions import require_version
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
+from torch.utils.data import Dataset
 
+from habana_frameworks.mediapipe.plugins.iterator_pytorch import HPUSsdPytorchIterator
+from transformers.trainer_utils import seed_worker
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,58 @@ logger = logging.getLogger(__name__)
 check_min_version("4.28.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
+
+
+from torchvision import transforms
+from enum import Enum
+import time
+from mediapipe_dataloader import ClipHabanaDataLoader
+
+class HabanaDataloaderTrainer(GaudiTrainer):
+    def get_train_dataloader(self):
+        """
+        Returns the training [`~torch.utils.data.DataLoader`].
+
+        Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
+        training if necessary) otherwise.
+
+        Subclass and override this method if you want to inject some custom behavior.
+        """
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        train_dataset = self.train_dataset
+        data_collator = self._get_collator_with_removed_columns(self.data_collator, description="training")
+        if isinstance(train_dataset, torch.utils.data.IterableDataset):
+            if self.args.world_size > 1:
+                train_dataset = IterableDatasetShard(
+                    train_dataset,
+                    batch_size=self._train_batch_size,
+                    drop_last=self.args.dataloader_drop_last,
+                    num_processes=self.args.world_size,
+                    process_index=self.args.process_index,
+                )
+
+            return ClipHabanaDataLoader(
+                train_dataset,
+                batch_size=self._train_batch_size,
+                collate_fn=data_collator,
+                num_workers=self.args.dataloader_num_workers,
+                pin_memory=self.args.dataloader_pin_memory,
+            )
+
+        train_sampler = self._get_train_sampler()
+
+        return ClipHabanaDataLoader(
+            train_dataset,
+            batch_size=self._train_batch_size,
+            sampler=train_sampler,
+            collate_fn=data_collator,
+            drop_last=self.args.dataloader_drop_last,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+            worker_init_fn=seed_worker,
+        )
 
 
 @dataclass
@@ -98,6 +153,9 @@ class ModelArguments:
     )
     freeze_text_model: bool = field(
         default=False, metadata={"help": "Whether to freeze the text model parameters or not."}
+    )
+    mediapipe_dataloader: bool = field(
+        default=False, metadata={"help": "Turn on MediaPipe HW dataloading"}
     )
 
 
@@ -448,6 +506,18 @@ def main():
             desc="Running tokenizer on train dataset",
         )
 
+        if not model_args.mediapipe_dataloader:
+            # Transform images on the fly as doing it on the whole dataset takes too much time.
+            train_dataset.set_transform(transform_images)
+        else:
+            # Patching these info into dataset, so that it reaches ClipHPUMediaPipe
+            train_dataset.decode_width = config.vision_config.image_size
+            train_dataset.decode_height = config.vision_config.image_size
+            norm = image_transformations.transforms[3]
+            train_dataset.mean = [255*n for n in norm.mean]
+            train_dataset.std = [1/(255*n) for n in norm.std]
+
+
         # Transform images on the fly as doing it on the whole dataset takes too much time.
         train_dataset.set_transform(transform_images)
 
@@ -498,7 +568,8 @@ def main():
         test_dataset.set_transform(transform_images)
 
     # 8. Initalize our trainer
-    trainer = GaudiTrainer(
+    trainer_cls = HabanaDataloaderTrainer if model_args.mediapipe_dataloader else GaudiTrainer
+    trainer = trainer_cls(
         model=model,
         gaudi_config=gaudi_config,
         args=training_args,
