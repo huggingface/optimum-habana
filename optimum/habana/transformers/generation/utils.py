@@ -83,7 +83,12 @@ class GaudiGenerationMixin(GenerationMixin):
         input_ids: Optional[torch.LongTensor] = None,
         **model_kwargs,
     ) -> Tuple[torch.LongTensor, Dict[str, Any]]:
-        """Expands tensors from [batch_size, ...] to [batch_size * expand_size, ...]"""
+        """
+        Expands tensors from [batch_size, ...] to [batch_size * expand_size, ...].
+
+        Copied from Transformers: https://github.com/huggingface/transformers/blob/527ab894e59b6582578008e3b47648a65063f73d/src/transformers/generation/utils.py#L704
+        The tensor `token_idx` is not expanded.
+        """
 
         def _expand_dict_for_generation(dict_to_expand):
             for key in dict_to_expand:
@@ -114,6 +119,11 @@ class GaudiGenerationMixin(GenerationMixin):
         is_encoder_decoder: bool = False,
         standardize_cache_format: bool = False,
     ) -> Dict[str, Any]:
+        """
+        Copied from Transformers: https://github.com/huggingface/transformers/blob/527ab894e59b6582578008e3b47648a65063f73d/src/transformers/generation/utils.py#L745
+
+        Adds support for `token_idx`, which is necessary for using static shapes.
+        """
         # update past_key_values
         model_kwargs["past_key_values"] = self._extract_past_from_model_output(
             outputs, standardize_cache_format=standardize_cache_format
