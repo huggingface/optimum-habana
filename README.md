@@ -72,49 +72,26 @@ There are two main classes one needs to know:
 The [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer) is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
 That's how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their [original counterparts](https://github.com/huggingface/transformers/tree/main/examples/pytorch).
 
-Original script:
-```python
-from transformers import Trainer, TrainingArguments
+Here is an example:
+```diff
+- from transformers import Trainer, TrainingArguments
++ from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
-training_args = TrainingArguments(
+- training_args = TrainingArguments(
++ training_args = GaudiTrainingArguments(
   # training arguments...
++ use_habana=True,
++ use_lazy_mode=True,  # whether to use lazy or eager mode
++ gaudi_config_name=path_to_gaudi_config,
 )
 
 # A lot of code here
 
 # Initialize our Trainer
-trainer = Trainer(
+- trainer = Trainer(
++ trainer = GaudiTrainer(
     model=model,
     args=training_args,  # Original training arguments.
-    train_dataset=train_dataset if training_args.do_train else None,
-    eval_dataset=eval_dataset if training_args.do_eval else None,
-    compute_metrics=compute_metrics,
-    tokenizer=tokenizer,
-    data_collator=data_collator,
-)
-```
-
-
-Transformed version that can run on Gaudi:
-```python
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-
-training_args = GaudiTrainingArguments(
-  # same training arguments...
-  use_habana=True,
-  use_lazy_mode=True,  # whether to use lazy or eager mode
-  use_hpu_graphs=True,  # whether to use HPU graphs for inference
-  gaudi_config_name=path_to_gaudi_config,
-)
-
-# A lot of the same code as the original script here
-
-# Initialize our Trainer
-trainer = GaudiTrainer(
-    model=model,
-    # You can manually specify the Gaudi configuration to use with
-    # gaudi_config=my_gaudi_config
-    args=training_args,
     train_dataset=train_dataset if training_args.do_train else None,
     eval_dataset=eval_dataset if training_args.do_eval else None,
     compute_metrics=compute_metrics,

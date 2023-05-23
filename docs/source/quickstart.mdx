@@ -26,22 +26,21 @@ The [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_referenc
 That is how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their [original counterparts](https://github.com/huggingface/transformers/tree/main/examples/pytorch).
 
 ```diff
--from transformers import Trainer, TrainingArguments
-+from optimum.habana import GaudiTrainer, GaudiTrainingArguments
+- from transformers import Trainer, TrainingArguments
++ from optimum.habana import GaudiTrainer, GaudiTrainingArguments
 
-# define the training arguments
--training_args = TrainingArguments(
-+training_args = GaudiTrainingArguments(
-+  use_habana=True,
-+  use_lazy_mode=True,
-+  use_hpu_graphs=True,
-+  gaudi_config_name=gaudi_config_name,
+# Define the training arguments
+- training_args = TrainingArguments(
++ training_args = GaudiTrainingArguments(
++   use_habana=True,
++   use_lazy_mode=True,
++   gaudi_config_name=gaudi_config_name,
   ...
 )
 
 # Initialize our Trainer
--trainer = Trainer(
-+trainer = GaudiTrainer(
+- trainer = Trainer(
++ trainer = GaudiTrainer(
     model=model,
     args=training_args,
     train_dataset=train_dataset
@@ -122,3 +121,24 @@ outputs = pipeline(
 +   batch_size=4,
 )
 ```
+
+
+## Ready-to-Use Examples
+
+Here are examples for various modalities and tasks that can be used out of the box:
+- Text
+  - [text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification),
+  - [question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering),
+  - [language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling),
+  - [text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation),
+  - [summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization),
+  - [translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation),
+  - [protein folding](https://github.com/huggingface/optimum-habana/tree/main/examples/protein-folding)
+- Images
+  - [image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)
+- Audio
+  - [audio classification](https://github.com/huggingface/optimum-habana/tree/main/examples/audio-classification),
+  - [speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition)
+- Text and images
+  - [text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion),
+  - [contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/main/examples/contrastive-image-text).
