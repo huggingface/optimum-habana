@@ -110,45 +110,26 @@ Now we can launch the training using:
 
 ```bash
 python textual_inversion.py \
-  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
-  --train_data_dir="./cat" \
-  --learnable_property="object" \
-  --placeholder_token="<cat-toy>" --initializer_token="toy" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=4 \
-  --max_train_steps=3000 \
-  --learning_rate=5.0e-04 --scale_lr \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --output_dir="/tmp/textual_inversion_cat" \
-  --use_lazy_mode \
-  --gaudi_config_name Habana/stable-diffusion
-```
-
-```bash
-python textual_inversion.py \
-  --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
-  --train_data_dir=./cat \
-  --learnable_property="object" \
-  --placeholder_token="<cat-toy>" \
-  --initializer_token="toy" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=4 \
-  --num_train_epochs=20 \
-  --learning_rate=5.0e-04 \
+  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --train_data_dir ./cat \
+  --learnable_property object \
+  --placeholder_token "<cat-toy>" \
+  --initializer_token toy \
+  --resolution 512 \
+  --train_batch_size 4 \
+  --num_train_epochs 20 \
+  --learning_rate 5.0e-04 \
   --scale_lr \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --output_dir="/tmp/textual_inversion_cat" \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir /tmp/textual_inversion_cat \
   --use_lazy_mode \
-  --gaudi_config_name Habana/stable-diffusion
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3 \
+  --dataloader_drop_last
 ```
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
-
-A full training run takes ~1 hour on one V100 GPU.
 
 **Note**: As described in [the official paper](https://arxiv.org/abs/2208.01618)
 only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
@@ -161,6 +142,31 @@ to a number larger than one, *e.g.*:
 ```
 
 The saved textual inversion vectors will then be larger in size compared to the default case.
+
+
+### Multi-card Run
+
+You can run this fine-tuning script in a distributed fashion as follows:
+```bash
+python ../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
+  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --train_data_dir ./cat \
+  --learnable_property object \
+  --placeholder_token '"<cat-toy>"' \
+  --initializer_token toy \
+  --resolution 512 \
+  --train_batch_size 4 \
+  --num_train_epochs 20 \
+  --learning_rate 5.0e-04 \
+  --scale_lr \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir /tmp/textual_inversion_cat \
+  --use_lazy_mode \
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3 \
+  --dataloader_drop_last
+```
 
 
 ### Inference
