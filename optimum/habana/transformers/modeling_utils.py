@@ -76,6 +76,7 @@ def adapt_transformers_to_gaudi():
     # Generation is modified to run faster in lazy mode
     GenerationMixin.generate = GaudiGenerationMixin.generate
     GenerationMixin._update_model_kwargs_for_generation = GaudiGenerationMixin._update_model_kwargs_for_generation
+    GenerationMixin._expand_inputs_for_generation = staticmethod(GaudiGenerationMixin._expand_inputs_for_generation)
     GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
     GenerationMixin.sample = GaudiGenerationMixin.sample
     GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
