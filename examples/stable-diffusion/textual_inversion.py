@@ -90,7 +90,7 @@ These are textual inversion adaption weights for {base_model}. You can find some
         f.write(yaml + model_card)
 
 
-def log_validation(text_encoder, tokenizer, unet, vae, args, weight_dtype, epoch):
+def log_validation(text_encoder, tokenizer, unet, vae, args, weight_dtype):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
@@ -536,9 +536,6 @@ def main():
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
     logger.info(f"Gaudi configuration: {gaudi_config}")
 
-    print()
-    # gaudi_config.use_habana_mixed_precision = False
-
     if gaudi_config.use_habana_mixed_precision:
         from habana_frameworks.torch.hpex import hmp
 
@@ -683,10 +680,8 @@ def main():
         set="train",
     )
     if world_size <= 1:
-        print("AAA")
         train_sampler = RandomSampler(train_dataset)
     else:
-        print("BBB")
         train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -756,24 +751,6 @@ def main():
     global_step = 0
     first_epoch = 0
 
-    # # Potentially load in the weights and states from a previous save
-    # if args.resume_from_checkpoint:
-    #     if args.resume_from_checkpoint != "latest":
-    #         path = os.path.basename(args.resume_from_checkpoint)
-    #     else:
-    #         # Get the most recent checkpoint
-    #         dirs = os.listdir(args.output_dir)
-    #         dirs = [d for d in dirs if d.startswith("checkpoint")]
-    #         dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-    #         path = dirs[-1]
-    #     logger.info(f"Resuming from checkpoint {path}")
-    #     accelerator.load_state(os.path.join(args.output_dir, path))
-    #     global_step = int(path.split("-")[1])
-
-    #     resume_global_step = global_step * args.gradient_accumulation_steps
-    #     first_epoch = resume_global_step // num_update_steps_per_epoch
-    #     resume_step = resume_global_step % num_update_steps_per_epoch
-
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not is_main_process, file=sys.stdout)
     progress_bar.set_description("Steps")
@@ -781,19 +758,14 @@ def main():
     # keep original embeddings as reference
     orig_embeds_params = text_encoder.get_input_embeddings().weight.data.clone()
 
+    t0 = None
+
     for epoch in range(first_epoch, args.num_train_epochs):
         text_encoder_wrapped.train()
         for step, batch in enumerate(train_dataloader):
-            if global_step == 3:
+            if t0 is None and global_step == args.throughput_warmup_steps:
                 t0 = time.perf_counter()
-            optimization_step_was_done = False
             batch = to_device_dtype(batch, target_device=device)
-
-            # Skip steps until we reach the resumed step
-            # if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-            #     if step % args.gradient_accumulation_steps == 0:
-            #         progress_bar.update(1)
-            #     continue
 
             # Convert images to latent space
             latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
@@ -843,9 +815,6 @@ def main():
                 with torch.no_grad():
                     text_encoder.get_input_embeddings().weight[index_no_updates] = orig_embeds_params[index_no_updates]
 
-                optimization_step_was_done = True
-
-            if optimization_step_was_done:
                 images = []
                 progress_bar.update(1)
                 global_step += 1
@@ -855,17 +824,11 @@ def main():
                         save_path = args.output_dir / f"learned_embeds-steps-{global_step}.bin"
                         save_progress(text_encoder, placeholder_token_ids, args, save_path)
 
-                    # if global_step % args.checkpointing_steps == 0:
-                    #     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                    #     accelerator.save_state(save_path)
-                    #     logger.info(f"Saved state to {save_path}")
-
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         images = log_validation(text_encoder, tokenizer, unet, vae, args, weight_dtype, epoch)
 
             logs = {"loss": format(loss.detach().item(), ".4f"), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
-            # accelerator.log(logs, step=global_step)
 
             if global_step >= args.max_train_steps:
                 break

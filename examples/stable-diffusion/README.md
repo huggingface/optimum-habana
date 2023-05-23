@@ -88,6 +88,10 @@ python text_to_image_generation.py \
 
 ## Textual Inversion
 
+[Textual Inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like Stable Diffusion on your own images using just 3-5 examples.
+The `textual_inversion.py` script shows how to implement the training procedure on Habana Gaudi.
+
+
 ### Cat toy example
 
 Let's get our dataset. For this example, we will use some cat images: https://huggingface.co/datasets/diffusers/cat_toy_example .
@@ -132,7 +136,7 @@ python textual_inversion.py \
   --resolution=512 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
-  --max_train_steps=3000 \
+  --num_train_epochs=20 \
   --learning_rate=5.0e-04 \
   --scale_lr \
   --lr_scheduler="constant" \
