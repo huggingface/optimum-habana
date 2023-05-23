@@ -90,13 +90,7 @@ python text_to_image_generation.py \
 
 ### Cat toy example
 
-<!-- First, let's login so that we can upload the checkpoint to the Hub during training:
-
-```bash
-huggingface-cli login
-``` -->
-
-Now let's get our dataset. For this example, we will use some cat images: https://huggingface.co/datasets/diffusers/cat_toy_example .
+Let's get our dataset. For this example, we will use some cat images: https://huggingface.co/datasets/diffusers/cat_toy_example .
 
 Let's first download it locally:
 
@@ -131,7 +125,7 @@ python textual_inversion.py \
 ```bash
 python textual_inversion.py \
   --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
-  --train_data_dir=/root/workspace/textual_inversion_images \
+  --train_data_dir=./cat \
   --learnable_property="object" \
   --placeholder_token="<cat-toy>" \
   --initializer_token="toy" \
@@ -163,3 +157,28 @@ to a number larger than one, *e.g.*:
 ```
 
 The saved textual inversion vectors will then be larger in size compared to the default case.
+
+
+### Inference
+
+Once you have trained a model as described right above, inference can be done simply using the `GaudiStableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
+
+```python
+import torch
+from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+
+model_id = "path-to-your-trained-model"
+pipe = GaudiStableDiffusionPipeline.from_pretrained(
+  model_id,
+  torch_dtype=torch.bfloat16,
+  use_habana=True,
+  use_hpu_graphs=True,
+  gaudi_config="Habana/stable-diffusion",
+)
+
+prompt = "A <cat-toy> backpack"
+
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+
+image.save("cat-backpack.png")
+```

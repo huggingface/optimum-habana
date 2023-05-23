@@ -3,16 +3,15 @@ import logging
 import math
 import os
 import random
+import sys
 import tempfile
+import time
 import warnings
 from pathlib import Path
-from typing import Optional
 
 import diffusers
 import numpy as np
-import sys
 import PIL
-import time
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -24,7 +23,6 @@ from huggingface_hub import create_repo, upload_folder
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
-from pathlib import Path
 from PIL import Image
 from torch.utils.data import Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
@@ -440,7 +438,7 @@ class TextualInversionDataset(Dataset):
         self.center_crop = center_crop
         self.flip_p = flip_p
 
-        self.image_paths = [file_path for file_path in self.data_root.iterdir()]
+        self.image_paths = list(self.data_root.iterdir())
 
         self.num_images = len(self.image_paths)
         self._length = self.num_images
@@ -537,6 +535,9 @@ def main():
 
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
     logger.info(f"Gaudi configuration: {gaudi_config}")
+
+    print()
+    # gaudi_config.use_habana_mixed_precision = False
 
     if gaudi_config.use_habana_mixed_precision:
         from habana_frameworks.torch.hpex import hmp
@@ -891,6 +892,7 @@ def main():
                 vae=vae,
                 unet=unet,
                 tokenizer=tokenizer,
+                scheduler=noise_scheduler,
                 use_habana=True,
                 use_hpu_graphs=False,
                 gaudi_config=args.gaudi_config_name,
