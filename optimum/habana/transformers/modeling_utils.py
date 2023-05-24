@@ -15,6 +15,7 @@
 
 import transformers.models.bloom.modeling_bloom as modeling_bloom
 import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
+import transformers.models.gptj.modeling_gptj as modeling_gptj
 import transformers.models.opt.modeling_opt as modeling_opt
 from transformers import pytorch_utils
 from transformers.generation import GenerationMixin
@@ -37,6 +38,7 @@ from .models import (
     GaudiBloomModel,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
+    GaudiGPTJForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     _gaudi_esmfold_attention_wrap_up,
@@ -50,6 +52,9 @@ from .models import (
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
+    gaudi_gptj_attention_forward,
+    gaudi_gptj_block_forward,
+    gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
@@ -129,3 +134,9 @@ def adapt_transformers_to_gaudi():
     modeling_opt.OPTModel.forward = gaudi_opt_model_forward
     modeling_opt.OPTDecoderLayer.forward = gaudi_opt_decoder_layer_forward
     modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
+
+    # Optimization for GPTJ on Gaudi
+    modeling_gptj.GPTJAttention.forward = gaudi_gptj_attention_forward
+    modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
+    modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
+    modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
