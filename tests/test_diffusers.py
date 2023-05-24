@@ -602,6 +602,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                     "--gaudi_config_name Habana/stable-diffusion-training",
                     "--throughput_warmup_steps 3",
                     "--dataloader_drop_last",
+                    "--seed 27",
                 ]
 
                 # Run textual inversion
@@ -643,4 +644,5 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                             0.13085938,
                         ]
                     )
+                    print("HERE", image[-3:, -3:, -1].flatten())
                     self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
