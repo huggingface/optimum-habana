@@ -80,6 +80,12 @@ def main():
         action="store_true",
         help="Whether to use sampling for generation.",
     )
+    parser.add_argument(
+        "--seed",
+        default=27,
+        type=int,
+        help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
+    )
 
     args = parser.parse_args()
 
@@ -122,6 +128,11 @@ def main():
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
     adapt_transformers_to_gaudi()
+
+    # Set seed before initializing model.
+    from optimum.habana.utils import set_seed
+
+    set_seed(args.seed)
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
 
