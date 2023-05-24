@@ -526,9 +526,6 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
     - add new args token_idx
     """
 
-    def __init__(self, config):
-        super().__init__(config)
-
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
