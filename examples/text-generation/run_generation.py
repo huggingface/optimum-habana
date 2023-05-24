@@ -25,7 +25,7 @@ import time
 
 import torch
 import torch.nn.functional as F
-from checkpoint_utils import model_is_bloom, write_checkpoints_json
+from checkpoint_utils import model_is_bloom, model_is_optimized, write_checkpoints_json
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
@@ -143,6 +143,7 @@ def main():
 
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path)
+        is_optimized = model_is_optimized(config)
         is_bloom = model_is_bloom(config)
 
         if is_bloom:
@@ -180,6 +181,7 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval().to(args.device)
         is_bloom = model_is_bloom(model.config)
+        is_optimized = model_is_optimized(model.config)
 
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -235,7 +237,7 @@ def main():
                 input_tokens.input_ids, (0, args.max_new_tokens), value=model.config.pad_token_id
             )
             input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
-            if is_bloom:
+            if is_optimized:
                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
                 kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
             else:
@@ -353,7 +355,7 @@ def main():
             for t in batch:
                 if torch.is_tensor(batch[t]):
                     batch[t] = batch[t].to(args.device)
-            if is_bloom:
+            if is_optimized:
                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
                 batch["token_idx"] = torch.tensor(prompt_length, device=args.device)
 

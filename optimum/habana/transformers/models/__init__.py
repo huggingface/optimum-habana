@@ -14,7 +14,7 @@ from .esm import (
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
 )
-from .gpt2 import GaudiGPT2Attention, gaudi_gpt2_forward
+from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
 from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
 from .vit import gaudi_vit_self_attention_forward
 from .wav2vec2 import (
