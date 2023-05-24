@@ -520,6 +520,11 @@ def gaudi_gpt2_forward(
 
 
 class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
+    """
+    Copied from GPT2LMHeadModel: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
+    The only differences are:
+    - add new args token_idx
+    """
     def __init__(self, config):
         super().__init__(config)
         self.lm_head_chunks = []
