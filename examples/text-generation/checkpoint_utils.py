@@ -69,7 +69,7 @@ def model_is_bloom(config):
 def model_is_optimized(config):
     """
     Checks if the given config belongs to a model in optimum/habana/transformers/models, which has a
-    new input token_idx
+    new input token_idx.
     """
     optimized_models = ["bloom", "gpt2"]
     for optimized_model in optimized_models:
