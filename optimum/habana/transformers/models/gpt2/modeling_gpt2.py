@@ -251,7 +251,7 @@ def gaudi_gpt2_block_forward(
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
-    token_idx=None,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
     """
     Copied from GPT2Block.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
