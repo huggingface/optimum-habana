@@ -16,6 +16,36 @@ limitations under the License.
 
 # Accelerating Inference
 
+Gaudi offers several possibilities to make inference faster.
+
+
+## Lazy Mode
+
+Two execution modes are proposed:
+- *Lazy mode*, where operations are accumulated in a graph whose execution is triggered in a lazy manner. This allows the graph compiler to optimize the device execution for these operations.
+- *Eager mode*, where one operation at a time is executed.
+
+In lazy mode, the graph compiler generates optimized binary code that implements the given model topology on Gaudi. It performs operator fusion, data layout management, parallelization, pipelining and memory management, as well as graph-level optimizations.
+
+To execute inference in lazy mode, you must provide the following arguments:
+```python
+args = GaudiTrainingArguments(
+    # same arguments as in Transformers,
+    use_habana=True,
+    use_lazy_mode=True,
+)
+```
+
+<Tip>
+
+In lazy mode, the last batch may trigger an extra compilation because it may smaller than previous batches.
+To avoid this, you can discard the last batch with `dataloader_drop_last=True`.
+
+</Tip>
+
+
+## HPU Graphs
+
 Gaudi provides a way to run fast inference with HPU Graphs.
 It consists in capturing a series of operations (i.e. graphs) in a HPU stream and then replaying them in an optimized way (more information [here](https://docs.habana.ai/en/latest/PyTorch/Inference_on_Gaudi/Inference_using_HPU_Graphs/Inference_using_HPU_Graphs.html)).
 Thus, you can apply this to the `forward` method of your model to run it efficiently at inference.
@@ -67,6 +97,6 @@ outputs = generator(
 
 <Tip warning={true}>
 
-With HPU Graphs and in lazy mode, the *first couple of training iterations* may be slower due to graph compilations.
+With HPU Graphs and in lazy mode, the *first couple of iterations* may be slower due to graph compilations.
 
 </Tip>
