@@ -146,7 +146,8 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={
             "help": "Determines how data parallel distributed training is achieved."
             " `ddp`: by using `DistributedDataParallel`."
-            " `fast_ddp`: by using `optimum.habana.distributed.all_reduce_gradients`."
+            " `fast_ddp`: by using `optimum.habana.distributed.all_reduce_gradients`.",
+            "choices": ["ddp", "fast_ddp"],
         },
     )
 
