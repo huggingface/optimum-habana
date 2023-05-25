@@ -93,7 +93,7 @@ class GaudiTrainingArguments(TrainingArguments):
         use_hpu_graphs_for_training (`bool`, *optional*, defaults to `False`):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
         distribution_strategy (`str`, *optional*, defaults to `ddp`):
-            Determines how data parallel distributed training is achieved. May be: `ddp`, `fast_ddp`
+            Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
             Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,
             the first N steps will not be considered in the calculation of the throughput. This is especially
