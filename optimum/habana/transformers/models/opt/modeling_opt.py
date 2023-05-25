@@ -4,13 +4,16 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.opt.modeling_opt import OPTForCausalLM, logger
+from transformers.models.opt.modeling_opt import OPTForCausalLM, OPTLearnedPositionalEmbedding, logger
 
 
-class GaudiOPTLearnedPositionalEmbedding(torch.nn.Embedding):
-    def __init__(self, num_embeddings: int, embedding_dim: int):
-        self.offset = 2
-        super().__init__(num_embeddings + self.offset, embedding_dim)
+class GaudiOPTLearnedPositionalEmbedding(OPTLearnedPositionalEmbedding):
+    """
+    inherit from OPTLearnedPositionalEmbedding: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
+    The only differences are:
+    - add new args token_idx
+    - compute embedding using token_idx if past_key_values_length not 0
+    """
 
     def forward(
         self,
@@ -24,10 +27,10 @@ class GaudiOPTLearnedPositionalEmbedding(torch.nn.Embedding):
             # first step or kv cache disabled
             positions = (torch.cumsum(attention_mask, dim=1).type_as(attention_mask) * attention_mask).long() - 1
             positions = positions[:, past_key_values_length:]
-            return super().forward(positions + self.offset)
+            return torch.nn.Embedding.forward(self, positions + self.offset)
         else:
             # if not 0, kv cache is enabled and from step = 2, past_key_values_length is equal to the final length of outputs
-            return super().forward(token_idx + self.offset)
+            return torch.nn.Embedding.forward(self, token_idx + self.offset)
 
 
 def gaudi_opt_attention_forward(
@@ -431,6 +434,14 @@ def gaudi_opt_model_forward(
 
 
 class GaudiOPTForCausalLM(OPTForCausalLM):
+    """
+    inherit from OPTForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
+    The only differences are:
+    - add new args token_idx
+    - add token_idx into model_inputs
+    - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
+    """
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
