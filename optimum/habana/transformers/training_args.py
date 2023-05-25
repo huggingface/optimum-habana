@@ -57,8 +57,7 @@ UNSUPPORTED_ARGUMENTS = [
     "fp16_full_eval",
     "fp16_opt_level",
     "fsdp",
-    # not supported, Habana Mixed Precision should be used and specified in Gaudi configuration
-    "half_precision_backend",
+    "half_precision_backend",  # not supported, Habana Mixed Precision should be used and specified in Gaudi configuration
     "mp_parameters",
     "sharded_ddp",
     "tf32",
@@ -276,7 +275,9 @@ class GaudiTrainingArguments(TrainingArguments):
             self.local_rank = env_local_rank
 
         if self.local_rank != -1 and self.use_hpu_graphs_for_training and self.distribution_strategy != "fast_ddp":
-            raise ValueError("--use_hpu_graphs_for_training may only be used with --distribution_strategy fast_ddp")
+            raise ValueError(
+                "`--use_hpu_graphs_for_training` may only be used with `--distribution_strategy fast_ddp`"
+            )
 
         # expand paths, if not os.makedirs("~/bar") will make directory
         # in the current directory instead of the actual home

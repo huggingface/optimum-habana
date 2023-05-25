@@ -284,7 +284,7 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs
+    --use_hpu_graphs_for_inference
 ```
 
 

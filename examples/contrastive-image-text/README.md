@@ -188,6 +188,6 @@ python run_clip.py \
     --overwrite_output_dir \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip
 ```

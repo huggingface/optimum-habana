@@ -150,5 +150,5 @@ python run_glue.py \
   --output_dir ./output/mrpc/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs
+  --use_hpu_graphs_for_inference
 ```

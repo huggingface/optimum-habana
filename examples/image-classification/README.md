@@ -277,6 +277,6 @@ python run_image_classification.py \
     --per_device_eval_batch_size 64 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
     --dataloader_num_workers 1

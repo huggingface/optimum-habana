@@ -56,7 +56,6 @@ python run_qa.py \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
   --use_hpu_graphs_for_training \
-  --distribution_strategy fast_ddp \
   --throughput_warmup_steps 3
 ```
 
@@ -166,7 +165,7 @@ python run_qa.py \
   --output_dir /tmp/squad/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs
+  --use_hpu_graphs_for_inference
 ```
 
 
@@ -212,7 +211,7 @@ python run_seq2seq_qa.py \
   --predict_with_generate \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs \
+  --use_hpu_graphs_for_inference \
   --ignore_pad_token_for_loss False \
   --pad_to_max_length \
   --save_strategy epoch \
