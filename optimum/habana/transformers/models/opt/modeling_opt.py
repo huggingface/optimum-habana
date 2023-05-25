@@ -9,7 +9,7 @@ from transformers.models.opt.modeling_opt import OPTForCausalLM, OPTLearnedPosit
 
 class GaudiOPTLearnedPositionalEmbedding(OPTLearnedPositionalEmbedding):
     """
-    inherit from OPTLearnedPositionalEmbedding: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
+    Inherits from OPTLearnedPositionalEmbedding: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
     The only differences are:
     - add new args token_idx
     - compute embedding using token_idx if past_key_values_length not 0
