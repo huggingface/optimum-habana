@@ -435,7 +435,7 @@ def gaudi_opt_model_forward(
 
 class GaudiOPTForCausalLM(OPTForCausalLM):
     """
-    inherit from OPTForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
+    Inherits from OPTForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
     The only differences are:
     - add new args token_idx
     - add token_idx into model_inputs
