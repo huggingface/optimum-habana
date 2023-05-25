@@ -20,18 +20,7 @@ Training on a single device is as simple as in Transformers:
 - You need to replace the Transformers' [`Trainer`](https://huggingface.co/docs/transformers/main_classes/trainer) class with the [`GaudiTrainer`](https://huggingface.co/docs/optimum/habana/package_reference/trainer) class,
 - You need to replace the Transformers' [`TrainingArguments`](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments) class with the [`GaudiTrainingArguments`] class and add the following arguments:
     - `use_habana` to execute your script on an HPU,
-    - `use_lazy_mode` to use lazy mode or not (i.e. eager mode),
+    - `use_lazy_mode` to use lazy mode (recommended) or not (i.e. eager mode),
     - `gaudi_config_name` to give the name of (Hub) or the path to (local) your Gaudi configuration file.
-
-You can find several examples in the official repository for the following tasks:
-- [language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling),
-- [question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering),
-- [summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization),
-- [text classification](https://github.com/huggingface/optimum-habana/tree/main/examples/text-classification),
-- [translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation),
-- [image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification),
-- [audio classification](https://github.com/huggingface/optimum-habana/tree/main/examples/audio-classification),
-- [speech recognition](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition),
-- [contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/main/examples/contrastive-image-text).
 
 To go further, we invite you to read our guides about [accelerating training](../usage_guides/accelerate_training) and [pretraining](../usage_guides/pretraining).
