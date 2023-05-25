@@ -31,6 +31,7 @@ from typing import Optional
 import torch
 import transformers
 from datasets import load_dataset
+from mediapipe_dataloader import ClipHabanaDataLoader
 from PIL import Image
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
@@ -41,16 +42,14 @@ from transformers import (
     AutoTokenizer,
     HfArgumentParser,
 )
-from transformers.trainer_utils import get_last_checkpoint
+from transformers.trainer_pt_utils import IterableDatasetShard
+from transformers.trainer_utils import get_last_checkpoint, seed_worker
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
-from torch.utils.data import Dataset
 
-from habana_frameworks.mediapipe.plugins.iterator_pytorch import HPUSsdPytorchIterator
-from transformers.trainer_utils import seed_worker
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +58,6 @@ check_min_version("4.28.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
 
-
-from torchvision import transforms
-from enum import Enum
-import time
-from mediapipe_dataloader import ClipHabanaDataLoader
 
 class HabanaDataloaderTrainer(GaudiTrainer):
     def get_train_dataloader(self):
@@ -154,9 +148,7 @@ class ModelArguments:
     freeze_text_model: bool = field(
         default=False, metadata={"help": "Whether to freeze the text model parameters or not."}
     )
-    mediapipe_dataloader: bool = field(
-        default=False, metadata={"help": "Turn on MediaPipe HW dataloading"}
-    )
+    mediapipe_dataloader: bool = field(default=False, metadata={"help": "Turn on MediaPipe HW dataloading"})
 
 
 @dataclass
@@ -514,9 +506,8 @@ def main():
             train_dataset.decode_width = config.vision_config.image_size
             train_dataset.decode_height = config.vision_config.image_size
             norm = image_transformations.transforms[3]
-            train_dataset.mean = [255*n for n in norm.mean]
-            train_dataset.std = [1/(255*n) for n in norm.std]
-
+            train_dataset.mean = [255 * n for n in norm.mean]
+            train_dataset.std = [1 / (255 * n) for n in norm.std]
 
         # Transform images on the fly as doing it on the whole dataset takes too much time.
         train_dataset.set_transform(transform_images)
