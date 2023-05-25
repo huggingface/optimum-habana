@@ -15,6 +15,7 @@
 
 import transformers.models.bloom.modeling_bloom as modeling_bloom
 import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
+import transformers.models.opt.modeling_opt as modeling_opt
 from transformers import pytorch_utils
 from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
@@ -36,6 +37,8 @@ from .models import (
     GaudiBloomModel,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
+    GaudiOPTForCausalLM,
+    GaudiOPTLearnedPositionalEmbedding,
     _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
@@ -48,6 +51,10 @@ from .models import (
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
     gaudi_invert_attention_mask,
+    gaudi_opt_attention_forward,
+    gaudi_opt_decoder_forward,
+    gaudi_opt_decoder_layer_forward,
+    gaudi_opt_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_vit_self_attention_forward,
@@ -114,3 +121,11 @@ def adapt_transformers_to_gaudi():
     EsmFoldSelfAttention.forward = gaudi_esmfold_self_attention_forward
     rigid_utils.rot_matmul = gaudi_rot_matmul
     rigid_utils.rot_vec_mul = gaudi_rot_vec_mul
+
+    # Optimization for OPT generation on Gaudi
+    modeling_opt.OPTAttention.forward = gaudi_opt_attention_forward
+    modeling_opt.OPTDecoder.forward = gaudi_opt_decoder_forward
+    modeling_opt.OPTForCausalLM = GaudiOPTForCausalLM
+    modeling_opt.OPTModel.forward = gaudi_opt_model_forward
+    modeling_opt.OPTDecoderLayer.forward = gaudi_opt_decoder_layer_forward
+    modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
