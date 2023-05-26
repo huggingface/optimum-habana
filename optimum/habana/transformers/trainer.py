@@ -452,11 +452,11 @@ class GaudiTrainer(Trainer):
             self._report_to_hp_search(trial, self.state.global_step, metrics)
 
         if self.control.should_save:
-            if self.args.throughput_rm_save_ckpt_time:
+            if self.args.adjust_throughput:
                 save_start = time.time()
             self._save_checkpoint(model, trial, metrics=metrics)
-            if self.args.throughput_rm_save_ckpt_time:
-                self.save_ckpt_time += (time.time() - save_start)
+            if self.args.adjust_throughput:
+                self.log_evaluate_save_time += (time.time() - save_start)
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
 
     def train(
@@ -818,10 +818,10 @@ class GaudiTrainer(Trainer):
                     # Otherwise we need to call the whooooole sampler cause there is some random operation added
                     # AT THE VERY END!
                     _ = list(train_dataloader.sampler)
-        if self.args.throughput_rm_save_ckpt_time:
-            self.save_ckpt_time = 0
+        if self.args.adjust_throughput:
+            self.log_evaluate_save_time = 0
         else:
-            self.save_ckpt_time = None
+            self.log_evaluate_save_time = None
         for epoch in range(epochs_trained, num_train_epochs):
             if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
                 train_dataloader.sampler.set_epoch(epoch)
@@ -995,7 +995,7 @@ class GaudiTrainer(Trainer):
             num_samples=num_samples_for_speed_metrics,
             num_steps=num_steps_for_speed_metrics,
             start_time_after_warmup=start_time_after_warmup,
-            save_ckpt_time=self.save_ckpt_time,
+            log_evaluate_save_time=self.log_evaluate_save_time,
         )
         self.store_flos()
         metrics["total_flos"] = self.state.total_flos
