@@ -15,6 +15,7 @@
 
 import transformers.models.bloom.modeling_bloom as modeling_bloom
 import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
+import transformers.models.gpt_neox.modeling_gpt_neox as modeling_gpt_neox
 import transformers.models.gptj.modeling_gptj as modeling_gptj
 import transformers.models.opt.modeling_opt as modeling_opt
 from transformers import pytorch_utils
@@ -39,6 +40,7 @@ from .models import (
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
     GaudiGPTJForCausalLM,
+    GaudiGPTNeoXForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     _gaudi_esmfold_attention_wrap_up,
@@ -52,6 +54,9 @@ from .models import (
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
+    gaudi_gpt_neox_attention_forward,
+    gaudi_gpt_neox_layer_forward,
+    gaudi_gpt_neox_model_forward,
     gaudi_gptj_attention_forward,
     gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
@@ -140,3 +145,9 @@ def adapt_transformers_to_gaudi():
     modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
     modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
     modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
+
+    # Optimization for gpt-neox generation on Gaudi
+    modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM
+    modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
+    modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
+    modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
