@@ -71,8 +71,8 @@ def gaudi_gptj_attention_forward(
             key = past_key
             value = past_value
         else:
-            key = torch.cat([past_key, key], dim=2)
-            value = torch.cat([past_value, value], dim=2)
+            key = torch.cat([past_key, key], dim=-2)
+            value = torch.cat([past_value, value], dim=-2)
 
     if use_cache is True:
         present = (key, value)
