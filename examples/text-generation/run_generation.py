@@ -86,6 +86,18 @@ def main():
         type=int,
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
     )
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        default=0,
+        type=int,
+        help="Number of steps to ignore for profling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        default=0,
+        type=int,
+        help="Number of steps to be captured when enable profiling.",
+    )
 
     args = parser.parse_args()
 
@@ -254,9 +266,15 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=True,
                 hpu_graphs=args.use_hpu_graphs,
+                profiling_steps=args.profiling_steps,
+                profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
+        from optimum.habana.utils import HabanaProfile
+
+        # compilation stage disable profiling
+        HabanaProfile.disable()
         # Compilation
         if rank in [-1, 0]:
             logger.info("Graph compilation...")
@@ -266,7 +284,7 @@ def main():
             generate()
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
-
+        HabanaProfile.enable()
         total_new_tokens_generated = 0
         if rank in [-1, 0]:
             logger.info("Running generate...")
@@ -365,6 +383,8 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=args.use_hpu_graphs,
                 hpu_graphs=args.use_hpu_graphs,
+                profiling_steps=args.profiling_steps,
+                profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
 
             # Print outputs
