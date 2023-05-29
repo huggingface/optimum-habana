@@ -77,7 +77,6 @@ from transformers.utils import (
     WEIGHTS_NAME,
     is_datasets_available,
     is_safetensors_available,
-    is_torch_tpu_available,
 )
 
 from optimum.utils import logging
@@ -417,9 +416,6 @@ class GaudiTrainer(Trainer):
 
     def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch, ignore_keys_for_eval):
         if self.control.should_log:
-            if is_torch_tpu_available():
-                xm.mark_step()
-
             logs: Dict[str, float] = {}
 
             # all_gather + mean() to get average loss over all processes
@@ -456,7 +452,7 @@ class GaudiTrainer(Trainer):
                 save_start = time.time()
             self._save_checkpoint(model, trial, metrics=metrics)
             if self.args.throughput_rm_save_ckpt_time:
-                self.save_ckpt_time += (time.time() - save_start)
+                self.save_ckpt_time += time.time() - save_start
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
 
     def train(

@@ -125,9 +125,11 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
-    adjust_throughput:  bool = field(
+    adjust_throughput: bool = field(
         default=False,
-        metadata={"help": "Whether to remove the time taken for logging, evaluating and saving from throughput calculation."},
+        metadata={
+            "help": "Whether to remove the time taken for logging, evaluating and saving from throughput calculation."
+        },
     )
 
     pipelining_fwd_bwd: Optional[bool] = field(
