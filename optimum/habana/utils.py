@@ -223,10 +223,10 @@ class HabanaProfile(object):
     HPU profiler only could be run once, so HABANA_PROFILE_ENABLED, a class static variable shared by all the instances of HabanaProfile, is used to control which part will be captured.
     """
 
-    HABANA_PROFILE_ENABLED = False
+    HABANA_PROFILE_ENABLED = True
 
     def __init__(self, warmup: int = 0, active: int = 0, output_dir: str = "./hpu_profile", wait: int = 0):
-        if active <= 0 or warmup <= 0 or HabanaProfile.HABANA_PROFILE_ENABLED:
+        if active <= 0 or warmup <= 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
 
             def noop():
                 pass
@@ -235,7 +235,7 @@ class HabanaProfile(object):
             self.stop = noop
             self.step = noop
         else:
-            HabanaProfile.HABANA_PROFILE_ENABLED = True
+            HabanaProfile.HABANA_PROFILE_ENABLED = False
             schedule = torch.profiler.schedule(wait=wait, warmup=warmup, active=active, repeat=1)
             activities = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.HPU]
 
@@ -268,9 +268,9 @@ class HabanaProfile(object):
         """
         if hasattr(HabanaProfile.disable, "invalid"):
             if not HabanaProfile.disable.invalid:
-                HabanaProfile.HABANA_PROFILE_ENABLED = True
+                HabanaProfile.HABANA_PROFILE_ENABLED = False
         else:
-            HabanaProfile.HABANA_PROFILE_ENABLED = True
+            HabanaProfile.HABANA_PROFILE_ENABLED = False
 
     @staticmethod
     def enable():
@@ -279,6 +279,6 @@ class HabanaProfile(object):
         """
         if hasattr(HabanaProfile.enable, "invalid"):
             if not HabanaProfile.enable.invalid:
-                HabanaProfile.HABANA_PROFILE_ENABLED = False
+                HabanaProfile.HABANA_PROFILE_ENABLED = True
         else:
-            HabanaProfile.HABANA_PROFILE_ENABLED = False
+            HabanaProfile.HABANA_PROFILE_ENABLED = True
