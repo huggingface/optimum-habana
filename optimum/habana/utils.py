@@ -264,7 +264,7 @@ class HabanaProfile(object):
     @staticmethod
     def disable():
         """
-        run only once and must happened before doing profiling
+        Runs only once and must happen before doing profiling.
         """
         if hasattr(HabanaProfile.disable, "invalid"):
             if not HabanaProfile.disable.invalid:
