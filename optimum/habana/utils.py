@@ -220,7 +220,7 @@ def get_driver_version():
 
 class HabanaProfile(object):
     """
-    HPU profiler only could be run once, so HABANA_PROFILE_ENABLED, a class static variable shared by all the instances of HabanaProfile, is used to control which part will be captured
+    HPU profiler only could be run once, so HABANA_PROFILE_ENABLED, a class static variable shared by all the instances of HabanaProfile, is used to control which part will be captured.
     """
 
     HABANA_PROFILE_ENABLED = False
