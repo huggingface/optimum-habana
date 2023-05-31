@@ -41,7 +41,8 @@ from transformers import (
     AutoTokenizer,
     HfArgumentParser,
 )
-from transformers.trainer_utils import get_last_checkpoint
+from transformers.trainer_pt_utils import IterableDatasetShard
+from transformers.trainer_utils import get_last_checkpoint, seed_worker
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
@@ -49,12 +50,138 @@ from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
 
 
+try:
+    from clip_media_pipe import ClipMediaPipe
+    from habana_frameworks.mediapipe.plugins.iterator_pytorch import HPUGenericPytorchIterator
+except Exception:
+    HPUGenericPytorchIterator = None
+    ClipMediaPipe = None
+
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.28.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
+
+
+class CLIPIterator(HPUGenericPytorchIterator):
+    def __init__(self, mediapipe):
+        super().__init__(mediapipe=mediapipe)
+
+    def __next__(self):
+        images = self.pipe.run()
+        items_tensors = []
+        for image in images:
+            items_tensors.append(self.proxy_device.get_tensor(image.dev_addr))
+        return {
+            "pixel_values": items_tensors[0],
+            "input_ids": items_tensors[1],
+            "attention_mask": items_tensors[2],
+            "return_loss": True,
+        }
+
+
+class MediaApiDataLoader(torch.utils.data.DataLoader):
+    def __init__(
+        self,
+        dataset,
+        batch_size=1,
+        sampler=None,
+        collate_fn=None,
+        drop_last=False,
+        num_workers=0,
+        pin_memory=False,
+        worker_init_fn=None,
+    ):
+        self.dataset = dataset
+        self.sampler = sampler
+        self.fallback_activated = False
+
+        try:
+            pipeline = ClipMediaPipe(
+                is_training=True,
+                dataset=dataset,
+                sampler=sampler,
+                batch_size=batch_size,
+                drop_last=drop_last,
+                queue_depth=3,
+            )
+            self.iterator = CLIPIterator(mediapipe=pipeline)
+        except Exception as e:
+            print("Using Pytorch native dataloader. ", e)
+            self.fallback_activated = True
+            super(MediaApiDataLoader, self).__init__(
+                dataset, batch_size, sampler, collate_fn, drop_last, num_workers, pin_memory, worker_init_fn
+            )
+
+    def __len__(self):
+        if self.fallback_activated:
+            return super().__len__()
+        else:
+            return len(self.iterator)
+
+    def __iter__(self):
+        if self.fallback_activated:
+            return super().__iter__()
+        else:
+            return iter(self.iterator)
+
+
+class HabanaDataloaderTrainer(GaudiTrainer):
+    def get_train_dataloader(self):
+        """
+        Returns the training [`~torch.utils.data.DataLoader`].
+
+        Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
+        training if necessary) otherwise.
+
+        Subclass and override this method if you want to inject some custom behavior.
+        """
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        train_dataset = self.train_dataset
+        data_collator = self.data_collator
+        from transformers.utils import is_datasets_available
+
+        if is_datasets_available():
+            import datasets
+        if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
+            train_dataset = self._remove_unused_columns(train_dataset, description="training")
+        else:
+            data_collator = self._get_collator_with_removed_columns(data_collator, description="training")
+
+        if isinstance(train_dataset, torch.utils.data.IterableDataset):
+            if self.args.world_size > 1:
+                train_dataset = IterableDatasetShard(
+                    train_dataset,
+                    batch_size=self._train_batch_size,
+                    drop_last=self.args.dataloader_drop_last,
+                    num_processes=self.args.world_size,
+                    process_index=self.args.process_index,
+                )
+
+            return MediaApiDataLoader(
+                train_dataset,
+                batch_size=self._train_batch_size,
+                collate_fn=data_collator,
+                num_workers=self.args.dataloader_num_workers,
+                pin_memory=self.args.dataloader_pin_memory,
+            )
+
+        train_sampler = self._get_train_sampler()
+
+        return MediaApiDataLoader(
+            train_dataset,
+            batch_size=self._train_batch_size,
+            sampler=train_sampler,
+            collate_fn=data_collator,
+            drop_last=self.args.dataloader_drop_last,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+            worker_init_fn=seed_worker,
+        )
 
 
 @dataclass
@@ -99,6 +226,7 @@ class ModelArguments:
     freeze_text_model: bool = field(
         default=False, metadata={"help": "Whether to freeze the text model parameters or not."}
     )
+    mediapipe_dataloader: bool = field(default=False, metadata={"help": "Turn on MediaPipe HW dataloading"})
 
 
 @dataclass
@@ -260,6 +388,7 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+    gaudi_config.use_fused_adam = False
 
     # Log on each process the small summary:
     logger.warning(
@@ -448,8 +577,14 @@ def main():
             desc="Running tokenizer on train dataset",
         )
 
-        # Transform images on the fly as doing it on the whole dataset takes too much time.
-        train_dataset.set_transform(transform_images)
+        if model_args.mediapipe_dataloader:
+            train_dataset.image_mean = image_processor.image_mean
+            train_dataset.image_std = image_processor.image_std
+            train_dataset.text_max_length = data_args.max_seq_length
+            train_dataset.image_resize = config.vision_config.image_size
+        else:
+            # Transform images on the fly as doing it on the whole dataset takes too much time.
+            train_dataset.set_transform(transform_images)
 
     if training_args.do_eval:
         if "validation" not in dataset:
@@ -498,7 +633,8 @@ def main():
         test_dataset.set_transform(transform_images)
 
     # 8. Initalize our trainer
-    trainer = GaudiTrainer(
+    trainer_cls = HabanaDataloaderTrainer if model_args.mediapipe_dataloader else GaudiTrainer
+    trainer = trainer_cls(
         model=model,
         gaudi_config=gaudi_config,
         args=training_args,

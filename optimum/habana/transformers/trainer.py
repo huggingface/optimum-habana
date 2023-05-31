@@ -387,6 +387,14 @@ class GaudiTrainer(Trainer):
         if not training:
             return model
 
+        if self.args.use_hpu_graphs:
+            import habana_frameworks.torch as ht
+
+            model = ht.hpu.ModuleCacher()(
+                model=model, inplace=True, allow_unused_input=True, have_grad_accumulation=True
+            )
+            print("INFO: Using HPU Graph for training...")
+
         if self.args.local_rank != -1:
             kwargs = {}
 
