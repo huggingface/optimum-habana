@@ -132,7 +132,8 @@ def main():
 
         if not is_deepspeed_available():
             raise ImportError(
-                "This script requires deepspeed: `pip install" " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
+                "This script requires deepspeed: `pip install"
+                " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
             )
         import deepspeed
 
