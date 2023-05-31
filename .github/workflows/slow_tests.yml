@@ -12,7 +12,7 @@ concurrency:
 jobs:
   start-runner:
     name: Start self-hosted EC2 runner
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2
       EC2_AMI_ID: ami-01044b0483130287a
@@ -231,7 +231,7 @@ jobs:
       - multi-card
       - single-card
       - albert-xxl-single-card
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2
     if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
