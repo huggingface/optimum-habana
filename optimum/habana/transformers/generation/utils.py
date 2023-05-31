@@ -589,6 +589,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 synced_gpus=synced_gpus,
                 streamer=streamer,
                 lazy_mode=lazy_mode,
+                ignore_eos=ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 **model_kwargs,
@@ -1222,6 +1223,7 @@ class GaudiGenerationMixin(GenerationMixin):
         synced_gpus: Optional[bool] = False,
         streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
+        ignore_eos: Optional[bool] = None,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         **model_kwargs,
@@ -1275,6 +1277,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
+            ignore_eos (`bool`, *optional*):
+                Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1384,6 +1388,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # keep track of which sequences are already finished
+        # TODO: no ignore_eos check here since there is a compilation error, will add ignore_eos here if fixed
         unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
@@ -1450,6 +1455,7 @@ class GaudiGenerationMixin(GenerationMixin):
             next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
 
             # finished sentences should have their next token be a padding token
+            # TODO: no ignore_eos check here since there is a compilation error, will add ignore_eos here if fixed
             if eos_token_id is not None:
                 if pad_token_id is None:
                     raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
@@ -1469,7 +1475,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
             # if eos_token was found in one sentence, set sentence to finished
-            if not lazy_mode and eos_token_id_tensor is not None:
+            if not ignore_eos and eos_token_id_tensor is not None:
                 unfinished_sequences = unfinished_sequences.mul(
                     next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
                 )
@@ -1478,7 +1484,7 @@ class GaudiGenerationMixin(GenerationMixin):
             #     self.htcore_generation.mark_step()
             hb_profer.step()
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
-            if (not lazy_mode and unfinished_sequences.max() == 0) or stopping_criteria(input_ids, scores):
+            if (not ignore_eos and unfinished_sequences.max() == 0) or stopping_criteria(input_ids, scores):
                 if not synced_gpus:
                     break
                 else:
