@@ -5,7 +5,7 @@
         "distribution": {
             "deepspeed": {
                 "learning_rate": 5e-5,
-                "train_batch_size": 4,
+                "train_batch_size": 16,
                 "perplexity": 12.89075578225188,
                 "train_runtime": 590.8997,
                 "train_samples_per_second": 16.077,
