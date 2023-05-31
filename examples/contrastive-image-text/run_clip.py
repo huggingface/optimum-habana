@@ -570,6 +570,11 @@ def main():
         # Transform images on the fly as doing it on the whole dataset takes too much time.
         train_dataset.set_transform(transform_images)
         if model_args.mediapipe_dataloader:
+
+            def get_max_file(img_list):
+                return max(img_list, key=lambda x: os.stat(x).st_size)
+
+            train_dataset.max_file = get_max_file(train_dataset["image_path"])
             train_dataset.image_mean = image_processor.image_mean
             train_dataset.image_std = image_processor.image_std
             train_dataset.text_max_length = data_args.max_seq_length
