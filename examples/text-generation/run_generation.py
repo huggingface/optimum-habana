@@ -98,7 +98,6 @@ def main():
         type=int,
         help="Number of steps to be captured when enable profiling.",
     )
-
     parser.add_argument(
         "--prompt",
         default=None,
