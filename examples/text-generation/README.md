@@ -88,7 +88,7 @@ with
 - `use_hpu_graphs` enables HPU graphs which are recommended for faster latencies
 - `use_kv_cache` enables a key-value cache to speed up the generation process
 - `do_sample` enables sampling algorithm for the generation process
-- `prompt` the prompt to use for benchmarking.
+- `prompt` the prompt to use for benchmarking. If not specified, default prompts will be used.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
