@@ -7,6 +7,7 @@ from habana_frameworks.mediapipe.backend.operator_specs import schema
 from habana_frameworks.mediapipe.media_types import decoderStage, dtype, ftype, imgtype, readerOutType
 from habana_frameworks.mediapipe.mediapipe import MediaPipe
 from habana_frameworks.mediapipe.operators.media_nodes import MediaReaderNode
+from habana_frameworks.mediapipe.operators.reader_nodes.read_image_from_dir import get_max_file
 from habana_frameworks.torch.hpu import get_device_name
 from torch.utils.data.sampler import BatchSampler
 
@@ -27,7 +28,7 @@ class read_image_text_from_dataset(MediaReaderNode):
         self.num_imgs_slice = len(self.batch_sampler.sampler)
         self.num_batches_slice = len(self.batch_sampler)
         print("Finding largest file ...")
-        self.max_file = self.dataset.max_file
+        self.max_file = get_max_file(self.dataset["image_path"])
         print("largest file is ", self.max_file)
 
     def set_params(self, params):
