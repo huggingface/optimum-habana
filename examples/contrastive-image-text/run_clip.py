@@ -50,36 +50,12 @@ from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
 
 
-try:
-    from clip_media_pipe import ClipMediaPipe
-    from habana_frameworks.mediapipe.plugins.iterator_pytorch import HPUGenericPytorchIterator
-except Exception:
-    HPUGenericPytorchIterator = None
-    ClipMediaPipe = None
-
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.28.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
-
-
-class CLIPIterator(HPUGenericPytorchIterator):
-    def __init__(self, mediapipe):
-        super().__init__(mediapipe=mediapipe)
-
-    def __next__(self):
-        images = self.pipe.run()
-        items_tensors = []
-        for image in images:
-            items_tensors.append(self.proxy_device.get_tensor(image.dev_addr))
-        return {
-            "pixel_values": items_tensors[0],
-            "input_ids": items_tensors[1],
-            "attention_mask": items_tensors[2],
-            "return_loss": True,
-        }
 
 
 class MediaApiDataLoader(torch.utils.data.DataLoader):
@@ -99,6 +75,9 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
         self.fallback_activated = False
 
         try:
+            from clip_media_pipe import ClipMediaPipe
+            from habana_frameworks.mediapipe.plugins.iterator_pytorch import HPUGenericPytorchIterator
+
             pipeline = ClipMediaPipe(
                 is_training=True,
                 dataset=dataset,
@@ -107,12 +86,19 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
                 drop_last=drop_last,
                 queue_depth=3,
             )
-            self.iterator = CLIPIterator(mediapipe=pipeline)
+            self.iterator = HPUGenericPytorchIterator(mediapipe=pipeline)
         except Exception as e:
             print("Using Pytorch native dataloader. ", e)
             self.fallback_activated = True
             super(MediaApiDataLoader, self).__init__(
-                dataset, batch_size, sampler, collate_fn, drop_last, num_workers, pin_memory, worker_init_fn
+                dataset,
+                batch_size=batch_size,
+                sampler=sampler,
+                collate_fn=collate_fn,
+                drop_last=drop_last,
+                num_workers=num_workers,
+                pin_memory=pin_memory,
+                worker_init_fn=worker_init_fn,
             )
 
     def __len__(self):
@@ -127,17 +113,21 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
         else:
             return iter(self.iterator)
 
+    def __next__(self):
+        if self.fallback_activated:
+            return super().__iter__()
+        else:
+            output_tensors = next(self.iterator)
+            return {
+                "pixel_values": output_tensors[0],
+                "input_ids": output_tensors[1],
+                "attention_mask": output_tensors[2],
+                "return_loss": True,
+            }
+
 
 class HabanaDataloaderTrainer(GaudiTrainer):
     def get_train_dataloader(self):
-        """
-        Returns the training [`~torch.utils.data.DataLoader`].
-
-        Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
-        training if necessary) otherwise.
-
-        Subclass and override this method if you want to inject some custom behavior.
-        """
         if self.train_dataset is None:
             raise ValueError("Trainer: training requires a train_dataset.")
 
@@ -577,14 +567,13 @@ def main():
             desc="Running tokenizer on train dataset",
         )
 
+        # Transform images on the fly as doing it on the whole dataset takes too much time.
+        train_dataset.set_transform(transform_images)
         if model_args.mediapipe_dataloader:
             train_dataset.image_mean = image_processor.image_mean
             train_dataset.image_std = image_processor.image_std
             train_dataset.text_max_length = data_args.max_seq_length
             train_dataset.image_resize = config.vision_config.image_size
-        else:
-            # Transform images on the fly as doing it on the whole dataset takes too much time.
-            train_dataset.set_transform(transform_images)
 
     if training_args.do_eval:
         if "validation" not in dataset:
