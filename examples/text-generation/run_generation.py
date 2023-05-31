@@ -99,6 +99,13 @@ def main():
         help="Number of steps to be captured when enable profiling.",
     )
 
+    parser.add_argument(
+        "--prompt",
+        default=None,
+        type=str,
+        help="Optional argument for user input prompt.",
+    )
+
     args = parser.parse_args()
 
     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
@@ -218,16 +225,21 @@ def main():
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
-        input_sentences = [
-            "DeepSpeed is a machine learning framework",
-            "He is working on",
-            "He has a",
-            "He got all",
-            "Everyone is happy and I can",
-            "The new movie that got Oscar this year",
-            "In the far far distance from our galaxy,",
-            "Peace is the only way",
-        ]
+        if args.prompt:
+            input_sentences = [
+                args.prompt,
+            ]
+        else:
+            input_sentences = [
+                "DeepSpeed is a machine learning framework",
+                "He is working on",
+                "He has a",
+                "He got all",
+                "Everyone is happy and I can",
+                "The new movie that got Oscar this year",
+                "In the far far distance from our galaxy,",
+                "Peace is the only way",
+            ]
 
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes
