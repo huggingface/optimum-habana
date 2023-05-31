@@ -49,13 +49,13 @@ from transformers.utils.versions import require_version
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
 
+
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.28.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
-
 
 
 class MediaApiDataLoader(torch.utils.data.DataLoader):
@@ -77,6 +77,7 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
         try:
             from clip_media_pipe import ClipMediaPipe
             from habana_frameworks.mediapipe.plugins.iterator_pytorch import HPUGenericPytorchIterator
+
             pipeline = ClipMediaPipe(
                 is_training=True,
                 dataset=dataset,
@@ -91,7 +92,14 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
             self.fallback_activated = True
             dataset.set_transform(dataset.transform_func)
             super(MediaApiDataLoader, self).__init__(
-                dataset, batch_size, sampler, collate_fn, drop_last, num_workers, pin_memory, worker_init_fn
+                dataset,
+                batch_size=batch_size,
+                sampler=sampler,
+                collate_fn=collate_fn,
+                drop_last=drop_last,
+                num_workers=num_workers,
+                pin_memory=pin_memory,
+                worker_init_fn=worker_init_fn,
             )
 
     def __len__(self):
@@ -122,6 +130,14 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
 
 class HabanaDataloaderTrainer(GaudiTrainer):
     def get_train_dataloader(self):
+        """
+        Returns the training [`~torch.utils.data.DataLoader`].
+
+        Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
+        training if necessary) otherwise.
+
+        Subclass and override this method if you want to inject some custom behavior.
+        """
         if self.train_dataset is None:
             raise ValueError("Trainer: training requires a train_dataset.")
 
