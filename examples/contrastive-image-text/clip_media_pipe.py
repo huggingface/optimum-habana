@@ -21,12 +21,11 @@ class read_image_text_from_dataset(MediaReaderNode):
     def __init__(self, name, guid, device, inputs, params, cparams, node_attr):
         super().__init__(name, guid, device, inputs, params, cparams, node_attr)
         self.meta_dtype = params["label_dtype"]
-        self.batch_sampler = params["batch_sampler"]
         self.dataset = params["dataset"]
         self.epoch = 0
 
-        self.num_imgs_slice = len(self.batch_sampler.sampler)
-        self.num_batches_slice = len(self.batch_sampler)
+        self.num_imgs_slice = len(ClipMediaPipe.batch_sampler.sampler)
+        self.num_batches_slice = len(ClipMediaPipe.batch_sampler)
         print("Finding largest file ...")
         self.max_file = get_max_file(self.dataset["image_path"])
         print("largest file is ", self.max_file)
@@ -59,8 +58,7 @@ class read_image_text_from_dataset(MediaReaderNode):
 
     def __iter__(self):
         self.iter_loc = 0
-        self.batch_sampler.sampler.set_epoch(self.epoch)
-        self.batch_sampler_iter = iter(self.batch_sampler)
+        self.batch_sampler_iter = iter(ClipMediaPipe.batch_sampler)
         self.epoch += 1
         return self
 
@@ -86,7 +84,6 @@ class read_image_text_from_dataset(MediaReaderNode):
 
 read_image_text_from_dataset_params = {
     "label_dtype": dtype.UINT64,
-    "batch_sampler": None,
     "dataset": None,
 }
 schema.add_operator(
@@ -112,6 +109,7 @@ class ClipMediaPipe(MediaPipe):
 
     """
 
+    batch_sampler = None
     instance_count = 0
 
     def __init__(self, is_training=True, dataset=None, sampler=None, batch_size=512, drop_last=False, queue_depth=1):
@@ -120,7 +118,7 @@ class ClipMediaPipe(MediaPipe):
         self.dataset = dataset
         self.drop_last = drop_last
         self.sampler = sampler
-        self.batch_sampler = BatchSampler(sampler, batch_size, drop_last)
+        ClipMediaPipe.batch_sampler = BatchSampler(sampler, batch_size, drop_last)
         self.image_size = self.dataset.image_resize
 
         pipe_name = "{}:{}".format(self.__class__.__name__, ClipMediaPipe.instance_count)
@@ -134,9 +132,7 @@ class ClipMediaPipe(MediaPipe):
 
     def definegraph(self):
         res_pp_filter = ftype.BICUBIC
-        self.input = fn.ClipDataReader(
-            label_dtype=dtype.UINT32, batch_sampler=self.batch_sampler, dataset=self.dataset
-        )
+        self.input = fn.ClipDataReader(label_dtype=dtype.UINT32, dataset=self.dataset)
         jpegs, input_ids, attention_masks = self.input()
         def_output_image_size = [self.image_size, self.image_size]
         decode_stage = decoderStage.ENABLE_ALL_STAGES
