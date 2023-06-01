@@ -4,7 +4,7 @@ import numpy as np
 from habana_frameworks.mediapipe import fn
 from habana_frameworks.mediapipe.backend.nodes import opnode_tensor_info
 from habana_frameworks.mediapipe.backend.operator_specs import schema
-from habana_frameworks.mediapipe.media_types import decoderStage, dtype, ftype, imgtype, readerOutType
+from habana_frameworks.mediapipe.media_types import dtype, ftype, imgtype, randomCropType, readerOutType
 from habana_frameworks.mediapipe.mediapipe import MediaPipe
 from habana_frameworks.mediapipe.operators.media_nodes import MediaReaderNode
 from habana_frameworks.mediapipe.operators.reader_nodes.read_image_from_dir import get_max_file
@@ -113,7 +113,7 @@ class ClipMediaPipe(MediaPipe):
     instance_count = 0
 
     def __init__(self, is_training=True, dataset=None, sampler=None, batch_size=512, drop_last=False, queue_depth=1):
-        device = get_device_name()
+        self.device = get_device_name()
         self.is_training = is_training
         self.dataset = dataset
         self.drop_last = drop_last
@@ -125,7 +125,7 @@ class ClipMediaPipe(MediaPipe):
         pipe_name = str(pipe_name)
 
         super(ClipMediaPipe, self).__init__(
-            device=device, batch_size=batch_size, prefetch_depth=queue_depth, pipe_name=pipe_name
+            device=self.device, batch_size=batch_size, prefetch_depth=queue_depth, pipe_name=pipe_name
         )
 
         ClipMediaPipe.instance_count += 1
@@ -135,12 +135,12 @@ class ClipMediaPipe(MediaPipe):
         self.input = fn.ClipDataReader(label_dtype=dtype.UINT32, dataset=self.dataset)
         jpegs, input_ids, attention_masks = self.input()
         def_output_image_size = [self.image_size, self.image_size]
-        decode_stage = decoderStage.ENABLE_ALL_STAGES
         self.decode = fn.ImageDecoder(
+            device=self.device,
             output_format=imgtype.RGB_P,
+            random_crop_type=randomCropType.CENTER_CROP,
             resize=def_output_image_size,
             resampling_mode=res_pp_filter,
-            decoder_stage=decode_stage,
         )
         images = self.decode(jpegs)
         cmn_pos_offset = 0.5
