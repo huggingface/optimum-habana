@@ -6,9 +6,9 @@
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 24,
-                "eval_f1": 88.3607,
-                "train_runtime": 1055.231,
-                "train_samples_per_second": 171.032,
+                "eval_f1": 88.3336,
+                "train_runtime": 1057.9946,
+                "train_samples_per_second": 170.685,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -16,9 +16,9 @@
             "multi_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 24,
-                "eval_f1": 85.2734,
-                "train_runtime": 224.2158,
-                "train_samples_per_second": 1038.635,
+                "eval_f1": 85.371,
+                "train_runtime": 194.7813,
+                "train_samples_per_second": 1066.264,
                 "extra_arguments": [
                     "--max_seq_length 384"
                 ]
@@ -32,9 +32,9 @@
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 32,
-                "eval_f1": 0.8862,
-                "train_runtime": 37.6034,
-                "train_samples_per_second": 526.658,
+                "eval_f1": 0.8953,
+                "train_runtime": 37.8055,
+                "train_samples_per_second": 521.036,
                 "extra_arguments": [
                     "--max_seq_length 128"
                 ]
