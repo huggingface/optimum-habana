@@ -100,7 +100,6 @@ class ModelArguments:
     freeze_text_model: bool = field(
         default=False, metadata={"help": "Whether to freeze the text model parameters or not."}
     )
-    mediapipe_dataloader: bool = field(default=False, metadata={"help": "Turn on MediaPipe HW dataloading"})
 
 
 @dataclass
@@ -169,6 +168,7 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
+    mediapipe_dataloader: bool = field(default=False, metadata={"help": "Turn on MediaPipe HW dataloading"})
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -451,7 +451,7 @@ def main():
             desc="Running tokenizer on train dataset",
         )
 
-        if model_args.mediapipe_dataloader:
+        if data_args.mediapipe_dataloader:
             train_dataset.image_mean = image_processor.image_mean
             train_dataset.image_std = image_processor.image_std
             train_dataset.text_max_length = data_args.max_seq_length
@@ -508,7 +508,7 @@ def main():
         test_dataset.set_transform(transform_images)
 
     # 8. Initalize our trainer
-    trainer_cls = HabanaDataloaderTrainer if model_args.mediapipe_dataloader else GaudiTrainer
+    trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
     trainer = trainer_cls(
         model=model,
         gaudi_config=gaudi_config,
