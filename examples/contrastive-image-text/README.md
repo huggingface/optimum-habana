@@ -108,7 +108,8 @@ python run_clip.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/clip \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --dataloader_num_workers 16
 ```
 
 
@@ -137,7 +138,8 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --use_hpu_graphs \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
-    --dataloader_num_workers 16
+    --dataloader_num_workers 16 \
+    --mediapipe_dataloader
 ```
 
 
@@ -165,9 +167,7 @@ python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/clip \
-    --throughput_warmup_steps 3 \
-    --dataloader_num_workers 8 \
-    --mediapipe_dataloader
+    --throughput_warmup_steps 3
 ```
 
 
