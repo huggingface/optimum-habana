@@ -258,6 +258,9 @@ class DataTrainingArguments:
     source_prefix: Optional[str] = field(
         default="", metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
     )
+    source_suffix: Optional[str] = field(
+        default="", metadata={"help": "A suffix to add after every source text"}
+    )
 
     forced_bos_token: Optional[str] = field(
         default=None,
@@ -489,6 +492,7 @@ def main():
             )
 
     prefix = data_args.source_prefix if data_args.source_prefix is not None else ""
+    suffix = data_args.source_suffix if data_args.source_suffix is not None else ""
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -560,8 +564,10 @@ def main():
             if examples[text_column][i] and examples[summary_column][i]:
                 inputs.append(examples[text_column][i])
                 targets.append(examples[summary_column][i])
+            else:
+                assert False, "Found case where both text and summery wasn't present"
 
-        inputs = [prefix + inp for inp in inputs]
+        inputs = [prefix + inp + suffix for inp in inputs]
         model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
 
         # Tokenize targets with the `text_target` keyword argument
