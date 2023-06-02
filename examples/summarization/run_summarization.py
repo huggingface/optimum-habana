@@ -258,9 +258,7 @@ class DataTrainingArguments:
     source_prefix: Optional[str] = field(
         default="", metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
     )
-    source_suffix: Optional[str] = field(
-        default="", metadata={"help": "A suffix to add after every source text"}
-    )
+    source_suffix: Optional[str] = field(default="", metadata={"help": "A suffix to add after every source text"})
 
     forced_bos_token: Optional[str] = field(
         default=None,
