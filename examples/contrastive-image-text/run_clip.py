@@ -168,7 +168,7 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
-    mediapipe_dataloader: bool = field(default=False, metadata={"help": "Turn on MediaPipe HW dataloading"})
+    mediapipe_dataloader: bool = field(default=False, metadata={"help": "Turn on MediaPipe hardware-based accelerated data loading."})
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
