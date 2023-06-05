@@ -262,8 +262,9 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    if data_args.mediapipe_dataloader:
+    if data_args.mediapipe_dataloader and gaudi_config.use_fused_adam:
         gaudi_config.use_fused_adam = False
+        logger.warning("Using Habana mediapipe dataloader so disabling fused ADAM.")
 
     # Log on each process the small summary:
     logger.warning(
