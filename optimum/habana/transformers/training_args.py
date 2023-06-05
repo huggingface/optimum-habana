@@ -85,8 +85,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,
             the first N steps will not be considered in the calculation of the throughput. This is especially
             useful in lazy mode where the first two or three iterations typically take longer.
-        throughput_rm_save_ckpt_time ('bool', *optional*, defaults to `False`):
-            Whether to remove save checkpoint time from throughput calculation.
+        adjust_throughput ('bool', *optional*, defaults to `False`):
+            Whether to remove the time taken for logging, evaluating and saving from throughput calculation.
         pipelining_fwd_bwd (`bool`, *optional*, defaults to `False`):
             Whether to add an additional `mark_step` between forward and backward for pipelining
             host backward building and HPU forward computing.
