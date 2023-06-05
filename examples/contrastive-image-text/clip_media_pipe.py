@@ -126,7 +126,7 @@ class ClipMediaPipe(MediaPipe):
     Class defining clip media pipe:
         read data --> image decoding (include crop and resize) --> crop mirror normalize
 
-    The image transformation in origin pytorch transformation:
+    Original set of PyTorch transformations:
         aspect ratio preserving resize -> center crop -> normalize
 
     """
