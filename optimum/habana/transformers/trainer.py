@@ -878,7 +878,7 @@ class GaudiTrainer(Trainer):
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
-                            if args.use_habana and (not (self.use_hpu_amp self.use_cpu_amp)) and self.gaudi_config.use_habana_mixed_precision:
+                            if args.use_habana and (not (self.use_hpu_amp or self.use_cpu_amp)) and self.gaudi_config.use_habana_mixed_precision:
                                 with self.hmp.disable_casts():
                                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                             else:
