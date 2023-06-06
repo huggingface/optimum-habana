@@ -895,7 +895,7 @@ class GaudiTrainer(Trainer):
                         args.use_habana
                         and self.gaudi_config.use_habana_mixed_precision
                         and (not self.gaudi_config.use_fused_adam)
-                        and (not (self.use_hpu_amp of self.use_cpu_amp))
+                        and (not (self.use_hpu_amp or self.use_cpu_amp))
                     ):
                         with self.hmp.disable_casts():
                             self.optimizer.step()
