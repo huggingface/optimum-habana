@@ -32,9 +32,9 @@
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 8,
-                "perplexity": 2.7631,
-                "train_runtime": 126.8167,
-                "train_samples_per_second": 173.378,
+                "perplexity": 2.7852,
+                "train_runtime": 117.4601,
+                "train_samples_per_second": 164.82,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--ddp_find_unused_parameters True"
