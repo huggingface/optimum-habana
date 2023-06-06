@@ -45,7 +45,7 @@ python run_clm.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 This takes about 13 minutes to train on a single HPU. It reaches
@@ -68,7 +68,7 @@ python run_clm.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 
@@ -92,7 +92,7 @@ python ../gaudi_spawn.py \
     --gradient_checkpointing \
     --use_cache False \
     --throughput_warmup_steps 3\
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 This takes about 4 minutes to train on 8 HPUs. It reaches

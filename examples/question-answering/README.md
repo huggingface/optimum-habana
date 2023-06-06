@@ -56,7 +56,7 @@ python run_qa.py \
   --use_lazy_mode \
   --use_hpu_graphs \
   --throughput_warmup_steps 3 \
-  --half_precision_backend=hpu_amp
+  --bf16
 ```
 
 Training with the previously defined hyper-parameters yields the following results:
@@ -89,7 +89,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --throughput_warmup_steps 3\
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 It runs in 11 minutes with BERT-large and yields the following results:

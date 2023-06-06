@@ -54,7 +54,7 @@ python run_glue.py \
   --use_lazy_mode \
   --use_hpu_graphs \
   --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+  --bf16
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
@@ -82,7 +82,7 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.

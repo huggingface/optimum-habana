@@ -50,7 +50,6 @@ logger = logging.get_logger(__name__)
 
 # List of arguments that are not supported by optimum-habana
 UNSUPPORTED_ARGUMENTS = [
-    "bf16",  # bf16 for CUDA devices
     "bf16_full_eval",  # bf16 for CUDA devices
     "fp16",
     "fp16_backend",
@@ -178,7 +177,7 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     half_precision_backend: str = field(
-        default="cpu_amp",
+        default="hpu_amp",
         metadata={
             "help": "The backend to be used for half precision.",
             "choices": ["cpu_amp", "hpu_amp"],

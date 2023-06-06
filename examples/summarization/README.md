@@ -48,7 +48,7 @@ python run_summarization.py \
     --pad_to_max_length \
     --save_strategy epoch \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 Only T5 models `t5-small`, `t5-base`, `t5-large`, `t5-3b` and `t5-11b` must use an additional argument: `--source_prefix "summarize: "`.
@@ -80,7 +80,7 @@ python run_summarization.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 The task of summarization also supports custom CSV and JSONLINES formats.
@@ -166,7 +166,7 @@ python ../gaudi_spawn.py \
     --pad_to_max_length \
     --save_strategy epoch \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 

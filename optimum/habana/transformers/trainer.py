@@ -144,11 +144,13 @@ class GaudiTrainer(Trainer):
 
         self.use_hpu_amp = False
         self.use_cpu_amp = False
-        if args.half_precision_backend == 'hpu_amp':
-            self.use_hpu_amp = True
-        else:
-            self.use_cpu_amp = True
+        if args.bf16:
+            if args.half_precision_backend == 'hpu_amp':
+                self.use_hpu_amp = True
+            else:
+                self.use_cpu_amp = True
         delattr(args, 'half_precision_backend')
+        delattr(args, 'bf16')
 
         super().__init__(
             model,
@@ -876,7 +878,7 @@ class GaudiTrainer(Trainer):
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
-                            if args.use_habana and (not self.use_hpu_amp) and self.gaudi_config.use_habana_mixed_precision:
+                            if args.use_habana and (not (self.use_hpu_amp self.use_cpu_amp)) and self.gaudi_config.use_habana_mixed_precision:
                                 with self.hmp.disable_casts():
                                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                             else:
@@ -893,7 +895,7 @@ class GaudiTrainer(Trainer):
                         args.use_habana
                         and self.gaudi_config.use_habana_mixed_precision
                         and (not self.gaudi_config.use_fused_adam)
-                        and (not self.use_hpu_amp)
+                        and (not (self.use_hpu_amp of self.use_cpu_amp))
                     ):
                         with self.hmp.disable_casts():
                             self.optimizer.step()

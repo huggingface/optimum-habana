@@ -50,7 +50,7 @@ python run_translation.py \
     --pad_to_max_length \
     --save_strategy epoch \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 If you get a terrible BLEU score, make sure that you didn't forget to use the `--source_prefix` argument.
@@ -86,7 +86,7 @@ python run_translation.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 The task of translation supports only custom JSONLINES files, with each line being a dictionary with the key `"translation"` and its value another dictionary whose keys is the language pair. For example:
@@ -120,7 +120,7 @@ python run_translation.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
  ```
 
 
@@ -152,7 +152,7 @@ python ../gaudi_spawn.py \
     --pad_to_max_length \
     --save_strategy epoch \
     --throughput_warmup_steps 3 \
-    --half_precision_backend=hpu_amp
+    --bf16
 ```
 
 
