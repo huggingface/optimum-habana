@@ -25,7 +25,7 @@ import time
 
 import torch
 import torch.nn.functional as F
-from checkpoint_utils import model_is_bloom, write_checkpoints_json
+from checkpoint_utils import model_is_bloom, model_is_optimized, write_checkpoints_json
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
@@ -86,6 +86,24 @@ def main():
         type=int,
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
     )
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        default=0,
+        type=int,
+        help="Number of steps to ignore for profling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        default=0,
+        type=int,
+        help="Number of steps to be captured when enable profiling.",
+    )
+    parser.add_argument(
+        "--prompt",
+        default=None,
+        type=str,
+        help="Optional argument for user input prompt.",
+    )
 
     args = parser.parse_args()
 
@@ -143,6 +161,7 @@ def main():
 
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path)
+        is_optimized = model_is_optimized(config)
         is_bloom = model_is_bloom(config)
 
         if is_bloom:
@@ -180,6 +199,7 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval().to(args.device)
         is_bloom = model_is_bloom(model.config)
+        is_optimized = model_is_optimized(model.config)
 
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -204,16 +224,21 @@ def main():
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
-        input_sentences = [
-            "DeepSpeed is a machine learning framework",
-            "He is working on",
-            "He has a",
-            "He got all",
-            "Everyone is happy and I can",
-            "The new movie that got Oscar this year",
-            "In the far far distance from our galaxy,",
-            "Peace is the only way",
-        ]
+        if args.prompt:
+            input_sentences = [
+                args.prompt,
+            ]
+        else:
+            input_sentences = [
+                "DeepSpeed is a machine learning framework",
+                "He is working on",
+                "He has a",
+                "He got all",
+                "Everyone is happy and I can",
+                "The new movie that got Oscar this year",
+                "In the far far distance from our galaxy,",
+                "Peace is the only way",
+            ]
 
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes
@@ -235,7 +260,7 @@ def main():
                 input_tokens.input_ids, (0, args.max_new_tokens), value=model.config.pad_token_id
             )
             input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
-            if is_bloom:
+            if is_optimized:
                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
                 kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
             else:
@@ -252,9 +277,15 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=True,
                 hpu_graphs=args.use_hpu_graphs,
+                profiling_steps=args.profiling_steps,
+                profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
+        from optimum.habana.utils import HabanaProfile
+
+        # compilation stage disable profiling
+        HabanaProfile.disable()
         # Compilation
         if rank in [-1, 0]:
             logger.info("Graph compilation...")
@@ -264,7 +295,7 @@ def main():
             generate()
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
-
+        HabanaProfile.enable()
         total_new_tokens_generated = 0
         if rank in [-1, 0]:
             logger.info("Running generate...")
@@ -353,7 +384,7 @@ def main():
             for t in batch:
                 if torch.is_tensor(batch[t]):
                     batch[t] = batch[t].to(args.device)
-            if is_bloom:
+            if is_optimized:
                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
                 batch["token_idx"] = torch.tensor(prompt_length, device=args.device)
 
@@ -363,6 +394,8 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=args.use_hpu_graphs,
                 hpu_graphs=args.use_hpu_graphs,
+                profiling_steps=args.profiling_steps,
+                profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
 
             # Print outputs

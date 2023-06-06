@@ -167,6 +167,16 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    profiling_warmup_steps: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of steps to ignore for profling.")},
+    )
+
+    profiling_steps: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of steps to be captured when enabling profiling.")},
+    )
+
     # Overriding ddp_find_unused_parameters to make False the default value
     ddp_find_unused_parameters: Optional[bool] = field(
         default=False,

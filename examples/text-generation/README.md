@@ -48,7 +48,19 @@ Without DeepSpeed-inference, you can run the script with:
 python run_generation.py ARGS
 ```
 
-> The present script is currently limited to greedy generation.
+
+### Single prompt
+
+If you want to generate a sequence of text from a prompt of your choice, you can run:
+```
+python run_generation.py \
+--model_name_or_path gpt2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--do_sample \
+--prompt "Here is my prompt"
+```
 
 
 ### Benchmark
@@ -63,7 +75,8 @@ python (../gaudi_spawn.py --use_deepspeed --world_size number_of_devices) run_ge
 --n_iterations number_of_iterations \
 --use_hpu_graphs \
 --use_kv_cache \
---do_sample
+--do_sample \
+--prompt
 ```
 with
 - `number_of_devices` the number of HPUs you want to use
@@ -73,8 +86,9 @@ with
 - `batch_size` the size of the batches provided to the model
 - `number_of_iterations` the number of iterations to perform in the benchmark
 - `use_hpu_graphs` enables HPU graphs which are recommended for faster latencies
-- `use_kv_cache` enables a key-value cache to speed up the generation process.
-- `do_sample` enables sampling algorithm for the generation process.
+- `use_kv_cache` enables a key-value cache to speed up the generation process
+- `do_sample` enables sampling algorithm for the generation process
+- `prompt` the prompt to use for benchmarking. If not specified, default prompts will be used.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash

@@ -82,6 +82,7 @@ from transformers.utils import (
 from optimum.utils import logging
 
 from ..utils import (
+    HabanaProfile,
     get_hpu_memory_stats,
     set_seed,
     speed_metrics,
@@ -773,7 +774,8 @@ class GaudiTrainer(Trainer):
                     # Otherwise we need to call the whooooole sampler cause there is some random operation added
                     # AT THE VERY END!
                     _ = list(train_dataloader.sampler)
-
+        hb_profiler = HabanaProfile(warmup=self.args.profiling_warmup_steps, active=self.args.profiling_steps)
+        hb_profiler.start()
         for epoch in range(epochs_trained, num_train_epochs):
             if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
                 train_dataloader.sampler.set_epoch(epoch)
@@ -797,6 +799,7 @@ class GaudiTrainer(Trainer):
                 self._load_rng_state(resume_from_checkpoint)
 
             step = -1
+
             for step, inputs in enumerate(epoch_iterator):
                 if (
                     args.throughput_warmup_steps > 0
@@ -906,6 +909,7 @@ class GaudiTrainer(Trainer):
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
 
+                hb_profiler.step()
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
             if step < 0:
@@ -919,6 +923,7 @@ class GaudiTrainer(Trainer):
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
             self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
 
+            hb_profiler.stop()
             if self.control.should_training_stop:
                 break
 

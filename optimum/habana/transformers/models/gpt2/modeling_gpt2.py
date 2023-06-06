@@ -1,8 +1,9 @@
 from typing import Optional, Tuple, Union
 
 import torch
-from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
-from transformers.models.gpt2.modeling_gpt2 import logger
+from torch.nn import CrossEntropyLoss
+from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
+from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel, logger
 from transformers.pytorch_utils import Conv1D, find_pruneable_heads_and_indices, prune_conv1d_layer
 
 
@@ -12,6 +13,7 @@ class GaudiGPT2Attention(torch.nn.Module):
     The only differences are:
     - `self.bias` is a torch.uint8 and not a torch.bool
     - it is casted to bool before being used in torch.where
+    - optimize KV cache
     """
 
     def __init__(self, config, is_cross_attention=False, layer_idx=None):
@@ -187,6 +189,7 @@ class GaudiGPT2Attention(torch.nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
+        token_idx: Optional[torch.Tensor] = None,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]], ...]:
         if encoder_hidden_states is not None:
             if not hasattr(self, "q_attn"):
@@ -207,8 +210,15 @@ class GaudiGPT2Attention(torch.nn.Module):
 
         if layer_past is not None:
             past_key, past_value = layer_past
-            key = torch.cat((past_key, key), dim=-2)
-            value = torch.cat((past_value, value), dim=-2)
+            if token_idx is not None:
+                # HPU bug WA
+                past_key.index_add_(2, token_idx - 1, key - torch.index_select(past_key, 2, token_idx - 1))
+                past_value.index_add_(2, token_idx - 1, value - torch.index_select(past_value, 2, token_idx - 1))
+                key = past_key
+                value = past_value
+            else:
+                key = torch.cat((past_key, key), dim=-2)
+                value = torch.cat((past_value, value), dim=-2)
 
         if use_cache is True:
             present = (key, value)
@@ -231,6 +241,76 @@ class GaudiGPT2Attention(torch.nn.Module):
         return outputs  # a, present, (attentions)
 
 
+def gaudi_gpt2_block_forward(
+    self,
+    hidden_states: Optional[Tuple[torch.FloatTensor]],
+    layer_past: Optional[Tuple[torch.Tensor]] = None,
+    attention_mask: Optional[torch.FloatTensor] = None,
+    head_mask: Optional[torch.FloatTensor] = None,
+    encoder_hidden_states: Optional[torch.Tensor] = None,
+    encoder_attention_mask: Optional[torch.FloatTensor] = None,
+    use_cache: Optional[bool] = False,
+    output_attentions: Optional[bool] = False,
+    token_idx: Optional[torch.Tensor] = None,
+) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
+    """
+    Copied from GPT2Block.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
+    The only differences are:
+    - add new args token_idx
+    """
+
+    residual = hidden_states
+    hidden_states = self.ln_1(hidden_states)
+    attn_outputs = self.attn(
+        hidden_states,
+        layer_past=layer_past,
+        attention_mask=attention_mask,
+        head_mask=head_mask,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        token_idx=token_idx,
+    )
+    attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
+    outputs = attn_outputs[1:]
+    # residual connection
+    hidden_states = attn_output + residual
+
+    if encoder_hidden_states is not None:
+        # add one self-attention block for cross-attention
+        if not hasattr(self, "crossattention"):
+            raise ValueError(
+                f"If `encoder_hidden_states` are passed, {self} has to be instantiated with "
+                "cross-attention layers by setting `config.add_cross_attention=True`"
+            )
+        residual = hidden_states
+        hidden_states = self.ln_cross_attn(hidden_states)
+        cross_attn_outputs = self.crossattention(
+            hidden_states,
+            attention_mask=attention_mask,
+            head_mask=head_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            output_attentions=output_attentions,
+        )
+        attn_output = cross_attn_outputs[0]
+        # residual connection
+        hidden_states = residual + attn_output
+        outputs = outputs + cross_attn_outputs[2:]  # add cross attentions if we output attention weights
+
+    residual = hidden_states
+    hidden_states = self.ln_2(hidden_states)
+    feed_forward_hidden_states = self.mlp(hidden_states)
+    # residual connection
+    hidden_states = residual + feed_forward_hidden_states
+
+    if use_cache:
+        outputs = (hidden_states,) + outputs
+    else:
+        outputs = (hidden_states,) + outputs[1:]
+
+    return outputs  # hidden_states, present, (attentions, cross_attentions)
+
+
 def gaudi_gpt2_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
@@ -246,11 +326,13 @@ def gaudi_gpt2_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from GPT2Model.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
     The only differences are:
     - disable HMP cast for attention_mask
+    - add new args token_idx
     """
 
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -396,6 +478,7 @@ def gaudi_gpt2_forward(
                 encoder_attention_mask=encoder_attention_mask,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
+                token_idx=token_idx,
             )
 
         hidden_states = outputs[0]
@@ -434,3 +517,128 @@ def gaudi_gpt2_forward(
         attentions=all_self_attentions,
         cross_attentions=all_cross_attentions,
     )
+
+
+class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
+    """
+    Copied from GPT2LMHeadModel: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
+    The only differences are:
+    - add new args token_idx
+    """
+
+    def prepare_inputs_for_generation(
+        self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
+    ):
+        token_type_ids = kwargs.get("token_type_ids", None)
+        # only last token for inputs_ids if past is defined in kwargs
+        if past_key_values:
+            if token_idx is not None:
+                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+            else:
+                input_ids = input_ids[:, -1].unsqueeze(-1)
+
+            if token_type_ids is not None:
+                token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
+
+        attention_mask = kwargs.get("attention_mask", None)
+        position_ids = kwargs.get("position_ids", None)
+
+        if attention_mask is not None and position_ids is None:
+            # create position_ids on the fly for batch generation
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            if past_key_values:
+                if token_idx is not None:
+                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
+                else:
+                    position_ids = position_ids[:, -1].unsqueeze(-1)
+
+        else:
+            position_ids = None
+
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids}
+
+        model_inputs.update(
+            {
+                "past_key_values": past_key_values,
+                "use_cache": kwargs.get("use_cache"),
+                "position_ids": position_ids,
+                "attention_mask": attention_mask,
+                "token_type_ids": token_type_ids,
+                "token_idx": token_idx,
+            }
+        )
+        return model_inputs
+
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        token_type_ids: Optional[torch.LongTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        token_idx: Optional[torch.Tensor] = None,
+    ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        transformer_outputs = self.transformer(
+            input_ids,
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            token_idx=token_idx,
+        )
+        hidden_states = transformer_outputs[0]
+
+        # Set device for model parallelism
+        if self.model_parallel:
+            torch.cuda.set_device(self.transformer.first_device)
+            hidden_states = hidden_states.to(self.lm_head.weight.device)
+
+        lm_logits = self.lm_head(hidden_states)
+
+        loss = None
+        if labels is not None:
+            # move labels to correct device to enable model parallelism
+            labels = labels.to(lm_logits.device)
+            # Shift so that tokens < n predict n
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+        if not return_dict:
+            output = (lm_logits,) + transformer_outputs[1:]
+            return ((loss,) + output) if loss is not None else output
+
+        return CausalLMOutputWithCrossAttentions(
+            loss=loss,
+            logits=lm_logits,
+            past_key_values=transformer_outputs.past_key_values,
+            hidden_states=transformer_outputs.hidden_states,
+            attentions=transformer_outputs.attentions,
+            cross_attentions=transformer_outputs.cross_attentions,
+        )

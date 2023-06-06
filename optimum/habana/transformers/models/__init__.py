@@ -14,8 +14,28 @@ from .esm import (
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
 )
-from .gpt2 import GaudiGPT2Attention, gaudi_gpt2_forward
+from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
+from .gpt_neox import (
+    GaudiGPTNeoXForCausalLM,
+    gaudi_gpt_neox_attention_forward,
+    gaudi_gpt_neox_layer_forward,
+    gaudi_gpt_neox_model_forward,
+)
+from .gptj import (
+    GaudiGPTJForCausalLM,
+    gaudi_gptj_attention_forward,
+    gaudi_gptj_block_forward,
+    gaudi_gptj_model_forward,
+)
 from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
+from .opt import (
+    GaudiOPTForCausalLM,
+    GaudiOPTLearnedPositionalEmbedding,
+    gaudi_opt_attention_forward,
+    gaudi_opt_decoder_forward,
+    gaudi_opt_decoder_layer_forward,
+    gaudi_opt_model_forward,
+)
 from .vit import gaudi_vit_self_attention_forward
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
