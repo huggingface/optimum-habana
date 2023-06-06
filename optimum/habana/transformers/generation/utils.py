@@ -17,7 +17,7 @@
 import copy
 import inspect
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -50,6 +50,8 @@ from transformers.utils import ModelOutput
 
 from optimum.utils import logging
 
+from ...utils import HabanaProfile
+
 
 if TYPE_CHECKING:
     from .streamers import BaseStreamer
@@ -76,6 +78,42 @@ class GaudiGenerationMixin(GenerationMixin):
     sizes allows to make the most of lazy mode and HPU graphs.
     """
 
+    @staticmethod
+    def _expand_inputs_for_generation(
+        expand_size: int = 1,
+        is_encoder_decoder: bool = False,
+        input_ids: Optional[torch.LongTensor] = None,
+        **model_kwargs,
+    ) -> Tuple[torch.LongTensor, Dict[str, Any]]:
+        """
+        Expands tensors from [batch_size, ...] to [batch_size * expand_size, ...].
+
+        Copied from Transformers: https://github.com/huggingface/transformers/blob/527ab894e59b6582578008e3b47648a65063f73d/src/transformers/generation/utils.py#L704
+        The tensor `token_idx` is not expanded.
+        """
+
+        def _expand_dict_for_generation(dict_to_expand):
+            for key in dict_to_expand:
+                if (
+                    dict_to_expand[key] is not None
+                    and key != "token_idx"
+                    and isinstance(dict_to_expand[key], torch.Tensor)
+                ):
+                    dict_to_expand[key] = dict_to_expand[key].repeat_interleave(expand_size, dim=0)
+            return dict_to_expand
+
+        if input_ids is not None:
+            input_ids = input_ids.repeat_interleave(expand_size, dim=0)
+
+        model_kwargs = _expand_dict_for_generation(model_kwargs)
+
+        if is_encoder_decoder:
+            if model_kwargs.get("encoder_outputs") is None:
+                raise ValueError("If `is_encoder_decoder` is True, make sure that `encoder_outputs` is defined.")
+            model_kwargs["encoder_outputs"] = _expand_dict_for_generation(model_kwargs["encoder_outputs"])
+
+        return input_ids, model_kwargs
+
     def _update_model_kwargs_for_generation(
         self,
         outputs: ModelOutput,
@@ -83,6 +121,11 @@ class GaudiGenerationMixin(GenerationMixin):
         is_encoder_decoder: bool = False,
         standardize_cache_format: bool = False,
     ) -> Dict[str, Any]:
+        """
+        Copied from Transformers: https://github.com/huggingface/transformers/blob/527ab894e59b6582578008e3b47648a65063f73d/src/transformers/generation/utils.py#L745
+
+        Adds support for `token_idx`, which is necessary for using static shapes.
+        """
         # update past_key_values
         model_kwargs["past_key_values"] = self._extract_past_from_model_output(
             outputs, standardize_cache_format=standardize_cache_format
@@ -140,6 +183,8 @@ class GaudiGenerationMixin(GenerationMixin):
         lazy_mode: Optional[bool] = False,
         hpu_graphs: Optional[bool] = False,
         ignore_eos: Optional[bool] = None,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -490,6 +535,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 streamer=streamer,
                 lazy_mode=lazy_mode,
                 ignore_eos=ignore_eos,
+                profiling_warmup_steps=profiling_warmup_steps,
+                profiling_steps=profiling_steps,
                 **model_kwargs,
             )
 
@@ -512,6 +559,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 streamer=streamer,
+                profiling_warmup_steps=profiling_warmup_steps,
+                profiling_steps=profiling_steps,
                 **model_kwargs,
             )
 
@@ -540,6 +589,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 synced_gpus=synced_gpus,
                 streamer=streamer,
                 lazy_mode=lazy_mode,
+                ignore_eos=ignore_eos,
+                profiling_warmup_steps=profiling_warmup_steps,
+                profiling_steps=profiling_steps,
                 **model_kwargs,
             )
 
@@ -579,6 +631,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                profiling_warmup_steps=profiling_warmup_steps,
+                profiling_steps=profiling_steps,
                 **model_kwargs,
             )
 
@@ -619,6 +673,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                profiling_warmup_steps=profiling_warmup_steps,
+                profiling_steps=profiling_steps,
                 **model_kwargs,
             )
 
@@ -666,6 +722,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                profiling_warmup_steps=profiling_warmup_steps,
+                profiling_steps=profiling_steps,
                 **model_kwargs,
             )
 
@@ -755,6 +813,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 lazy_mode=lazy_mode,
+                profiling_warmup_steps=profiling_warmup_steps,
+                profiling_steps=profiling_steps,
                 **model_kwargs,
             )
 
@@ -776,6 +836,8 @@ class GaudiGenerationMixin(GenerationMixin):
         synced_gpus: Optional[bool] = False,
         streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **model_kwargs,
     ) -> Union[ContrastiveSearchOutput, torch.LongTensor]:
         r"""
@@ -881,6 +943,8 @@ class GaudiGenerationMixin(GenerationMixin):
         streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
         ignore_eos: Optional[bool] = None,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, torch.LongTensor]:
         r"""
@@ -1025,6 +1089,8 @@ class GaudiGenerationMixin(GenerationMixin):
         if not ignore_eos:
             unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
 
+        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         while True:
             if lazy_mode:
@@ -1109,13 +1175,14 @@ class GaudiGenerationMixin(GenerationMixin):
                     next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
                 )
 
+            hb_profer.step()
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
             if (not ignore_eos and unfinished_sequences.max() == 0) or stopping_criteria(input_ids, scores):
                 if not synced_gpus:
                     break
                 else:
                     this_peer_finished = True
-
+        hb_profer.stop()
         if streamer is not None:
             streamer.end()
 
@@ -1156,6 +1223,9 @@ class GaudiGenerationMixin(GenerationMixin):
         synced_gpus: Optional[bool] = False,
         streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
+        ignore_eos: Optional[bool] = None,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **model_kwargs,
     ) -> Union[SampleOutput, torch.LongTensor]:
         r"""
@@ -1207,6 +1277,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
+            ignore_eos (`bool`, *optional*):
+                Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1271,8 +1343,6 @@ class GaudiGenerationMixin(GenerationMixin):
         ['Today is a beautiful day, and we must do everything possible to make it a day of celebration.']
         ```"""
 
-        logger.warning("Sampling is slow in lazy mode, eager mode should be preferred at the moment.")
-
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
@@ -1318,8 +1388,10 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # keep track of which sequences are already finished
+        # TODO: no ignore_eos check here since there is a compilation error, will add ignore_eos here if fixed
         unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
-
+        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         # auto-regressive generation
         while True:
@@ -1383,6 +1455,7 @@ class GaudiGenerationMixin(GenerationMixin):
             next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
 
             # finished sentences should have their next token be a padding token
+            # TODO: no ignore_eos check here since there is a compilation error, will add ignore_eos here if fixed
             if eos_token_id is not None:
                 if pad_token_id is None:
                     raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
@@ -1402,21 +1475,21 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
             # if eos_token was found in one sentence, set sentence to finished
-            if eos_token_id_tensor is not None:
+            if not ignore_eos and eos_token_id_tensor is not None:
                 unfinished_sequences = unfinished_sequences.mul(
                     next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
                 )
 
             # if lazy_mode and not hpu_graphs:
             #     self.htcore_generation.mark_step()
-
+            hb_profer.step()
             # stop if we exceed the maximum length, or when each sentence is finished (eager mode only)
-            if stopping_criteria(input_ids, scores) or (unfinished_sequences.max() == 0 and not lazy_mode):
+            if (not ignore_eos and unfinished_sequences.max() == 0) or stopping_criteria(input_ids, scores):
                 if not synced_gpus:
                     break
                 else:
                     this_peer_finished = True
-
+        hb_profer.stop()
         if streamer is not None:
             streamer.end()
 
@@ -1456,6 +1529,8 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
         r"""
@@ -1626,7 +1701,8 @@ class GaudiGenerationMixin(GenerationMixin):
         beam_scores = torch.zeros((batch_size, num_beams), dtype=torch.float, device=input_ids.device)
         beam_scores[:, 1:] = -1e9
         beam_scores = beam_scores.view((batch_size * num_beams,))
-
+        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         while True:
             if synced_gpus:
@@ -1724,12 +1800,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # if lazy_mode and not hpu_graphs:
             #     self.htcore_generation.mark_step()
-
+            hb_profer.step()
             if stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
                 if not synced_gpus:
                     break
                 else:
                     this_peer_finished = True
+        hb_profer.stop()
 
         sequence_outputs = beam_scorer.finalize(
             input_ids,
@@ -1786,6 +1863,8 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **model_kwargs,
     ) -> Union[BeamSampleOutput, torch.LongTensor]:
         r"""
@@ -1927,6 +2006,8 @@ class GaudiGenerationMixin(GenerationMixin):
         synced_gpus: Optional[bool] = False,
         lazy_mode: Optional[bool] = False,
         hpuy_graphs: Optional[bool] = False,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **model_kwargs,
     ):
         r"""
@@ -2059,6 +2140,8 @@ class GaudiGenerationMixin(GenerationMixin):
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = None,
         lazy_mode: Optional[bool] = False,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
         r"""

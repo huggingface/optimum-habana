@@ -48,7 +48,19 @@ Without DeepSpeed-inference, you can run the script with:
 python run_generation.py ARGS
 ```
 
-> The present script is currently limited to greedy generation.
+
+### Single prompt
+
+If you want to generate a sequence of text from a prompt of your choice, you can run:
+```
+python run_generation.py \
+--model_name_or_path gpt2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--do_sample \
+--prompt "Here is my prompt"
+```
 
 
 ### Benchmark
@@ -57,24 +69,26 @@ To run a benchmark and get the throughput of your model, you can run:
 ```
 python (../gaudi_spawn.py --use_deepspeed --world_size number_of_devices) run_generation.py \
 --model_name_or_path path_to_model \
---gaudi_config_name_or_path path_to_gaudi_config \
+--bf16 \
 --max_new_tokens number_of_tokens_to_generate \
 --batch_size batch_size \
 --n_iterations number_of_iterations \
 --use_hpu_graphs \
 --use_kv_cache \
---do_sample
+--do_sample \
+--prompt
 ```
 with
 - `number_of_devices` the number of HPUs you want to use
 - `path_to_model` a model name on the Hugging Face Hub or a path to a model saved locally
-- `path_to_gaudi_config` a Gaudi configuration on the Hugging Face Hub or a path to a Gaudi configuration saved locally, this is not used if the run is launched with DeepSpeed-inference
+- `bf16` enables to run generation in bf16 precision, this is not used if the run is launched with DeepSpeed-inference
 - `number_of_tokens_to_generate` the number of tokens to generate for each prompt
 - `batch_size` the size of the batches provided to the model
 - `number_of_iterations` the number of iterations to perform in the benchmark
 - `use_hpu_graphs` enables HPU graphs which are recommended for faster latencies
-- `use_kv_cache` enables a key-value cache to speed up the generation process.
-- `do_sample` enables sampling algorithm for the generation process.
+- `use_kv_cache` enables a key-value cache to speed up the generation process
+- `do_sample` enables sampling algorithm for the generation process
+- `prompt` the prompt to use for benchmarking. If not specified, default prompts will be used.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -85,6 +99,12 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --use_kv_cache \
 --max_new_tokens 100
 ```
+
+> To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
+> - have a HF account
+> - agree to the terms of use of the model in its model card on the HF Hub
+> - set a read token as explained [here](https://huggingface.co/docs/hub/security-tokens)
+> - login to your account using the HF CLI: run `huggingface-cli login` before launching your script
 
 
 ### Use any dataset from the Hugging Face Hub
@@ -103,7 +123,7 @@ python run_generation.py \
 --use_kv_cache \
 --dataset_name JulesBelveze/tldr_news \
 --column_name content \
---gaudi_config_name_or_path Habana/gpt2
+--bf16
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
