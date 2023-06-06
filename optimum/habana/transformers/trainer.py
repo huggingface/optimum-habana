@@ -145,12 +145,12 @@ class GaudiTrainer(Trainer):
         self.use_hpu_amp = False
         self.use_cpu_amp = False
         if args.bf16:
-            if args.half_precision_backend == 'hpu_amp':
+            if args.half_precision_backend == "hpu_amp":
                 self.use_hpu_amp = True
             else:
                 self.use_cpu_amp = True
-        delattr(args, 'half_precision_backend')
-        delattr(args, 'bf16')
+        delattr(args, "half_precision_backend")
+        delattr(args, "bf16")
 
         super().__init__(
             model,
@@ -172,7 +172,7 @@ class GaudiTrainer(Trainer):
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
-            if self.gaudi_config.use_torch_autocast == False:
+            if self.gaudi_config.use_torch_autocast is False:
                 self.use_hpu_amp = False
                 self.use_cpu_amp = False
 
@@ -878,7 +878,11 @@ class GaudiTrainer(Trainer):
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
-                            if args.use_habana and (not (self.use_hpu_amp or self.use_cpu_amp)) and self.gaudi_config.use_habana_mixed_precision:
+                            if (
+                                args.use_habana
+                                and (not (self.use_hpu_amp or self.use_cpu_amp))
+                                and self.gaudi_config.use_habana_mixed_precision
+                            ):
                                 with self.hmp.disable_casts():
                                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                             else:
@@ -1814,8 +1818,9 @@ class GaudiTrainer(Trainer):
         if self.use_cpu_amp:
             ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=torch.bfloat16)
         elif self.use_hpu_amp:
-            ctx_manager = torch.autocast(device_type='hpu', dtype=torch.bfloat16, enabled=True)
+            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
         else:
             import contextlib
+
             ctx_manager = contextlib.nullcontext() if sys.version_info >= (3, 7) else contextlib.suppress()
         return ctx_manager

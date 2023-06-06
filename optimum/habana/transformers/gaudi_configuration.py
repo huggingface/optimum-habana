@@ -60,7 +60,9 @@ class GaudiConfig(BaseConfig):
         self.use_torch_autocast = kwargs.pop("use_torch_autocast", False)
 
         if self.use_habana_mixed_precision and self.use_torch_autocast:
-            raise ValueError("`use_habana_mixed_precision` and `use_torch_autocast` cannot be both `True` in your Gaudi configuration, you must choose one or the other to perform mixed-precision training.")
+            raise ValueError(
+                "`use_habana_mixed_precision` and `use_torch_autocast` cannot be both `True` in your Gaudi configuration, you must choose one or the other to perform mixed-precision training."
+            )
 
         # Use Habana's custom AdamW implementation
         self.use_fused_adam = kwargs.pop("use_fused_adam", False)

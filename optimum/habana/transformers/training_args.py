@@ -194,9 +194,9 @@ class GaudiTrainingArguments(TrainingArguments):
             raise ValueError("--use_hpu_graphs cannot be used in eager mode. Please set --use_lazy_mode to True.")
 
         # Raise errors for arguments that are not supported by optimum-habana
-        if self.bf16 or self.bf16_full_eval:
+        if self.bf16_full_eval:
             raise ValueError(
-                "--bf16 and --bf16_full_eval are not supported by optimum-habana. You should turn on Habana Mixed"
+                "--bf16_full_eval are not supported by optimum-habana. You should turn on Habana Mixed"
                 " Precision in your Gaudi configuration to enable bf16."
             )
         if self.fp16 or self.fp16_full_eval:
