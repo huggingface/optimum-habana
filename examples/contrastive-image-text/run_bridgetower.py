@@ -355,7 +355,7 @@ def main():
             param.requires_grad = False
 
     if model_args.freeze_text_pooler:
-        model.bridgetower.text_model.pooler = None
+        _freeze_params(model.bridgetower.text_model.pooler)
 
     if model_args.freeze_vision_model:
         _freeze_params(model.vision_model)
