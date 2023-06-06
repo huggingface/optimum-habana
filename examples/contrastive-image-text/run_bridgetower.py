@@ -93,6 +93,9 @@ class ModelArguments:
     freeze_text_model: bool = field(
         default=False, metadata={"help": "Whether to freeze the text model parameters or not."}
     )
+    freeze_text_pooler: bool = field(
+        default=True, metadata={"help": "Whether to freeze the text pooler parameters or not."}
+    )
 
 
 @dataclass
@@ -350,6 +353,9 @@ def main():
     def _freeze_params(module):
         for param in module.parameters():
             param.requires_grad = False
+
+    if model_args.freeze_text_pooler:
+        model.bridgetower.text_model.pooler = None
 
     if model_args.freeze_vision_model:
         _freeze_params(model.vision_model)
