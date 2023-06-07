@@ -195,7 +195,7 @@ python ../gaudi_spawn.py \
     --deepspeed path_to_my_deepspeed_config
 ```
 
-Here is an example with DeepSpeed on 8 HPUs on flan-t5-xxl:
+Here is an example with DeepSpeed ZERO3 on 8 HPUs on [flan-t5-xxl] (https://huggingface.co/google/flan-t5-xxl) on Gaudi2:
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_summarization.py \
@@ -219,14 +219,14 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
     --pad_to_max_length \
     --generation_max_length 129 \
     --save_strategy epoch \
-    --throughput_warmup_steps 2 \
+    --throughput_warmup_steps 3 \
     --gradient_checkpointing \
     --adam_epsilon 1e-08 --logging_steps 1 \
     --deepspeed ds_flan_t5_z3_config_bf16.json
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
-Here is a DeepSpeed configuration you can use to train your models on Gaudi:
+Here is a DeepSpeed ZERO2 configuration you can use to train your models on Gaudi:
 ```json
 {
     "steps_per_print": 64,

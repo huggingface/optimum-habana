@@ -48,6 +48,7 @@ from .models import (
     GaudiT5LayerCrossAttention,
     GaudiT5LayerFF,
     GaudiT5LayerSelfAttention,
+    GaudiT5DenseActDense,
     GaudiT5Stack,
     _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
@@ -165,4 +166,5 @@ def adapt_transformers_to_gaudi():
     modeling_t5.T5LayerFF = GaudiT5LayerFF
     modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
     modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
+    modeling_t5.T5DenseActDense = GaudiT5DenseActDense
     modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
