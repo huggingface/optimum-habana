@@ -318,9 +318,9 @@ def main():
             print(stats)
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
-                print("{:35} = {}".format(k, v))
+                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
             if args.use_hpu_graphs:
-                print(f"Graph compilation duration = {compilation_duration} seconds")
+                print(f"Graph compilation duration          = {compilation_duration} seconds")
             print(separator)
             print()
             print("Input/outputs:")
