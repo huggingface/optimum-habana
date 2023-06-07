@@ -66,13 +66,35 @@ def model_is_bloom(config):
     return "bloom" in config.architectures[0].lower()
 
 
+def get_optimized_model_name(config):
+    model_names = ["bloom", "gpt2", "opt", "gptj", "gptneox"]
+    for model_name in model_names:
+        if model_name in config.architectures[0].lower():
+            return model_name
+
+    return None
+
+
 def model_is_optimized(config):
     """
     Checks if the given config belongs to a model in optimum/habana/transformers/models, which has a
     new input token_idx.
     """
-    optimized_models = ["bloom", "gpt2", "opt", "gptj", "gptneox"]
-    for optimized_model in optimized_models:
-        if optimized_model in config.architectures[0].lower():
-            return True
-    return False
+    return get_optimized_model_name(config) is not None
+
+
+def get_ds_injection_policy(config):
+    model_type = get_optimized_model_name(config)
+    policy = {}
+    if model_type:
+        if model_type == "bloom":
+            from transformers.models.bloom.modeling_bloom import BloomBlock
+
+            policy = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
+
+        if model_type == "opt":
+            from transformers.models.opt.modeling_opt import OPTDecoderLayer
+
+            policy = {OPTDecoderLayer: ("self_attn.out_proj", "fc2")}
+
+    return policy
