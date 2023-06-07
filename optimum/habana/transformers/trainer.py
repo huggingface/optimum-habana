@@ -973,9 +973,10 @@ class GaudiTrainer(Trainer):
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
             self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
 
-            hb_profiler.stop()
             if self.control.should_training_stop:
                 break
+
+        hb_profiler.stop()
 
         if args.past_index and hasattr(self, "_past"):
             # Clean the state at the end of training

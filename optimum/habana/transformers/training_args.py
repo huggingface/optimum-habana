@@ -92,6 +92,10 @@ class GaudiTrainingArguments(TrainingArguments):
             host backward building and HPU forward computing.
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
+        profiling_warmup_steps (`int`, *optional*, defaults to 0):
+            Number of steps to ignore for profling.
+        profiling_steps (`int`, *optional*, defaults to 0):
+            Number of steps to be captured when enabling profiling.
     """
 
     use_habana: Optional[bool] = field(
@@ -147,6 +151,16 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": ("Whether to enable async data copy when preparing inputs.")},
     )
 
+    profiling_warmup_steps: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of steps to ignore for profling.")},
+    )
+
+    profiling_steps: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of steps to be captured when enabling profiling.")},
+    )
+
     # Overriding the default value of optim because 'adamw_hf' is deprecated
     optim: Optional[Union[OptimizerNames, str]] = field(
         default="adamw_torch",
@@ -174,16 +188,6 @@ class GaudiTrainingArguments(TrainingArguments):
                 "`DistributedDataParallel`."
             )
         },
-    )
-
-    profiling_warmup_steps: Optional[int] = field(
-        default=0,
-        metadata={"help": ("Number of steps to ignore for profling.")},
-    )
-
-    profiling_steps: Optional[int] = field(
-        default=0,
-        metadata={"help": ("Number of steps to be captured when enabling profiling.")},
     )
 
     # Overriding ddp_find_unused_parameters to make False the default value
