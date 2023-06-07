@@ -1609,6 +1609,11 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertListEqual(trainer.optimizer.param_groups[0]["params"], wd_params)
         self.assertListEqual(trainer.optimizer.param_groups[1]["params"], no_wd_params)
 
+    def test_profiling(self):
+        # 24 total steps and compilation takes place during the 1st three steps
+        trainer = get_regression_trainer(profiling_warmup_steps=3, profiling_steps=21)
+        trainer.train()
+
 
 @require_torch
 @is_staging_test
