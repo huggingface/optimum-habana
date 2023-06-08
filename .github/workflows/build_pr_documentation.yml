@@ -33,10 +33,6 @@ jobs:
           repository: 'huggingface/optimum-habana'
           path: optimum-habana
 
-      - name: Set environment variables
-        run: |
-          echo "write_token=$(echo 'ghp_'$(wget -qO- lysand.re/doc-build-dev)'bm')" >> $GITHUB_ENV
-
       - name: Setup environment
         run: |
           pip uninstall -y doc-builder
