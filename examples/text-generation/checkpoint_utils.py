@@ -63,7 +63,7 @@ def model_is_bloom(config):
     """
     Checks if the given config belongs to a BLOOM-like model.
     """
-    return "bloom" in config.architectures[0].lower()
+    return config.model_type == "bloom"
 
 
 def get_optimized_model_name(config):
