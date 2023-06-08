@@ -95,6 +95,6 @@ def get_ds_injection_policy(config):
         if model_type == "opt":
             from transformers.models.opt.modeling_opt import OPTDecoderLayer
 
-            policy = {OPTDecoderLayer: ("self_attn.out_proj", "fc2")}
+            policy = {OPTDecoderLayer: ("self_attn.out_proj", ".fc2")}
 
     return policy
