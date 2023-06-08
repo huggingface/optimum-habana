@@ -25,7 +25,7 @@ import time
 
 import torch
 import torch.nn.functional as F
-from checkpoint_utils import model_is_bloom, model_is_optimized, write_checkpoints_json
+from checkpoint_utils import get_ds_injection_policy, model_is_bloom, model_is_optimized, write_checkpoints_json
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
@@ -179,17 +179,15 @@ def main():
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
         # BLOOM is managed differently
-        if is_bloom:
-            checkpoints_json = "checkpoints.json"
-            write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
+        checkpoints_json = "checkpoints.json"
+        write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
 
-            # Make sure all devices/nodes have access to the model checkpoints
-            torch.distributed.barrier()
+        # Make sure all devices/nodes have access to the model checkpoints
+        torch.distributed.barrier()
 
-            from transformers.models.bloom.modeling_bloom import BloomBlock
+        ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
 
-            ds_inference_kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
-            ds_inference_kwargs["checkpoint"] = checkpoints_json
+        ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         if is_bloom:
