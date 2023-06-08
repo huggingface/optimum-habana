@@ -80,7 +80,9 @@ def main():
 
     # Patch sys.argv
     sys.argv = [args.training_script] + args.training_script_args
-    command_list = [" ".join(sys.argv)]
+    # handling case that argument contains whitespace
+    argv = ['"{}"'.format(arg) if " " in arg else arg for arg in sys.argv]
+    command_list = [" ".join(argv)]
 
     distributed_runner = DistributedRunner(
         command_list=command_list,
