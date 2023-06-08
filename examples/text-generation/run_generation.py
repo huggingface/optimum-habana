@@ -29,8 +29,6 @@ from checkpoint_utils import model_is_bloom, model_is_optimized, write_checkpoin
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
-from optimum.habana.utils import get_hpu_memory_stats
-
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -310,6 +308,8 @@ def main():
         throughput = total_new_tokens_generated / duration
 
         if rank in [-1, 0]:
+            from optimum.habana.utils import get_hpu_memory_stats
+
             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
             separator = "-" * len(stats)
             print()
