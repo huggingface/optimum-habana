@@ -43,13 +43,16 @@ def gaudi_T5Attention_forward(
     output_attentions=False,
 ):
     """
+    Copied from T5Attention: https://github.com/huggingface/transformers/blob/main/src/transformers/models/t5/modeling_t5.py#L452
+    The only differences is: wrap nn.functional.dropout with mark_step for numeric improvement.
+    """
+    """
     Self-attention (if key_value_states is None) or attention over source sentence (provided by key_value_states).
     """
     # Input is (batch_size, seq_length, dim)
     # Mask is (batch_size, key_length) (non-causal) or (batch_size, key_length, key_length)
     # past_key_value[0] is (batch_size, n_heads, q_len - 1, dim_per_head)
     batch_size, seq_length = hidden_states.shape[:2]
-    # import pdb;pdb.set_trace()
     real_seq_length = seq_length
 
     if past_key_value is not None:
@@ -165,13 +168,11 @@ def gaudi_T5Attention_forward(
 class GaudiDropout(torch.nn.Module):
     def __init__(self, dropout):
         super().__init__()
-        # import pdb;pdb.set_trace()
-        self.dp = dropout
+        self.dropout = dropout
 
     def forward(self, x):
-        # import pdb;pdb.set_trace()
         htcore.mark_step()
-        out = self.dp(x)
+        out = self.dropout(x)
         htcore.mark_step()
         return out
 
@@ -184,7 +185,6 @@ class GaudiT5DenseActDense(T5DenseActDense):
 
 class GaudiT5DenseGatedActDense(T5DenseGatedActDense):
     def __init__(self, config):
-        # import pdb;pdb.set_trace()
         super().__init__(config)
         self.dropout = GaudiDropout(self.dropout)
 

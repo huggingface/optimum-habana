@@ -29,6 +29,8 @@ from checkpoint_utils import model_is_bloom, model_is_optimized, write_checkpoin
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
+from optimum.habana.utils import get_hpu_memory_stats
+
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -314,8 +316,11 @@ def main():
             print("Stats:")
             print(separator)
             print(stats)
+            mem = get_hpu_memory_stats()
+            for k, v in mem.items():
+                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
             if args.use_hpu_graphs:
-                print(f"Graph compilation duration = {compilation_duration} seconds")
+                print(f"Graph compilation duration          = {compilation_duration} seconds")
             print(separator)
             print()
             print("Input/outputs:")
