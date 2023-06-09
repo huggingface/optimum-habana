@@ -178,16 +178,17 @@ def main():
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
-        # BLOOM is managed differently
-        checkpoints_json = "checkpoints.json"
-        write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
+        if is_bloom:
+            # BLOOM is managed differently
+            checkpoints_json = "checkpoints.json"
+            write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
 
         # Make sure all devices/nodes have access to the model checkpoints
         torch.distributed.barrier()
 
         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
-
-        ds_inference_kwargs["checkpoint"] = checkpoints_json
+        if is_bloom:
+            ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         if is_bloom:

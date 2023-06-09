@@ -97,4 +97,19 @@ def get_ds_injection_policy(config):
 
             policy = {OPTDecoderLayer: ("self_attn.out_proj", ".fc2")}
 
+        if model_type == "gpt2":
+            from transformers.models.gpt2.modeling_gpt2 import GPT2MLP
+
+            policy = {GPT2MLP: ("attn.c_proj", "mlp.c_proj")}
+
+        if model_type == "gptj":
+            from transformers.models.gptj.modeling_gptj import GPTJBlock
+
+            policy = {GPTJBlock: ("attn.out_proj", "mlp.fc_out")}
+
+        if model_type == "gpt_neox":
+            from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXLayer
+
+            policy = {GPTNeoXLayer: ("attention.dense", "mlp.dense_4h_to_h")}
+
     return policy
