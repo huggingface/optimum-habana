@@ -171,6 +171,10 @@ class GaudiDropout(torch.nn.Module):
         self.dropout = dropout
 
     def forward(self, x):
+        """
+        Avoid the dropout kernel fusion with others to stablized the numeric of training
+
+        """
         htcore.mark_step()
         out = self.dropout(x)
         htcore.mark_step()
@@ -211,6 +215,3 @@ class GaudiT5Stack(T5Stack):
     def __init__(self, config, embed_tokens=None):
         super().__init__(config, embed_tokens)
         self.dropout = GaudiDropout(self.dropout)
-
-        # Initialize weights and apply final processing
-        # self.post_init()
