@@ -50,10 +50,14 @@ jobs:
 
       - name: Save commit_sha & pr_number
         run: |
-          echo ${{ env.COMMIT_SHA }} > ./habana-doc-build/commit_sha
-          echo ${{ env.PR_NUMBER }} > ./habana-doc-build/pr_number
+          cd optimum-habana
+          sudo chmod -R ugo+rwx habana-doc-build
+          cd habana-doc-build
+          sudo mv optimum.habana optimum-habana
+          echo ${{ env.COMMIT_SHA }} > ./commit_sha
+          echo ${{ env.PR_NUMBER }} > ./pr_number
 
       - uses: actions/upload-artifact@v3
         with:
           name: doc-build-artifact
-          path: habana-doc-build/
+          path: optimum-habana/habana-doc-build/
