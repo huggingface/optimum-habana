@@ -50,8 +50,8 @@ jobs:
 
       - name: Save commit_sha & pr_number
         run: |
-          echo ${{ env.COMMIT_SHA }} > ./build_dir/commit_sha
-          echo ${{ env.PR_NUMBER }} > ./build_dir/pr_number
+          echo ${{ env.COMMIT_SHA }} > ./habana-doc-build/commit_sha
+          echo ${{ env.PR_NUMBER }} > ./habana-doc-build/pr_number
 
       - uses: actions/upload-artifact@v3
         with:
