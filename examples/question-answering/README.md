@@ -55,7 +55,8 @@ python run_qa.py \
   --use_habana \
   --use_lazy_mode \
   --use_hpu_graphs \
-  --throughput_warmup_steps 3
+  --throughput_warmup_steps 3 \
+  --bf16
 ```
 
 Training with the previously defined hyper-parameters yields the following results:
@@ -87,7 +88,8 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3\
+    --bf16
 ```
 
 It runs in 11 minutes with BERT-large and yields the following results:

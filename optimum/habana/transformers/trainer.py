@@ -143,6 +143,16 @@ class GaudiTrainer(Trainer):
             logger.info(f"No `GaudiTrainingArguments` passed, using `output_dir={output_dir}`.")
             args = GaudiTrainingArguments(output_dir=output_dir)
 
+        self.use_hpu_amp = False
+        self.use_cpu_amp = False
+        if args.bf16:
+            if args.half_precision_backend == "hpu_amp":
+                self.use_hpu_amp = True
+            else:
+                self.use_cpu_amp = True
+        delattr(args, "half_precision_backend")
+        delattr(args, "bf16")
+
         super().__init__(
             model,
             args,
@@ -163,6 +173,10 @@ class GaudiTrainer(Trainer):
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
+            if self.gaudi_config.use_torch_autocast is False:
+                self.use_hpu_amp = False
+                self.use_cpu_amp = False
+
             if self.args.use_lazy_mode:
                 try:
                     import habana_frameworks.torch.core as htcore
@@ -182,7 +196,7 @@ class GaudiTrainer(Trainer):
                 # To avoid warnings about parallelism in tokenizers
                 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-            if self.gaudi_config.use_habana_mixed_precision:
+            if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
                 try:
                     from habana_frameworks.torch.hpex import hmp
                 except ImportError as error:
@@ -917,7 +931,11 @@ class GaudiTrainer(Trainer):
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
-                            if args.use_habana and self.gaudi_config.use_habana_mixed_precision:
+                            if (
+                                args.use_habana
+                                and (not (self.use_hpu_amp or self.use_cpu_amp))
+                                and self.gaudi_config.use_habana_mixed_precision
+                            ):
                                 with self.hmp.disable_casts():
                                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                             else:
@@ -933,7 +951,8 @@ class GaudiTrainer(Trainer):
                     elif (
                         args.use_habana
                         and self.gaudi_config.use_habana_mixed_precision
-                        and not (self.gaudi_config.use_fused_adam)
+                        and (not self.gaudi_config.use_fused_adam)
+                        and (not (self.use_hpu_amp or self.use_cpu_amp))
                     ):
                         with self.hmp.disable_casts():
                             self.optimizer.step()
@@ -1847,3 +1866,18 @@ class GaudiTrainer(Trainer):
         # Moving a model to HPU disconnects the tied weights, so we have to retie them.
         if self.args.use_habana and hasattr(model, "tie_weights"):
             model.tie_weights()
+
+    def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
+        """
+        A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
+        arguments, depending on the situation. Modified by Habana to enable using `autocast` on Gaudi devices.
+        """
+        if self.use_cpu_amp:
+            ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=torch.bfloat16)
+        elif self.use_hpu_amp:
+            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
+        else:
+            import contextlib
+
+            ctx_manager = contextlib.nullcontext() if sys.version_info >= (3, 7) else contextlib.suppress()
+        return ctx_manager

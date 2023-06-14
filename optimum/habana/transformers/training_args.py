@@ -50,14 +50,12 @@ logger = logging.get_logger(__name__)
 
 # List of arguments that are not supported by optimum-habana
 UNSUPPORTED_ARGUMENTS = [
-    "bf16",  # bf16 for CUDA devices
     "bf16_full_eval",  # bf16 for CUDA devices
     "fp16",
     "fp16_backend",
     "fp16_full_eval",
     "fp16_opt_level",
     "fsdp",
-    "half_precision_backend",  # not supported, Habana Mixed Precision should be used and specified in Gaudi configuration
     "mp_parameters",
     "sharded_ddp",
     "tf32",
@@ -201,6 +199,14 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    half_precision_backend: str = field(
+        default="hpu_amp",
+        metadata={
+            "help": "The backend to be used for half precision.",
+            "choices": ["cpu_amp", "hpu_amp"],
+        },
+    )
+
     def __post_init__(self):
         if (self.use_lazy_mode or self.use_hpu_graphs or self.gaudi_config_name) and not self.use_habana:
             raise ValueError(
@@ -211,9 +217,9 @@ class GaudiTrainingArguments(TrainingArguments):
             raise ValueError("--use_hpu_graphs cannot be used in eager mode. Please set --use_lazy_mode to True.")
 
         # Raise errors for arguments that are not supported by optimum-habana
-        if self.bf16 or self.bf16_full_eval:
+        if self.bf16_full_eval:
             raise ValueError(
-                "--bf16 and --bf16_full_eval are not supported by optimum-habana. You should turn on Habana Mixed"
+                "--bf16_full_eval are not supported by optimum-habana. You should turn on Habana Mixed"
                 " Precision in your Gaudi configuration to enable bf16."
             )
         if self.fp16 or self.fp16_full_eval:
