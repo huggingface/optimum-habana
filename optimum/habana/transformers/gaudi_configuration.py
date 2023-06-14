@@ -57,6 +57,7 @@ class GaudiConfig(BaseConfig):
         self.hmp_bf16_ops = kwargs.pop("hmp_bf16_ops", DEFAULT_BF16_OPS)
         self.hmp_fp32_ops = kwargs.pop("hmp_fp32_ops", DEFAULT_FP32_OPS)
         self.hmp_is_verbose = kwargs.pop("hmp_is_verbose", False)
+        # Torch Autocast
         self.use_torch_autocast = kwargs.pop("use_torch_autocast", False)
 
         if self.use_habana_mixed_precision and self.use_torch_autocast:

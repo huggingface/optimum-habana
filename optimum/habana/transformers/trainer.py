@@ -145,7 +145,7 @@ class GaudiTrainer(Trainer):
 
         self.use_hpu_amp = False
         self.use_cpu_amp = False
-        if args.bf16:
+        if args.bf16 and not args.deepspeed:
             if args.half_precision_backend == "hpu_amp":
                 self.use_hpu_amp = True
             else:
@@ -173,9 +173,12 @@ class GaudiTrainer(Trainer):
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
-            if self.gaudi_config.use_torch_autocast is False:
-                self.use_hpu_amp = False
-                self.use_cpu_amp = False
+            if self.gaudi_config.use_torch_autocast:
+                if not self.use_hpu_amp and not self.use_cpu_amp:
+                    self.use_hpu_amp = True
+                    logger.warning(
+                        "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed precision with Torch Autocast is enabled."
+                    )
 
             if self.args.use_lazy_mode:
                 try:

@@ -50,7 +50,7 @@ logger = logging.get_logger(__name__)
 
 # List of arguments that are not supported by optimum-habana
 UNSUPPORTED_ARGUMENTS = [
-    "bf16_full_eval",  # bf16 for CUDA devices
+    "bf16_full_eval",
     "fp16",
     "fp16_backend",
     "fp16_full_eval",
@@ -199,10 +199,11 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    # Overriding half_precision_backend to allow only CPU and HPU as possible mixed-precision backends for Torch Autocast.
     half_precision_backend: str = field(
         default="hpu_amp",
         metadata={
-            "help": "The backend to be used for half precision.",
+            "help": "The backend to use for half precision.",
             "choices": ["cpu_amp", "hpu_amp"],
         },
     )
@@ -218,13 +219,10 @@ class GaudiTrainingArguments(TrainingArguments):
 
         # Raise errors for arguments that are not supported by optimum-habana
         if self.bf16_full_eval:
-            raise ValueError(
-                "--bf16_full_eval are not supported by optimum-habana. You should turn on Habana Mixed"
-                " Precision in your Gaudi configuration to enable bf16."
-            )
+            raise ValueError("--bf16_full_eval is not supported by optimum-habana.")
         if self.fp16 or self.fp16_full_eval:
             raise ValueError(
-                "--fp16, --fp16_backend, --fp16_full_eval, --fp16_opt_level and --half_precision_backend are not"
+                "--fp16, --fp16_backend, --fp16_full_eval and --fp16_opt_level are not"
                 " supported by optimum-habana. Mixed-precision can be enabled in your Gaudi configuration."
             )
         if self.fsdp:
