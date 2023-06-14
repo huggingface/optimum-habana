@@ -78,6 +78,15 @@ def parse_args():
 def main():
     args = parse_args()
 
+    if args.use_deepspeed:
+        from transformers.deepspeed import is_deepspeed_available
+
+        if not is_deepspeed_available():
+            raise ImportError(
+                "--use_deepspeed requires deepspeed: `pip install"
+                " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
+            )
+
     # Patch sys.argv
     sys.argv = [args.training_script] + args.training_script_args
     # Handle the case where arguments contain whitespaces
