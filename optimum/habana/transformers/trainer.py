@@ -145,13 +145,15 @@ class GaudiTrainer(Trainer):
 
         self.use_hpu_amp = False
         self.use_cpu_amp = False
-        if args.bf16:
+        if args.bf16 and not args.deepspeed:
             if args.half_precision_backend == "hpu_amp":
                 self.use_hpu_amp = True
             else:
                 self.use_cpu_amp = True
-        delattr(args, "half_precision_backend")
-        delattr(args, "bf16")
+
+            # Workaround to not set amp backend again when calling super().__init__(...)
+            # args.bf16 is not used after the __init__ anyway
+            args.bf16 = False
 
         super().__init__(
             model,
@@ -173,9 +175,17 @@ class GaudiTrainer(Trainer):
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
-            if self.gaudi_config.use_torch_autocast is False:
-                self.use_hpu_amp = False
-                self.use_cpu_amp = False
+            if self.gaudi_config.use_torch_autocast and not args.deepspeed:
+                if not self.use_hpu_amp and not self.use_cpu_amp:
+                    self.use_hpu_amp = True
+                    logger.warning(
+                        "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed-precision training with Torch Autocast is enabled."
+                    )
+            elif self.gaudi_config.use_habana_mixed_precision and self.use_hpu_amp:
+                self.gaudi_config.use_habana_mixed_precision = False
+                logger.warning(
+                    "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
+                )
 
             if self.args.use_lazy_mode:
                 try:

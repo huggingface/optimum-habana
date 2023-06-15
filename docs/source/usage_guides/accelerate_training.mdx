@@ -92,6 +92,12 @@ If these operators are not specified, their default values are set to be the one
 ]
 ```
 
+<Tip>
+
+Torch Autocast can also be used as a backend for mixed-precision training. You need to add the argument `--bf16` to enable it.
+
+</Tip>
+
 ## Pipelining Forward and Backward Passes
 
 There are two stages when running models on Habana HPU: python code interpretation on CPU and HPU recipe computation.
