@@ -225,7 +225,7 @@ def main():
         max_new_tokens=args.max_new_tokens,
         use_cache=args.use_kv_cache,
         do_sample=args.do_sample,
-        num_beams=args.beams,
+        num_beams=args.num_beams,
     )
 
     if args.dataset_name is None:
