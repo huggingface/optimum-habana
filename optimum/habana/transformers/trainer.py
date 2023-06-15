@@ -175,18 +175,6 @@ class GaudiTrainer(Trainer):
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
-            if self.gaudi_config.use_torch_autocast and not args.deepspeed:
-                if not self.use_hpu_amp and not self.use_cpu_amp:
-                    self.use_hpu_amp = True
-                    logger.warning(
-                        "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed-precision training with Torch Autocast is enabled."
-                    )
-            elif self.gaudi_config.use_habana_mixed_precision and self.use_hpu_amp:
-                self.gaudi_config.use_habana_mixed_precision = False
-                logger.warning(
-                    "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
-                )
-
             if self.args.use_lazy_mode:
                 try:
                     import habana_frameworks.torch.core as htcore
@@ -199,12 +187,26 @@ class GaudiTrainer(Trainer):
                 self.already_wrapped_for_hpu_graphs = False
 
             if self.args.deepspeed:
-                # Habana's fused ADAM is not compatible with DeepSpeed yet
-                self.gaudi_config.use_fused_adam = False
-                # HMP must be set to True when using DeepSpeed
-                self.gaudi_config.use_habana_mixed_precision = True
+                # Mixed-precision backends are turned off when using DeepSpeed since it manages this itself
+                self.gaudi_config.use_habana_mixed_precision = False
+                self.gaudi_config.use_torch_autocast = False
+                self.use_hpu_amp = False
+
+            if self.args.deepspeed or self.args.dataloader_num_workers >= 1:
                 # To avoid warnings about parallelism in tokenizers
                 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+            if self.gaudi_config.use_torch_autocast:
+                if not self.use_hpu_amp and not self.use_cpu_amp:
+                    self.use_hpu_amp = True
+                    logger.warning(
+                        "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed-precision training with Torch Autocast is enabled."
+                    )
+            elif self.gaudi_config.use_habana_mixed_precision and self.use_hpu_amp:
+                self.gaudi_config.use_habana_mixed_precision = False
+                logger.warning(
+                    "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
+                )
 
             if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
                 try:
