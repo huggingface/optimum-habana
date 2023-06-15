@@ -150,8 +150,10 @@ class GaudiTrainer(Trainer):
                 self.use_hpu_amp = True
             else:
                 self.use_cpu_amp = True
-        delattr(args, "half_precision_backend")
-        delattr(args, "bf16")
+
+            # Workaround to not set amp backend again when calling super().__init__(...)
+            # args.bf16 is not used after the __init__ anyway
+            args.bf16 = False
 
         super().__init__(
             model,
