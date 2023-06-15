@@ -108,8 +108,7 @@ python run_clip.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/clip \
-    --throughput_warmup_steps 3 \
-    --bf16
+    --throughput_warmup_steps 3
 ```
 
 
@@ -137,8 +136,7 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --use_lazy_mode \
     --use_hpu_graphs \
     --gaudi_config_name Habana/clip \
-    --throughput_warmup_steps 3\
-    --bf16
+    --throughput_warmup_steps 3
 ```
 
 

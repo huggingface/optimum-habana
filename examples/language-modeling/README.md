@@ -44,8 +44,7 @@ python run_clm.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs \
-    --throughput_warmup_steps 3 \
-    --bf16
+    --throughput_warmup_steps 3
 ```
 
 This takes about 13 minutes to train on a single HPU. It reaches
@@ -67,8 +66,7 @@ python run_clm.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs \
-    --throughput_warmup_steps 3 \
-    --bf16
+    --throughput_warmup_steps 3
 ```
 
 
@@ -91,8 +89,7 @@ python ../gaudi_spawn.py \
     --use_hpu_graphs \
     --gradient_checkpointing \
     --use_cache False \
-    --throughput_warmup_steps 3\
-    --bf16
+    --throughput_warmup_steps 3
 ```
 
 This takes about 4 minutes to train on 8 HPUs. It reaches
