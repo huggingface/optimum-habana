@@ -411,10 +411,11 @@ def main():
     )
 
     # Log on each process the small summary:
+    mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
         + f"distributed training: {bool(training_args.local_rank != -1)}, "
-        + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
+        + f"mixed-precision training: {mixed_precision}"
     )
     # Set the verbosity to info of the Transformers logger (on main process only):
     if is_main_process(training_args.local_rank):

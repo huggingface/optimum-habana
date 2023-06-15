@@ -143,6 +143,18 @@ class GaudiTrainer(Trainer):
             logger.info(f"No `GaudiTrainingArguments` passed, using `output_dir={output_dir}`.")
             args = GaudiTrainingArguments(output_dir=output_dir)
 
+        self.use_hpu_amp = False
+        self.use_cpu_amp = False
+        if args.bf16 and not args.deepspeed:
+            if args.half_precision_backend == "hpu_amp":
+                self.use_hpu_amp = True
+            else:
+                self.use_cpu_amp = True
+
+            # Workaround to not set amp backend again when calling super().__init__(...)
+            # args.bf16 is not used after the __init__ anyway
+            args.bf16 = False
+
         super().__init__(
             model,
             args,
@@ -163,6 +175,18 @@ class GaudiTrainer(Trainer):
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
+            if self.gaudi_config.use_torch_autocast and not args.deepspeed:
+                if not self.use_hpu_amp and not self.use_cpu_amp:
+                    self.use_hpu_amp = True
+                    logger.warning(
+                        "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed-precision training with Torch Autocast is enabled."
+                    )
+            elif self.gaudi_config.use_habana_mixed_precision and self.use_hpu_amp:
+                self.gaudi_config.use_habana_mixed_precision = False
+                logger.warning(
+                    "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
+                )
+
             if self.args.use_lazy_mode:
                 try:
                     import habana_frameworks.torch.core as htcore
@@ -182,7 +206,7 @@ class GaudiTrainer(Trainer):
                 # To avoid warnings about parallelism in tokenizers
                 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-            if self.gaudi_config.use_habana_mixed_precision:
+            if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
                 try:
                     from habana_frameworks.torch.hpex import hmp
                 except ImportError as error:
@@ -414,6 +438,49 @@ class GaudiTrainer(Trainer):
             model = torch.compile(model, backend=self.args.torch_compile_backend, mode=self.args.torch_compile_mode)
 
         return model
+
+    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch, ignore_keys_for_eval):
+        if self.args.adjust_throughput:
+            save_start = time.perf_counter()
+
+        if self.control.should_log:
+            logs: Dict[str, float] = {}
+
+            # all_gather + mean() to get average loss over all processes
+            tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
+
+            # reset tr_loss to zero
+            tr_loss -= tr_loss
+            logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            logs["learning_rate"] = self._get_learning_rate()
+
+            self._total_loss_scalar += tr_loss_scalar
+            self._globalstep_last_logged = self.state.global_step
+            self.store_flos()
+
+            self.log(logs)
+
+        metrics = None
+        if self.control.should_evaluate:
+            if isinstance(self.eval_dataset, dict):
+                metrics = {}
+                for eval_dataset_name, eval_dataset in self.eval_dataset.items():
+                    dataset_metrics = self.evaluate(
+                        eval_dataset=eval_dataset,
+                        ignore_keys=ignore_keys_for_eval,
+                        metric_key_prefix=f"eval_{eval_dataset_name}",
+                    )
+                    metrics.update(dataset_metrics)
+            else:
+                metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+            self._report_to_hp_search(trial, self.state.global_step, metrics)
+
+        if self.control.should_save:
+            self._save_checkpoint(model, trial, metrics=metrics)
+            self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+
+        if self.args.adjust_throughput:
+            self.log_evaluate_save_time += time.perf_counter() - save_start
 
     def train(
         self,
@@ -774,8 +841,15 @@ class GaudiTrainer(Trainer):
                     # Otherwise we need to call the whooooole sampler cause there is some random operation added
                     # AT THE VERY END!
                     _ = list(train_dataloader.sampler)
+
+        if self.args.adjust_throughput:
+            self.log_evaluate_save_time = 0
+        else:
+            self.log_evaluate_save_time = None
+
         hb_profiler = HabanaProfile(warmup=self.args.profiling_warmup_steps, active=self.args.profiling_steps)
         hb_profiler.start()
+
         for epoch in range(epochs_trained, num_train_epochs):
             if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
                 train_dataloader.sampler.set_epoch(epoch)
@@ -867,7 +941,11 @@ class GaudiTrainer(Trainer):
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
-                            if args.use_habana and self.gaudi_config.use_habana_mixed_precision:
+                            if (
+                                args.use_habana
+                                and (not (self.use_hpu_amp or self.use_cpu_amp))
+                                and self.gaudi_config.use_habana_mixed_precision
+                            ):
                                 with self.hmp.disable_casts():
                                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                             else:
@@ -883,7 +961,8 @@ class GaudiTrainer(Trainer):
                     elif (
                         args.use_habana
                         and self.gaudi_config.use_habana_mixed_precision
-                        and not (self.gaudi_config.use_fused_adam)
+                        and (not self.gaudi_config.use_fused_adam)
+                        and (not (self.use_hpu_amp or self.use_cpu_amp))
                     ):
                         with self.hmp.disable_casts():
                             self.optimizer.step()
@@ -923,9 +1002,10 @@ class GaudiTrainer(Trainer):
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
             self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
 
-            hb_profiler.stop()
             if self.control.should_training_stop:
                 break
+
+        hb_profiler.stop()
 
         if args.past_index and hasattr(self, "_past"):
             # Clean the state at the end of training
@@ -952,6 +1032,7 @@ class GaudiTrainer(Trainer):
             num_samples=num_samples_for_speed_metrics,
             num_steps=num_steps_for_speed_metrics,
             start_time_after_warmup=start_time_after_warmup,
+            log_evaluate_save_time=self.log_evaluate_save_time,
         )
         self.store_flos()
         metrics["total_flos"] = self.state.total_flos
@@ -1795,3 +1876,18 @@ class GaudiTrainer(Trainer):
         # Moving a model to HPU disconnects the tied weights, so we have to retie them.
         if self.args.use_habana and hasattr(model, "tie_weights"):
             model.tie_weights()
+
+    def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
+        """
+        A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
+        arguments, depending on the situation. Modified by Habana to enable using `autocast` on Gaudi devices.
+        """
+        if self.use_cpu_amp:
+            ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=torch.bfloat16)
+        elif self.use_hpu_amp:
+            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
+        else:
+            import contextlib
+
+            ctx_manager = contextlib.nullcontext() if sys.version_info >= (3, 7) else contextlib.suppress()
+        return ctx_manager

@@ -25,7 +25,7 @@ import time
 
 import torch
 import torch.nn.functional as F
-from checkpoint_utils import model_is_bloom, model_is_optimized, write_checkpoints_json
+from checkpoint_utils import get_ds_injection_policy, model_is_bloom, model_is_optimized, write_checkpoints_json
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
@@ -81,6 +81,12 @@ def main():
         help="Whether to use sampling for generation.",
     )
     parser.add_argument(
+        "--num_beams",
+        default=1,
+        type=int,
+        help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
+    )
+    parser.add_argument(
         "--seed",
         default=27,
         type=int,
@@ -132,7 +138,8 @@ def main():
 
         if not is_deepspeed_available():
             raise ImportError(
-                "This script requires deepspeed: `pip install" " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
+                "This script requires deepspeed: `pip install"
+                " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
             )
         import deepspeed
 
@@ -178,17 +185,16 @@ def main():
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
-        # BLOOM is managed differently
         if is_bloom:
+            # BLOOM is managed differently
             checkpoints_json = "checkpoints.json"
             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
 
-            # Make sure all devices/nodes have access to the model checkpoints
-            torch.distributed.barrier()
+        # Make sure all devices/nodes have access to the model checkpoints
+        torch.distributed.barrier()
 
-            from transformers.models.bloom.modeling_bloom import BloomBlock
-
-            ds_inference_kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
+        ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
+        if is_bloom:
             ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
@@ -220,6 +226,7 @@ def main():
         max_new_tokens=args.max_new_tokens,
         use_cache=args.use_kv_cache,
         do_sample=args.do_sample,
+        num_beams=args.num_beams,
     )
 
     if args.dataset_name is None:
@@ -308,14 +315,19 @@ def main():
         throughput = total_new_tokens_generated / duration
 
         if rank in [-1, 0]:
+            from optimum.habana.utils import get_hpu_memory_stats
+
             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
             separator = "-" * len(stats)
             print()
             print("Stats:")
             print(separator)
             print(stats)
+            mem = get_hpu_memory_stats()
+            for k, v in mem.items():
+                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
             if args.use_hpu_graphs:
-                print(f"Graph compilation duration = {compilation_duration} seconds")
+                print(f"Graph compilation duration          = {compilation_duration} seconds")
             print(separator)
             print()
             print("Input/outputs:")

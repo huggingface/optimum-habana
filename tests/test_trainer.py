@@ -428,11 +428,15 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         trainer.train()
         self.alternate_trained_model = (trainer.model.a, trainer.model.b)
 
-    def check_trained_model(self, model, alternate_seed=False):
+    def check_trained_model(self, model, alternate_seed=False, bf16=False):
         # Checks a training seeded with learning_rate = 0.1
         (a, b) = self.alternate_trained_model if alternate_seed else self.default_trained_model
-        self.assertTrue(torch.allclose(model.a, a))
-        self.assertTrue(torch.allclose(model.b, b))
+        if not bf16:
+            self.assertTrue(torch.allclose(model.a, a))
+            self.assertTrue(torch.allclose(model.b, b))
+        else:
+            self.assertTrue(torch.allclose(model.a, a, atol=1e-03, rtol=0))
+            self.assertTrue(torch.allclose(model.b, b, atol=1e-03, rtol=0))
 
     def test_reproducible_training(self):
         # Checks that training worked, model trained and seed made a reproducible training.
@@ -566,15 +570,11 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         self.assertGreater(trainer.optimizer.state_dict()["param_groups"][0]["lr"], 0)
 
     def test_mixed_bf16(self):
-        # TODO: test HMP when it is easily possible to undo hmp.convert
-        # # very basic test
-        # trainer = get_regression_trainer(learning_rate=0.1, bf16=True)
-        # trainer.train()
-        # self.check_trained_model(trainer.model)
-
-        # --bf16 is not supported and should raise an error
-        with self.assertRaises(ValueError):
-            get_regression_trainer(learning_rate=0.1, bf16=True)
+        # very basic test
+        trainer = get_regression_trainer(learning_rate=0.1, bf16=True)
+        self.assertTrue(trainer.use_hpu_amp)
+        trainer.train()
+        self.check_trained_model(trainer.model, bf16=True)
 
 
 @require_torch
@@ -1608,6 +1608,11 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         no_wd_params = [p for n, p in model.named_parameters() if n not in wd_names]
         self.assertListEqual(trainer.optimizer.param_groups[0]["params"], wd_params)
         self.assertListEqual(trainer.optimizer.param_groups[1]["params"], no_wd_params)
+
+    def test_profiling(self):
+        # 24 total steps and compilation takes place during the 1st three steps
+        trainer = get_regression_trainer(profiling_warmup_steps=3, profiling_steps=21)
+        trainer.train()
 
 
 @require_torch
