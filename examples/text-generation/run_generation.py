@@ -81,10 +81,10 @@ def main():
         help="Whether to use sampling for generation.",
     )
     parser.add_argument(
-        "--beams",
+        "--num_beams",
         default=1,
         type=int,
-        help="Number of beams used by beam_search algo for generation.",
+        help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
     )
     parser.add_argument(
         "--seed",
