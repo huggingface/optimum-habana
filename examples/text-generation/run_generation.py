@@ -81,6 +81,12 @@ def main():
         help="Whether to use sampling for generation.",
     )
     parser.add_argument(
+        "--beams",
+        default=1,
+        type=int,
+        help="Number of beams used by beam_search algo for generation.",
+    )
+    parser.add_argument(
         "--seed",
         default=27,
         type=int,
@@ -219,6 +225,7 @@ def main():
         max_new_tokens=args.max_new_tokens,
         use_cache=args.use_kv_cache,
         do_sample=args.do_sample,
+        num_beams=args.beams,
     )
 
     if args.dataset_name is None:
