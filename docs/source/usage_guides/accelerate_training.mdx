@@ -98,6 +98,33 @@ Torch Autocast can also be used as a backend for mixed-precision training. You n
 
 </Tip>
 
+
+## HPU Graphs
+
+The flexibility of PyTorch comes at a price - usually the same pythonic logic is processed every training step over and over.
+This may lead to a situation where it takes longer for CPU to schedule the work on Habana accelerator than it is effectively computed by it.
+To cope with such host-bound workloads, you may want to try enabling the _HPU Graphs_ feature, which records the computational graph once, then only triggers it for execution much faster multiple times.
+
+To do so, specify [`--use_hpu_graphs_for_training True`](https://huggingface.co/docs/optimum/habana/package_reference/trainer#optimum.habana.GaudiTrainingArguments.use_hpu_graphs_for_training).
+This option will wrap the model in [`habana_frameworks.torch.hpu.ModuleCacher`](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/HPU_Graphs_Training.html#training-loop-with-modulecacher), which automatically records _HPU Graphs_ on the model's usage.
+
+For multi-worker distributed training, you also need to specify [`--distribution_strategy fast_ddp`](https://huggingface.co/docs/optimum/habana/package_reference/trainer#optimum.habana.GaudiTrainingArguments.distribution_strategy).
+This option replaces the usage of `torch.nn.parallel.DistributedDataParallel` with much simpler and usually faster `optimum.habana.distributed.all_reduce_gradients`.
+
+<Tip warning={true}>
+
+Use with caution: currently using HPU Graphs for training may not support all the possible cases.
+However, the potential performance gain could be dramatic!
+
+</Tip>
+
+
+## Fast DDP
+
+For distributed training on several devices, you can also specify [`--distribution_strategy fast_ddp`](https://huggingface.co/docs/optimum/habana/package_reference/trainer#optimum.habana.GaudiTrainingArguments.distribution_strategy).
+This option replaces the usage of `torch.nn.parallel.DistributedDataParallel` with much simpler and usually faster `optimum.habana.distributed.all_reduce_gradients`.
+
+
 ## Pipelining Forward and Backward Passes
 
 There are two stages when running models on Habana HPU: python code interpretation on CPU and HPU recipe computation.
@@ -131,7 +158,7 @@ If the workload of the data loader is heavy, you can increase the number of work
 You can enable this with the training argument [`--dataloader_num_workers N`](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments.dataloader_num_workers) with `N` being the number of workers to use.
 
 **We recommend using it with datasets containing images.**
-Besides, using `--dataloader_num_workers 1` should help in most cases as it enables to perform data loading in a thread different from the main one.
+Besides, using `--dataloader_num_workers 1` should help in most cases as it enables data loading in a thread different from the main one.
 
 
 ## Non-Blocking Data Copy

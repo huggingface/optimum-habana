@@ -207,14 +207,6 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         )
         self._gen_kwargs = gen_kwargs
 
-        if self.args.use_hpu_graphs:
-            # Disable HPU graphs as generation needs to be fixed
-            self.args.use_hpu_graphs = False
-            logger.warning(
-                "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
-                " performed in lazy mode."
-            )
-
         return super().predict(test_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
     def prediction_step(
@@ -267,7 +259,9 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             gen_kwargs["lazy_mode"] if gen_kwargs.get("lazy_mode") is not None else self.args.use_lazy_mode
         )
         gen_kwargs["hpu_graphs"] = (
-            gen_kwargs["hpu_graphs"] if gen_kwargs.get("hpu_graphs") is not None else self.args.use_hpu_graphs
+            gen_kwargs["hpu_graphs"]
+            if gen_kwargs.get("hpu_graphs") is not None
+            else self.args.use_hpu_graphs_for_inference
         )
 
         # TODO (Joao): the following line is needed to keep a consistent result on SQUAD. Ideally, we should not block
@@ -278,7 +272,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         except RuntimeError as error:
             if "cpu fallback is not supported during hpu graph capturing" in str(error):
                 error.args = (
-                    f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                    f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs_for_inference=False`.",
                 )
             raise error
 
@@ -314,11 +308,11 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             except RuntimeError as error:
                 if "cpu fallback is not supported during hpu graph capturing" in str(error):
                     error.args = (
-                        f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                        f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs_for_inference=False`.",
                     )
                 raise error
 
-        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
+        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs_for_inference and not self.is_in_train):
             self.htcore.mark_step()
 
         if self.args.prediction_loss_only:
