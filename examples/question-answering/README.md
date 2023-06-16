@@ -35,8 +35,6 @@ For the following cases, an example of a Gaudi configuration file is given
 ### Single-card Training
 
 This example code fine-tunes BERT on the SQuAD1.1 dataset.
-It runs in 63 minutes with BERT-large.
-
 
 ```bash
 python run_qa.py \
@@ -55,14 +53,7 @@ python run_qa.py \
   --use_habana \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
-  --use_hpu_graphs_for_training \
   --throughput_warmup_steps 3
-```
-
-Training with the previously defined hyper-parameters yields the following results:
-```bash
-f1 = 93.0848
-exact_match = 86.755
 ```
 
 
@@ -88,15 +79,7 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
-    --use_hpu_graphs_for_training \
-    --distribution_strategy fast_ddp \
     --throughput_warmup_steps 3
-```
-
-It runs in 11 minutes with BERT-large and yields the following results:
-```bash
-f1 = 93.1075
-exact_match = 86.8874
 ```
 
 
