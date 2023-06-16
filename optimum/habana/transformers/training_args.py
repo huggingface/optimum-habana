@@ -148,9 +148,9 @@ class GaudiTrainingArguments(TrainingArguments):
     distribution_strategy: Optional[str] = field(
         default="ddp",
         metadata={
-            "help": "Determines how data parallel distributed training is achieved."
-            " `ddp`: by using `DistributedDataParallel`."
-            " `fast_ddp`: by using `optimum.habana.distributed.all_reduce_gradients`.",
+            "help": "Determines how distributed data parallel training is achieved. "
+            "Can be either `ddp` (i.e. using `DistributedDataParallel`) or "
+            "`fast_ddp` (i.e. using `optimum.habana.distributed.all_reduce_gradients`).",
             "choices": ["ddp", "fast_ddp"],
         },
     )
