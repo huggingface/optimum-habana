@@ -54,6 +54,7 @@ class GaudiConfigTester(unittest.TestCase):
         self.assertIsInstance(gaudi_config.hmp_is_verbose, bool)
         self.assertIsInstance(gaudi_config.use_fused_adam, bool)
         self.assertIsInstance(gaudi_config.use_fused_clip_norm, bool)
+        self.assertIsInstance(gaudi_config.use_torch_autocast, bool)
 
         self.assertTrue(is_list_of_strings(gaudi_config.hmp_bf16_ops))
         self.assertTrue(is_list_of_strings(gaudi_config.hmp_fp32_ops))

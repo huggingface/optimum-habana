@@ -50,14 +50,12 @@ logger = logging.get_logger(__name__)
 
 # List of arguments that are not supported by optimum-habana
 UNSUPPORTED_ARGUMENTS = [
-    "bf16",  # bf16 for CUDA devices
-    "bf16_full_eval",  # bf16 for CUDA devices
+    "bf16_full_eval",
     "fp16",
     "fp16_backend",
     "fp16_full_eval",
     "fp16_opt_level",
     "fsdp",
-    "half_precision_backend",  # not supported, Habana Mixed Precision should be used and specified in Gaudi configuration
     "mp_parameters",
     "sharded_ddp",
     "tf32",
@@ -98,11 +96,17 @@ class GaudiTrainingArguments(TrainingArguments):
             Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,
             the first N steps will not be considered in the calculation of the throughput. This is especially
             useful in lazy mode where the first two or three iterations typically take longer.
+        adjust_throughput ('bool', *optional*, defaults to `False`):
+            Whether to remove the time taken for logging, evaluating and saving from throughput calculation.
         pipelining_fwd_bwd (`bool`, *optional*, defaults to `False`):
             Whether to add an additional `mark_step` between forward and backward for pipelining
             host backward building and HPU forward computing.
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
+        profiling_warmup_steps (`int`, *optional*, defaults to 0):
+            Number of steps to ignore for profling.
+        profiling_steps (`int`, *optional*, defaults to 0):
+            Number of steps to be captured when enabling profiling.
     """
 
     use_habana: Optional[bool] = field(
@@ -162,6 +166,13 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    adjust_throughput: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to remove the time taken for logging, evaluating and saving from throughput calculation."
+        },
+    )
+
     pipelining_fwd_bwd: Optional[bool] = field(
         default=False,
         metadata={
@@ -175,6 +186,16 @@ class GaudiTrainingArguments(TrainingArguments):
     non_blocking_data_copy: Optional[bool] = field(
         default=False,
         metadata={"help": ("Whether to enable async data copy when preparing inputs.")},
+    )
+
+    profiling_warmup_steps: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of steps to ignore for profling.")},
+    )
+
+    profiling_steps: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of steps to be captured when enabling profiling.")},
     )
 
     # Overriding the default value of optim because 'adamw_hf' is deprecated
@@ -217,6 +238,15 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    # Overriding half_precision_backend to allow only CPU and HPU as possible mixed-precision backends for Torch Autocast.
+    half_precision_backend: str = field(
+        default="hpu_amp",
+        metadata={
+            "help": "The backend to use for half precision.",
+            "choices": ["cpu_amp", "hpu_amp"],
+        },
+    )
+
     def __post_init__(self):
         if self.use_hpu_graphs:
             warnings.warn(
@@ -245,14 +275,11 @@ class GaudiTrainingArguments(TrainingArguments):
             )
 
         # Raise errors for arguments that are not supported by optimum-habana
-        if self.bf16 or self.bf16_full_eval:
-            raise ValueError(
-                "--bf16 and --bf16_full_eval are not supported by optimum-habana. You should turn on Habana Mixed"
-                " Precision in your Gaudi configuration to enable bf16."
-            )
+        if self.bf16_full_eval:
+            raise ValueError("--bf16_full_eval is not supported by optimum-habana.")
         if self.fp16 or self.fp16_full_eval:
             raise ValueError(
-                "--fp16, --fp16_backend, --fp16_full_eval, --fp16_opt_level and --half_precision_backend are not"
+                "--fp16, --fp16_backend, --fp16_full_eval and --fp16_opt_level are not"
                 " supported by optimum-habana. Mixed-precision can be enabled in your Gaudi configuration."
             )
         if self.fsdp:
@@ -581,7 +608,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 if not is_deepspeed_available():
                     raise ImportError(
                         "--deepspeed requires deepspeed: `pip install"
-                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
+                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
                     )
                 import deepspeed
 

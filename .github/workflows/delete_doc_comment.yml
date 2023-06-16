@@ -1,8 +1,10 @@
 name: Delete PR documentation
 
 on:
-  pull_request:
-    types: [ closed ]
+  workflow_run:
+    workflows: ["Delete doc comment trigger"]
+    types:
+      - completed
     paths:
       - "optimum/**.py"
       - "docs/**"
@@ -13,6 +15,5 @@ on:
 jobs:
   delete:
     uses: huggingface/doc-builder/.github/workflows/delete_doc_comment.yml@main
-    with:
-      pr_number: ${{ github.event.number }}
-      package: optimum-habana
+    secrets:
+      comment_bot_token: ${{ secrets.COMMENT_BOT_TOKEN }}

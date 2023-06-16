@@ -25,7 +25,7 @@ import time
 
 import torch
 import torch.nn.functional as F
-from checkpoint_utils import model_is_bloom, model_is_optimized, write_checkpoints_json
+from checkpoint_utils import get_ds_injection_policy, model_is_bloom, model_is_optimized, write_checkpoints_json
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
@@ -81,10 +81,34 @@ def main():
         help="Whether to use sampling for generation.",
     )
     parser.add_argument(
+        "--num_beams",
+        default=1,
+        type=int,
+        help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
+    )
+    parser.add_argument(
         "--seed",
         default=27,
         type=int,
         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
+    )
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        default=0,
+        type=int,
+        help="Number of steps to ignore for profling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        default=0,
+        type=int,
+        help="Number of steps to be captured when enable profiling.",
+    )
+    parser.add_argument(
+        "--prompt",
+        default=None,
+        type=str,
+        help="Optional argument for user input prompt.",
     )
 
     args = parser.parse_args()
@@ -114,7 +138,8 @@ def main():
 
         if not is_deepspeed_available():
             raise ImportError(
-                "This script requires deepspeed: `pip install" " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
+                "This script requires deepspeed: `pip install"
+                " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
             )
         import deepspeed
 
@@ -160,17 +185,16 @@ def main():
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
-        # BLOOM is managed differently
         if is_bloom:
+            # BLOOM is managed differently
             checkpoints_json = "checkpoints.json"
             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
 
-            # Make sure all devices/nodes have access to the model checkpoints
-            torch.distributed.barrier()
+        # Make sure all devices/nodes have access to the model checkpoints
+        torch.distributed.barrier()
 
-            from transformers.models.bloom.modeling_bloom import BloomBlock
-
-            ds_inference_kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
+        ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
+        if is_bloom:
             ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
@@ -202,20 +226,26 @@ def main():
         max_new_tokens=args.max_new_tokens,
         use_cache=args.use_kv_cache,
         do_sample=args.do_sample,
+        num_beams=args.num_beams,
     )
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
-        input_sentences = [
-            "DeepSpeed is a machine learning framework",
-            "He is working on",
-            "He has a",
-            "He got all",
-            "Everyone is happy and I can",
-            "The new movie that got Oscar this year",
-            "In the far far distance from our galaxy,",
-            "Peace is the only way",
-        ]
+        if args.prompt:
+            input_sentences = [
+                args.prompt,
+            ]
+        else:
+            input_sentences = [
+                "DeepSpeed is a machine learning framework",
+                "He is working on",
+                "He has a",
+                "He got all",
+                "Everyone is happy and I can",
+                "The new movie that got Oscar this year",
+                "In the far far distance from our galaxy,",
+                "Peace is the only way",
+            ]
 
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes
@@ -254,9 +284,15 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=True,
                 hpu_graphs=args.use_hpu_graphs,
+                profiling_steps=args.profiling_steps,
+                profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
+        from optimum.habana.utils import HabanaProfile
+
+        # compilation stage disable profiling
+        HabanaProfile.disable()
         # Compilation
         if rank in [-1, 0]:
             logger.info("Graph compilation...")
@@ -266,7 +302,7 @@ def main():
             generate()
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
-
+        HabanaProfile.enable()
         total_new_tokens_generated = 0
         if rank in [-1, 0]:
             logger.info("Running generate...")
@@ -279,14 +315,19 @@ def main():
         throughput = total_new_tokens_generated / duration
 
         if rank in [-1, 0]:
+            from optimum.habana.utils import get_hpu_memory_stats
+
             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
             separator = "-" * len(stats)
             print()
             print("Stats:")
             print(separator)
             print(stats)
+            mem = get_hpu_memory_stats()
+            for k, v in mem.items():
+                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
             if args.use_hpu_graphs:
-                print(f"Graph compilation duration = {compilation_duration} seconds")
+                print(f"Graph compilation duration          = {compilation_duration} seconds")
             print(separator)
             print()
             print("Input/outputs:")
@@ -365,6 +406,8 @@ def main():
                 generation_config=generation_config,
                 lazy_mode=args.use_hpu_graphs,
                 hpu_graphs=args.use_hpu_graphs,
+                profiling_steps=args.profiling_steps,
+                profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
 
             # Print outputs

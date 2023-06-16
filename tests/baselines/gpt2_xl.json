@@ -4,11 +4,11 @@
         "eval_batch_size": 4,
         "distribution": {
             "deepspeed": {
-                "learning_rate": 5e-5,
-                "train_batch_size": 4,
-                "perplexity": 12.89075578225188,
-                "train_runtime": 590.8997,
-                "train_samples_per_second": 16.077,
+                "learning_rate": 4e-4,
+                "train_batch_size": 16,
+                "perplexity": 13.0631,
+                "train_runtime": 495.3144,
+                "train_samples_per_second": 17.435,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--gradient_checkpointing",
