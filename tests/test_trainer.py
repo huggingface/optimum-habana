@@ -603,7 +603,13 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         eval_dataset = RegressionDataset()
         model = RegressionModel()
         gaudi_config = get_gaudi_config()
-        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True, use_hpu_graphs=True)
+        args = GaudiTrainingArguments(
+            "./regression",
+            use_habana=True,
+            use_lazy_mode=True,
+            use_hpu_graphs_for_training=True,
+            use_hpu_graphs_for_inference=True,
+        )
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         trainer.train()
         _ = trainer.evaluate()
