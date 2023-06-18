@@ -258,7 +258,7 @@ class DataTrainingArguments:
     source_prefix: Optional[str] = field(
         default="", metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
     )
-    source_suffix: Optional[str] = field(default="", metadata={"help": "A suffix to add after every source text"})
+    source_suffix: Optional[str] = field(default="", metadata={"help": "A suffix to add after every source text."})
 
     forced_bos_token: Optional[str] = field(
         default=None,
@@ -564,7 +564,7 @@ def main():
                 inputs.append(examples[text_column][i])
                 targets.append(examples[summary_column][i])
             else:
-                assert False, "Found case where both text and summery wasn't present"
+                raise ValueError("Found case where either text or summary is missing.")
 
         inputs = [prefix + inp + suffix for inp in inputs]
         model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
