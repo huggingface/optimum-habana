@@ -16,7 +16,7 @@ limitations under the License.
 
 # Language generation
 
-Conditional text generation with on Habana Gaudi/Gaudi2. You can find more information about it in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom).
+Conditional text generation on Habana Gaudi/Gaudi2. You can find more information about it in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom).
 
 
 ## Requirements
@@ -48,10 +48,16 @@ Without DeepSpeed-inference, you can run the script with:
 python run_generation.py ARGS
 ```
 
+The list of all possible arguments can be obtained running:
+```bash
+python run_generation.py --help
+```
+
 
 ### Single prompt
 
-If you want to generate a sequence of text from a prompt of your choice, you can run:
+If you want to generate a sequence of text from a prompt of your choice, you should use the `--prompt` argument.
+For example:
 ```
 python run_generation.py \
 --model_name_or_path gpt2 \
@@ -65,30 +71,15 @@ python run_generation.py \
 
 ### Benchmark
 
-To run a benchmark and get the throughput of your model, you can run:
-```
-python (../gaudi_spawn.py --use_deepspeed --world_size number_of_devices) run_generation.py \
---model_name_or_path path_to_model \
---bf16 \
---max_new_tokens number_of_tokens_to_generate \
---batch_size batch_size \
---n_iterations number_of_iterations \
---use_hpu_graphs \
---use_kv_cache \
---do_sample \
---prompt
-```
-with
-- `number_of_devices` the number of HPUs you want to use
-- `path_to_model` a model name on the Hugging Face Hub or a path to a model saved locally
-- `bf16` enables to run generation in bf16 precision, this is not used if the run is launched with DeepSpeed-inference
-- `number_of_tokens_to_generate` the number of tokens to generate for each prompt
-- `batch_size` the size of the batches provided to the model
-- `number_of_iterations` the number of iterations to perform in the benchmark
-- `use_hpu_graphs` enables HPU graphs which are recommended for faster latencies
-- `use_kv_cache` enables a key-value cache to speed up the generation process
-- `do_sample` enables sampling algorithm for the generation process
-- `prompt` the prompt to use for benchmarking. If not specified, default prompts will be used.
+The default behaviour of this script (i.e. if no dataset is specified with `--dataset_name`) is to benchmark the given model with a few pre-defined prompts or with the prompt you gave with `--prompt`.
+Here are a few settings you may be interested in:
+- `--max_new_tokens` to specify the number of tokens to generate
+- `--batch_size` to specify the batch size
+- `--bf16` to run generation in bfloat16 precision (or to be specified in your DeepSpeed configuration if using DeepSpeed)
+- `--use_hpu_graphs` to use [HPU graphs](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_HPU_Graphs.html) to speed up generation
+- `--use_kv_cache` to use the [key/value cache](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationConfig.use_cache) to speed up generation
+- `--do_sample` or `--num_beams` to generate new tokens doing sampling or beam search (greedy search is the default)
+- `--prompt` to benchmark the model on a prompt of your choice
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
