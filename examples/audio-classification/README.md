@@ -45,7 +45,7 @@ python run_audio_classification.py \
     --seed 27 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3
 ```
@@ -81,7 +81,7 @@ python ../gaudi_spawn.py \
     --seed 0 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3
 ```
@@ -95,7 +95,7 @@ On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.4
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -125,7 +125,7 @@ python ../gaudi_spawn.py \
     --seed 0 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json
@@ -156,7 +156,7 @@ python run_audio_classification.py \
     --dataloader_num_workers 4 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2
 ```
 

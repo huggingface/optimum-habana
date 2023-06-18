@@ -50,19 +50,24 @@ logger = logging.get_logger(__name__)
 
 # List of arguments that are not supported by optimum-habana
 UNSUPPORTED_ARGUMENTS = [
-    "bf16",  # bf16 for CUDA devices
-    "bf16_full_eval",  # bf16 for CUDA devices
+    "bf16_full_eval",
     "fp16",
     "fp16_backend",
     "fp16_full_eval",
     "fp16_opt_level",
     "fsdp",
-    "half_precision_backend",  # not supported, Habana Mixed Precision should be used and specified in Gaudi configuration
     "mp_parameters",
     "sharded_ddp",
     "tf32",
     "tpu_metrics_debug",
     "tpu_num_cores",
+]
+
+
+# List of supported distribution strategies
+SUPPORTED_DISTRIBUTION_STRATEGIES = [
+    "ddp",  # default
+    "fast_ddp",
 ]
 
 
@@ -80,7 +85,13 @@ class GaudiTrainingArguments(TrainingArguments):
         use_lazy_mode (`bool`, *optional*, defaults to `False`):
             Whether to use lazy mode for running the model.
         use_hpu_graphs (`bool`, *optional*, defaults to `False`):
-            Whether to use HPU graphs for performing inference.
+            Deprecated, use `use_hpu_graphs_for_inference` instead. Whether to use HPU graphs for performing inference.
+        use_hpu_graphs_for_inference (`bool`, *optional*, defaults to `False`):
+            Whether to use HPU graphs for performing inference. It will speed up latency but may not be compatible with some operations.
+        use_hpu_graphs_for_training (`bool`, *optional*, defaults to `False`):
+            Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
+        distribution_strategy (`str`, *optional*, defaults to `ddp`):
+            Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
             Number of steps to ignore for throughput calculation. For example, with `throughput_warmup_steps=N`,
             the first N steps will not be considered in the calculation of the throughput. This is especially
@@ -92,6 +103,10 @@ class GaudiTrainingArguments(TrainingArguments):
             host backward building and HPU forward computing.
         non_blocking_data_copy (`bool`, *optional*, defaults to `False`):
             Whether to enable async data copy when preparing inputs.
+        profiling_warmup_steps (`int`, *optional*, defaults to 0):
+            Number of steps to ignore for profling.
+        profiling_steps (`int`, *optional*, defaults to 0):
+            Number of steps to be captured when enabling profiling.
     """
 
     use_habana: Optional[bool] = field(
@@ -111,7 +126,33 @@ class GaudiTrainingArguments(TrainingArguments):
 
     use_hpu_graphs: Optional[bool] = field(
         default=False,
-        metadata={"help": "Whether to use HPU graphs for performing inference."},
+        metadata={
+            "help": "Deprecated, use `use_hpu_graphs_for_inference` instead. Whether to use HPU graphs for performing inference."
+        },
+    )
+
+    use_hpu_graphs_for_inference: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Whether to use HPU graphs for performing inference. It will speed up latency but may not be compatible with some operations."
+        },
+    )
+
+    use_hpu_graphs_for_training: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Whether to use HPU graphs for performing training. It will speed up training but may not be compatible with some operations."
+        },
+    )
+
+    distribution_strategy: Optional[str] = field(
+        default="ddp",
+        metadata={
+            "help": "Determines how distributed data parallel training is achieved. "
+            "Can be either `ddp` (i.e. using `DistributedDataParallel`) or "
+            "`fast_ddp` (i.e. using `optimum.habana.distributed.all_reduce_gradients`).",
+            "choices": ["ddp", "fast_ddp"],
+        },
     )
 
     throughput_warmup_steps: Optional[int] = field(
@@ -147,6 +188,16 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": ("Whether to enable async data copy when preparing inputs.")},
     )
 
+    profiling_warmup_steps: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of steps to ignore for profling.")},
+    )
+
+    profiling_steps: Optional[int] = field(
+        default=0,
+        metadata={"help": ("Number of steps to be captured when enabling profiling.")},
+    )
+
     # Overriding the default value of optim because 'adamw_hf' is deprecated
     optim: Optional[Union[OptimizerNames, str]] = field(
         default="adamw_torch",
@@ -176,16 +227,6 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
-    profiling_warmup_steps: Optional[int] = field(
-        default=0,
-        metadata={"help": ("Number of steps to ignore for profling.")},
-    )
-
-    profiling_steps: Optional[int] = field(
-        default=0,
-        metadata={"help": ("Number of steps to be captured when enabling profiling.")},
-    )
-
     # Overriding ddp_find_unused_parameters to make False the default value
     ddp_find_unused_parameters: Optional[bool] = field(
         default=False,
@@ -197,24 +238,48 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    # Overriding half_precision_backend to allow only CPU and HPU as possible mixed-precision backends for Torch Autocast.
+    half_precision_backend: str = field(
+        default="hpu_amp",
+        metadata={
+            "help": "The backend to use for half precision.",
+            "choices": ["cpu_amp", "hpu_amp"],
+        },
+    )
+
     def __post_init__(self):
-        if (self.use_lazy_mode or self.use_hpu_graphs or self.gaudi_config_name) and not self.use_habana:
-            raise ValueError(
-                "--use_lazy_mode, --use_hpu_graphs and --gaudi_config_name cannot be used without --use_habana"
+        if self.use_hpu_graphs:
+            warnings.warn(
+                (
+                    "`--use_hpu_graphs` is deprecated and will be removed in a future version of 🤗 Optimum Habana. Use "
+                    "`--use_hpu_graphs_for_inference` instead."
+                ),
+                FutureWarning,
             )
 
-        if self.use_hpu_graphs and not self.use_lazy_mode:
-            raise ValueError("--use_hpu_graphs cannot be used in eager mode. Please set --use_lazy_mode to True.")
+        use_hpu_graphs = self.use_hpu_graphs or self.use_hpu_graphs_for_inference or self.use_hpu_graphs_for_training
+
+        if (self.use_lazy_mode or use_hpu_graphs or self.gaudi_config_name) and not self.use_habana:
+            raise ValueError(
+                "`--use_lazy_mode`, `--use_hpu_graphs_for_inference`, `--use_hpu_graphs_for_training` and `--gaudi_config_name` cannot be used without `--use_habana`."
+            )
+
+        if use_hpu_graphs and not self.use_lazy_mode:
+            raise ValueError(
+                "`--use_hpu_graphs_for_inference` and `--use_hpu_graphs_for_training` cannot be used in eager mode. Please set `--use_lazy_mode` to True."
+            )
+
+        if self.distribution_strategy not in SUPPORTED_DISTRIBUTION_STRATEGIES:
+            raise ValueError(
+                f"`--distribution_strategy` is {self.distribution_strategy} which is an invalid or unsupported value. Possible choices are: {', '.join(SUPPORTED_DISTRIBUTION_STRATEGIES)}."
+            )
 
         # Raise errors for arguments that are not supported by optimum-habana
-        if self.bf16 or self.bf16_full_eval:
-            raise ValueError(
-                "--bf16 and --bf16_full_eval are not supported by optimum-habana. You should turn on Habana Mixed"
-                " Precision in your Gaudi configuration to enable bf16."
-            )
+        if self.bf16_full_eval:
+            raise ValueError("--bf16_full_eval is not supported by optimum-habana.")
         if self.fp16 or self.fp16_full_eval:
             raise ValueError(
-                "--fp16, --fp16_backend, --fp16_full_eval, --fp16_opt_level and --half_precision_backend are not"
+                "--fp16, --fp16_backend, --fp16_full_eval and --fp16_opt_level are not"
                 " supported by optimum-habana. Mixed-precision can be enabled in your Gaudi configuration."
             )
         if self.fsdp:
@@ -236,6 +301,11 @@ class GaudiTrainingArguments(TrainingArguments):
         env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
         if env_local_rank != -1 and env_local_rank != self.local_rank:
             self.local_rank = env_local_rank
+
+        if self.local_rank != -1 and self.use_hpu_graphs_for_training and self.distribution_strategy != "fast_ddp":
+            raise ValueError(
+                "`--use_hpu_graphs_for_training` may only be used with `--distribution_strategy fast_ddp`"
+            )
 
         # expand paths, if not os.makedirs("~/bar") will make directory
         # in the current directory instead of the actual home
@@ -538,7 +608,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 if not is_deepspeed_available():
                     raise ImportError(
                         "--deepspeed requires deepspeed: `pip install"
-                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
+                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
                     )
                 import deepspeed
 

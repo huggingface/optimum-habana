@@ -52,7 +52,7 @@ python run_glue.py \
   --output_dir ./output/mrpc/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs \
+  --use_hpu_graphs_for_inference \
   --throughput_warmup_steps 3
 ```
 
@@ -79,7 +79,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/mrpc_output/ \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3
 ```
 
@@ -106,7 +106,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/mrpc_output/ \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```
@@ -150,5 +150,5 @@ python run_glue.py \
   --output_dir ./output/mrpc/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs
+  --use_hpu_graphs_for_inference
 ```

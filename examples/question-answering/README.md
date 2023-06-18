@@ -35,8 +35,6 @@ For the following cases, an example of a Gaudi configuration file is given
 ### Single-card Training
 
 This example code fine-tunes BERT on the SQuAD1.1 dataset.
-It runs in 63 minutes with BERT-large.
-
 
 ```bash
 python run_qa.py \
@@ -54,14 +52,8 @@ python run_qa.py \
   --output_dir /tmp/squad/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs \
+  --use_hpu_graphs_for_inference \
   --throughput_warmup_steps 3
-```
-
-Training with the previously defined hyper-parameters yields the following results:
-```bash
-f1 = 92.9397
-exact_match = 86.6887
 ```
 
 
@@ -86,14 +78,8 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/squad_output/ \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3
-```
-
-It runs in 11 minutes with BERT-large and yields the following results:
-```bash
-f1 = 93.1666
-exact_match = 86.8874
 ```
 
 
@@ -118,7 +104,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/squad_output/ \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```
@@ -162,7 +148,7 @@ python run_qa.py \
   --output_dir /tmp/squad/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs
+  --use_hpu_graphs_for_inference
 ```
 
 
@@ -208,7 +194,7 @@ python run_seq2seq_qa.py \
   --predict_with_generate \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs \
+  --use_hpu_graphs_for_inference \
   --ignore_pad_token_for_loss False \
   --pad_to_max_length \
   --save_strategy epoch \
