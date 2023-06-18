@@ -53,16 +53,16 @@ def main():
         action="store_true",
         help="Whether to perform generation in bf16 precision.",
     )
-    parser.add_argument("--max_new_tokens", type=int, default=100)
+    parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
-    parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations.")
+    parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
     parser.add_argument(
         "--use_kv_cache",
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
-    parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not.")
+    parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not. Using HPU graphs should give better latencies.")
     parser.add_argument(
         "--dataset_name",
         default=None,
@@ -73,7 +73,7 @@ def main():
         "--column_name",
         default=None,
         type=str,
-        help="Optional argument if you want to assess your model on a given dataset of the HF Hub, this will be the name of the column to use as prompts for generation.",
+        help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
     )
     parser.add_argument(
         "--do_sample",
@@ -102,13 +102,13 @@ def main():
         "--profiling_steps",
         default=0,
         type=int,
-        help="Number of steps to be captured when enable profiling.",
+        help="Number of steps to capture for profiling.",
     )
     parser.add_argument(
         "--prompt",
         default=None,
         type=str,
-        help="Optional argument for user input prompt.",
+        help="Optional argument to give a prompt of your choice as input.",
     )
 
     args = parser.parse_args()
