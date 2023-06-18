@@ -84,10 +84,8 @@ def adapt_transformers_to_gaudi():
     """
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
-
-    Args:
-        use_habana_mixed_precision (bool): whether HMP is used or not.
     """
+
     # optimize Conv1D
     pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
 
