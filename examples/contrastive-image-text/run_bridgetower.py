@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2022 The HuggingFace Team All rights reserved.
+# Copyright 2023 The HuggingFace Team All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ from typing import Optional
 import torch
 import transformers
 from datasets import load_dataset
+from habana_dataloader_trainer import HabanaDataloaderTrainer
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
 from torchvision.transforms.functional import InterpolationMode, to_grayscale, to_tensor
@@ -164,6 +165,9 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
+    mediapipe_dataloader: bool = field(
+        default=False, metadata={"help": "Turn on MediaPipe hardware-based accelerated data loading."}
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -257,6 +261,9 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+    if data_args.mediapipe_dataloader and gaudi_config.use_fused_adam:
+        gaudi_config.use_fused_adam = False
+        logger.warning("Using Habana mediapipe dataloader so disabling fused ADAM.")
 
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
@@ -467,8 +474,15 @@ def main():
             desc="Running tokenizer on train dataset",
         )
 
-        # Transform images on the fly as doing it on the whole dataset takes too much time.
-        train_dataset.set_transform(transform_images)
+        if data_args.mediapipe_dataloader:
+            train_dataset.image_mean = image_processor.image_mean
+            train_dataset.image_std = image_processor.image_std
+            train_dataset.text_max_length = data_args.max_seq_length
+            train_dataset.image_resize = config.vision_config.image_size
+            train_dataset.transform_func = transform_images
+        else:
+            # Transform images on the fly as doing it on the whole dataset takes too much time.
+            train_dataset.set_transform(transform_images)
 
     if training_args.do_eval:
         if "validation" not in dataset:
@@ -517,7 +531,8 @@ def main():
         test_dataset.set_transform(transform_images)
 
     # 8. Initalize our trainer
-    trainer = GaudiTrainer(
+    trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
+    trainer = trainer_cls(
         model=model,
         gaudi_config=gaudi_config,
         args=training_args,
