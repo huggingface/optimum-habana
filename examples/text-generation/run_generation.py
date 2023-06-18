@@ -62,7 +62,11 @@ def main():
         action="store_true",
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
-    parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not. Using HPU graphs should give better latencies.")
+    parser.add_argument(
+        "--use_hpu_graphs",
+        action="store_true",
+        help="Whether to use HPU graphs or not. Using HPU graphs should give better latencies.",
+    )
     parser.add_argument(
         "--dataset_name",
         default=None,

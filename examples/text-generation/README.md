@@ -18,8 +18,6 @@ limitations under the License.
 
 Conditional text generation on Habana Gaudi/Gaudi2. You can find more information about it in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom).
 
-This example enables to generate text with greddy search, sampling and beam search.
-
 
 ## Requirements
 
