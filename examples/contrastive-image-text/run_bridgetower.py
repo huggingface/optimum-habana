@@ -23,6 +23,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
+import datasets
 import torch
 import transformers
 from datasets import load_dataset
@@ -463,9 +464,9 @@ def main():
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
 
-        train_dataset = train_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
+        # train_dataset = train_dataset.filter(
+        #     filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
+        # )
         train_dataset = train_dataset.map(
             function=tokenize_captions,
             batched=True,

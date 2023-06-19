@@ -36,6 +36,7 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
             from clip_media_pipe import ClipMediaPipe
             from habana_frameworks.mediapipe.plugins.iterator_pytorch import HPUGenericPytorchIterator
 
+            print("111")
             pipeline = ClipMediaPipe(
                 dataset=dataset,
                 sampler=sampler,
@@ -43,7 +44,9 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
                 drop_last=drop_last,
                 queue_depth=3,
             )
+            print("222")
             self.iterator = HPUGenericPytorchIterator(mediapipe=pipeline)
+            print("333")
         except Exception as e:
             print("Warning: using Pytorch native dataloader. ", e)
             self.fallback_activated = True
