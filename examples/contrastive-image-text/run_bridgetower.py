@@ -506,8 +506,15 @@ def main():
             desc="Running tokenizer on validation dataset",
         )
 
-        # Transform images on the fly as doing it on the whole dataset takes too much time.
-        eval_dataset.set_transform(transform_images)
+        if data_args.mediapipe_dataloader:
+            eval_dataset.image_mean = image_processor.image_mean
+            eval_dataset.image_std = image_processor.image_std
+            eval_dataset.text_max_length = data_args.max_seq_length
+            eval_dataset.image_resize = config.vision_config.image_size
+            eval_dataset.transform_func = transform_images
+        else:
+            # Transform images on the fly as doing it on the whole dataset takes too much time.
+            eval_dataset.set_transform(transform_images)
 
     if training_args.do_predict:
         if "test" not in dataset:
@@ -529,8 +536,15 @@ def main():
             desc="Running tokenizer on test dataset",
         )
 
-        # Transform images on the fly as doing it on the whole dataset takes too much time.
-        test_dataset.set_transform(transform_images)
+        if data_args.mediapipe_dataloader:
+            test_dataset.image_mean = image_processor.image_mean
+            test_dataset.image_std = image_processor.image_std
+            test_dataset.text_max_length = data_args.max_seq_length
+            test_dataset.image_resize = config.vision_config.image_size
+            test_dataset.transform_func = transform_images
+        else:
+            # Transform images on the fly as doing it on the whole dataset takes too much time.
+            test_dataset.set_transform(transform_images)
 
     # 8. Initalize our trainer
     trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
