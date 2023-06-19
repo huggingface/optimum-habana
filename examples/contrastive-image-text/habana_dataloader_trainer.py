@@ -22,12 +22,14 @@ from clip_mediapipe_dataloader import MediaApiDataLoader
 from transformers.trainer_pt_utils import IterableDatasetShard
 from transformers.trainer_utils import seed_worker
 from transformers.utils import is_datasets_available
+from typing import Optional
+from torch.utils.data import DataLoader
 
 from optimum.habana import GaudiTrainer
 
 
 class HabanaDataloaderTrainer(GaudiTrainer):
-    def get_train_dataloader(self):
+    def get_train_dataloader(self) -> DataLoader:
         """
         Returns the training Habana Media Dataloader.
         """
@@ -73,7 +75,7 @@ class HabanaDataloaderTrainer(GaudiTrainer):
             worker_init_fn=seed_worker,
         )
 
-    def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
+    def get_eval_dataloader(self, eval_dataset: Optional[datasets.Dataset] = None) -> DataLoader:
         """
         Returns the eval Habana Media Dataloader.
         """
@@ -116,7 +118,7 @@ class HabanaDataloaderTrainer(GaudiTrainer):
             pin_memory=self.args.dataloader_pin_memory,
         )
 
-    def get_test_dataloader(self, test_dataset: Dataset) -> DataLoader:
+    def get_test_dataloader(self, test_dataset: datasets.Dataset) -> DataLoader:
         """
         Returns the test Habana Media Dataloader.
         """
