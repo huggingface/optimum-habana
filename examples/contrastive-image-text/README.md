@@ -139,7 +139,9 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
-    --mediapipe_dataloader
+    --mediapipe_dataloader \
+    --use_hpu_graphs_for_training \
+    --distribution_strategy fast_ddp
 ```
 
 
