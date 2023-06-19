@@ -45,7 +45,7 @@ class read_image_text_from_dataset(MediaReaderNode):
         self.num_imgs_slice = len(ClipMediaPipe.batch_sampler.sampler)
         self.num_batches_slice = len(ClipMediaPipe.batch_sampler)
         print("Finding largest file ...")
-        self.max_file = get_max_file(self.dataset["image"]["bytes"])
+        self.max_file = get_max_file(self.dataset["image_path"])
         print("largest file is ", self.max_file)
 
     def set_params(self, params):
@@ -91,7 +91,7 @@ class read_image_text_from_dataset(MediaReaderNode):
         input_id_list = np.zeros(shape=(self.batch_size, self.dataset.text_max_length), dtype=self.meta_dtype)
         attention_mask_list = np.zeros(shape=(self.batch_size, self.dataset.text_max_length), dtype=self.meta_dtype)
         for i, x in enumerate(data):
-            img_list.append(x["image"]["bytes"])
+            img_list.append(x["image_path"])
             input_id_list[i, :] = x["input_ids"]
             attention_mask_list[i, :] = x["attention_mask"]
 
