@@ -494,9 +494,9 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-        eval_dataset = eval_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
+        # eval_dataset = eval_dataset.filter(
+        #     filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
+        # )
         eval_dataset = eval_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -524,9 +524,9 @@ def main():
             max_eval_samples = min(len(test_dataset), data_args.max_eval_samples)
             test_dataset = test_dataset.select(range(max_eval_samples))
 
-        test_dataset = test_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
+        # test_dataset = test_dataset.filter(
+        #     filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
+        # )
         test_dataset = test_dataset.map(
             function=tokenize_captions,
             batched=True,
