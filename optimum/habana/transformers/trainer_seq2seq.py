@@ -151,7 +151,11 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
 
         gen_kwargs = gen_kwargs.copy()
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            gen_kwargs["max_length"] = self.args.generation_max_length
+            if self.args.generation_max_new_tokens:
+                gen_kwargs["max_new_tokens"] = self.args.generation_max_new_tokens
+                self.model.generation_config.max_new_tokens = self.args.generation_max_new_tokens
+            else:
+                gen_kwargs["max_length"] = self.args.generation_max_length
         gen_kwargs["num_beams"] = (
             gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
         )
@@ -201,7 +205,11 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
 
         gen_kwargs = gen_kwargs.copy()
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            gen_kwargs["max_length"] = self.args.generation_max_length
+            if self.args.generation_max_new_tokens:
+                gen_kwargs["max_new_tokens"] = self.args.generation_max_new_tokens
+                self.model.generation_config.max_new_tokens = self.args.generation_max_new_tokens
+            else:
+                gen_kwargs["max_length"] = self.args.generation_max_length
         gen_kwargs["num_beams"] = (
             gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
         )
@@ -265,16 +273,36 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             if gen_kwargs.get("hpu_graphs") is not None
             else self.args.use_hpu_graphs_for_inference
         )
-
+        gen_kwargs["ignore_eos"] = (
+            gen_kwargs["ignore_eos"] if gen_kwargs.get("ignore_eos") is not None else self.args.ignore_eos
+        )
+        gen_kwargs["use_cache"] = (
+            gen_kwargs["use_cache"] if gen_kwargs.get("use_cache") is not None else self.args.use_kv_cache
+        )
+        gen_kwargs["generation_config"] = (
+            gen_kwargs["generation_config"] if gen_kwargs.get("generation_config") is not None else self.model.generation_config
+        )
+        if self.args.use_token_idx:
+            gen_kwargs["token_idx"] = (
+                torch.tensor(1, device='hpu:0')
+            )
         # TODO (Joao): the following line is needed to keep a consistent result on SQUAD. Ideally, we should not block
         # users from preparing a dataset with `decoder_input_ids`.
         inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
         try:
-            generated_tokens = self.model.generate(
-                **inputs,
-                generation_config=self.model.generation_config,
-                **gen_kwargs,
-            )
+            if self.args.bf16:
+                with torch.autocast(device_type='hpu', dtype=torch.bfloat16):
+                    generated_tokens = self.model.generate(
+                        **inputs,
+                        generation_config=self.model.generation_config,
+                        **gen_kwargs,
+                    )
+            else:
+                generated_tokens = self.model.generate(
+                    **inputs,
+                    generation_config=self.model.generation_config,
+                    **gen_kwargs,
+                )
         except RuntimeError as error:
             if "cpu fallback is not supported during hpu graph capturing" in str(error):
                 error.args = (
@@ -291,7 +319,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         # Retrieves GenerationConfig from model.generation_config
         gen_config = self.model.generation_config
         # in case the batch is shorter than max length, the output should be padded
-        if generated_tokens.shape[-1] < gen_config.max_length:
+        if gen_config.max_length is not None and generated_tokens.shape[-1] < gen_config.max_length:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_config.max_length)
         elif gen_config.max_new_tokens is not None and generated_tokens.shape[-1] < gen_config.max_new_tokens + 1:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_config.max_new_tokens + 1)
@@ -326,7 +354,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
 
         if has_labels:
             labels = inputs["labels"]
-            if labels.shape[-1] < gen_config.max_length:
+            if gen_config.max_length is not None and labels.shape[-1] < gen_config.max_length:
                 labels = self._pad_tensors_to_max_len(labels, gen_config.max_length)
             elif gen_config.max_new_tokens is not None and labels.shape[-1] < gen_config.max_new_tokens + 1:
                 labels = self._pad_tensors_to_max_len(labels, gen_config.max_new_tokens + 1)

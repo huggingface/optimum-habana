@@ -440,6 +440,16 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
     )
+    is_bart = True if model_args.model_name_or_path in [
+            "facebook/bart-large-mnli",
+            "facebook/bart-large-cnn",
+            "facebook/bart-large",
+            "facebook/bart-base",
+            "facebook/bart-large-xsum",
+        ] else False
+    if is_bart and not (training_args.do_predict or training_args.do_eval):
+        raise ValueError("Training is not yet supported for BART. Eval or predict can be enabled")
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -685,6 +695,10 @@ def main():
     elif training_args.generation_num_beams is not None:
         training_args.generation_config.num_beams = training_args.generation_num_beams
 
+    if is_bart:
+        training_args.generation_max_new_tokens = (
+            model.generation_config.max_new_tokens if model.generation_config.max_new_tokens is not None else model.generation_config.max_length
+        )
     # Initialize our Trainer
     trainer = GaudiSeq2SeqTrainer(
         model=model,

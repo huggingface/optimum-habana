@@ -107,6 +107,12 @@ class GaudiTrainingArguments(TrainingArguments):
             Number of steps to ignore for profling.
         profiling_steps (`int`, *optional*, defaults to 0):
             Number of steps to be captured when enabling profiling.
+        use_token_idx (`bool`, *optional*, defaults to `False`):
+            Whether to use token_idx for performing inference. It will speed up latency but may not be compatible with some operations.
+        use_kv_cache (`bool`, *optional*, defaults to `True`):
+            Whether to use KV caching for performing inference. It will speed up latency but may not be compatible with some operations.
+        ignore_eos (`bool`, *optional*, defaults to `False`):
+            Whether to ignore EOS for performing inference. It will ignore EOS token and continue generation.
     """
 
     use_habana: Optional[bool] = field(
@@ -153,6 +159,21 @@ class GaudiTrainingArguments(TrainingArguments):
             "`fast_ddp` (i.e. using `optimum.habana.distributed.all_reduce_gradients`).",
             "choices": ["ddp", "fast_ddp"],
         },
+    )
+
+    use_token_idx: bool = field(
+        default=False,
+        metadata={"help": "Whether to use token_idx for performing inference."},
+    )
+
+    use_kv_cache: bool = field(
+        default=True,
+        metadata={"help": "Use KV caching."},
+    )
+
+    ignore_eos: bool = field(
+        default=False,
+        metadata={"help": "Ignore eos token."},
     )
 
     throughput_warmup_steps: Optional[int] = field(

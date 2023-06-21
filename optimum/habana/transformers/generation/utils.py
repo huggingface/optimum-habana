@@ -179,6 +179,50 @@ class GaudiGenerationMixin(GenerationMixin):
 
         return model_kwargs
 
+    def _prepare_decoder_attention_mask(
+        self,
+        max_steps: int,  #current stopping criteria
+        batch_size: int,
+        pad_token_id: int,
+        device: str,
+        dtype: str = torch.int64,
+    ) -> torch.Tensor:
+        x = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
+        return x.index_fill(1, torch.tensor([0]), pad_token_id)    # First the position with pad_token_id
+
+    def _prepare_past_key_values(
+        self,
+        max_steps: int,  #current stopping criteria
+        batch_size: int,
+        device: str,
+    ) -> Tuple[torch.LongTensor, torch.LongTensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
+        n_heads = self.config.decoder_attention_heads
+        embed_size_per_head = self.config.d_model // n_heads
+        key_states_ = torch.zeros((self.config.decoder_layers, batch_size, n_heads, max_steps, embed_size_per_head), device=device)
+        value_states_ = torch.zeros((self.config.decoder_layers, batch_size, n_heads, max_steps, embed_size_per_head), device=device)
+        past_key_values = tuple((key_states_[i, :, :, :, :], value_states_[i, :, :, :, :], None, None) for i in range(self.config.decoder_layers))
+        return past_key_values
+
+    def _prepare_decoder_input_ids_for_generation(
+        self,
+        batch_size: int,
+        max_new_tokens: int,
+        decoder_start_token_id: int = None,
+        bos_token_id: int = None,
+        model_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+        device: torch.device = None,
+    ) -> torch.LongTensor:
+        if model_kwargs is not None and "decoder_input_ids" in model_kwargs:
+            return model_kwargs.pop("decoder_input_ids")
+        else:
+            token_idx = model_kwargs.get("token_idx", None)
+            decoder_start_token_id = self._get_decoder_start_token_id(decoder_start_token_id, bos_token_id)
+            if device is None:
+                device = self.device
+            if token_idx is None:
+                max_new_tokens = 1
+            return torch.ones((batch_size, max_new_tokens), dtype=torch.long, device=device) * decoder_start_token_id
+
     @torch.no_grad()
     def generate(
         self,
@@ -365,6 +409,15 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["attention_mask"] = torch.nn.functional.pad(
                     model_kwargs["attention_mask"], (0, generation_config.max_new_tokens), value=0
                 )
+        token_idx = model_kwargs.get("token_idx", None)
+        if token_idx is not None:
+            if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
+                model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(generation_config.max_new_tokens,
+                                                        inputs_tensor.shape[0], generation_config.pad_token_id, inputs_tensor.device)
+
+            if model_kwargs.get("past_key_values", None) is None and generation_config.use_cache:
+                model_kwargs["past_key_values"] = self._prepare_past_key_values(generation_config.max_new_tokens,
+                                                        inputs_tensor.shape[0], inputs_tensor.device)
 
         # decoder-only models should use left-padding for generation
         if not self.config.is_encoder_decoder:
@@ -387,6 +440,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if self.config.is_encoder_decoder:
             input_ids = self._prepare_decoder_input_ids_for_generation(
                 batch_size,
+                generation_config.max_new_tokens or generation_config.max_length,
                 decoder_start_token_id=generation_config.decoder_start_token_id,
                 bos_token_id=generation_config.bos_token_id,
                 model_kwargs=model_kwargs,
@@ -1153,12 +1207,21 @@ class GaudiGenerationMixin(GenerationMixin):
 
             token_idx = model_kwargs.get("token_idx", None)
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
+                if self.config.is_encoder_decoder:
+                    next_token_logits = outputs.logits[:, token_idx-1, :]
+                    next_tokens_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
+                else:
+                    next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                    next_tokens_scores = logits_processor(input_ids, next_token_logits)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
-
-            # pre-process distribution
-            next_tokens_scores = logits_processor(input_ids, next_token_logits)
+                if token_idx is not None and self.config.is_encoder_decoder:
+                    # case2 (with KV caching): outputs.logits.shape: [batch_size, 1, vocab_size]
+                    next_tokens_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
+                else:
+                    # case3 (default case): token_idx is None
+                    next_tokens_scores = logits_processor(input_ids, next_token_logits)
 
             # Store scores, attentions and hidden_states when required
             if return_dict_in_generate:
