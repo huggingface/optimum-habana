@@ -18,6 +18,7 @@ import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
 import transformers.models.gpt_neox.modeling_gpt_neox as modeling_gpt_neox
 import transformers.models.gptj.modeling_gptj as modeling_gptj
 import transformers.models.opt.modeling_opt as modeling_opt
+import transformers.models.t5.modeling_t5 as modeling_t5
 from transformers import pytorch_utils
 from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
@@ -43,6 +44,12 @@ from .models import (
     GaudiGPTNeoXForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiT5DenseActDense,
+    GaudiT5DenseGatedActDense,
+    GaudiT5LayerCrossAttention,
+    GaudiT5LayerFF,
+    GaudiT5LayerSelfAttention,
+    GaudiT5Stack,
     _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
@@ -67,6 +74,7 @@ from .models import (
     gaudi_opt_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
+    gaudi_T5Attention_forward,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
 )
@@ -76,10 +84,8 @@ def adapt_transformers_to_gaudi():
     """
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
-
-    Args:
-        use_habana_mixed_precision (bool): whether HMP is used or not.
     """
+
     # optimize Conv1D
     pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
 
@@ -151,3 +157,12 @@ def adapt_transformers_to_gaudi():
     modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
     modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
     modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
+
+    # Dropout kernel improvement for Flan-T5
+    modeling_t5.T5Stack = GaudiT5Stack
+    modeling_t5.T5DenseGatedActDense = GaudiT5DenseGatedActDense
+    modeling_t5.T5LayerFF = GaudiT5LayerFF
+    modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
+    modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
+    modeling_t5.T5DenseActDense = GaudiT5DenseActDense
+    modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
