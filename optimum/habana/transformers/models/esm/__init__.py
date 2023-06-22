@@ -1,3 +1,4 @@
+from .modeling_esm import gaudi_esmoutput_forward, gaudi_esmselfoutput_forward
 from .modeling_esmfold import (
     _gaudi_esmfold_attention_wrap_up,
     gaudi_esm_for_protein_folding_forward,

@@ -23,6 +23,7 @@ from transformers import pytorch_utils
 from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.albert.modeling_albert import AlbertModel
+from transformers.models.esm.modeling_esm import EsmOutput, EsmSelfOutput
 from transformers.models.esm.modeling_esmfold import (
     EsmFoldAttention,
     EsmFoldingTrunk,
@@ -58,6 +59,8 @@ from .models import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfold_self_attention_forward,
     gaudi_esmfolding_trunk_forward,
+    gaudi_esmoutput_forward,
+    gaudi_esmselfoutput_forward,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
@@ -137,6 +140,8 @@ def adapt_transformers_to_gaudi():
     EsmFoldSelfAttention.forward = gaudi_esmfold_self_attention_forward
     rigid_utils.rot_matmul = gaudi_rot_matmul
     rigid_utils.rot_vec_mul = gaudi_rot_vec_mul
+    EsmSelfOutput.forward = gaudi_esmselfoutput_forward
+    EsmOutput.forward = gaudi_esmoutput_forward
 
     # Optimization for OPT generation on Gaudi
     modeling_opt.OPTAttention.forward = gaudi_opt_attention_forward
