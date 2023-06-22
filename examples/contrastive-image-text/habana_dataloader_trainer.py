@@ -16,14 +16,15 @@
 A subclass of `GaudiTrainer` specific to habana dataloader
 """
 
+from typing import Optional
+
 import datasets
 import torch
 from clip_mediapipe_dataloader import MediaApiDataLoader
+from torch.utils.data import DataLoader
 from transformers.trainer_pt_utils import IterableDatasetShard
 from transformers.trainer_utils import seed_worker
 from transformers.utils import is_datasets_available
-from typing import Optional
-from torch.utils.data import DataLoader
 
 from optimum.habana import GaudiTrainer
 
@@ -94,7 +95,7 @@ class HabanaDataloaderTrainer(GaudiTrainer):
                 eval_dataset = IterableDatasetShard(
                     eval_dataset,
                     batch_size=self.args.per_device_eval_batch_size,
-                    drop_last=self.args.dataloader_drop_last,
+                    drop_last=True,
                     num_processes=self.args.world_size,
                     process_index=self.args.process_index,
                 )
@@ -113,7 +114,7 @@ class HabanaDataloaderTrainer(GaudiTrainer):
             sampler=eval_sampler,
             batch_size=self.args.eval_batch_size,
             collate_fn=data_collator,
-            drop_last=self.args.dataloader_drop_last,
+            drop_last=True,
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
         )
@@ -134,7 +135,7 @@ class HabanaDataloaderTrainer(GaudiTrainer):
                 test_dataset = IterableDatasetShard(
                     test_dataset,
                     batch_size=self.args.eval_batch_size,
-                    drop_last=self.args.dataloader_drop_last,
+                    drop_last=True,
                     num_processes=self.args.world_size,
                     process_index=self.args.process_index,
                 )
@@ -154,7 +155,7 @@ class HabanaDataloaderTrainer(GaudiTrainer):
             sampler=test_sampler,
             batch_size=self.args.eval_batch_size,
             collate_fn=data_collator,
-            drop_last=self.args.dataloader_drop_last,
+            drop_last=True,
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
         )
