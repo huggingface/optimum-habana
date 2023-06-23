@@ -202,8 +202,6 @@ def main():
             ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
-        if is_bloom:
-            model.module.split_lm_head()
         model = model.module
     else:
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)

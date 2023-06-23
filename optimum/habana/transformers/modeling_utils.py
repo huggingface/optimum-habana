@@ -36,7 +36,6 @@ from .generation import GaudiGenerationMixin
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
-    GaudiBloomModel,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
     GaudiGPTJForCausalLM,
@@ -47,6 +46,9 @@ from .models import (
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
     gaudi_bloom_block_forward,
+    gaudi_bloom_convert_to_bloom_cache,
+    gaudi_bloom_convert_to_standard_cache,
+    gaudi_bloom_model_forward,
     gaudi_conv1d_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfold_self_attention_forward,
@@ -106,9 +108,11 @@ def adapt_transformers_to_gaudi():
     # Optimization for BLOOM generation on Gaudi
     modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
     modeling_bloom.BloomBlock.forward = gaudi_bloom_block_forward
-    modeling_bloom.BloomModel = GaudiBloomModel
+    modeling_bloom.BloomModel.forward = gaudi_bloom_model_forward
     modeling_bloom.BloomMLP = GaudiBloomMLP
     modeling_bloom.BloomForCausalLM = GaudiBloomForCausalLM
+    modeling_bloom.BloomPreTrainedModel._convert_to_standard_cache = gaudi_bloom_convert_to_standard_cache
+    modeling_bloom.BloomPreTrainedModel._convert_to_bloom_cache = gaudi_bloom_convert_to_bloom_cache
 
     # Replace invert_attention_mask and get_extended_attention_mask
     # so that HMP is disabled for specific parts of the code

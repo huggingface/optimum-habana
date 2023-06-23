@@ -7,30 +7,14 @@ import torch
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomMLP, BloomModel
+from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomMLP, dropout_add
 from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
 
 
-def build_alibi_slope_tensor(n_head: int) -> torch.Tensor:
-    closest_power_of_2 = 2 ** math.floor(math.log2(n_head))
-    base = torch.tensor(2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), dtype=torch.float32)
-    powers = torch.arange(1, 1 + closest_power_of_2, dtype=torch.int32)
-    slopes = torch.pow(base, powers)
-
-    if closest_power_of_2 != n_head:
-        extra_base = torch.tensor(2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))), dtype=torch.float32)
-        num_remaining_heads = min(closest_power_of_2, n_head - closest_power_of_2)
-        extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, dtype=torch.int32)
-        slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
-    return slopes
-
-
-def gaudi_bloom_build_alibi_tensor(
-    attention_mask: torch.Tensor, slopes: torch.Tensor, num_heads: int, dtype: torch.dtype
-) -> torch.Tensor:
+def gaudi_bloom_build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, dtype: torch.dtype) -> torch.Tensor:
     """
     Link to paper: https://arxiv.org/abs/2108.12409 Alibi tensor is not causal as the original paper mentions, it
     relies on a translation invariance of softmax for quick implementation: with l being a tensor, and a fixed value
@@ -47,6 +31,29 @@ def gaudi_bloom_build_alibi_tensor(
         dtype (`torch.dtype`, *optional*, default=`torch.bfloat16`):
             dtype of the output tensor
     """
+    batch_size, seq_length = attention_mask.shape
+    closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
+    base = torch.tensor(
+        2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
+    )
+    powers = torch.arange(1, 1 + closest_power_of_2, device=attention_mask.device, dtype=torch.int32)
+    slopes = torch.pow(base, powers)
+
+    if closest_power_of_2 != num_heads:
+        extra_base = torch.tensor(
+            2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
+        )
+        num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
+        extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, device=attention_mask.device, dtype=torch.int32)
+        slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
+
+    # Note: alibi will added to the attention bias that will be applied to the query, key product of attention
+    # => therefore alibi will have to be of shape (batch_size, num_heads, query_length, key_length)
+    # => here we set (batch_size=1, num_heads=num_heads, query_length=1, key_length=max_length)
+    # => the query_length dimension will then be broadcasted correctly
+    # This is more or less identical to T5's relative position bias:
+    # https://github.com/huggingface/transformers/blob/f681437203baa7671de3174b0fa583c349d9d5e1/src/transformers/models/t5/modeling_t5.py#L527
+    # code taken from Megatron transformer.py
     batch_size = attention_mask.size()[0]
     max_seq_len = attention_mask.size()[1]
     alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_seq_len, device=attention_mask.device).unsqueeze(
@@ -62,22 +69,22 @@ def gaudi_bloom_build_alibi_tensor(
     return alibi.to(dtype)
 
 
-def gaudi_dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
-    """
-    Dropout add function
-    Args:
-        x (`torch.tensor`, *required*):
-            input tensor
-        residual (`torch.tensor`, *required*):
-            esidual tensor
-        prob (`float`, *required*):
-            dropout probability
-        training (`bool`, *required*):
-            training mode
-    """
-    out = F.dropout(x, p=prob, training=training) if training else x
-    out = residual + out
-    return out
+def update(prev, cur, dim, idx):
+    if idx is not None:
+        if os.environ.get("WA_INDEX_COPY", "1") == "1":
+            past_selector, value_selector = idx
+            if dim == 1:
+                sel = torch.cat([past_selector, value_selector.unsqueeze(2)], dim=2)
+                val = torch.cat([prev, cur], dim=1)
+                return torch.bmm(sel, val)
+            else:
+                sel = torch.cat([past_selector, value_selector.unsqueeze(1)], dim=1)
+                val = torch.cat([prev, cur], dim=2)
+                return torch.bmm(val, sel)
+        else:
+            return prev.index_copy_(dim, idx - 1, cur)
+    else:
+        return torch.cat((prev, cur), dim=dim)
 
 
 def gaudi_bloom_attention_forward(
@@ -90,7 +97,7 @@ def gaudi_bloom_attention_forward(
     head_mask: Optional[torch.Tensor] = None,
     use_cache: bool = False,
     output_attentions: bool = False,
-    token_idx=None,
+    token_idx: Optional[torch.Tensor] = None,
 ):
     fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
 
@@ -100,24 +107,21 @@ def gaudi_bloom_attention_forward(
     batch_size, q_length, _, _ = query_layer.shape
 
     query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
-    key_layer = (
-        key_layer.permute(0, 2, 3, 1).reshape(batch_size * self.num_heads, self.head_dim, q_length).contiguous()
-    )
+    key_layer = key_layer.permute(0, 2, 3, 1).reshape(batch_size * self.num_heads, self.head_dim, q_length)
     value_layer = value_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
+
+    # Collapse views to improve performance on HPU
+    query_layer = query_layer.contiguous()
+    key_layer = key_layer.contiguous()
+    value_layer = value_layer.contiguous()
+
     if layer_past is not None:
         past_key, past_value = layer_past
         # concatenate along seq_length dimension:
         #  - key: [batch_size * self.num_heads, head_dim, kv_length]
         #  - value: [batch_size * self.num_heads, kv_length, head_dim]
-        if token_idx is not None:
-            # HPU bug WA
-            past_key.index_add_(2, token_idx - 1, key_layer - torch.index_select(past_key, 2, token_idx - 1))
-            past_value.index_add_(1, token_idx - 1, value_layer - torch.index_select(past_value, 1, token_idx - 1))
-            key_layer = past_key
-            value_layer = past_value
-        else:
-            key_layer = torch.cat((past_key, key_layer), dim=2)
-            value_layer = torch.cat((past_value, value_layer), dim=1)
+        key_layer = update(past_key, key_layer, 2, token_idx)
+        value_layer = update(past_value, value_layer, 1, token_idx)
 
     _, _, kv_length = key_layer.shape
 
@@ -144,8 +148,7 @@ def gaudi_bloom_attention_forward(
     attention_probs = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(input_dtype)
 
     # [batch_size, num_heads, q_length, kv_length]
-    if self.training:
-        attention_probs = self.attention_dropout(attention_probs)
+    attention_probs = self.attention_dropout(attention_probs)
 
     if head_mask is not None:
         attention_probs = attention_probs * head_mask
@@ -171,7 +174,7 @@ def gaudi_bloom_attention_forward(
     else:
         output_tensor = self.dense(context_layer)
 
-    output_tensor = gaudi_dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
+    output_tensor = dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
 
     outputs = (output_tensor, present)
     if output_attentions:
@@ -195,7 +198,7 @@ def gaudi_bloom_block_forward(
     head_mask: Optional[torch.Tensor] = None,
     use_cache: bool = False,
     output_attentions: bool = False,
-    token_idx=None,
+    token_idx: Optional[torch.Tensor] = None,
 ):
     # hidden_states: [batch_size, seq_length, hidden_size]
 
@@ -244,184 +247,229 @@ def gaudi_bloom_block_forward(
     return outputs  # hidden_states, present, attentions
 
 
-class GaudiBloomModel(BloomModel):
-    def __init__(self, config):
-        super().__init__(config)
-        self.register_buffer("alibi_slope", build_alibi_slope_tensor(self.num_heads), persistent=False)
+def gaudi_bloom_convert_to_standard_cache(
+    self, past_key_value: Tuple[Tuple[torch.Tensor, torch.Tensor]]
+) -> Tuple[Tuple[torch.Tensor, torch.Tensor]]:
+    """
+    Standardizes the format of the cache so as to match most implementations, i.e. to tuple(tuple([batch_size,
+    num_heads, ...]))
+    """
+    batch_size_times_num_heads, head_dim, seq_length = past_key_value[0][0].shape
+    tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
+    num_heads = self.config.n_head // tp_world_size
+    batch_size = batch_size_times_num_heads // num_heads
+    # key: [batch_size * num_heads, head_dim, seq_length] -> [batch_size, num_heads, head_dim, seq_length]
+    # value: [batch_size * num_heads, seq_length, head_dim] -> [batch_size, num_heads, seq_length, head_dim]
+    return tuple(
+        (
+            layer_past[0].view(batch_size, num_heads, head_dim, seq_length),
+            layer_past[1].view(batch_size, num_heads, seq_length, head_dim),
+        )
+        for layer_past in past_key_value
+    )
 
-    def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.LongTensor] = None,
-        inputs_embeds: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        token_idx=None,
-        **deprecated_arguments,
-    ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
-        if deprecated_arguments.pop("position_ids", False) is not False:
-            # `position_ids` could have been `torch.Tensor` or `None` so defaulting pop to `False` allows to detect if users were passing explicitly `None`
-            warnings.warn(
-                "`position_ids` have no functionality in BLOOM and will be removed in v5.0.0. You can safely ignore"
-                " passing `position_ids`.",
-                FutureWarning,
+
+def gaudi_bloom_convert_to_bloom_cache(
+    self, past_key_value: Tuple[Tuple[torch.Tensor, torch.Tensor]]
+) -> Tuple[Tuple[torch.Tensor, torch.Tensor]]:
+    """
+    Converts the cache to the format expected by Bloom, i.e. to tuple(tuple([batch_size * num_heads, ...]))
+    """
+    batch_size, num_heads, head_dim, seq_length = past_key_value[0][0].shape
+    batch_size_times_num_heads = batch_size * num_heads
+    # key:  [batch_size, num_heads, head_dim, seq_length] -> [batch_size * num_heads, head_dim, seq_length]
+    # value: [batch_size, num_heads, seq_length, head_dim] -> [batch_size * num_heads, seq_length, head_dim]
+    return tuple(
+        (
+            layer_past[0].view(batch_size_times_num_heads, head_dim, seq_length),
+            layer_past[1].view(batch_size_times_num_heads, seq_length, head_dim),
+        )
+        for layer_past in past_key_value
+    )
+
+
+def gaudi_bloom_model_forward(
+    self,
+    input_ids: Optional[torch.LongTensor] = None,
+    past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    head_mask: Optional[torch.LongTensor] = None,
+    inputs_embeds: Optional[torch.LongTensor] = None,
+    use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    token_idx: Optional[torch.Tensor] = None,
+    **deprecated_arguments,
+) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
+    if deprecated_arguments.pop("position_ids", False) is not False:
+        # `position_ids` could have been `torch.Tensor` or `None` so defaulting pop to `False` allows to detect if users were passing explicitly `None`
+        warnings.warn(
+            "`position_ids` have no functionality in BLOOM and will be removed in v5.0.0. You can safely ignore"
+            " passing `position_ids`.",
+            FutureWarning,
+        )
+    if len(deprecated_arguments) > 0:
+        raise ValueError(f"Got unexpected arguments: {deprecated_arguments}")
+
+    output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+    output_hidden_states = (
+        output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+    )
+    use_cache = use_cache if use_cache is not None else self.config.use_cache
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    if input_ids is not None and inputs_embeds is not None:
+        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+    elif input_ids is not None:
+        batch_size, seq_length = input_ids.shape
+    elif inputs_embeds is not None:
+        batch_size, seq_length, _ = inputs_embeds.shape
+    else:
+        raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+    if past_key_values is None:
+        past_key_values = tuple([None] * len(self.h))
+
+    # Prepare head mask if needed
+    # 1.0 in head_mask indicate we keep the head
+    # attention_probs has shape batch_size x num_heads x N x N
+    # head_mask has shape n_layer x batch x num_heads x N x N
+    head_mask = self.get_head_mask(head_mask, self.config.n_layer)
+
+    if inputs_embeds is None:
+        inputs_embeds = self.word_embeddings(input_ids)
+
+    hidden_states = self.word_embeddings_layernorm(inputs_embeds)
+
+    presents = () if use_cache else None
+    all_self_attentions = () if output_attentions else None
+    all_hidden_states = () if output_hidden_states else None
+
+    if self.gradient_checkpointing and self.training:
+        if use_cache:
+            logger.warning_once(
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
             )
-        if len(deprecated_arguments) > 0:
-            raise ValueError(f"Got unexpected arguments: {deprecated_arguments}")
+            use_cache = False
 
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+    # Compute alibi tensor: check gaudi_bloom_build_alibi_tensor
+    seq_length_with_past = seq_length
+    past_key_values_length = 0
+    if past_key_values[0] is not None:
+        past_key_values_length = past_key_values[0][0].shape[2]
+        seq_length_with_past = seq_length_with_past + past_key_values_length
+    if attention_mask is None:
+        attention_mask = torch.ones((batch_size, seq_length_with_past), device=hidden_states.device)
+    else:
+        attention_mask = attention_mask.to(hidden_states.device)
 
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
-        elif input_ids is not None:
-            batch_size, seq_length = input_ids.shape
-        elif inputs_embeds is not None:
-            batch_size, seq_length, _ = inputs_embeds.shape
-        else:
-            raise ValueError("You have to specify either input_ids or inputs_embeds")
+    alibi = gaudi_bloom_build_alibi_tensor(attention_mask, self.num_heads, hidden_states.dtype)
 
-        if past_key_values is None:
-            past_key_values = tuple([None] * len(self.h))
+    causal_mask = self._prepare_attn_mask(
+        attention_mask,
+        input_shape=(batch_size, seq_length),
+        past_key_values_length=past_key_values_length,
+    )
 
-        # Prepare head mask if needed
-        # 1.0 in head_mask indicate we keep the head
-        # attention_probs has shape batch_size x num_heads x N x N
-        # head_mask has shape n_layer x batch x num_heads x N x N
-        head_mask = self.get_head_mask(head_mask, self.config.n_layer)
+    if token_idx is not None and past_key_values[0] is not None and os.environ.get("WA_INDEX_COPY", "1") == "1":
+        pkv = past_key_values[0][0]
+        cur = torch.nn.functional.one_hot(torch.tile(token_idx - 1, (pkv.shape[0],)), pkv.shape[-1]).to(pkv.dtype)
+        past = torch.diag_embed(1 - cur)
+        token_idx = (past, cur)
 
-        if inputs_embeds is None:
-            inputs_embeds = self.word_embeddings(input_ids)
-
-        hidden_states = self.word_embeddings_layernorm(inputs_embeds)
-
-        presents = () if use_cache else None
-        all_self_attentions = () if output_attentions else None
-        all_hidden_states = () if output_hidden_states else None
-
-        # Compute alibi tensor: check gaudi_bloom_build_alibi_tensor
-        seq_length_with_past = seq_length
-        past_key_values_length = 0
-        if past_key_values[0] is not None:
-            past_key_values_length = past_key_values[0][0].shape[2]
-            seq_length_with_past = seq_length_with_past + past_key_values_length
-        if attention_mask is None:
-            attention_mask = torch.ones((batch_size, seq_length_with_past), device=hidden_states.device)
-        else:
-            attention_mask = attention_mask.to(hidden_states.device)
-
-        alibi = gaudi_bloom_build_alibi_tensor(attention_mask, self.alibi_slope, self.num_heads, hidden_states.dtype)
-
-        causal_mask = self._prepare_attn_mask(
-            attention_mask,
-            input_shape=(batch_size, seq_length),
-            past_key_values_length=past_key_values_length,
-        )
-
-        for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
-            if output_hidden_states:
-                all_hidden_states = all_hidden_states + (hidden_states,)
-
-            if self.gradient_checkpointing and self.training:
-                if use_cache:
-                    logger.warning(
-                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                    )
-                    use_cache = False
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
-
-                    return custom_forward
-
-                outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    alibi,
-                    causal_mask,
-                    head_mask[i],
-                )
-            else:
-                outputs = block(
-                    hidden_states,
-                    layer_past=layer_past,
-                    attention_mask=causal_mask,
-                    head_mask=head_mask[i],
-                    use_cache=use_cache,
-                    output_attentions=output_attentions,
-                    alibi=alibi,
-                    token_idx=token_idx,
-                )
-
-            hidden_states = outputs[0]
-            if use_cache is True:
-                presents = presents + (outputs[1],)
-
-            if output_attentions:
-                all_self_attentions = all_self_attentions + (outputs[2 if use_cache else 1],)
-
-        # Add last hidden state
-        hidden_states = self.ln_f(hidden_states)
-
+    for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if not return_dict:
-            return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
+        if self.gradient_checkpointing and self.training:
 
-        return BaseModelOutputWithPastAndCrossAttentions(
-            last_hidden_state=hidden_states,
-            past_key_values=presents,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attentions,
-        )
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    # None for past_key_value
+                    return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
+
+                return custom_forward
+
+            outputs = torch.utils.checkpoint.checkpoint(
+                create_custom_forward(block),
+                hidden_states,
+                alibi,
+                causal_mask,
+                head_mask[i],
+            )
+        else:
+            outputs = block(
+                hidden_states,
+                layer_past=layer_past,
+                attention_mask=causal_mask,
+                head_mask=head_mask[i],
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                alibi=alibi,
+                token_idx=token_idx,
+            )
+
+        hidden_states = outputs[0]
+        if use_cache is True:
+            presents = presents + (outputs[1],)
+
+        if output_attentions:
+            all_self_attentions = all_self_attentions + (outputs[2 if use_cache else 1],)
+
+    # Add last hidden state
+    hidden_states = self.ln_f(hidden_states)
+
+    if output_hidden_states:
+        all_hidden_states = all_hidden_states + (hidden_states,)
+
+    if not return_dict:
+        return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
+
+    return BaseModelOutputWithPastAndCrossAttentions(
+        last_hidden_state=hidden_states,
+        past_key_values=presents,
+        hidden_states=all_hidden_states,
+        attentions=all_self_attentions,
+    )
 
 
 class GaudiBloomForCausalLM(BloomForCausalLM):
-    def __init__(self, config):
-        super().__init__(config)
-        self.lm_head_chunks = []
-
-    def split_lm_head(self):
-        N = 2
-        self.lm_head_chunks = [c.t() for c in self.lm_head.weight.chunk(N, dim=0)]
-
     def prepare_inputs_for_generation(
         self,
         input_ids: torch.LongTensor,
         past_key_values: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> dict:
         # only last token for input_ids if past is not None
         if past_key_values:
-            if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
-            else:
+            if token_idx is None:
                 input_ids = input_ids[:, -1].unsqueeze(-1)
+            else:
+                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
 
             # the cache may be in the stardard format (e.g. in contrastive search), convert to bloom's format if needed
             if past_key_values[0][0].shape[0] == input_ids.shape[0]:
                 past_key_values = self._convert_to_bloom_cache(past_key_values)
 
-        return {
-            "input_ids": input_ids,
-            "past_key_values": past_key_values,
-            "use_cache": kwargs.get("use_cache"),
-            "attention_mask": attention_mask,
-            "token_idx": token_idx,
-        }
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids}
+
+        model_inputs.update(
+            {
+                "past_key_values": past_key_values,
+                "use_cache": kwargs.get("use_cache"),
+                "attention_mask": attention_mask,
+                "token_idx": token_idx,
+            }
+        )
+        return model_inputs
 
     def forward(
         self,
@@ -435,7 +483,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        token_idx: Optional[bool] = None,
+        token_idx: Optional[torch.Tensor] = None,
         **deprecated_arguments,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
@@ -470,10 +518,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         )
         hidden_states = transformer_outputs[0]
 
-        if len(self.lm_head_chunks) > 0:
-            lm_logits = torch.cat([torch.matmul(hidden_states, c) for c in self.lm_head_chunks], dim=-1)
-        else:
-            lm_logits = self.lm_head(hidden_states)
+        lm_logits = self.lm_head(hidden_states)
 
         loss = None
         if labels is not None:
@@ -500,3 +545,28 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
+
+    def _reorder_cache(
+        self, past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
+    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+        """
+        This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
+        [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
+        beam_idx at every generation step.
+
+        Output shares the same memory storage as `past`.
+        """
+        standardized_past = self._convert_to_standard_cache(past)
+
+        # Get a copy of `beam_idx` on all the devices where we need those indices.
+        device_to_beam_idx = {
+            past_state.device: beam_idx.to(past_state.device) for layer_past in past for past_state in layer_past
+        }
+        reordered_past = tuple(
+            (
+                layer_past[0].index_select(0, device_to_beam_idx[layer_past[0].device]),
+                layer_past[1].index_select(0, device_to_beam_idx[layer_past[0].device]),
+            )
+            for layer_past in standardized_past
+        )
+        return self._convert_to_bloom_cache(reordered_past)
