@@ -125,6 +125,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                             os.environ["LOWER_LIST"] = str(hmp_bf16_file)
                             os.environ["FP32_LIST"] = str(hmp_fp32_file)
 
+                            import habana_frameworks.torch.core  # noqa
+
                 elif self.gaudi_config.use_habana_mixed_precision:
                     try:
                         from habana_frameworks.torch.hpex import hmp

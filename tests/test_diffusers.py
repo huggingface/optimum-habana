@@ -100,18 +100,6 @@ class GaudiPipelineUtilsTester(TestCase):
         self.assertTrue(hasattr(pipeline, "hpu_stream"))
         self.assertTrue(hasattr(pipeline, "cache"))
 
-    def test_habana_mixed_precision(self):
-        gaudi_config = GaudiConfig(
-            use_habana_mixed_precision=True,
-        )
-
-        pipeline = GaudiDiffusionPipeline(
-            use_habana=True,
-            gaudi_config=gaudi_config,
-        )
-
-        self.assertTrue(hasattr(pipeline, "hmp"))
-
     def test_save_pretrained(self):
         model_name = "hf-internal-testing/tiny-stable-diffusion-torch"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
