@@ -31,7 +31,9 @@ from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline,
 from optimum.habana.utils import set_seed
 
 
-THROUGHPUT_BASELINE = 0.287
+THROUGHPUT_BASELINE_HMP = 0.287
+THROUGHPUT_BASELINE_BF16 = 0.302
+THROUGHPUT_BASELINE_AUTOCAST = 0.108
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -509,7 +511,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
     @slow
-    def test_no_throughput_regression(self):
+    def test_no_throughput_regression_hmp(self):
         prompts = [
             "An image of a squirrel in Picasso style",
             "High quality photo of an astronaut riding a horse in space",
@@ -533,7 +535,64 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             batch_size=batch_size,
         )
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
-        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE)
+        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_HMP)
+
+    @slow
+    def test_no_throughput_regression_bf16(self):
+        prompts = [
+            "An image of a squirrel in Picasso style",
+            "High quality photo of an astronaut riding a horse in space",
+        ]
+        num_images_per_prompt = 11
+        batch_size = 4
+        model_name = "runwayml/stable-diffusion-v1-5"
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
+            torch_dtype=torch.bfloat16,
+        )
+        set_seed(27)
+        outputs = pipeline(
+            prompt=prompts,
+            num_images_per_prompt=num_images_per_prompt,
+            batch_size=batch_size,
+        )
+        self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
+        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_BF16)
+
+    @slow
+    def test_no_throughput_regression_autocast(self):
+        prompts = [
+            "An image of a squirrel in Picasso style",
+            "High quality photo of an astronaut riding a horse in space",
+        ]
+        num_images_per_prompt = 11
+        batch_size = 4
+        model_name = "stabilityai/stable-diffusion-2-1"
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion-2"),
+        )
+        set_seed(27)
+        outputs = pipeline(
+            prompt=prompts,
+            num_images_per_prompt=num_images_per_prompt,
+            batch_size=batch_size,
+            height=768,
+            width=768,
+        )
+        self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
+        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_AUTOCAST)
 
     @slow
     def test_no_generation_regression(self):

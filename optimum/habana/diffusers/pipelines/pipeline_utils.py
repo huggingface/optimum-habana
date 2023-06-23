@@ -73,6 +73,9 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
+        bf16_full_eval (bool, defaults to `False`):
+            Whether to use full bfloat16 evaluation instead of 32-bit.
+            This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
     """
 
     def __init__(
@@ -80,6 +83,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
+        bf16_full_eval: bool = False,
     ):
         super().__init__()
 
@@ -104,6 +108,45 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     f"`gaudi_config` must be a string or a GaudiConfig object but is {type(gaudi_config)}."
                 )
 
+            if self.gaudi_config.use_habana_mixed_precision or self.gaudi_config.use_torch_autocast:
+                if bf16_full_eval:
+                    logger.warning(
+                        "`use_habana_mixed_precision` or `use_torch_autocast` is True in the given Gaudi configuration but "
+                        "`torch_dtype=torch.blfloat16` was given. Disabling mixed precision and continuing in bf16 only."
+                    )
+                elif self.gaudi_config.use_torch_autocast:
+                    # Open temporary files to write mixed-precision ops
+                    with tempfile.NamedTemporaryFile() as hmp_bf16_file:
+                        with tempfile.NamedTemporaryFile() as hmp_fp32_file:
+                            self.gaudi_config.write_bf16_fp32_ops_to_text_files(
+                                hmp_bf16_file.name,
+                                hmp_fp32_file.name,
+                            )
+                            os.environ["LOWER_LIST"] = str(hmp_bf16_file)
+                            os.environ["FP32_LIST"] = str(hmp_fp32_file)
+
+                elif self.gaudi_config.use_habana_mixed_precision:
+                    try:
+                        from habana_frameworks.torch.hpex import hmp
+                    except ImportError as error:
+                        error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
+                        raise error
+
+                    # Open temporary files to write mixed-precision ops
+                    with tempfile.NamedTemporaryFile() as hmp_bf16_file:
+                        with tempfile.NamedTemporaryFile() as hmp_fp32_file:
+                            # hmp.convert needs ops to be written in text files
+                            self.gaudi_config.write_bf16_fp32_ops_to_text_files(
+                                hmp_bf16_file.name,
+                                hmp_fp32_file.name,
+                            )
+                            hmp.convert(
+                                opt_level=self.gaudi_config.hmp_opt_level,
+                                bf16_file_path=hmp_bf16_file.name,
+                                fp32_file_path=hmp_fp32_file.name,
+                                isVerbose=self.gaudi_config.hmp_is_verbose,
+                            )
+
             if self.use_hpu_graphs:
                 try:
                     import habana_frameworks.torch as ht
@@ -120,29 +163,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
                     raise error
                 self.htcore = htcore
-
-            if self.gaudi_config.use_habana_mixed_precision:
-                try:
-                    from habana_frameworks.torch.hpex import hmp
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-                    raise error
-                self.hmp = hmp
-
-                # Open temporary files to mixed-precision write ops
-                with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                    with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                        # hmp.convert needs ops to be written in text files
-                        self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                            hmp_bf16_file.name,
-                            hmp_fp32_file.name,
-                        )
-                        self.hmp.convert(
-                            opt_level=self.gaudi_config.hmp_opt_level,
-                            bf16_file_path=hmp_bf16_file.name,
-                            fp32_file_path=hmp_fp32_file.name,
-                            isVerbose=self.gaudi_config.hmp_is_verbose,
-                        )
         else:
             if use_hpu_graphs:
                 raise ValueError(
@@ -305,6 +325,10 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
         diffusers.pipelines.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
         diffusers.pipelines.pipeline_utils.ALL_IMPORTABLE_CLASSES = GAUDI_ALL_IMPORTABLE_CLASSES
+
+        # Define a new kwarg here to know in the __init__ whether to use mixed precision or not
+        bf16_full_eval = kwargs.get("torch_dtype", None) == torch.bfloat16
+        kwargs["bf16_full_eval"] = bf16_full_eval
 
         return super().from_pretrained(
             pretrained_model_name_or_path,

@@ -83,6 +83,9 @@ class GaudiStableDiffusionPipeline(
         gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
+        bf16_full_eval (bool, defaults to `False`):
+            Whether to use full bfloat16 evaluation instead of 32-bit.
+            This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
     """
 
     _optional_components = ["safety_checker", "feature_extractor"]
@@ -100,11 +103,13 @@ class GaudiStableDiffusionPipeline(
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
+        bf16_full_eval: bool = False,
     ):
         super().__init__(
             use_habana,
             use_hpu_graphs,
             gaudi_config,
+            bf16_full_eval,
         )
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
@@ -589,184 +594,187 @@ class GaudiStableDiffusionPipeline(
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
+            # 0. Default height and width to unet
+            height = height or self.unet.config.sample_size * self.vae_scale_factor
+            width = width or self.unet.config.sample_size * self.vae_scale_factor
 
-        # 1. Check inputs. Raise error if not correct
-        self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
-        )
+            # 1. Check inputs. Raise error if not correct
+            self.check_inputs(
+                prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            )
 
-        # 2. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
-            num_prompts = 1
-        elif prompt is not None and isinstance(prompt, list):
-            num_prompts = len(prompt)
-        else:
-            num_prompts = prompt_embeds.shape[0]
-        num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
-        logger.info(
-            f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
-            f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
-        )
-        if num_batches < 3:
-            logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
-        device = self._execution_device
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
+            # 2. Define call parameters
+            if prompt is not None and isinstance(prompt, str):
+                num_prompts = 1
+            elif prompt is not None and isinstance(prompt, list):
+                num_prompts = len(prompt)
+            else:
+                num_prompts = prompt_embeds.shape[0]
+            num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
+            logger.info(
+                f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
+                f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
+            )
+            if num_batches < 3:
+                logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
+            device = self._execution_device
+            # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+            # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+            # corresponds to doing no classifier free guidance.
+            do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
-        prompt_embeds, negative_prompt_embeds = self._encode_prompt(
-            prompt,
-            device,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-        )
+            # 3. Encode input prompt
+            prompt_embeds, negative_prompt_embeds = self._encode_prompt(
+                prompt,
+                device,
+                num_images_per_prompt,
+                do_classifier_free_guidance,
+                negative_prompt,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+            )
 
-        # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device="cpu")
-        timesteps = self.scheduler.timesteps.to(device)
+            # 4. Prepare timesteps
+            self.scheduler.set_timesteps(num_inference_steps, device="cpu")
+            timesteps = self.scheduler.timesteps.to(device)
 
-        # 5. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
-        latents = self.prepare_latents(
-            num_prompts * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
-        )
+            # 5. Prepare latent variables
+            num_channels_latents = self.unet.config.in_channels
+            latents = self.prepare_latents(
+                num_prompts * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                prompt_embeds.dtype,
+                device,
+                generator,
+                latents,
+            )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+            # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+            extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Split into batches (HPU-specific step)
-        latents_batches, text_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
-            batch_size,
-            latents,
-            prompt_embeds,
-            negative_prompt_embeds,
-        )
+            # 7. Split into batches (HPU-specific step)
+            latents_batches, text_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
+                batch_size,
+                latents,
+                prompt_embeds,
+                negative_prompt_embeds,
+            )
 
-        outputs = {
-            "images": [],
-            "has_nsfw_concept": [],
-        }
-        t0 = time.time()
-        t1 = t0
+            outputs = {
+                "images": [],
+                "has_nsfw_concept": [],
+            }
+            t0 = time.time()
+            t1 = t0
 
-        # 8. Denoising loop
-        for j in self.progress_bar(range(num_batches)):
-            # The throughput is calculated from the 3rd iteration
-            # because compilation occurs in the first two iterations
-            if j == 2:
-                t1 = time.time()
+            # 8. Denoising loop
+            for j in self.progress_bar(range(num_batches)):
+                # The throughput is calculated from the 3rd iteration
+                # because compilation occurs in the first two iterations
+                if j == 2:
+                    t1 = time.time()
 
-            latents_batch = latents_batches[0]
-            latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
-            text_embeddings_batch = text_embeddings_batches[0]
-            text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
+                latents_batch = latents_batches[0]
+                latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
+                text_embeddings_batch = text_embeddings_batches[0]
+                text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
 
-            for i in range(num_inference_steps):
-                timestep = timesteps[0]
-                timesteps = torch.roll(timesteps, shifts=-1, dims=0)
+                for i in range(num_inference_steps):
+                    timestep = timesteps[0]
+                    timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
-                capture = True if self.use_hpu_graphs and i < 2 else False
+                    capture = True if self.use_hpu_graphs and i < 2 else False
 
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents_batch] * 2) if do_classifier_free_guidance else latents_batch
-                # latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
+                    # expand the latents if we are doing classifier free guidance
+                    latent_model_input = (
+                        torch.cat([latents_batch] * 2) if do_classifier_free_guidance else latents_batch
+                    )
+                    # latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
 
-                # predict the noise residual
-                noise_pred = self.unet_hpu(
-                    latent_model_input,
-                    timestep,
-                    text_embeddings_batch,
-                    cross_attention_kwargs,
-                    capture,
-                )
+                    # predict the noise residual
+                    noise_pred = self.unet_hpu(
+                        latent_model_input,
+                        timestep,
+                        text_embeddings_batch,
+                        cross_attention_kwargs,
+                        capture,
+                    )
 
-                # perform guidance
-                if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    # perform guidance
+                    if do_classifier_free_guidance:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents_batch = self.scheduler.step(noise_pred, latents_batch, **extra_step_kwargs).prev_sample
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents_batch = self.scheduler.step(noise_pred, latents_batch, **extra_step_kwargs).prev_sample
+
+                    if not self.use_hpu_graphs:
+                        self.htcore.mark_step()
+
+                    # call the callback, if provided
+                    if callback is not None and i % callback_steps == 0:
+                        callback(i, timestep, latents_batch)
+
+                if output_type == "latent":
+                    image = latents_batch
+                else:
+                    # 8. Post-processing
+                    image = self.decode_latents(latents_batch)
+                outputs["images"].append(image)
+
+                self.scheduler.reset_timestep_dependent_params()
 
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
 
-                # call the callback, if provided
-                if callback is not None and i % callback_steps == 0:
-                    callback(i, timestep, latents_batch)
+            speed_metrics_prefix = "generation"
+            speed_measures = speed_metrics(
+                split=speed_metrics_prefix,
+                start_time=t0,
+                num_samples=num_batches * batch_size if t1 == t0 else (num_batches - 2) * batch_size,
+                num_steps=num_batches,
+                start_time_after_warmup=t1,
+            )
+            logger.info(f"Speed metrics: {speed_measures}")
 
-            if output_type == "latent":
-                image = latents_batch
-            else:
-                # 8. Post-processing
-                image = self.decode_latents(latents_batch)
-            outputs["images"].append(image)
+            # Remove dummy generations if needed
+            if num_dummy_samples > 0:
+                outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
 
-            self.scheduler.reset_timestep_dependent_params()
+            # Process generated images
+            for i, image in enumerate(outputs["images"][:]):
+                if output_type == "latent":
+                    has_nsfw_concept = None
+                else:
+                    # 9. Run safety checker
+                    image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
-            if not self.use_hpu_graphs:
-                self.htcore.mark_step()
+                if i == 0:
+                    outputs["images"].clear()
 
-        speed_metrics_prefix = "generation"
-        speed_measures = speed_metrics(
-            split=speed_metrics_prefix,
-            start_time=t0,
-            num_samples=num_batches * batch_size if t1 == t0 else (num_batches - 2) * batch_size,
-            num_steps=num_batches,
-            start_time_after_warmup=t1,
-        )
-        logger.info(f"Speed metrics: {speed_measures}")
+                # 10. Convert to PIL
+                if output_type == "pil":
+                    image = self.numpy_to_pil(image)
+                    outputs["images"] += image
+                else:
+                    outputs["images"] += [*image]
 
-        # Remove dummy generations if needed
-        if num_dummy_samples > 0:
-            outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
+                if has_nsfw_concept is not None:
+                    outputs["has_nsfw_concept"] += has_nsfw_concept
+                else:
+                    outputs["has_nsfw_concept"] = None
 
-        # Process generated images
-        for i, image in enumerate(outputs["images"][:]):
-            if output_type == "latent":
-                has_nsfw_concept = None
-            else:
-                # 9. Run safety checker
-                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            if not return_dict:
+                return (outputs["images"], outputs["has_nsfw_concept"])
 
-            if i == 0:
-                outputs["images"].clear()
-
-            # 10. Convert to PIL
-            if output_type == "pil":
-                image = self.numpy_to_pil(image)
-                outputs["images"] += image
-            else:
-                outputs["images"] += [*image]
-
-            if has_nsfw_concept is not None:
-                outputs["has_nsfw_concept"] += has_nsfw_concept
-            else:
-                outputs["has_nsfw_concept"] = None
-
-        if not return_dict:
-            return (outputs["images"], outputs["has_nsfw_concept"])
-
-        return GaudiStableDiffusionPipelineOutput(
-            images=outputs["images"],
-            nsfw_content_detected=outputs["has_nsfw_concept"],
-            throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
-        )
+            return GaudiStableDiffusionPipelineOutput(
+                images=outputs["images"],
+                nsfw_content_detected=outputs["has_nsfw_concept"],
+                throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
+            )
 
     @torch.no_grad()
     def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs, capture):
