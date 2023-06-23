@@ -103,3 +103,24 @@ There are two different checkpoints for Stable Diffusion 2:
 - use [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base) for generating 512x512 images
 
 </Tip>
+
+
+## Tips
+
+To accelerate your Stable Diffusion pipeline, you can run it in full *bfloat16* precision.
+This will also save memory.
+You just need to pass `torch_dtype=torch.bfloat16` to `from_pretrained` when instantiating your pipeline.
+Here is how to do it:
+
+```py
+import torch
+
+pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    scheduler=scheduler,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+    torch_dtype=torch.bfloat16
+)
+```
