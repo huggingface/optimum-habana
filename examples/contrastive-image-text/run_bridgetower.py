@@ -327,7 +327,9 @@ def main():
         )
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
-    dataset = dataset.cast_column("image", datasets.Image(decode=False))
+
+    if data_args.mediapipe_dataloader:
+        dataset = dataset.cast_column("image", datasets.Image(decode=False))
 
     # 5. Load pretrained model, tokenizer, and image processor
     if model_args.tokenizer_name:
