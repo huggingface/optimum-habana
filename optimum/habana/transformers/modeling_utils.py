@@ -18,10 +18,12 @@ import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
 import transformers.models.gpt_neox.modeling_gpt_neox as modeling_gpt_neox
 import transformers.models.gptj.modeling_gptj as modeling_gptj
 import transformers.models.opt.modeling_opt as modeling_opt
+import transformers.models.t5.modeling_t5 as modeling_t5
 from transformers import pytorch_utils
 from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.albert.modeling_albert import AlbertModel
+from transformers.models.esm.modeling_esm import EsmOutput, EsmSelfOutput
 from transformers.models.esm.modeling_esmfold import (
     EsmFoldAttention,
     EsmFoldingTrunk,
@@ -36,21 +38,31 @@ from .generation import GaudiGenerationMixin
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
-    GaudiBloomModel,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiT5DenseActDense,
+    GaudiT5DenseGatedActDense,
+    GaudiT5LayerCrossAttention,
+    GaudiT5LayerFF,
+    GaudiT5LayerSelfAttention,
+    GaudiT5Stack,
     _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
     gaudi_bloom_block_forward,
+    gaudi_bloom_convert_to_bloom_cache,
+    gaudi_bloom_convert_to_standard_cache,
+    gaudi_bloom_model_forward,
     gaudi_conv1d_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfold_self_attention_forward,
     gaudi_esmfolding_trunk_forward,
+    gaudi_esmoutput_forward,
+    gaudi_esmselfoutput_forward,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
@@ -67,6 +79,7 @@ from .models import (
     gaudi_opt_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
+    gaudi_T5Attention_forward,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
 )
@@ -76,10 +89,8 @@ def adapt_transformers_to_gaudi():
     """
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
-
-    Args:
-        use_habana_mixed_precision (bool): whether HMP is used or not.
     """
+
     # optimize Conv1D
     pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
 
@@ -106,9 +117,11 @@ def adapt_transformers_to_gaudi():
     # Optimization for BLOOM generation on Gaudi
     modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
     modeling_bloom.BloomBlock.forward = gaudi_bloom_block_forward
-    modeling_bloom.BloomModel = GaudiBloomModel
+    modeling_bloom.BloomModel.forward = gaudi_bloom_model_forward
     modeling_bloom.BloomMLP = GaudiBloomMLP
     modeling_bloom.BloomForCausalLM = GaudiBloomForCausalLM
+    modeling_bloom.BloomPreTrainedModel._convert_to_standard_cache = gaudi_bloom_convert_to_standard_cache
+    modeling_bloom.BloomPreTrainedModel._convert_to_bloom_cache = gaudi_bloom_convert_to_bloom_cache
 
     # Replace invert_attention_mask and get_extended_attention_mask
     # so that HMP is disabled for specific parts of the code
@@ -131,6 +144,8 @@ def adapt_transformers_to_gaudi():
     EsmFoldSelfAttention.forward = gaudi_esmfold_self_attention_forward
     rigid_utils.rot_matmul = gaudi_rot_matmul
     rigid_utils.rot_vec_mul = gaudi_rot_vec_mul
+    EsmSelfOutput.forward = gaudi_esmselfoutput_forward
+    EsmOutput.forward = gaudi_esmoutput_forward
 
     # Optimization for OPT generation on Gaudi
     modeling_opt.OPTAttention.forward = gaudi_opt_attention_forward
@@ -151,3 +166,12 @@ def adapt_transformers_to_gaudi():
     modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
     modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
     modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
+
+    # Dropout kernel improvement for Flan-T5
+    modeling_t5.T5Stack = GaudiT5Stack
+    modeling_t5.T5DenseGatedActDense = GaudiT5DenseGatedActDense
+    modeling_t5.T5LayerFF = GaudiT5LayerFF
+    modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
+    modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
+    modeling_t5.T5DenseActDense = GaudiT5DenseActDense
+    modeling_t5.T5Attention.forward = gaudi_T5Attention_forward

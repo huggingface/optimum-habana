@@ -731,6 +731,15 @@ class GaudiTrainer(Trainer):
 
                 torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
 
+            # HACK for gradient checkpointing with T5
+            # For T5, checkpointing is imported with `from torch.utils.checkpoint import checkpoint`: https://github.com/huggingface/transformers/blob/04ab5605fbb4ef207b10bf2772d88c53fc242e83/src/transformers/models/t5/modeling_t5.py#L27
+            # Whereas for other models we do `import torch.utils.checkpoint`
+            # So monkey patching at Torch's level does not work
+            if self.model.config.model_type == "t5":
+                import transformers.models.t5.modeling_t5 as modeling_t5
+
+                modeling_t5.checkpoint = torch.utils.checkpoint.checkpoint
+
         model = self._wrap_model(self.model_wrapped)
 
         # for the rest of this function `model` is the outside model, whether it was wrapped or not

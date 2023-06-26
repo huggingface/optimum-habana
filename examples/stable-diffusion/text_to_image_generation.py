@@ -18,6 +18,8 @@ import logging
 import sys
 from pathlib import Path
 
+import torch
+
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 from optimum.habana.utils import set_seed
 
@@ -95,7 +97,12 @@ def main():
         default=None,
         help="The directory where the generation pipeline will be saved.",
     )
-    parser.add_argument("--image_save_dir", type=str, default=None, help="The directory where images will be saved.")
+    parser.add_argument(
+        "--image_save_dir",
+        type=str,
+        default="./stable-diffusion-generated-images",
+        help="The directory where images will be saved.",
+    )
 
     parser.add_argument("--seed", type=int, default=42, help="Random seed for initialization.")
 
@@ -113,6 +120,7 @@ def main():
             " Precision."
         ),
     )
+    parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
 
     args = parser.parse_args()
 
@@ -126,12 +134,17 @@ def main():
 
     # Initialize the scheduler and the generation pipeline
     scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+    kwargs = {
+        "scheduler": scheduler,
+        "use_habana": args.use_habana,
+        "use_hpu_graphs": args.use_hpu_graphs,
+        "gaudi_config": args.gaudi_config_name,
+    }
+    if args.bf16:
+        kwargs["torch_dtype"] = torch.bfloat16
     pipeline = GaudiStableDiffusionPipeline.from_pretrained(
         args.model_name_or_path,
-        scheduler=scheduler,
-        use_habana=args.use_habana,
-        use_hpu_graphs=args.use_hpu_graphs,
-        gaudi_config=args.gaudi_config_name,
+        **kwargs,
     )
 
     # Set seed before running the model
@@ -160,6 +173,7 @@ def main():
         if args.output_type == "pil":
             image_save_dir = Path(args.image_save_dir)
             image_save_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Saving images in {image_save_dir.resolve()}...")
             for i, image in enumerate(outputs.images):
                 image.save(image_save_dir / f"image_{i+1}.png")
         else:
