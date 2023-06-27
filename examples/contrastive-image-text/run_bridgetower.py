@@ -262,9 +262,6 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    if data_args.mediapipe_dataloader and gaudi_config.use_fused_adam:
-        gaudi_config.use_fused_adam = False
-        logger.warning("Using Habana mediapipe dataloader so disabling fused ADAM.")
 
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
@@ -329,7 +326,7 @@ def main():
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
     if data_args.mediapipe_dataloader:
-        dataset = dataset.cast_column("image", datasets.Image(decode=False))
+        dataset = dataset.cast_column(data_args.image_column, datasets.Image(decode=False))
 
     # 5. Load pretrained model, tokenizer, and image processor
     if model_args.tokenizer_name:
@@ -367,7 +364,7 @@ def main():
             param.requires_grad = False
 
     if model_args.freeze_text_pooler:
-        _freeze_params(model.bridgetower.text_model.pooler)
+        model.bridgetower.text_model.pooler = None
 
     if model_args.freeze_vision_model:
         _freeze_params(model.vision_model)
@@ -436,6 +433,9 @@ def main():
         if isinstance(image_or_path, str):
             # If the argument is a path to an image file, read it
             return read_image(image_or_path, mode=ImageReadMode.RGB)
+        elif isinstance(image_or_path, dict):
+            # Manage the case where images are a dictionary with keys 'bytes' and 'path'
+            return
         else:
             # If the argument is already an image, convert it into a tensor
             if len(image_or_path.getbands()) == 1:
@@ -466,9 +466,9 @@ def main():
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
 
-        # train_dataset = train_dataset.filter(
-        #     filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        # )
+        train_dataset = train_dataset.filter(
+            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
+        )
         train_dataset = train_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -496,9 +496,9 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-        # eval_dataset = eval_dataset.filter(
-        #     filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        # )
+        eval_dataset = eval_dataset.filter(
+            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
+        )
         eval_dataset = eval_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -526,9 +526,9 @@ def main():
             max_eval_samples = min(len(test_dataset), data_args.max_eval_samples)
             test_dataset = test_dataset.select(range(max_eval_samples))
 
-        # test_dataset = test_dataset.filter(
-        #     filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        # )
+        test_dataset = test_dataset.filter(
+            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
+        )
         test_dataset = test_dataset.map(
             function=tokenize_captions,
             batched=True,
