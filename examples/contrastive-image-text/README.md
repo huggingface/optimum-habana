@@ -14,16 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# VisionTextDualEncoder and CLIP model training examples
+# VisionTextDualEncoder and CLIP-like model training examples
 
-The following example showcases how to train a CLIP-like vision-text dual encoder model
-using a pre-trained vision and text encoder.
+This folder contains two examples:
 
-Such a model can be used for natural language image search and potentially zero-shot image classification.
-The model is inspired by [CLIP](https://openai.com/blog/clip/), introduced by Alec Radford et al.
-The idea is to train a vision encoder and a text encoder jointly to project the representation of images and their
-captions into the same embedding space, such that the caption embeddings are located near the embeddings
-of the images they describe.
+1. The first one showcases how to train a CLIP-like vision-text dual encoder model
+using a pre-trained vision and text encoder. The model is inspired by [CLIP](https://openai.com/blog/clip/), introduced by Alec Radford et al. The idea is to train a vision encoder and a text encoder jointly to project the representation of images and their captions into the same embedding space, such that the caption embeddings are located near the embeddings of the images they describe.
+2. The second one showcases how to train a [BridgeTower](https://arxiv.org/abs/2206.08657) model. This model contains bridges between the text and vision encoders that are linked to a cross-modal encoder. This enables effective bottom-up cross-modal alignment between visual and textual representations at different semantic levels in the cross-modal encoder.
+
+Such models can be used for natural language image search and potentially zero-shot image classification.
 
 ## Download COCO dataset (2017)
 This example uses COCO dataset (2017) through a custom dataset script, which requires users to manually download the
@@ -50,7 +49,12 @@ COCO_DIR = os.path.join(os.getcwd(), "data")
 ds = datasets.load_dataset("ydshieh/coco_dataset_script", "2017", data_dir=COCO_DIR)
 ```
 
-## Create a model from a vision encoder model and a text encoder model
+## CLIP-like models
+
+Here is how to run the `run_clip.py` script for training CLIP-like models.
+
+
+### Create a model from a vision encoder model and a text encoder model
 Next, we create a [VisionTextDualEncoderModel](https://huggingface.co/docs/transformers/model_doc/vision-text-dual-encoder#visiontextdualencoder).
 The `VisionTextDualEncoderModel` class lets you load any vision and text encoder model to create a dual encoder.
 Here is an example of how to load the model using pre-trained vision and text models.
@@ -80,12 +84,9 @@ This loads both the text and vision encoders using pre-trained weights, the proj
 initialized except for CLIP's vision model. If you use CLIP to initialize the vision model then the vision projection weights are also
 loaded using the pre-trained weights.
 
-## Train the model
-Finally, we can run the example script to train the model.
-
-
 ### Single-HPU training
 
+Finally, we can run the example script to train the model.
 Run the following command for single-device training:
 
 ```bash
@@ -171,6 +172,33 @@ python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3
+```
+
+
+## BridgeTower
+
+For training BridgeTower, you need to run the `run_bridgetower.py` script.
+For instance, to reproduce the results presented in [this blog post](https://huggingface.co/blog/bridgetower), you should run:
+
+```bash
+python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
+--output_dir /tmp/bridgetower-test \
+--model_name_or_path BridgeTower/bridgetower-large-itm-mlm-itc \
+--dataset_name jmhessel/newyorker_caption_contest --dataset_config_name matching \
+--image_column image --caption_column image_description \
+--remove_unused_columns=False \
+--do_train --do_eval --do_predict \
+--per_device_train_batch_size="40" --per_device_eval_batch_size="16" \
+--num_train_epochs 5 \
+--learning_rate="1e-5" \
+--push_to_hub --report_to tensorboard --hub_model_id bridgetower\
+--overwrite_output_dir \
+--use_habana --use_lazy_mode --use_hpu_graphs_for_inference --gaudi_config_name Habana/clip \
+--throughput_warmup_steps 3 \
+--logging_steps 10 \
+--dataloader_num_workers 1 \
+--distribution_strategy fast_ddp \
+--mediapipe_dataloader
 ```
 
 
