@@ -325,7 +325,7 @@ def main():
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
-    if data_args.mediapipe_dataloader:
+    if data_args.mediapipe_dataloader and "image_path" not in dataset["train"].column_names:
         dataset = dataset.cast_column(data_args.image_column, datasets.Image(decode=False))
 
     # 5. Load pretrained model, tokenizer, and image processor
@@ -447,17 +447,6 @@ def main():
         examples["pixel_values"] = [image_transformations(image) for image in images]
         return examples
 
-    def filter_corrupt_images(examples):
-        """remove problematic images"""
-        valid_images = []
-        for image_file in examples[image_column]:
-            try:
-                get_image(image_file)
-                valid_images.append(True)
-            except Exception:
-                valid_images.append(False)
-        return valid_images
-
     if training_args.do_train:
         if "train" not in dataset:
             raise ValueError("--do_train requires a train dataset")
@@ -466,9 +455,6 @@ def main():
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
 
-        train_dataset = train_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
         train_dataset = train_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -496,9 +482,6 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-        eval_dataset = eval_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
         eval_dataset = eval_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -526,9 +509,6 @@ def main():
             max_eval_samples = min(len(test_dataset), data_args.max_eval_samples)
             test_dataset = test_dataset.select(range(max_eval_samples))
 
-        test_dataset = test_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
         test_dataset = test_dataset.map(
             function=tokenize_captions,
             batched=True,
