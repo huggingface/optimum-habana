@@ -114,6 +114,21 @@ def main():
         type=str,
         help="Optional argument to give a prompt of your choice as input.",
     )
+    parser.add_argument(
+        "--bad_words_ids",
+        default=None,
+        type=str,
+        nargs='+',
+        help="Optional argument List of token ids that are not allowed to be generated.",
+    )
+    parser.add_argument(
+        "--force_words_ids",
+        default=None,
+        type=str,
+        nargs='+',
+        help="Optional argument List of token ids that nust be generated.",
+    )
+    parser.add_argument("--num_return_sequences", type=int, default=1)
 
     args = parser.parse_args()
 
@@ -163,7 +178,7 @@ def main():
 
     set_seed(args.seed)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
 
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
@@ -223,12 +238,22 @@ def main():
         logger.info(f"Args: {args}")
         logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: {use_deepspeed or args.bf16}")
 
+    bad_words_ids = None
+    force_words_ids = None
+    if args.bad_words_ids is not None:
+        bad_words_ids = [tokenizer.encode(bad_word) for bad_word in args.bad_words_ids]
+    if args.force_words_ids is not None:
+        force_words_ids = [tokenizer.encode(force_word) for force_word in args.force_words_ids]
+
     # Generation configuration
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         use_cache=args.use_kv_cache,
         do_sample=args.do_sample,
         num_beams=args.num_beams,
+        bad_words_ids=bad_words_ids,
+        force_words_ids=force_words_ids,
+        num_return_sequences=args.num_return_sequences,
     )
 
     if args.dataset_name is None:
@@ -334,9 +359,10 @@ def main():
             print()
             print("Input/outputs:")
             print(separator)
-            for i, (input_sentence, output) in enumerate(zip(input_sentences, generated)):
+            for i, input_sentence in enumerate(zip(input_sentences)):
                 print(f"input {i+1}: {input_sentence}")
-                print(f"output {i+1}: {output}")
+                for j, output in enumerate(zip(generated[args.num_return_sequences*i:args.num_return_sequences*(i+1)])):
+                    print(f"output {j+1}: {output}")
                 print(separator)
     else:
         # Downloading and loading a dataset from the hub.
@@ -419,7 +445,7 @@ def main():
                 print(separator)
                 print(f"Batch n°{i+1}")
                 print(f"Input: {prompt[:args.batch_size]}")
-                print(f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size]}")
+                print(f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}")
 
 
 if __name__ == "__main__":
