@@ -25,7 +25,7 @@ import torch
 
 
 def all_reduce_gradients(
-    model: torch.nn.Module, fusion_buffer_dtype: torch.dtype = torch.bfloat16, use_hpu_graph: bool = True
+    model: torch.nn.Module, fusion_buffer_dtype: torch.dtype = torch.bfloat16, use_hpu_graphs: bool = True
 ):
     """
     Invokes an all-reduce operation on the gradients supporting data parallel training.
@@ -36,7 +36,7 @@ def all_reduce_gradients(
     Args:
         model (torch.nn.Module): A model whose gradients are meant to be all-reduced.
         fusion_buffer_dtype (torch.dtype): The dtype of internally allocated gradient fusion buffer.
-        use_hpu_graph (bool): Determines whether HPU graph recording should be used for packing and unpacking the gradients.
+        use_hpu_graphs (bool): Determines whether HPU graph recording should be used for packing and unpacking the gradients.
 
     Raises:
         NotImplementedError: `all_reduce_gradients()` does not support changing the set of active gradients after first invocation.
@@ -50,7 +50,7 @@ def all_reduce_gradients(
             return
 
         fusion_buffer = model._all_reduce_fusion_buffer
-        if use_hpu_graph:
+        if use_hpu_graphs:
             pack_graph = model._all_reduce_gradient_pack_graph
             unpack_graph = model._all_reduce_gradient_unpack_graph
     else:
@@ -83,7 +83,7 @@ def all_reduce_gradients(
         model.__dict__["_all_reduce_fusion_entries"] = fusion_entries
 
         # Instruct the following logic to record packing and unpacking HPU graphs based on the newly created fusion buffer.
-        if use_hpu_graph:
+        if use_hpu_graphs:
             pack_graph = None
             unpack_graph = None
 
@@ -103,7 +103,7 @@ def all_reduce_gradients(
             grad = grad * world_size_inv
             fused_view.copy_(grad, non_blocking=True)
 
-    if use_hpu_graph:
+    if use_hpu_graphs:
         if pack_graph is None:
             import habana_frameworks.torch as ht
 
@@ -136,7 +136,7 @@ def all_reduce_gradients(
 
             grad.copy_(fused_view, non_blocking=True)
 
-    if use_hpu_graph:
+    if use_hpu_graphs:
         if unpack_graph is None:
             import habana_frameworks.torch as ht
 

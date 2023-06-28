@@ -164,6 +164,7 @@ The following model architectures, tasks and device distributions have been vali
 | GPT-J | :heavy_check_mark: | ✗ | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | GPT-NeoX | :heavy_check_mark: | ✗ | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | OPT | :heavy_check_mark: | ✗ | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| BridgeTower | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/main/examples/contrastive-image-text)</li> |
 
 </div>
 
