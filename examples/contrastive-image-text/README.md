@@ -18,8 +18,7 @@ limitations under the License.
 
 This folder contains two examples:
 
-1. The first one showcases how to train a CLIP-like vision-text dual encoder model
-using a pre-trained vision and text encoder. The model is inspired by [CLIP](https://openai.com/blog/clip/), introduced by Alec Radford et al. The idea is to train a vision encoder and a text encoder jointly to project the representation of images and their captions into the same embedding space, such that the caption embeddings are located near the embeddings of the images they describe.
+1. The first one showcases how to train a CLIP-like vision-text dual encoder model using pre-trained vision and text encoders. The model is inspired by [CLIP](https://openai.com/blog/clip/), introduced by Alec Radford et al. The idea is to train a vision encoder and a text encoder jointly to project the representation of images and their captions into the same embedding space, such that the caption embeddings are located near the embeddings of the images they describe.
 2. The second one showcases how to train a [BridgeTower](https://arxiv.org/abs/2206.08657) model. This model contains bridges between the text and vision encoders that are linked to a cross-modal encoder. This enables effective bottom-up cross-modal alignment between visual and textual representations at different semantic levels in the cross-modal encoder.
 
 Such models can be used for natural language image search and potentially zero-shot image classification.
