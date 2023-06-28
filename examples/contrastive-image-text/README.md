@@ -170,7 +170,29 @@ python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --deepspeed path_to_my_deepspeed_config
+```
+
+You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
+Here is a DeepSpeed configuration you can use to train your models on Gaudi:
+```json
+{
+    "steps_per_print": 64,
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": "auto",
+    "gradient_accumulation_steps": "auto",
+    "bf16": {
+        "enabled": true
+    },
+    "gradient_clipping": 1.0,
+    "zero_optimization": {
+        "stage": 2,
+        "overlap_comm": false,
+        "reduce_scatter": false,
+        "contiguous_gradients": false
+    }
+}
 ```
 
 
@@ -190,7 +212,6 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
 --per_device_train_batch_size="40" --per_device_eval_batch_size="16" \
 --num_train_epochs 5 \
 --learning_rate="1e-5" \
---push_to_hub --report_to tensorboard --hub_model_id bridgetower\
 --overwrite_output_dir \
 --use_habana --use_lazy_mode --use_hpu_graphs_for_inference --gaudi_config_name Habana/clip \
 --throughput_warmup_steps 3 \
