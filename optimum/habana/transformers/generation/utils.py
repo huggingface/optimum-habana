@@ -2323,6 +2323,8 @@ class GaudiGenerationMixin(GenerationMixin):
         beam_scores[:, 1:] = -1e9
         beam_scores = beam_scores.view((batch_size * num_beams,))
         this_peer_finished = False  # used by synced_gpus only
+        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer.start()
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -2384,7 +2386,7 @@ class GaudiGenerationMixin(GenerationMixin):
             next_tokens = next_tokens % vocab_size
             # stateless
             beam_outputs = constrained_beam_scorer.process(
-                input_ids[:,:token_idx.item()],
+                input_ids[:, : token_idx.item()],
                 next_token_scores,
                 next_tokens,
                 next_indices,
@@ -2409,11 +2411,14 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["past_key_values"] = self._reorder_cache(model_kwargs["past_key_values"], beam_idx)
             # increase cur_len
             cur_len = cur_len + 1
+            hb_profer.step()
             if constrained_beam_scorer.is_done or stopping_criteria(input_ids, scores):
                 if not synced_gpus:
                     break
                 else:
                     this_peer_finished = True
+
+        hb_profer.stop()
         sequence_outputs = constrained_beam_scorer.finalize(
             input_ids,
             beam_scores,

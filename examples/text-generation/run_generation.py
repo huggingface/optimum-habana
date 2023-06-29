@@ -118,15 +118,15 @@ def main():
         "--bad_words_ids",
         default=None,
         type=str,
-        nargs='+',
-        help="Optional argument List of token ids that are not allowed to be generated.",
+        nargs="+",
+        help="Optional argument list of token ids that are not allowed to be generated.",
     )
     parser.add_argument(
         "--force_words_ids",
         default=None,
         type=str,
-        nargs='+',
-        help="Optional argument List of token ids that nust be generated.",
+        nargs="+",
+        help="Optional argument list of token ids that must be generated.",
     )
     parser.add_argument("--num_return_sequences", type=int, default=1)
 
@@ -178,7 +178,10 @@ def main():
 
     set_seed(args.seed)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
+    if args.bad_words_ids is not None or args.force_words_ids is not None:
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
 
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
@@ -241,9 +244,11 @@ def main():
     bad_words_ids = None
     force_words_ids = None
     if args.bad_words_ids is not None:
-        bad_words_ids = [tokenizer.encode(bad_word) for bad_word in args.bad_words_ids]
+        bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words_ids]
     if args.force_words_ids is not None:
-        force_words_ids = [tokenizer.encode(force_word) for force_word in args.force_words_ids]
+        force_words_ids = [
+            tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words_ids
+        ]
 
     # Generation configuration
     generation_config = GenerationConfig(
@@ -361,7 +366,9 @@ def main():
             print(separator)
             for i, input_sentence in enumerate(zip(input_sentences)):
                 print(f"input {i+1}: {input_sentence}")
-                for j, output in enumerate(zip(generated[args.num_return_sequences*i:args.num_return_sequences*(i+1)])):
+                for j, output in enumerate(
+                    zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
+                ):
                     print(f"output {j+1}: {output}")
                 print(separator)
     else:
@@ -445,7 +452,9 @@ def main():
                 print(separator)
                 print(f"Batch n°{i+1}")
                 print(f"Input: {prompt[:args.batch_size]}")
-                print(f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}")
+                print(
+                    f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+                )
 
 
 if __name__ == "__main__":
