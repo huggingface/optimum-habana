@@ -25,7 +25,7 @@ import time
 
 import torch
 import torch.nn.functional as F
-from checkpoint_utils import get_ds_injection_policy, model_is_bloom, model_is_optimized, write_checkpoints_json
+from checkpoint_utils import get_ds_injection_policy, model_is_optimized, write_checkpoints_json
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
@@ -173,14 +173,13 @@ def main():
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path)
         is_optimized = model_is_optimized(config)
-        is_bloom = model_is_bloom(config)
 
-        if is_bloom:
+        if config.model_type in ["bloom", "opt"]:
             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
-            with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
+            with deepspeed.OnDevice(dtype=model_dtype, device=args.device):
                 model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval()
 
@@ -189,7 +188,7 @@ def main():
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
-        if is_bloom:
+        if config.model_type in ["bloom", "opt"]:
             # BLOOM is managed differently
             checkpoints_json = "checkpoints.json"
             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
@@ -198,7 +197,7 @@ def main():
         torch.distributed.barrier()
 
         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
-        if is_bloom:
+        if config.model_type in ["bloom", "opt"]:
             ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
@@ -206,7 +205,6 @@ def main():
     else:
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval().to(args.device)
-        is_bloom = model_is_bloom(model.config)
         is_optimized = model_is_optimized(model.config)
 
         if args.use_hpu_graphs:

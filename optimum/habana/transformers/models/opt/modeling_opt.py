@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.nn import CrossEntropyLoss
+from transformers.deepspeed import is_deepspeed_available
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.opt.modeling_opt import OPTForCausalLM, OPTLearnedPositionalEmbedding, logger
 
@@ -525,3 +526,64 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
             }
         )
         return model_inputs
+
+
+if is_deepspeed_available():
+    from deepspeed.module_inject.layers import EmbeddingLayer, LinearLayer, OPTEmbedding
+    from torch.nn.parameter import Parameter
+
+    class GaudiEmbeddingLayer(EmbeddingLayer):
+        def __init__(self, weight_shape, dtype=torch.bfloat16, device=None):
+            super(EmbeddingLayer, self).__init__()
+            self.weight = Parameter(
+                torch.empty(
+                    weight_shape[0],
+                    weight_shape[1],
+                    dtype=dtype,
+                    device=device,
+                )
+            )
+
+    class GaudiLinearLayer(LinearLayer):
+        def __init__(self, weight_shape=None, dtype=torch.bfloat16, weight=None, bias=None, device=None):
+            super(LinearLayer, self).__init__()
+            if weight is not None:
+                self.weight = weight
+                self.bias = bias
+            else:
+                self.weight = Parameter(
+                    torch.empty(
+                        weight_shape,
+                        dtype=dtype,
+                        device=device,
+                    )
+                )
+                self.bias = Parameter(
+                    torch.empty(
+                        weight_shape[0],
+                        dtype=dtype,
+                        device=device,
+                    )
+                )
+
+    class GaudiOPTEmbedding(OPTEmbedding):
+        """
+        Adapted from deepspeed.module_inject.layers.OPTEmbedding: https://github.com/HabanaAI/DeepSpeed/blob/410b3dbb74c7d266eba71aadf26ee616c2882040/deepspeed/module_inject/layers.py#L74
+        Differences are:
+        - add `token_idx` to manage static shapes
+        """
+
+        def forward(self, attention_mask: torch.LongTensor, past_key_values_length: int = 0, token_idx=None):
+            """`input_ids_shape` is expected to be [bsz x seqlen]."""
+            attention_mask = attention_mask.long()
+
+            if past_key_values_length == 0:
+                # create positions depending on attention_mask
+                positions = (torch.cumsum(attention_mask, dim=1).type_as(attention_mask) * attention_mask).long() - 1
+
+                # cut positions if `past_key_values_length` is > 0
+                positions = positions[:, past_key_values_length:]
+
+                return super().forward(positions + self.offset)
+            else:
+                return super().forward(token_idx + self.offset)

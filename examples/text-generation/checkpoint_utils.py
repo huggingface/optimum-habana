@@ -59,13 +59,6 @@ def write_checkpoints_json(model_name_or_path, local_rank, checkpoints_json):
             json.dump(data, fp)
 
 
-def model_is_bloom(config):
-    """
-    Checks if the given config belongs to a BLOOM-like model.
-    """
-    return config.model_type == "bloom"
-
-
 def get_optimized_model_name(config):
     model_names = ["bloom", "gpt2", "opt", "gptj", "gpt_neox"]
     for model_name in model_names:

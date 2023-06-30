@@ -175,3 +175,14 @@ def adapt_transformers_to_gaudi():
     modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
     modeling_t5.T5DenseActDense = GaudiT5DenseActDense
     modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
+
+    from transformers.deepspeed import is_deepspeed_available
+
+    if is_deepspeed_available():
+        import deepspeed
+
+        from .models.opt.modeling_opt import GaudiEmbeddingLayer, GaudiLinearLayer, GaudiOPTEmbedding
+
+        deepspeed.module_inject.layers.EmbeddingLayer = GaudiEmbeddingLayer
+        deepspeed.module_inject.layers.LinearLayer = GaudiLinearLayer
+        deepspeed.module_inject.layers.OPTEmbedding = GaudiOPTEmbedding
