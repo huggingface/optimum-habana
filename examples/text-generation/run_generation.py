@@ -119,14 +119,14 @@ def main():
         default=None,
         type=str,
         nargs="+",
-        help="Optional argument list of token ids that are not allowed to be generated.",
+        help="Optional argument list of words that are not allowed to be generated.",
     )
     parser.add_argument(
         "--force_words",
         default=None,
         type=str,
         nargs="+",
-        help="Optional argument list of token ids that must be generated.",
+        help="Optional argument list of words that must be generated.",
     )
     parser.add_argument("--num_return_sequences", type=int, default=1)
 
