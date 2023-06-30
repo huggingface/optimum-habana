@@ -22,6 +22,7 @@ def get_repo_root(model_name_or_path, local_rank):
             model_name_or_path,
             local_files_only=is_offline_mode(),
             cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
+            allow_patterns=["*.bin"],
             ignore_patterns=["*.safetensors"],
         )
 
@@ -32,6 +33,7 @@ def get_repo_root(model_name_or_path, local_rank):
         model_name_or_path,
         local_files_only=is_offline_mode(),
         cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
+        allow_patterns=["*.bin"],
         ignore_patterns=["*.safetensors"],
     )
 
