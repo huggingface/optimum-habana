@@ -115,14 +115,14 @@ def main():
         help="Optional argument to give a prompt of your choice as input.",
     )
     parser.add_argument(
-        "--bad_words_ids",
+        "--bad_words",
         default=None,
         type=str,
         nargs="+",
         help="Optional argument list of token ids that are not allowed to be generated.",
     )
     parser.add_argument(
-        "--force_words_ids",
+        "--force_words",
         default=None,
         type=str,
         nargs="+",
@@ -178,7 +178,7 @@ def main():
 
     set_seed(args.seed)
 
-    if args.bad_words_ids is not None or args.force_words_ids is not None:
+    if args.bad_words is not None or args.force_words is not None:
         tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
     else:
         tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
@@ -243,12 +243,10 @@ def main():
 
     bad_words_ids = None
     force_words_ids = None
-    if args.bad_words_ids is not None:
-        bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words_ids]
-    if args.force_words_ids is not None:
-        force_words_ids = [
-            tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words_ids
-        ]
+    if args.bad_words is not None:
+        bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
+    if args.force_words is not None:
+        force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
 
     # Generation configuration
     generation_config = GenerationConfig(
