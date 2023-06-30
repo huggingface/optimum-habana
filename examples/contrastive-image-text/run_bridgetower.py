@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2022 The HuggingFace Team All rights reserved.
+# Copyright 2023 The HuggingFace Team All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,12 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Training a CLIP like dual encoder models using text and vision encoders in the library.
-The script can be used to train CLIP like models for languages other than English by using
-a text encoder pre-trained in the desired language. Currently this script supports the following vision
-and text models:
-Vision models: ViT(https://huggingface.co/models?filter=vit), CLIP (https://huggingface.co/models?filter=clip)
-Text models: BERT, ROBERTa (https://huggingface.co/models?filter=fill-mask)
+Training BridgeTower with a contrastive text-image loss.
 """
 
 import logging
@@ -28,20 +23,20 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
+import datasets
 import torch
 import transformers
 from datasets import load_dataset
 from habana_dataloader_trainer import HabanaDataloaderTrainer
-from PIL import Image
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
-from torchvision.transforms.functional import InterpolationMode
+from torchvision.transforms.functional import InterpolationMode, to_grayscale, to_tensor
 from transformers import (
     AutoImageProcessor,
-    AutoModel,
     AutoTokenizer,
     HfArgumentParser,
 )
+from transformers.models.bridgetower.modeling_bridgetower import BridgeTowerForContrastiveLearning
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
@@ -53,7 +48,7 @@ from optimum.habana.utils import set_seed
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.28.0")
+check_min_version("4.27.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
 
@@ -99,6 +94,9 @@ class ModelArguments:
     )
     freeze_text_model: bool = field(
         default=False, metadata={"help": "Whether to freeze the text model parameters or not."}
+    )
+    freeze_text_pooler: bool = field(
+        default=True, metadata={"help": "Whether to freeze the text pooler parameters or not."}
     )
 
 
@@ -239,7 +237,7 @@ def main():
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
-    send_example_telemetry("run_clip", model_args, data_args)
+    send_example_telemetry("run_bridgetower", model_args, data_args)
 
     # 2. Setup logging
     logging.basicConfig(
@@ -327,6 +325,9 @@ def main():
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
+    if data_args.mediapipe_dataloader and "image_path" not in dataset["train"].column_names:
+        dataset = dataset.cast_column(data_args.image_column, datasets.Image(decode=False))
+
     # 5. Load pretrained model, tokenizer, and image processor
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(
@@ -350,7 +351,7 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    model = AutoModel.from_pretrained(
+    model = BridgeTowerForContrastiveLearning.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
@@ -362,6 +363,9 @@ def main():
         for param in module.parameters():
             param.requires_grad = False
 
+    if model_args.freeze_text_pooler:
+        model.bridgetower.text_model.pooler = None
+
     if model_args.freeze_vision_model:
         _freeze_params(model.vision_model)
 
@@ -370,6 +374,14 @@ def main():
 
     # set seed for torch dataloaders
     set_seed(training_args.seed)
+
+    # Create validation and test splits if they don't exist yet
+    if "test" not in dataset:
+        dataset = dataset["train"].train_test_split(test_size=0.4, shuffle=True, seed=training_args.seed)
+        if "validation" not in dataset:
+            buffer_dataset = dataset["test"].train_test_split(test_size=0.5, shuffle=False)
+            dataset["validation"] = buffer_dataset["train"]
+            dataset["test"] = buffer_dataset["test"]
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -417,21 +429,23 @@ def main():
         examples["attention_mask"] = text_inputs.attention_mask
         return examples
 
+    def get_image(image_or_path):
+        if isinstance(image_or_path, str):
+            # If the argument is a path to an image file, read it
+            return read_image(image_or_path, mode=ImageReadMode.RGB)
+        elif isinstance(image_or_path, dict):
+            # Manage the case where images are a dictionary with keys 'bytes' and 'path'
+            return
+        else:
+            # If the argument is already an image, convert it into a tensor
+            if len(image_or_path.getbands()) == 1:
+                image_or_path = to_grayscale(image_or_path, num_output_channels=3)
+            return to_tensor(image_or_path)
+
     def transform_images(examples):
-        images = [read_image(image_file, mode=ImageReadMode.RGB) for image_file in examples[image_column]]
+        images = [get_image(image_file) for image_file in examples[image_column]]
         examples["pixel_values"] = [image_transformations(image) for image in images]
         return examples
-
-    def filter_corrupt_images(examples):
-        """remove problematic images"""
-        valid_images = []
-        for image_file in examples[image_column]:
-            try:
-                Image.open(image_file)
-                valid_images.append(True)
-            except Exception:
-                valid_images.append(False)
-        return valid_images
 
     if training_args.do_train:
         if "train" not in dataset:
@@ -441,9 +455,6 @@ def main():
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
 
-        train_dataset = train_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
         train_dataset = train_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -471,9 +482,6 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-        eval_dataset = eval_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
         eval_dataset = eval_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -501,9 +509,6 @@ def main():
             max_eval_samples = min(len(test_dataset), data_args.max_eval_samples)
             test_dataset = test_dataset.select(range(max_eval_samples))
 
-        test_dataset = test_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
         test_dataset = test_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -513,8 +518,6 @@ def main():
             desc="Running tokenizer on test dataset",
         )
 
-        # Transform images on the fly as doing it on the whole dataset takes too much time.
-        test_dataset.set_transform(transform_images)
         if data_args.mediapipe_dataloader:
             test_dataset.image_mean = image_processor.image_mean
             test_dataset.image_std = image_processor.image_std
@@ -554,10 +557,16 @@ def main():
     # 10. Evaluation
     if training_args.do_eval:
         metrics = trainer.evaluate()
-        trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
+        trainer.log_metrics("validation", metrics)
+        trainer.save_metrics("validation", metrics)
 
-    # 11. Write Training Stats and push to hub.
+    # 11. Test
+    if training_args.do_predict:
+        metrics = trainer.evaluate(eval_dataset=test_dataset)
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
+
+    # 12. Write Training Stats and push to hub.
     kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "contrastive-image-text-modeling"}
     if data_args.dataset_name is not None:
         kwargs["dataset_tags"] = data_args.dataset_name
