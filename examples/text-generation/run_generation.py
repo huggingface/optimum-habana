@@ -19,6 +19,7 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 """
 
 import argparse
+import copy
 import logging
 import os
 import time
@@ -27,7 +28,6 @@ import torch
 import torch.nn.functional as F
 from checkpoint_utils import get_ds_injection_policy, model_is_bloom, model_is_optimized, write_checkpoints_json
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from transformers.generation import GenerationConfig
 
 
 logging.basicConfig(
@@ -232,6 +232,8 @@ def main():
 
             model = wrap_in_hpu_graph(model)
 
+    if not model.config.is_encoder_decoder:
+        tokenizer.padding_side = "left"
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -249,15 +251,14 @@ def main():
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
 
     # Generation configuration
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        use_cache=args.use_kv_cache,
-        do_sample=args.do_sample,
-        num_beams=args.num_beams,
-        bad_words_ids=bad_words_ids,
-        force_words_ids=force_words_ids,
-        num_return_sequences=args.num_return_sequences,
-    )
+    generation_config = copy.deepcopy(model.generation_config)
+    generation_config.max_new_tokens = args.max_new_tokens
+    generation_config.use_cache = args.use_kv_cache
+    generation_config.do_sample = args.do_sample
+    generation_config.num_beams = args.num_beams
+    generation_config.bad_words_ids = bad_words_ids
+    generation_config.force_words_ids = force_words_ids
+    generation_config.num_return_sequences = args.num_return_sequences
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
@@ -293,11 +294,11 @@ def main():
 
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             input_token_len = input_tokens.input_ids.shape[-1]
-            input_tokens["input_ids"] = F.pad(
-                input_tokens.input_ids, (0, args.max_new_tokens), value=model.config.pad_token_id
-            )
-            input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
             if is_optimized:
+                input_tokens["input_ids"] = F.pad(
+                    input_tokens.input_ids, (0, args.max_new_tokens), value=model.generation_config.pad_token_id
+                )
+                input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
                 kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
             else:
@@ -422,8 +423,11 @@ def main():
         for i, batch in enumerate(dataloader):
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
-            batch["input_ids"] = F.pad(batch["input_ids"], (0, args.max_new_tokens), value=model.config.pad_token_id)
-            batch["attention_mask"] = F.pad(batch["attention_mask"], (0, args.max_new_tokens), value=0)
+            if is_optimized:
+                batch["input_ids"] = F.pad(
+                    batch["input_ids"], (0, args.max_new_tokens), value=model.generation_config.pad_token_id
+                )
+                batch["attention_mask"] = F.pad(batch["attention_mask"], (0, args.max_new_tokens), value=0)
             # prompt = batch.pop(column_name)
             # Move inputs to target device(s)
             for t in batch:
@@ -437,7 +441,7 @@ def main():
             outputs = model.generate(
                 **batch,
                 generation_config=generation_config,
-                lazy_mode=args.use_hpu_graphs,
+                lazy_mode=True,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,

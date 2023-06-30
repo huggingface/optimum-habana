@@ -344,14 +344,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # decoder-only models should use left-padding for generation
         if not self.config.is_encoder_decoder:
-            if (
-                generation_config.pad_token_id is not None
-                and torch.sum(inputs_tensor[:, -1] == generation_config.pad_token_id) > 0
-            ):
-                logger.warning(
-                    "A decoder-only architecture is being used, but right-padding was detected! For correct "
-                    "generation results, please set `padding_side='left'` when initializing the tokenizer."
-                )
+            if generation_config.pad_token_id is not None:
+                position = model_kwargs["token_idx"] - 1 if "token_idx" in model_kwargs else -1
+                if torch.sum(inputs_tensor[:, position] == generation_config.pad_token_id) > 0:
+                    logger.warning(
+                        "A decoder-only architecture is being used, but right-padding was detected! For correct "
+                        "generation results, please set `padding_side='left'` when initializing the tokenizer."
+                    )
 
         if self.config.is_encoder_decoder and "encoder_outputs" not in model_kwargs:
             # if model is encoder decoder encoder_outputs are created
