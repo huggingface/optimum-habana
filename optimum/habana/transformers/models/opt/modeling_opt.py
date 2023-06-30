@@ -530,41 +530,24 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
 
 if is_deepspeed_available():
     from deepspeed.module_inject.layers import EmbeddingLayer, LinearLayer, OPTEmbedding
-    from torch.nn.parameter import Parameter
 
     class GaudiEmbeddingLayer(EmbeddingLayer):
         def __init__(self, weight_shape, dtype=torch.bfloat16, device=None):
-            super(EmbeddingLayer, self).__init__()
-            self.weight = Parameter(
-                torch.empty(
-                    weight_shape[0],
-                    weight_shape[1],
-                    dtype=dtype,
-                    device=device,
-                )
+            super().__init__(
+                weight_shape,
+                dtype=torch.bfloat16,
+                device=None,
             )
 
     class GaudiLinearLayer(LinearLayer):
         def __init__(self, weight_shape=None, dtype=torch.bfloat16, weight=None, bias=None, device=None):
-            super(LinearLayer, self).__init__()
-            if weight is not None:
-                self.weight = weight
-                self.bias = bias
-            else:
-                self.weight = Parameter(
-                    torch.empty(
-                        weight_shape,
-                        dtype=dtype,
-                        device=device,
-                    )
-                )
-                self.bias = Parameter(
-                    torch.empty(
-                        weight_shape[0],
-                        dtype=dtype,
-                        device=device,
-                    )
-                )
+            super().__init__(
+                weight_shape,
+                dtype,
+                weight,
+                bias,
+                device,
+            )
 
     class GaudiOPTEmbedding(OPTEmbedding):
         """
