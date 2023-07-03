@@ -183,6 +183,30 @@ def adapt_transformers_to_gaudi():
 
         from .models.opt.modeling_opt import GaudiEmbeddingLayer, GaudiLinearLayer, GaudiOPTEmbedding
 
-        deepspeed.module_inject.layers.EmbeddingLayer = GaudiEmbeddingLayer
         deepspeed.module_inject.layers.LinearLayer = GaudiLinearLayer
+        deepspeed.module_inject.layers.EmbeddingLayer = GaudiEmbeddingLayer
         deepspeed.module_inject.layers.OPTEmbedding = GaudiOPTEmbedding
+        deepspeed.module_inject.LinearLayer = GaudiLinearLayer
+        deepspeed.module_inject.EmbeddingLayer = GaudiEmbeddingLayer
+        deepspeed.module_inject.load_checkpoint.LinearLayer = GaudiLinearLayer
+        deepspeed.module_inject.replace_module.LinearLayer = GaudiLinearLayer
+        deepspeed.inference.engine.LinearLayer = GaudiLinearLayer
+        deepspeed.module_inject.load_checkpoint.EmbeddingLayer = GaudiEmbeddingLayer
+        deepspeed.module_inject.load_checkpoint.OPTEmbedding = GaudiOPTEmbedding
+
+        # For monkey patching to work with DeepSpeed, we need to uncache all DS modules
+        # so that they are reloaded with updated code at the next import
+        import sys
+
+        to_uncache = []
+        for mod in sys.modules:
+            if "deepspeed" in mod:
+                to_uncache.append(mod)
+
+        for mod in to_uncache:
+            del sys.modules[mod]
+
+        # All PyDantic DS class validators have to be cleared so that they are not declared twice
+        import pydantic
+
+        pydantic.class_validators._FUNCS.clear()

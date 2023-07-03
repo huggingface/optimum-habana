@@ -529,32 +529,63 @@ class GaudiOPTForCausalLM(OPTForCausalLM):
 
 
 if is_deepspeed_available():
-    from deepspeed.module_inject.layers import EmbeddingLayer, LinearLayer, OPTEmbedding
+    from torch.nn.parameter import Parameter
 
-    class GaudiEmbeddingLayer(EmbeddingLayer):
+    class GaudiEmbeddingLayer(torch.nn.Module):
         def __init__(self, weight_shape, dtype=torch.bfloat16, device=None):
-            super().__init__(
-                weight_shape,
-                dtype=torch.bfloat16,
-                device=None,
+            super().__init__()
+            self.weight = Parameter(
+                torch.empty(
+                    weight_shape[0],
+                    weight_shape[1],
+                    dtype=dtype,
+                    device=device,
+                )
             )
 
-    class GaudiLinearLayer(LinearLayer):
+        def forward(self, input):
+            return torch.nn.functional.embedding(input, self.weight)
+
+    class GaudiLinearLayer(torch.nn.Module):
         def __init__(self, weight_shape=None, dtype=torch.bfloat16, weight=None, bias=None, device=None):
-            super().__init__(
-                weight_shape,
-                dtype,
-                weight,
-                bias,
-                device,
-            )
+            super().__init__()
+            if weight is not None:
+                self.weight = weight
+                self.bias = bias
+            else:
+                self.weight = Parameter(
+                    torch.empty(
+                        weight_shape,
+                        dtype=dtype,
+                        device=device,
+                    )
+                )
+                self.bias = Parameter(
+                    torch.empty(
+                        weight_shape[0],
+                        dtype=dtype,
+                        device=device,
+                    )
+                )
 
-    class GaudiOPTEmbedding(OPTEmbedding):
+        def forward(self, input):
+            output = torch.matmul(input, self.weight.transpose(-1, -2))
+            if self.bias is not None:
+                output += self.bias
+            return output
+
+    class GaudiOPTEmbedding(GaudiEmbeddingLayer):
         """
         Adapted from deepspeed.module_inject.layers.OPTEmbedding: https://github.com/HabanaAI/DeepSpeed/blob/410b3dbb74c7d266eba71aadf26ee616c2882040/deepspeed/module_inject/layers.py#L74
         Differences are:
         - add `token_idx` to manage static shapes
         """
+
+        def __init__(self, weight_shape, device=None):
+            # OPT is set up so that if padding_idx is specified then offset the embedding ids by 2
+            # and adjust num_embeddings appropriately. Other models don't have this hack
+            self.offset = 2
+            super().__init__(weight_shape, device=device)
 
         def forward(self, attention_mask: torch.LongTensor, past_key_values_length: int = 0, token_idx=None):
             """`input_ids_shape` is expected to be [bsz x seqlen]."""

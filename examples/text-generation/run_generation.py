@@ -151,11 +151,6 @@ def main():
 
     world_size, rank, args.local_rank = initialize_distributed_hpu()
 
-    # Tweak generation so that it runs faster on Gaudi
-    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-
-    adapt_transformers_to_gaudi()
-
     if use_deepspeed:
         # Check if DeepSpeed is installed
         from transformers.deepspeed import is_deepspeed_available
@@ -172,6 +167,11 @@ def main():
         logger.info("DeepSpeed is enabled.")
     else:
         logger.info("Single-device run.")
+
+    # Tweak generation so that it runs faster on Gaudi
+    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
+    adapt_transformers_to_gaudi()
 
     # Set seed before initializing model.
     from optimum.habana.utils import set_seed
