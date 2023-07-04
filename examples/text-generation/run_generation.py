@@ -26,7 +26,13 @@ import time
 
 import torch
 import torch.nn.functional as F
-from checkpoint_utils import get_ds_injection_policy, model_is_bloom, model_is_optimized, write_checkpoints_json
+from checkpoint_utils import (
+    get_ds_injection_policy,
+    get_repo_root,
+    model_is_bloom,
+    model_is_optimized,
+    write_checkpoints_json,
+)
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 
@@ -198,6 +204,7 @@ def main():
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
+            get_repo_root(args.model_name_or_path, args.local_rank)
             with deepspeed.OnDevice(dtype=model_dtype, device=args.device):
                 model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval()
@@ -222,6 +229,7 @@ def main():
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         model = model.module
     else:
+        get_repo_root(args.model_name_or_path)
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval().to(args.device)
         is_bloom = model_is_bloom(model.config)

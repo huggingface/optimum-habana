@@ -4,38 +4,49 @@ from pathlib import Path
 
 import torch
 from huggingface_hub import snapshot_download
-from transformers.utils import is_offline_mode
+from transformers.utils import is_offline_mode, is_safetensors_available
 
 
-def get_repo_root(model_name_or_path, local_rank):
+def get_repo_root(model_name_or_path, local_rank=-1):
     """
     Downloads the specified model checkpoint and returns the repository where it was downloaded.
     """
-    # Checks if online or not
-    if is_offline_mode():
-        if local_rank == 0:
-            print("Offline mode: forcing local_files_only=True")
+    if Path(model_name_or_path).is_dir():
+        # If it is a local model, no need to download anything
+        return model_name_or_path
+    else:
+        # Checks if online or not
+        if is_offline_mode():
+            if local_rank == 0:
+                print("Offline mode: forcing local_files_only=True")
 
-    # Download only on first process
-    if local_rank == 0:
-        snapshot_download(
+        # Download only on first process
+        if local_rank == -1:
+            return snapshot_download(
+                model_name_or_path,
+                local_files_only=is_offline_mode(),
+                cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
+                allow_patterns=["*.safetensors"] if is_safetensors_available() else ["*.bin"],
+                max_workers=16,
+            )
+        elif local_rank == 0:
+            snapshot_download(
+                model_name_or_path,
+                local_files_only=is_offline_mode(),
+                cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
+                allow_patterns=["*.safetensors"] if is_safetensors_available() else ["*.bin"],
+                max_workers=16,
+            )
+
+        # Make all processes wait so that other processes can get the checkpoint directly from cache
+        torch.distributed.barrier()
+
+        return snapshot_download(
             model_name_or_path,
             local_files_only=is_offline_mode(),
             cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
-            allow_patterns=["*.bin"],
-            ignore_patterns=["*.safetensors"],
+            allow_patterns=["*.safetensors"] if is_safetensors_available() else ["*.bin"],
         )
-
-    # Make all processes wait so that other processes can get the checkpoint directly from cache
-    torch.distributed.barrier()
-
-    return snapshot_download(
-        model_name_or_path,
-        local_files_only=is_offline_mode(),
-        cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
-        allow_patterns=["*.bin"],
-        ignore_patterns=["*.safetensors"],
-    )
 
 
 def get_checkpoint_files(model_name_or_path, local_rank):
