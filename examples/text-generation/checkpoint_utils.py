@@ -21,22 +21,17 @@ def get_repo_root(model_name_or_path, local_rank=-1):
                 print("Offline mode: forcing local_files_only=True")
 
         # Download only on first process
-        if local_rank == -1:
-            return snapshot_download(
+        if local_rank in [-1, 0]:
+            cache_dir = snapshot_download(
                 model_name_or_path,
                 local_files_only=is_offline_mode(),
                 cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
                 allow_patterns=["*.safetensors"] if is_safetensors_available() else ["*.bin"],
                 max_workers=16,
             )
-        elif local_rank == 0:
-            snapshot_download(
-                model_name_or_path,
-                local_files_only=is_offline_mode(),
-                cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
-                allow_patterns=["*.safetensors"] if is_safetensors_available() else ["*.bin"],
-                max_workers=16,
-            )
+            if local_rank == -1:
+                # If there is only one process, then the method is finished
+                return cache_dir
 
         # Make all processes wait so that other processes can get the checkpoint directly from cache
         torch.distributed.barrier()
