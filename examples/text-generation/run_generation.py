@@ -233,7 +233,6 @@ def main():
         get_repo_root(args.model_name_or_path)
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval().to(args.device)
-        is_bloom = model_is_bloom(model.config)
         is_optimized = model_is_optimized(model.config)
 
         if args.use_hpu_graphs:
