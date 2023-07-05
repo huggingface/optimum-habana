@@ -69,7 +69,8 @@ def gaudi_albert_forward(
     # torch.finfo must take the dtype of encoder_extended_attention_mask
     extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # bf16 compatibility
     extended_attention_mask = 1.0 - extended_attention_mask
-    extended_attention_mask = extended_attention_mask * torch.finfo(extended_attention_mask.dtype).min
+    with torch.autocast(enabled=False, device_type="hpu"):
+        extended_attention_mask = extended_attention_mask * torch.finfo(extended_attention_mask.dtype).min
     head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
     embedding_output = self.embeddings(
