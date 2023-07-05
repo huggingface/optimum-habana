@@ -205,7 +205,8 @@ def main():
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
             get_repo_root(args.model_name_or_path, args.local_rank)
-            with deepspeed.OnDevice(dtype=model_dtype, device=args.device):
+            # TODO: revisit placement on CPU when auto-injection is possible
+            with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
                 model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval()
 
