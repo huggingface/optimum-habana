@@ -940,7 +940,7 @@ class GaudiTrainer(Trainer):
 
                 if args.local_rank != -1 and args.distribution_strategy == "fast_ddp" and is_optimization_step:
                     all_reduce_gradients(
-                        model, use_hpu_graph=True
+                        model, use_hpu_graphs=True
                     )  # use HPU graphs for gradient fusion regardless of args.use_hpu_graphs_for_training setting
 
                 if args.logging_nan_inf_filter and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step)):

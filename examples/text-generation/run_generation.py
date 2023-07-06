@@ -19,15 +19,21 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 """
 
 import argparse
+import copy
 import logging
 import os
 import time
 
 import torch
 import torch.nn.functional as F
-from checkpoint_utils import get_ds_injection_policy, model_is_bloom, model_is_optimized, write_checkpoints_json
+from checkpoint_utils import (
+    get_ds_injection_policy,
+    get_repo_root,
+    model_is_bloom,
+    model_is_optimized,
+    write_checkpoints_json,
+)
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from transformers.generation import GenerationConfig
 
 
 logging.basicConfig(
@@ -114,6 +120,21 @@ def main():
         type=str,
         help="Optional argument to give a prompt of your choice as input.",
     )
+    parser.add_argument(
+        "--bad_words",
+        default=None,
+        type=str,
+        nargs="+",
+        help="Optional argument list of words that are not allowed to be generated.",
+    )
+    parser.add_argument(
+        "--force_words",
+        default=None,
+        type=str,
+        nargs="+",
+        help="Optional argument list of words that must be generated.",
+    )
+    parser.add_argument("--num_return_sequences", type=int, default=1)
 
     args = parser.parse_args()
 
@@ -163,7 +184,10 @@ def main():
 
     set_seed(args.seed)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+    if args.bad_words is not None or args.force_words is not None:
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
 
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
@@ -180,7 +204,9 @@ def main():
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
-            with deepspeed.OnDevice(dtype=model_dtype, device=args.device):
+            get_repo_root(args.model_name_or_path, args.local_rank)
+            # TODO: revisit placement on CPU when auto-injection is possible
+            with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
                 model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval()
 
@@ -204,9 +230,9 @@ def main():
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         model = model.module
     else:
+        get_repo_root(args.model_name_or_path)
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval().to(args.device)
-        is_bloom = model_is_bloom(model.config)
         is_optimized = model_is_optimized(model.config)
 
         if args.use_hpu_graphs:
@@ -214,6 +240,8 @@ def main():
 
             model = wrap_in_hpu_graph(model)
 
+    if not model.config.is_encoder_decoder:
+        tokenizer.padding_side = "left"
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -223,13 +251,22 @@ def main():
         logger.info(f"Args: {args}")
         logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: {use_deepspeed or args.bf16}")
 
+    bad_words_ids = None
+    force_words_ids = None
+    if args.bad_words is not None:
+        bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
+    if args.force_words is not None:
+        force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
+
     # Generation configuration
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        use_cache=args.use_kv_cache,
-        do_sample=args.do_sample,
-        num_beams=args.num_beams,
-    )
+    generation_config = copy.deepcopy(model.generation_config)
+    generation_config.max_new_tokens = args.max_new_tokens
+    generation_config.use_cache = args.use_kv_cache
+    generation_config.do_sample = args.do_sample
+    generation_config.num_beams = args.num_beams
+    generation_config.bad_words_ids = bad_words_ids
+    generation_config.force_words_ids = force_words_ids
+    generation_config.num_return_sequences = args.num_return_sequences
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
@@ -265,11 +302,11 @@ def main():
 
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             input_token_len = input_tokens.input_ids.shape[-1]
-            input_tokens["input_ids"] = F.pad(
-                input_tokens.input_ids, (0, args.max_new_tokens), value=model.config.pad_token_id
-            )
-            input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
             if is_optimized:
+                input_tokens["input_ids"] = F.pad(
+                    input_tokens.input_ids, (0, args.max_new_tokens), value=model.generation_config.pad_token_id
+                )
+                input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
                 kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
             else:
@@ -334,9 +371,12 @@ def main():
             print()
             print("Input/outputs:")
             print(separator)
-            for i, (input_sentence, output) in enumerate(zip(input_sentences, generated)):
+            for i, input_sentence in enumerate(zip(input_sentences)):
                 print(f"input {i+1}: {input_sentence}")
-                print(f"output {i+1}: {output}")
+                for j, output in enumerate(
+                    zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
+                ):
+                    print(f"output {j+1}: {output}")
                 print(separator)
     else:
         # Downloading and loading a dataset from the hub.
@@ -391,8 +431,11 @@ def main():
         for i, batch in enumerate(dataloader):
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
-            batch["input_ids"] = F.pad(batch["input_ids"], (0, args.max_new_tokens), value=model.config.pad_token_id)
-            batch["attention_mask"] = F.pad(batch["attention_mask"], (0, args.max_new_tokens), value=0)
+            if is_optimized:
+                batch["input_ids"] = F.pad(
+                    batch["input_ids"], (0, args.max_new_tokens), value=model.generation_config.pad_token_id
+                )
+                batch["attention_mask"] = F.pad(batch["attention_mask"], (0, args.max_new_tokens), value=0)
             # prompt = batch.pop(column_name)
             # Move inputs to target device(s)
             for t in batch:
@@ -406,7 +449,7 @@ def main():
             outputs = model.generate(
                 **batch,
                 generation_config=generation_config,
-                lazy_mode=args.use_hpu_graphs,
+                lazy_mode=True,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
@@ -419,7 +462,9 @@ def main():
                 print(separator)
                 print(f"Batch n°{i+1}")
                 print(f"Input: {prompt[:args.batch_size]}")
-                print(f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size]}")
+                print(
+                    f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+                )
 
 
 if __name__ == "__main__":
