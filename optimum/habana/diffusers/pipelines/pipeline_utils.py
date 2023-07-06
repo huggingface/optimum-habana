@@ -188,27 +188,33 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             if module is None:
                 register_dict = {name: (None, None)}
             else:
-                # register the original module, not the dynamo compiled one
+                # register the config from the original module, not the dynamo compiled one
                 if is_compiled_module(module):
-                    module = module._orig_mod
+                    not_compiled_module = module._orig_mod
+                else:
+                    not_compiled_module = module
 
-                library = module.__module__.split(".")[0]
+                library = not_compiled_module.__module__.split(".")[0]
                 if library == "optimum":
                     library = "optimum.habana.diffusers.schedulers"
 
                 # check if the module is a pipeline module
-                pipeline_dir = module.__module__.split(".")[-2] if len(module.__module__.split(".")) > 2 else None
-                path = module.__module__.split(".")
+                module_path_items = not_compiled_module.__module__.split(".")
+                pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
+
+                path = not_compiled_module.__module__.split(".")
                 is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
                 # if library is not in GAUDI_LOADABLE_CLASSES, then it is a custom module.
                 # Or if it's a pipeline module, then the module is inside the pipeline
                 # folder so we set the library to module name.
-                if library not in GAUDI_LOADABLE_CLASSES or is_pipeline_module:
+                if is_pipeline_module:
                     library = pipeline_dir
+                elif library not in GAUDI_LOADABLE_CLASSES:
+                    library = not_compiled_module.__module__
 
                 # retrieve class_name
-                class_name = module.__class__.__name__
+                class_name = not_compiled_module.__class__.__name__
 
                 register_dict = {name: (library, class_name)}
 
