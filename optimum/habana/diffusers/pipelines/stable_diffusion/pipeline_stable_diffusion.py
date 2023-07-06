@@ -15,6 +15,7 @@
 
 import inspect
 import time
+import warnings
 from dataclasses import dataclass
 from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -23,7 +24,8 @@ import numpy as np
 import PIL
 import torch
 from diffusers.configuration_utils import FrozenDict
-from diffusers.loaders import FromCkptMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
@@ -48,8 +50,22 @@ class GaudiStableDiffusionPipelineOutput(BaseOutput):
     throughput: float
 
 
+def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
+    """
+    Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
+    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
+    """
+    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
+    # rescale the results from guidance (fixes overexposure)
+    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
+    # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
+    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    return noise_cfg
+
+
 class GaudiStableDiffusionPipeline(
-    GaudiDiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin
+    GaudiDiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     """
     Extends the [`StableDiffusionPipeline`](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionPipeline) class:
@@ -186,6 +202,7 @@ class GaudiStableDiffusionPipeline(
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
         self.to(self._device)
@@ -217,6 +234,7 @@ class GaudiStableDiffusionPipeline(
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -241,7 +259,14 @@ class GaudiStableDiffusionPipeline(
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+            self._lora_scale = lora_scale
+
         if prompt is not None and isinstance(prompt, str):
             num_prompts = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -298,7 +323,7 @@ class GaudiStableDiffusionPipeline(
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * num_prompts
-            elif type(prompt) is not type(negative_prompt):
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
@@ -350,18 +375,27 @@ class GaudiStableDiffusionPipeline(
         return prompt_embeds, negative_prompt_embeds
 
     def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+        if self.safety_checker is None:
+            has_nsfw_concept = None
+        else:
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            else:
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
-        else:
-            has_nsfw_concept = None
         return image, has_nsfw_concept
 
     def decode_latents(self, latents):
+        warnings.warn(
+            "The decode_latents method is deprecated and will be removed in a future version. Please"
+            " use VaeImageProcessor instead",
+            FutureWarning,
+        )
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
+        image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -524,6 +558,7 @@ class GaudiStableDiffusionPipeline(
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        guidance_rescale: float = 0.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -586,6 +621,11 @@ class GaudiStableDiffusionPipeline(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+            guidance_rescale (`float`, *optional*, defaults to 0.7):
+                Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://arxiv.org/pdf/2305.08891.pdf) `guidance_scale` is defined as `φ` in equation 16. of
+                [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+                Guidance rescale factor should fix overexposure when using zero terminal SNR.
 
         Returns:
             [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] or `tuple`:
@@ -625,6 +665,9 @@ class GaudiStableDiffusionPipeline(
             do_classifier_free_guidance = guidance_scale > 1.0
 
             # 3. Encode input prompt
+            text_encoder_lora_scale = (
+                cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+            )
             prompt_embeds, negative_prompt_embeds = self._encode_prompt(
                 prompt,
                 device,
@@ -633,6 +676,7 @@ class GaudiStableDiffusionPipeline(
                 negative_prompt,
                 prompt_embeds=prompt_embeds,
                 negative_prompt_embeds=negative_prompt_embeds,
+                lora_scale=text_encoder_lora_scale,
             )
 
             # 4. Prepare timesteps
@@ -708,8 +752,14 @@ class GaudiStableDiffusionPipeline(
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
+                    if do_classifier_free_guidance and guidance_rescale > 0.0:
+                        # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                        noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents_batch = self.scheduler.step(noise_pred, latents_batch, **extra_step_kwargs).prev_sample
+                    latents_batch = self.scheduler.step(
+                        noise_pred, latents_batch, **extra_step_kwargs, return_dict=False
+                    )[0]
 
                     if not self.use_hpu_graphs:
                         self.htcore.mark_step()
@@ -718,11 +768,11 @@ class GaudiStableDiffusionPipeline(
                     if callback is not None and i % callback_steps == 0:
                         callback(i, timestep, latents_batch)
 
-                if output_type == "latent":
-                    image = latents_batch
-                else:
+                if not output_type == "latent":
                     # 8. Post-processing
-                    image = self.decode_latents(latents_batch)
+                    image = self.vae.decode(latents_batch / self.vae.config.scaling_factor, return_dict=False)[0]
+                else:
+                    image = latents_batch
                 outputs["images"].append(image)
 
                 self.scheduler.reset_timestep_dependent_params()
@@ -746,18 +796,22 @@ class GaudiStableDiffusionPipeline(
 
             # Process generated images
             for i, image in enumerate(outputs["images"][:]):
-                if output_type == "latent":
-                    has_nsfw_concept = None
-                else:
-                    # 9. Run safety checker
-                    image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
-
                 if i == 0:
                     outputs["images"].clear()
 
-                # 10. Convert to PIL
+                if output_type == "latent":
+                    has_nsfw_concept = None
+                else:
+                    image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+
+                if has_nsfw_concept is None:
+                    do_denormalize = [True] * image.shape[0]
+                else:
+                    do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+
+                image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+
                 if output_type == "pil":
-                    image = self.numpy_to_pil(image)
                     outputs["images"] += image
                 else:
                     outputs["images"] += [*image]
@@ -781,7 +835,13 @@ class GaudiStableDiffusionPipeline(
         if self.use_hpu_graphs:
             return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture)
         else:
-            return self.unet(latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs).sample
+            return self.unet(
+                latent_model_input,
+                timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                cross_attention_kwargs=cross_attention_kwargs,
+                return_dict=False,
+            )[0]
 
     @torch.no_grad()
     def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, capture):
