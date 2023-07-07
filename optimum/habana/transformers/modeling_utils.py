@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import transformers.generation as transformers_generation
 import transformers.models.bloom.modeling_bloom as modeling_bloom
 import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
 import transformers.models.gpt_neox.modeling_gpt_neox as modeling_gpt_neox
@@ -20,7 +21,6 @@ import transformers.models.gptj.modeling_gptj as modeling_gptj
 import transformers.models.opt.modeling_opt as modeling_opt
 import transformers.models.t5.modeling_t5 as modeling_t5
 from transformers import pytorch_utils
-from transformers.generation import GenerationMixin
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.albert.modeling_albert import AlbertModel
 from transformers.models.esm.modeling_esm import EsmOutput, EsmSelfOutput
@@ -34,7 +34,7 @@ from transformers.models.esm.openfold_utils import rigid_utils
 from transformers.models.vit.modeling_vit import ViTSelfAttention
 from transformers.models.wav2vec2.modeling_wav2vec2 import Wav2Vec2Model
 
-from .generation import GaudiGenerationMixin
+from .generation import GaudiGenerationConfig, GaudiGenerationMixin
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -104,15 +104,20 @@ def adapt_transformers_to_gaudi():
     Wav2Vec2Model.forward = gaudi_wav2vec2_forward
 
     # Generation is modified to run faster in lazy mode
-    GenerationMixin.generate = GaudiGenerationMixin.generate
-    GenerationMixin._update_model_kwargs_for_generation = GaudiGenerationMixin._update_model_kwargs_for_generation
-    GenerationMixin._expand_inputs_for_generation = staticmethod(GaudiGenerationMixin._expand_inputs_for_generation)
-    GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
-    GenerationMixin.sample = GaudiGenerationMixin.sample
-    GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
-    GenerationMixin.beam_sample = GaudiGenerationMixin.beam_sample
-    GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
-    GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
+    transformers_generation.GenerationMixin.generate = GaudiGenerationMixin.generate
+    transformers_generation.GenerationMixin._update_model_kwargs_for_generation = (
+        GaudiGenerationMixin._update_model_kwargs_for_generation
+    )
+    transformers_generation.GenerationMixin._expand_inputs_for_generation = staticmethod(
+        GaudiGenerationMixin._expand_inputs_for_generation
+    )
+    transformers_generation.GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
+    transformers_generation.GenerationMixin.sample = GaudiGenerationMixin.sample
+    transformers_generation.GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
+    transformers_generation.GenerationMixin.beam_sample = GaudiGenerationMixin.beam_sample
+    transformers_generation.GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
+    transformers_generation.GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
+    transformers_generation.GenerationConfig = GaudiGenerationConfig
 
     # Optimization for BLOOM generation on Gaudi
     modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
