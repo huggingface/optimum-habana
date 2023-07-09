@@ -116,8 +116,8 @@ def adapt_transformers_to_gaudi():
 
     # Replace invert_attention_mask and get_extended_attention_mask
     # so that HMP is disabled for specific parts of the code
-    transformers.modeling_utils.invert_attention_mask = gaudi_invert_attention_mask
-    transformers.modeling_utils.get_extended_attention_mask = gaudi_get_extended_attention_mask
+    transformers.modeling_utils.ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
+    transformers.modeling_utils.ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
     # AlbertModel.forward does not rely on get_extended_attention_mask so it also needs to be replaced
     transformers.models.albert.modeling_albert.AlbertModel.forward = gaudi_albert_forward
 
