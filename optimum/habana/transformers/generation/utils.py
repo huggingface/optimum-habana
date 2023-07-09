@@ -24,7 +24,6 @@ import torch.distributed as dist
 from transformers.deepspeed import is_deepspeed_zero3_enabled
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
-from transformers.generation.configuration_utils import GenerationConfig
 from transformers.generation.logits_process import LogitsProcessorList
 from transformers.generation.stopping_criteria import (
     StoppingCriteria,
@@ -51,6 +50,7 @@ from transformers.utils import ModelOutput
 from optimum.utils import logging
 
 from ...utils import HabanaProfile
+from .configuration_utils import GaudiGenerationConfig
 
 
 if TYPE_CHECKING:
@@ -174,7 +174,7 @@ class GaudiGenerationMixin(GenerationMixin):
     def generate(
         self,
         inputs: Optional[torch.Tensor] = None,
-        generation_config: Optional[GenerationConfig] = None,
+        generation_config: Optional[GaudiGenerationConfig] = None,
         logits_processor: Optional[LogitsProcessorList] = None,
         stopping_criteria: Optional[StoppingCriteriaList] = None,
         prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], List[int]]] = None,
@@ -289,7 +289,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # legacy: users may modify the model configuration to control generation -- update the generation config
             # model attribute accordingly, if it was created from the model config
             if self.generation_config._from_model_config:
-                new_generation_config = GenerationConfig.from_model_config(self.config)
+                new_generation_config = GaudiGenerationConfig.from_model_config(self.config)
                 if new_generation_config != self.generation_config:
                     warnings.warn(
                         "You have modified the pretrained model configuration to control generation. This is a"

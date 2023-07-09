@@ -20,10 +20,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 import torch
 from torch.utils.data import Dataset
 from transformers.deepspeed import is_deepspeed_zero3_enabled
-from transformers.generation.configuration_utils import GenerationConfig
 
 from optimum.utils import logging
 
+from .generation import GaudiGenerationConfig
 from .trainer import GaudiTrainer
 
 
@@ -79,20 +79,20 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             self.model.generation_config = gen_config
 
     @staticmethod
-    def load_generation_config(gen_config_arg: Union[str, GenerationConfig]) -> GenerationConfig:
+    def load_generation_config(gen_config_arg: Union[str, GaudiGenerationConfig]) -> GaudiGenerationConfig:
         """
-        Loads a `~generation.GenerationConfig` from the `GaudiSeq2SeqTrainingArguments.generation_config` arguments.
+        Loads a `~generation.GaudiGenerationConfig` from the `GaudiSeq2SeqTrainingArguments.generation_config` arguments.
 
         Args:
-            gen_config_arg (`str` or [`~generation.GenerationConfig`]):
+            gen_config_arg (`str` or [`~generation.GaudiGenerationConfig`]):
                 `GaudiSeq2SeqTrainingArguments.generation_config` argument.
 
         Returns:
-            A `~generation.GenerationConfig`.
+            A `~generation.GaudiGenerationConfig`.
         """
 
         # GenerationConfig provided, nothing to do
-        if isinstance(gen_config_arg, GenerationConfig):
+        if isinstance(gen_config_arg, GaudiGenerationConfig):
             return deepcopy(gen_config_arg)
 
         # str or Path
@@ -111,7 +111,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         else:
             pretrained_model_name = gen_config_arg
 
-        gen_config = GenerationConfig.from_pretrained(pretrained_model_name, config_file_name)
+        gen_config = GaudiGenerationConfig.from_pretrained(pretrained_model_name, config_file_name)
         return gen_config
 
     def evaluate(

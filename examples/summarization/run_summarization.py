@@ -18,6 +18,7 @@ Fine-tuning the library models for sequence to sequence.
 """
 # You can also adapt this script on your own sequence to sequence task. Pointers for this are left as comments.
 
+import copy
 import logging
 import os
 import sys
@@ -674,14 +675,15 @@ def main():
         return result
 
     # Override the decoding parameters of Seq2SeqTrainer
-    training_args.generation_max_length = (
-        training_args.generation_max_length
-        if training_args.generation_max_length is not None
-        else data_args.val_max_target_length
-    )
-    training_args.generation_num_beams = (
-        data_args.num_beams if data_args.num_beams is not None else training_args.generation_num_beams
-    )
+    training_args.generation_config = copy.deepcopy(model.generation_config)
+    if data_args.val_max_target_length is not None:
+        training_args.generation_config.max_length = data_args.val_max_target_length
+    elif training_args.generation_max_length is not None:
+        training_args.generation_config.max_length = training_args.generation_max_length
+    if data_args.num_beams is not None:
+        training_args.generation_config.num_beams = data_args.num_beams
+    elif training_args.generation_num_beams is not None:
+        training_args.generation_config.num_beams = training_args.generation_num_beams
 
     # Initialize our Trainer
     trainer = GaudiSeq2SeqTrainer(

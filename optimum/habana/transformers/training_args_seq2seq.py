@@ -17,10 +17,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Union
 
-from transformers.generation.configuration_utils import GenerationConfig
-
 from optimum.utils import logging
 
+from .generation import GaudiGenerationConfig
 from .training_args import GaudiTrainingArguments
 
 
@@ -80,7 +79,7 @@ class GaudiSeq2SeqTrainingArguments(GaudiTrainingArguments):
             )
         },
     )
-    generation_config: Optional[Union[str, Path, GenerationConfig]] = field(
+    generation_config: Optional[Union[str, Path, GaudiGenerationConfig]] = field(
         default=None,
         metadata={
             "help": "Model id, file path or url pointing to a GenerationConfig json file, to use during prediction."

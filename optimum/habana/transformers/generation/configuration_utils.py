@@ -1,4 +1,4 @@
-from transformers.generation.configuration_utils import GenerationConfig
+from transformers.generation import GenerationConfig
 
 
 class GaudiGenerationConfig(GenerationConfig):
