@@ -90,7 +90,8 @@ def gaudi_get_extended_attention_mask(
     # torch.finfo must take the dtype of encoder_extended_attention_mask
     extended_attention_mask = extended_attention_mask.to(dtype=dtype)  # bf16 compatibility
     extended_attention_mask = 1.0 - extended_attention_mask
-    extended_attention_mask = extended_attention_mask * torch.finfo(extended_attention_mask.dtype).min
+    with torch.autocast(enabled=False, device_type="hpu"):
+        extended_attention_mask = extended_attention_mask * torch.finfo(extended_attention_mask.dtype).min
 
     return extended_attention_mask
 
