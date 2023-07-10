@@ -246,9 +246,11 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         # gen_kwargs > model.generation_config > default GenerationConfig()
         gen_kwargs = self._gen_kwargs.copy()
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            gen_kwargs["max_length"] = self.model.config.max_length
+            gen_kwargs["max_length"] = self.model.generation_config.max_length
         gen_kwargs["num_beams"] = (
-            gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.model.config.num_beams
+            gen_kwargs["num_beams"]
+            if gen_kwargs.get("num_beams") is not None
+            else self.model.generation_config.num_beams
         )
         default_synced_gpus = True if is_deepspeed_zero3_enabled() else False
         gen_kwargs["synced_gpus"] = (
@@ -268,7 +270,11 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         # users from preparing a dataset with `decoder_input_ids`.
         inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
         try:
-            generated_tokens = self.model.generate(**inputs, **gen_kwargs)
+            generated_tokens = self.model.generate(
+                **inputs,
+                generation_config=self.model.generation_config,
+                **gen_kwargs,
+            )
         except RuntimeError as error:
             if "cpu fallback is not supported during hpu graph capturing" in str(error):
                 error.args = (
