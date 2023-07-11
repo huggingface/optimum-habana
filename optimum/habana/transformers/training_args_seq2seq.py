@@ -85,3 +85,15 @@ class GaudiSeq2SeqTrainingArguments(GaudiTrainingArguments):
             "help": "Model id, file path or url pointing to a GenerationConfig json file, to use during prediction."
         },
     )
+
+    def to_dict(self):
+        """
+        Serializes this instance while replace `Enum` by their values and `GaudiGenerationConfig` by dictionaries (for JSON
+        serialization support). It obfuscates the token values by removing their value.
+        """
+        # filter out fields that are defined as field(init=False)
+        d = super().to_dict()
+        for k, v in d.items():
+            if isinstance(v, GaudiGenerationConfig):
+                d[k] = v.to_dict()
+        return d
