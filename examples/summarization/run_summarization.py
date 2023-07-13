@@ -676,10 +676,10 @@ def main():
 
     # Override the decoding parameters of Seq2SeqTrainer
     training_args.generation_config = copy.deepcopy(model.generation_config)
-    if data_args.val_max_target_length is not None:
-        training_args.generation_config.max_length = data_args.val_max_target_length
-    elif training_args.generation_max_length is not None:
+    if training_args.generation_max_length is not None:
         training_args.generation_config.max_length = training_args.generation_max_length
+    else:
+        training_args.generation_config.max_length = data_args.val_max_target_length
     if data_args.num_beams is not None:
         training_args.generation_config.num_beams = data_args.num_beams
     elif training_args.generation_num_beams is not None:
