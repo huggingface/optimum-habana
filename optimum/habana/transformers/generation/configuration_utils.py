@@ -13,7 +13,7 @@ class GaudiGenerationConfig(GenerationConfig):
         model supports it.
     ignore_eos (`bool`, *optional*):
         Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
-        If not specified, it will automatically be set to `True` if lzay mode is on.
+        If not specified, it will automatically be set to `True` if lazy mode is on.
     """
 
     def __init__(self, **kwargs):
