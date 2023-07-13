@@ -24,7 +24,6 @@ import torch.distributed as dist
 from transformers.deepspeed import is_deepspeed_zero3_enabled
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
-from transformers.generation.configuration_utils import GenerationConfig
 from transformers.generation.logits_process import LogitsProcessorList
 from transformers.generation.stopping_criteria import (
     StoppingCriteria,
@@ -51,10 +50,20 @@ from transformers.utils import ModelOutput
 from optimum.utils import logging
 
 from ...utils import HabanaProfile
+from .configuration_utils import GaudiGenerationConfig
 
 
 if TYPE_CHECKING:
     from .streamers import BaseStreamer
+
+
+MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
+    "bloom",
+    "gpt2",
+    "opt",
+    "gptj",
+    "gpt_neox",
+]
 
 
 logger = logging.get_logger(__name__)
@@ -174,7 +183,7 @@ class GaudiGenerationMixin(GenerationMixin):
     def generate(
         self,
         inputs: Optional[torch.Tensor] = None,
-        generation_config: Optional[GenerationConfig] = None,
+        generation_config: Optional[GaudiGenerationConfig] = None,
         logits_processor: Optional[LogitsProcessorList] = None,
         stopping_criteria: Optional[StoppingCriteriaList] = None,
         prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], List[int]]] = None,
@@ -182,7 +191,6 @@ class GaudiGenerationMixin(GenerationMixin):
         streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
         hpu_graphs: Optional[bool] = False,
-        ignore_eos: Optional[bool] = None,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         **kwargs,
@@ -242,14 +250,12 @@ class GaudiGenerationMixin(GenerationMixin):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
             hpu_graphs (`bool`, *optional*, defaults to `False`):
                 Whether to use HPU graphs for inference.
-            ignore_eos (`bool`, *optional*):
-                Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
             profiling_warmup_steps (`int`, *optional*, defaults to 0):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
             kwargs:
-                Ad hoc parametrization of `generate_config` and/or additional model-specific kwargs that will be
+                Ad hoc parametrization of `generation_config` and/or additional model-specific kwargs that will be
                 forwarded to the `forward` function of the model. If the model is an encoder-decoder model, encoder
                 specific kwargs should not be prefixed and decoder specific kwargs should be prefixed with *decoder_*.
 
@@ -281,15 +287,13 @@ class GaudiGenerationMixin(GenerationMixin):
             raise ValueError(
                 "`hpu_graphs` is True but `lazy_mode` is False. HPU graphs require `lazy_mode` to be set to True."
             )
-        if ignore_eos is None:
-            ignore_eos = lazy_mode
 
         # priority: `generation_config` argument > `model.generation_config` (the default generation config)
         if generation_config is None:
             # legacy: users may modify the model configuration to control generation -- update the generation config
             # model attribute accordingly, if it was created from the model config
             if self.generation_config._from_model_config:
-                new_generation_config = GenerationConfig.from_model_config(self.config)
+                new_generation_config = GaudiGenerationConfig.from_model_config(self.config)
                 if new_generation_config != self.generation_config:
                     warnings.warn(
                         "You have modified the pretrained model configuration to control generation. This is a"
@@ -301,6 +305,10 @@ class GaudiGenerationMixin(GenerationMixin):
             generation_config = self.generation_config
 
         generation_config = copy.deepcopy(generation_config)
+        if generation_config.static_shapes is None:
+            generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+        if generation_config.ignore_eos is None:
+            generation_config.ignore_eos = lazy_mode
         generation_config.validate()
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
         self._validate_model_kwargs(model_kwargs.copy())
@@ -345,6 +353,18 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs["attention_mask"] = self._prepare_attention_mask_for_generation(
                 inputs_tensor, generation_config.pad_token_id, generation_config.eos_token_id
             )
+
+        if generation_config.static_shapes:
+            # token_idx is the current index in the generation process, it is incremented each time a new token is generated
+            model_kwargs["token_idx"] = torch.tensor(inputs_tensor.shape[-1], device=inputs_tensor.device)
+            # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
+            inputs_tensor = torch.nn.functional.pad(
+                inputs_tensor, (0, generation_config.max_new_tokens), value=generation_config.pad_token_id
+            )
+            if model_kwargs["attention_mask"] is not None:
+                model_kwargs["attention_mask"] = torch.nn.functional.pad(
+                    model_kwargs["attention_mask"], (0, generation_config.max_new_tokens), value=0
+                )
 
         # decoder-only models should use left-padding for generation
         if not self.config.is_encoder_decoder:
@@ -537,7 +557,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 synced_gpus=synced_gpus,
                 streamer=streamer,
                 lazy_mode=lazy_mode,
-                ignore_eos=ignore_eos,
+                ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 **model_kwargs,
@@ -592,7 +612,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 synced_gpus=synced_gpus,
                 streamer=streamer,
                 lazy_mode=lazy_mode,
-                ignore_eos=ignore_eos,
+                ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 **model_kwargs,

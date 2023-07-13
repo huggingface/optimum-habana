@@ -83,10 +83,11 @@ def model_is_bloom(config):
 
 
 def get_optimized_model_name(config):
-    model_names = ["bloom", "gpt2", "opt", "gptj", "gpt_neox"]
-    for model_name in model_names:
-        if model_name == config.model_type:
-            return model_name
+    from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+
+    for model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES:
+        if model_type == config.model_type:
+            return model_type
 
     return None
 

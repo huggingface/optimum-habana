@@ -1,1 +1,2 @@
-from .utils import GaudiGenerationMixin
+from .configuration_utils import GaudiGenerationConfig
+from .utils import MODELS_OPTIMIZED_WITH_STATIC_SHAPES, GaudiGenerationMixin
