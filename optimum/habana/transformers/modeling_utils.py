@@ -17,6 +17,7 @@ import transformers.models.bloom.modeling_bloom as modeling_bloom
 import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
 import transformers.models.gpt_neox.modeling_gpt_neox as modeling_gpt_neox
 import transformers.models.gptj.modeling_gptj as modeling_gptj
+import transformers.models.llama.modeling_llama as modeling_llama
 import transformers.models.opt.modeling_opt as modeling_opt
 import transformers.models.t5.modeling_t5 as modeling_t5
 from transformers import pytorch_utils
@@ -42,6 +43,7 @@ from .models import (
     GaudiGPT2LMHeadModel,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
+    GaudiLlamaForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     GaudiT5DenseActDense,
@@ -73,6 +75,9 @@ from .models import (
     gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
+    gaudi_llama_attention_forward,
+    gaudi_llama_decoder_layer_forward,
+    gaudi_llama_model_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
@@ -107,6 +112,7 @@ def adapt_transformers_to_gaudi():
     GenerationMixin.generate = GaudiGenerationMixin.generate
     GenerationMixin._update_model_kwargs_for_generation = GaudiGenerationMixin._update_model_kwargs_for_generation
     GenerationMixin._expand_inputs_for_generation = staticmethod(GaudiGenerationMixin._expand_inputs_for_generation)
+    GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
     GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
     GenerationMixin.sample = GaudiGenerationMixin.sample
     GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
@@ -166,6 +172,12 @@ def adapt_transformers_to_gaudi():
     modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
     modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
     modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
+
+    # Optimization for llama generation on Gaudi
+    modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
+    modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
+    modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
+    modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
 
     # Dropout kernel improvement for Flan-T5
     modeling_t5.T5Stack = GaudiT5Stack

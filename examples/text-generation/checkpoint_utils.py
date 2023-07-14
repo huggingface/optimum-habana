@@ -83,7 +83,7 @@ def model_is_bloom(config):
 
 
 def get_optimized_model_name(config):
-    model_names = ["bloom", "gpt2", "opt", "gptj", "gpt_neox"]
+    model_names = ["bloom", "gpt2", "opt", "gptj", "gpt_neox", "llama"]
     for model_name in model_names:
         if model_name == config.model_type:
             return model_name
