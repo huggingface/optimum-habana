@@ -7,8 +7,6 @@ RUN git clone --depth 1 --branch v0.9.2 https://github.com/huggingface/text-gene
 FROM lukemathwalker/cargo-chef:latest-rust-1.70 AS chef
 WORKDIR /usr/src
 
-# RUN mkdir /tgi && git clone --depth 1 --branch v0.9.2 https://github.com/huggingface/text-generation-inference.git /tgi
-
 FROM chef as planner
 COPY --from=tgi /tmp/text-generation-inference/Cargo.toml Cargo.toml
 COPY --from=tgi /tmp/text-generation-inference/rust-toolchain.toml rust-toolchain.toml
@@ -55,6 +53,7 @@ WORKDIR /usr/src
 COPY --from=tgi /tmp/text-generation-inference/proto proto
 COPY --from=tgi /tmp/text-generation-inference/server server
 COPY --from=tgi /tmp/text-generation-inference/server/Makefile server/Makefile
+COPY requirements.txt server/requirements.txt
 RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
