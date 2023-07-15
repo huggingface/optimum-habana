@@ -13,29 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import transformers.models.bloom.modeling_bloom as modeling_bloom
-import transformers.models.gpt2.modeling_gpt2 as modeling_gpt2
-import transformers.models.gpt_neox.modeling_gpt_neox as modeling_gpt_neox
-import transformers.models.gptj.modeling_gptj as modeling_gptj
-import transformers.models.llama.modeling_llama as modeling_llama
-import transformers.models.opt.modeling_opt as modeling_opt
-import transformers.models.t5.modeling_t5 as modeling_t5
-from transformers import pytorch_utils
-from transformers.generation import GenerationMixin
-from transformers.modeling_utils import ModuleUtilsMixin
-from transformers.models.albert.modeling_albert import AlbertModel
-from transformers.models.esm.modeling_esm import EsmOutput, EsmSelfOutput
-from transformers.models.esm.modeling_esmfold import (
-    EsmFoldAttention,
-    EsmFoldingTrunk,
-    EsmFoldSelfAttention,
-    EsmForProteinFolding,
-)
-from transformers.models.esm.openfold_utils import rigid_utils
-from transformers.models.vit.modeling_vit import ViTSelfAttention
-from transformers.models.wav2vec2.modeling_wav2vec2 import Wav2Vec2Model
+import transformers
 
-from .generation import GaudiGenerationMixin
+from .generation import GaudiGenerationConfig, GaudiGenerationMixin
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -97,93 +77,105 @@ def adapt_transformers_to_gaudi():
     """
 
     # optimize Conv1D
-    pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
+    transformers.pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
 
     # Optimization tweak for ViT
-    ViTSelfAttention.forward = gaudi_vit_self_attention_forward
+    transformers.models.vit.modeling_vit.ViTSelfAttention.forward = gaudi_vit_self_attention_forward
 
     # Optimization tweak for Wav2Vec2
-    # modeling_wav2vec2._compute_mask_indices = _gaudi_wav2vec2_compute_mask_indices
-    # modeling_wav2vec2._sample_negative_indices = _gaudi_wav2vec2_sample_negative_indices
-    # Wav2Vec2Model._mask_hidden_states = _gaudi_wav2vec2_mask_hidden_states
-    Wav2Vec2Model.forward = gaudi_wav2vec2_forward
+    # transformers.models.wav2vec2.modeling_wav2vec2._compute_mask_indices = _gaudi_wav2vec2_compute_mask_indices
+    # transformers.models.wav2vec2.modeling_wav2vec2._sample_negative_indices = _gaudi_wav2vec2_sample_negative_indices
+    # transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Model._mask_hidden_states = _gaudi_wav2vec2_mask_hidden_states
+    transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Model.forward = gaudi_wav2vec2_forward
 
     # Generation is modified to run faster in lazy mode
-    GenerationMixin.generate = GaudiGenerationMixin.generate
-    GenerationMixin._update_model_kwargs_for_generation = GaudiGenerationMixin._update_model_kwargs_for_generation
-    GenerationMixin._expand_inputs_for_generation = staticmethod(GaudiGenerationMixin._expand_inputs_for_generation)
-    GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
-    GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
-    GenerationMixin.sample = GaudiGenerationMixin.sample
-    GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
-    GenerationMixin.beam_sample = GaudiGenerationMixin.beam_sample
-    GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
-    GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
+    transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
+    transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
+        GaudiGenerationMixin._update_model_kwargs_for_generation
+    )
+    transformers.generation.GenerationMixin._expand_inputs_for_generation = staticmethod(
+        GaudiGenerationMixin._expand_inputs_for_generation
+    )
+    transformers.generation.GenerationMixin._validate_model_kwargs = (
+        GaudiGenerationMixin._validate_model_kwargs
+    )
+    transformers.generation.GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
+    transformers.generation.GenerationMixin.sample = GaudiGenerationMixin.sample
+    transformers.generation.GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
+    transformers.generation.GenerationMixin.beam_sample = GaudiGenerationMixin.beam_sample
+    transformers.generation.GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
+    transformers.generation.GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
+    transformers.generation.GenerationConfig = GaudiGenerationConfig
+    transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
 
     # Optimization for BLOOM generation on Gaudi
-    modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
-    modeling_bloom.BloomBlock.forward = gaudi_bloom_block_forward
-    modeling_bloom.BloomModel.forward = gaudi_bloom_model_forward
-    modeling_bloom.BloomMLP = GaudiBloomMLP
-    modeling_bloom.BloomForCausalLM = GaudiBloomForCausalLM
-    modeling_bloom.BloomPreTrainedModel._convert_to_standard_cache = gaudi_bloom_convert_to_standard_cache
-    modeling_bloom.BloomPreTrainedModel._convert_to_bloom_cache = gaudi_bloom_convert_to_bloom_cache
+    transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
+    transformers.models.bloom.modeling_bloom.BloomBlock.forward = gaudi_bloom_block_forward
+    transformers.models.bloom.modeling_bloom.BloomModel.forward = gaudi_bloom_model_forward
+    transformers.models.bloom.modeling_bloom.BloomMLP = GaudiBloomMLP
+    transformers.models.bloom.modeling_bloom.BloomForCausalLM = GaudiBloomForCausalLM
+    transformers.models.bloom.modeling_bloom.BloomPreTrainedModel._convert_to_standard_cache = (
+        gaudi_bloom_convert_to_standard_cache
+    )
+    transformers.models.bloom.modeling_bloom.BloomPreTrainedModel._convert_to_bloom_cache = (
+        gaudi_bloom_convert_to_bloom_cache
+    )
 
     # Replace invert_attention_mask and get_extended_attention_mask
     # so that HMP is disabled for specific parts of the code
-    ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
-    ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
+    transformers.modeling_utils.ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
+    transformers.modeling_utils.ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
     # AlbertModel.forward does not rely on get_extended_attention_mask so it also needs to be replaced
-    AlbertModel.forward = gaudi_albert_forward
+    transformers.models.albert.modeling_albert.AlbertModel.forward = gaudi_albert_forward
 
     # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
     # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
-    modeling_gpt2.GPT2Attention = GaudiGPT2Attention
-    modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
-    modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
-    modeling_gpt2.GPT2Block.forward = gaudi_gpt2_block_forward
+    transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
+    transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
+    transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
+    transformers.models.gpt2.modeling_gpt2.GPT2Block.forward = gaudi_gpt2_block_forward
 
     # Optimization for EsmFold on Gaudi
-    EsmFoldingTrunk.forward = gaudi_esmfolding_trunk_forward
-    EsmForProteinFolding.forward = gaudi_esm_for_protein_folding_forward
-    EsmFoldAttention._wrap_up = _gaudi_esmfold_attention_wrap_up
-    EsmFoldSelfAttention.forward = gaudi_esmfold_self_attention_forward
-    rigid_utils.rot_matmul = gaudi_rot_matmul
-    rigid_utils.rot_vec_mul = gaudi_rot_vec_mul
-    EsmSelfOutput.forward = gaudi_esmselfoutput_forward
-    EsmOutput.forward = gaudi_esmoutput_forward
+    transformers.models.esm.modeling_esmfold.EsmFoldingTrunk.forward = gaudi_esmfolding_trunk_forward
+    transformers.models.esm.modeling_esmfold.EsmForProteinFolding.forward = gaudi_esm_for_protein_folding_forward
+    transformers.models.esm.modeling_esmfold.EsmFoldAttention._wrap_up = _gaudi_esmfold_attention_wrap_up
+    transformers.models.esm.modeling_esmfold.EsmFoldSelfAttention.forward = gaudi_esmfold_self_attention_forward
+    transformers.models.esm.openfold_utils.rigid_utils.rot_matmul = gaudi_rot_matmul
+    transformers.models.esm.openfold_utils.rigid_utils.rot_vec_mul = gaudi_rot_vec_mul
+    transformers.models.esm.modeling_esm.EsmSelfOutput.forward = gaudi_esmselfoutput_forward
+    transformers.models.esm.modeling_esm.EsmOutput.forward = gaudi_esmoutput_forward
 
     # Optimization for OPT generation on Gaudi
-    modeling_opt.OPTAttention.forward = gaudi_opt_attention_forward
-    modeling_opt.OPTDecoder.forward = gaudi_opt_decoder_forward
-    modeling_opt.OPTForCausalLM = GaudiOPTForCausalLM
-    modeling_opt.OPTModel.forward = gaudi_opt_model_forward
-    modeling_opt.OPTDecoderLayer.forward = gaudi_opt_decoder_layer_forward
-    modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
+    transformers.models.opt.modeling_opt.OPTAttention.forward = gaudi_opt_attention_forward
+    transformers.models.opt.modeling_opt.OPTDecoder.forward = gaudi_opt_decoder_forward
+    transformers.models.opt.modeling_opt.OPTForCausalLM = GaudiOPTForCausalLM
+    transformers.models.opt.modeling_opt.OPTModel.forward = gaudi_opt_model_forward
+    transformers.models.opt.modeling_opt.OPTDecoderLayer.forward = gaudi_opt_decoder_layer_forward
+    transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
 
     # Optimization for GPTJ on Gaudi
-    modeling_gptj.GPTJAttention.forward = gaudi_gptj_attention_forward
-    modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
-    modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
-    modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
+    transformers.models.gptj.modeling_gptj.GPTJAttention.forward = gaudi_gptj_attention_forward
+    transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
+    transformers.models.gptj.modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
+    transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
 
     # Optimization for gpt-neox generation on Gaudi
-    modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM
-    modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
-    modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
-    modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
+    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM
+    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
+    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
+    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
 
     # Optimization for llama generation on Gaudi
-    modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
-    modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
-    modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
-    modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
+    transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
+    transformers.models.llama.modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
+    transformers.models.llama.modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
+    transformers.models.llama.modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
 
     # Dropout kernel improvement for Flan-T5
-    modeling_t5.T5Stack = GaudiT5Stack
-    modeling_t5.T5DenseGatedActDense = GaudiT5DenseGatedActDense
-    modeling_t5.T5LayerFF = GaudiT5LayerFF
-    modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
-    modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
-    modeling_t5.T5DenseActDense = GaudiT5DenseActDense
-    modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
+    transformers.models.t5.modeling_t5.T5Stack = GaudiT5Stack
+    transformers.models.t5.modeling_t5.T5DenseGatedActDense = GaudiT5DenseGatedActDense
+    transformers.models.t5.modeling_t5.T5LayerFF = GaudiT5LayerFF
+    transformers.models.t5.modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
+    transformers.models.t5.modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
+    transformers.models.t5.modeling_t5.T5DenseActDense = GaudiT5DenseActDense
+    transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
