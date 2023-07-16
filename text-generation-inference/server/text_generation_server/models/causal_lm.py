@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple, Type
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 # from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
 
 from text_generation_server.models import Model
