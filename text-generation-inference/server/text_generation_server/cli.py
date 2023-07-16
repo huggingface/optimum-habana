@@ -1,11 +1,11 @@
 import os
 import sys
-from enum import Enum
-from pathlib import Path
-from typing import Optional
-
 import typer
+
+from pathlib import Path
 from loguru import logger
+from typing import Optional
+from enum import Enum
 
 
 app = typer.Typer()

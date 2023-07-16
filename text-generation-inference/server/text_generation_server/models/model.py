@@ -1,12 +1,12 @@
 import inspect
+import torch
+
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple, Type, TypeVar
-
-import torch
-from text_generation_server.models.types import Batch, GeneratedText
-from text_generation_server.pb.generate_pb2 import InfoResponse
 from transformers import PreTrainedTokenizerBase
 
+from text_generation_server.models.types import Batch, GeneratedText
+from text_generation_server.pb.generate_pb2 import InfoResponse
 
 B = TypeVar("B", bound=Batch)
 

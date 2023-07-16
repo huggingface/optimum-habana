@@ -1,8 +1,7 @@
 from typing import List, Optional
-
 import torch
-from text_generation_server.models import CausalLM
 
+from text_generation_server.models import CausalLM
 
 FIM_PREFIX = "<fim-prefix>"
 FIM_MIDDLE = "<fim-middle>"

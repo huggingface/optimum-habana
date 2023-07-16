@@ -1,10 +1,12 @@
+import torch
+
 from typing import Optional, Type
 
-import torch
+from transformers import PreTrainedTokenizerBase
+
 from text_generation_server.models import CausalLM
 from text_generation_server.models.causal_lm import CausalLMBatch
 from text_generation_server.pb import generate_pb2
-from transformers import PreTrainedTokenizerBase
 
 
 class BloomCausalLMBatch(CausalLMBatch):

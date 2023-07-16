@@ -1,9 +1,14 @@
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Type
-
 import torch
-from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+from dataclasses import dataclass
 from opentelemetry import trace
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
+from typing import Dict, List, Optional, Tuple, Type
+from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+# from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+
 from text_generation_server.models import Model
 from text_generation_server.models.types import (
     Batch,
@@ -13,10 +18,10 @@ from text_generation_server.models.types import (
 )
 from text_generation_server.pb import generate_pb2
 from text_generation_server.utils import NextTokenChooser, Sampling, StoppingCriteria
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
+from loguru import logger
 
-from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
+MODELS_OPTIMIZED_WITH_STATIC_SHAPES = ["bloom", "gpt2", "gptj", "gpt_neox", "opt"]
 
 
 tracer = trace.get_tracer(__name__)

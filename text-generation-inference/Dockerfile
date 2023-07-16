@@ -61,6 +61,7 @@ COPY server/text_generation_server/models/causal_lm.py server/text_generation_se
 COPY server/text_generation_server/models/model.py server/text_generation_server/models/model.py
 COPY server/text_generation_server/models/santacoder.py server/text_generation_server/models/santacoder.py
 COPY server/requirements.txt server/requirements.txt
+COPY server/pyproject.toml server/pyproject.toml
 RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
