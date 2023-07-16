@@ -53,7 +53,14 @@ WORKDIR /usr/src
 COPY --from=tgi /tmp/text-generation-inference/proto proto
 COPY --from=tgi /tmp/text-generation-inference/server server
 COPY --from=tgi /tmp/text-generation-inference/server/Makefile server/Makefile
-COPY requirements.txt server/requirements.txt
+COPY server/text_generation_server/cli.py server/text_generation_server/cli.py
+COPY server/text_generation_server/server.py server/text_generation_server/server.py
+COPY server/text_generation_server/models/__init__.py server/text_generation_server/models/__init__.py
+COPY server/text_generation_server/models/bloom.py server/text_generation_server/models/bloom.py
+COPY server/text_generation_server/models/causal_lm.py server/text_generation_server/models/causal_lm.py
+COPY server/text_generation_server/models/model.py server/text_generation_server/models/model.py
+COPY server/text_generation_server/models/santacoder.py server/text_generation_server/models/santacoder.py
+COPY server/requirements.txt server/requirements.txt
 RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \

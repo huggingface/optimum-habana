@@ -12,5 +12,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-debug_image_build:
-	docker build --no-cache --progress=plain -t debug_tgi .
+install-poetry:
+	curl -sSL https://install.python-poetry.org | python3 -
+
+update-lock:
+	rm poetry.lock
+	poetry lock --no-update
+
+export-requirements:
+	poetry export -f requirements.txt --without-hashes --output requirements.txt
