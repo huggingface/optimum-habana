@@ -165,12 +165,13 @@ The following model architectures, tasks and device distributions have been vali
 | GPT-NeoX | :heavy_check_mark: | :x: | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | OPT | :heavy_check_mark: | :x: | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | BridgeTower | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | <li>[contrastive image-text training](https://github.com/huggingface/optimum-habana/tree/main/examples/contrastive-image-text)</li> |
+| Llama | :heavy_check_mark: | :x: | :x: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 
 </div>
 
 Other models and tasks supported by the 🤗 Transformers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 
-If you find any issue while using those, please open an issue or a pull request.
+If you find any issues while using those, please open an issue or a pull request.
 
 
 ## Gaudi Setup
