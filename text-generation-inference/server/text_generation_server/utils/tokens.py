@@ -34,13 +34,9 @@ class NextTokenChooser:
         seed=0,
         device="cpu",
     ):
-        self.watermark_processor = (
-            WatermarkLogitsProcessor(device=device) if watermark else None
-        )
+        self.watermark_processor = WatermarkLogitsProcessor(device=device) if watermark else None
         self.repetition_processor = (
-            RepetitionPenaltyLogitsProcessor(penalty=repetition_penalty)
-            if repetition_penalty
-            else None
+            RepetitionPenaltyLogitsProcessor(penalty=repetition_penalty) if repetition_penalty else None
         )
 
         has_warpers = (
@@ -50,9 +46,7 @@ class NextTokenChooser:
             or (typical_p is not None and typical_p < 1.0)
         )
         if has_warpers:
-            self.static_warper = static_warper(
-                temperature=temperature, top_k=top_k, top_p=top_p, typical_p=typical_p
-            )
+            self.static_warper = static_warper(temperature=temperature, top_k=top_k, top_p=top_p, typical_p=typical_p)
         else:
             self.static_warper = None
 
@@ -140,9 +134,7 @@ class StoppingCriteria:
         pb: generate_pb2.StoppingCriteriaParameters,
         tokenizer: PreTrainedTokenizerBase,
     ) -> "StoppingCriteria":
-        stop_sequence_criterias = [
-            StopSequenceCriteria(sequence) for sequence in pb.stop_sequences
-        ]
+        stop_sequence_criterias = [StopSequenceCriteria(sequence) for sequence in pb.stop_sequences]
         return StoppingCriteria(
             tokenizer.eos_token_id,
             stop_sequence_criterias,
@@ -180,20 +172,14 @@ class HeterogeneousNextTokenChooser:
         )
 
         self.repetition_processor = (
-            HeterogeneousRepetitionPenaltyLogitsProcessor(
-                repetition_penalty, dtype, device
-            )
+            HeterogeneousRepetitionPenaltyLogitsProcessor(repetition_penalty, dtype, device)
             if any([x != 1.0 for x in repetition_penalty])
             else None
         )
 
         if any([x != 1.0 for x in temperature]):
-            do_sample = [
-                sample or x != 1.0 for x, sample in zip(temperature, do_sample)
-            ]
-            warpers.append(
-                HeterogeneousTemperatureLogitsWarper(temperature, dtype, device)
-            )
+            do_sample = [sample or x != 1.0 for x, sample in zip(temperature, do_sample)]
+            warpers.append(HeterogeneousTemperatureLogitsWarper(temperature, dtype, device))
 
         if any([x != 0 for x in top_k]):
             do_sample = [sample or x != 0 for x, sample in zip(top_k, do_sample)]
@@ -229,9 +215,7 @@ class HeterogeneousNextTokenChooser:
             scores = warper(input_ids, scores)
 
         next_ids = self.choice(scores)
-        next_logprobs = torch.gather(
-            torch.log_softmax(scores, -1), 1, next_ids.view(-1, 1)
-        ).view(-1)
+        next_logprobs = torch.gather(torch.log_softmax(scores, -1), 1, next_ids.view(-1, 1)).view(-1)
 
         return next_ids, next_logprobs
 
