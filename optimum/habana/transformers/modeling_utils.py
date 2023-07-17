@@ -96,9 +96,7 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._expand_inputs_for_generation = staticmethod(
         GaudiGenerationMixin._expand_inputs_for_generation
     )
-    transformers.generation.GenerationMixin._validate_model_kwargs = (
-        GaudiGenerationMixin._validate_model_kwargs
-    )
+    transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
     transformers.generation.GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
     transformers.generation.GenerationMixin.sample = GaudiGenerationMixin.sample
     transformers.generation.GenerationMixin.beam_search = GaudiGenerationMixin.beam_search

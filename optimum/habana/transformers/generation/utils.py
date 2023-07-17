@@ -57,14 +57,7 @@ if TYPE_CHECKING:
     from .streamers import BaseStreamer
 
 
-MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
-    "bloom",
-    "gpt2",
-    "opt",
-    "gptj",
-    "gpt_neox",
-    "llama"
-]
+MODELS_OPTIMIZED_WITH_STATIC_SHAPES = ["bloom", "gpt2", "opt", "gptj", "gpt_neox", "llama"]
 
 
 logger = logging.get_logger(__name__)
@@ -180,6 +173,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         return model_kwargs
 
+    # TODO: remove this method when Transformers v4.31 is released since it solves the issue with Llama
     def _validate_model_kwargs(self, model_kwargs: Dict[str, Any]):
         """
         Copied from Transformers: https://github.com/huggingface/transformers/blob/main/src/transformers/generation/utils.py
@@ -189,7 +183,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if self.config.is_encoder_decoder:
             for key in ["decoder_input_ids"]:
                 model_kwargs.pop(key, None)
-        if self.config.model_type == 'llama':
+        if self.config.model_type == "llama":
             for key in ["token_type_ids"]:
                 model_kwargs.pop(key, None)
 

@@ -1,8 +1,8 @@
-from typing import Optional, Tuple, Union, List
+import math
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import math
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaForCausalLM, apply_rotary_pos_emb, logger
 
@@ -38,14 +38,14 @@ def gaudi_llama_attention_forward(
     # [bsz, nh, t, hd]
     if past_key_value is not None:
         # reuse k, v, self_attention
-         past_key = past_key_value[0]
-         past_value = past_key_value[1]
-         if token_idx is not None:
+        past_key = past_key_value[0]
+        past_value = past_key_value[1]
+        if token_idx is not None:
             past_key.index_copy_(2, token_idx - 1, key_states)
             past_value.index_copy_(2, token_idx - 1, value_states)
             key_states = past_key
             value_states = past_value
-         else:
+        else:
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
@@ -173,9 +173,7 @@ def gaudi_llama_model_forward(
         inputs_embeds = self.embed_tokens(input_ids)
     # embed positions
     if attention_mask is None:
-        attention_mask = torch.ones(
-            (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
-        )
+        attention_mask = torch.ones((batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device)
     attention_mask = self._prepare_decoder_attention_mask(
         attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
     )
@@ -195,11 +193,14 @@ def gaudi_llama_model_forward(
             all_hidden_states += (hidden_states,)
         past_key_value = past_key_values[idx] if past_key_values is not None else None
         if self.gradient_checkpointing and self.training:
+
             def create_custom_forward(module):
                 def custom_forward(*inputs):
                     # None for past_key_value
                     return module(*inputs, output_attentions, None)
+
                 return custom_forward
+
             layer_outputs = torch.utils.checkpoint.checkpoint(
                 create_custom_forward(decoder_layer),
                 hidden_states,
@@ -246,6 +247,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
