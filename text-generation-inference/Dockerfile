@@ -49,10 +49,10 @@ RUN wget http://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.
 
 WORKDIR /usr/src
 
-# Install server
 COPY --from=tgi /tmp/text-generation-inference/proto proto
 COPY --from=tgi /tmp/text-generation-inference/server server
 COPY --from=tgi /tmp/text-generation-inference/server/Makefile server/Makefile
+# Copy files modified for running on Gaudi
 COPY server/text_generation_server/cli.py server/text_generation_server/cli.py
 COPY server/text_generation_server/server.py server/text_generation_server/server.py
 COPY server/text_generation_server/models/__init__.py server/text_generation_server/models/__init__.py
@@ -60,8 +60,13 @@ COPY server/text_generation_server/models/bloom.py server/text_generation_server
 COPY server/text_generation_server/models/causal_lm.py server/text_generation_server/models/causal_lm.py
 COPY server/text_generation_server/models/model.py server/text_generation_server/models/model.py
 COPY server/text_generation_server/models/santacoder.py server/text_generation_server/models/santacoder.py
+COPY server/text_generation_server/utils/watermark.py server/text_generation_server/utils/watermark.py
+COPY server/text_generation_server/utils/tokens.py server/text_generation_server/utils/tokens.py
+COPY server/text_generation_server/utils/logits_process.py server/text_generation_server/utils/logits_process.py
+COPY server/text_generation_server/utils/dist.py server/text_generation_server/utils/dist.py
 COPY server/requirements.txt server/requirements.txt
 COPY server/pyproject.toml server/pyproject.toml
+# Install server
 RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
