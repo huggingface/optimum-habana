@@ -56,8 +56,9 @@ def initialize_torch_distributed():
         options._timeout = timedelta(seconds=60)
     elif torch.hpu.is_available():
         backend = "hccl"
-        if world_size > torch.hpu.device_count():
-            raise ValueError("WORLD_SIZE is higher than the number of available HPUs.")
+        n_hpus = torch.hpu.device_count()
+        if world_size > n_hpus:
+            raise ValueError(f"WORLD_SIZE ({world_size}) is higher than the number of available HPUs ({n_hpus}).")
     else:
         backend = "gloo"
 
