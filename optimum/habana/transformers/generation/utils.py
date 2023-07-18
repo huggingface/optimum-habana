@@ -63,6 +63,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "opt",
     "gptj",
     "gpt_neox",
+    "bart",
 ]
 
 
@@ -352,7 +353,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.static_shapes is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
         if generation_config.ignore_eos is None:
-            generation_config.ignore_eos = lazy_mode
+            generation_config.ignore_eos = not lazy_mode
         generation_config.validate()
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
         self._validate_model_kwargs(model_kwargs.copy())
@@ -400,7 +401,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if generation_config.static_shapes:
             # token_idx is the current index in the generation process, it is incremented each time a new token is generated
-            model_kwargs["token_idx"] = torch.tensor(inputs_tensor.shape[-1], device=inputs_tensor.device)
+            model_kwargs["token_idx"] = torch.tensor(1, device=inputs_tensor.device)
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             inputs_tensor = torch.nn.functional.pad(
                 inputs_tensor, (0, generation_config.max_new_tokens), value=generation_config.pad_token_id
@@ -409,8 +410,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["attention_mask"] = torch.nn.functional.pad(
                     model_kwargs["attention_mask"], (0, generation_config.max_new_tokens), value=0
                 )
-        token_idx = model_kwargs.get("token_idx", None)
-        if token_idx is not None:
             if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
                 model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(generation_config.max_new_tokens,
                                                         inputs_tensor.shape[0], generation_config.pad_token_id, inputs_tensor.device)

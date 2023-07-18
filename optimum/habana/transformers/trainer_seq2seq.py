@@ -151,9 +151,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
 
         gen_kwargs = gen_kwargs.copy()
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            if self.args.generation_max_new_tokens:
-                gen_kwargs["max_new_tokens"] = self.args.generation_max_new_tokens
-                self.model.generation_config.max_new_tokens = self.args.generation_max_new_tokens
+            if self.model.config.model_type == "bart":
+                gen_kwargs["max_new_tokens"] = self.model.generation_config.max_length
             else:
                 gen_kwargs["max_length"] = self.args.generation_max_length
         gen_kwargs["num_beams"] = (
@@ -205,9 +204,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
 
         gen_kwargs = gen_kwargs.copy()
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            if self.args.generation_max_new_tokens:
-                gen_kwargs["max_new_tokens"] = self.args.generation_max_new_tokens
-                self.model.generation_config.max_new_tokens = self.args.generation_max_new_tokens
+            if self.model.config.model_type == "bart":
+                gen_kwargs["max_new_tokens"] = self.model.generation_config.max_length
             else:
                 gen_kwargs["max_length"] = self.args.generation_max_length
         gen_kwargs["num_beams"] = (
@@ -273,19 +271,6 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             if gen_kwargs.get("hpu_graphs") is not None
             else self.args.use_hpu_graphs_for_inference
         )
-        gen_kwargs["ignore_eos"] = (
-            gen_kwargs["ignore_eos"] if gen_kwargs.get("ignore_eos") is not None else self.args.ignore_eos
-        )
-        gen_kwargs["use_cache"] = (
-            gen_kwargs["use_cache"] if gen_kwargs.get("use_cache") is not None else self.args.use_kv_cache
-        )
-        gen_kwargs["generation_config"] = (
-            gen_kwargs["generation_config"] if gen_kwargs.get("generation_config") is not None else self.model.generation_config
-        )
-        if self.args.use_token_idx:
-            gen_kwargs["token_idx"] = (
-                torch.tensor(1, device='hpu:0')
-            )
         # TODO (Joao): the following line is needed to keep a consistent result on SQUAD. Ideally, we should not block
         # users from preparing a dataset with `decoder_input_ids`.
         inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}

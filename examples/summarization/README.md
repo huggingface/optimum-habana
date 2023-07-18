@@ -18,7 +18,7 @@ limitations under the License.
 
 This directory contains examples for finetuning and evaluating transformers on summarization tasks.
 
-`run_summarization.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune T5 (or) predict using BART on it.
+`run_summarization.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune and evaluate T5 (or predict using BART) on it.
 
 For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files.
 You will also find examples of these below.
@@ -240,13 +240,11 @@ python run_summarization.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
-    --gaudi_config_name Habana/t5 \
+    --gaudi_config_name Habana/bart \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --num_beams 1 \
-    --use_token_idx
+    --num_beams 1
 ```
 
 
-Enable `--use_token_idx` in order to run optimized version of greedy search for Habana
-Only `--num_beams 1` is supported in BART
+Only `--num_beams 1` is supported for BART

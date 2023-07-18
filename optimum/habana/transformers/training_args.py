@@ -161,21 +161,6 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
-    use_token_idx: bool = field(
-        default=False,
-        metadata={"help": "Whether to use token_idx for performing inference."},
-    )
-
-    use_kv_cache: bool = field(
-        default=True,
-        metadata={"help": "Use KV caching."},
-    )
-
-    ignore_eos: bool = field(
-        default=False,
-        metadata={"help": "Ignore eos token."},
-    )
-
     throughput_warmup_steps: Optional[int] = field(
         default=0,
         metadata={

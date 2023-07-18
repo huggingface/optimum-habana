@@ -440,15 +440,6 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
     )
-    is_bart = True if model_args.model_name_or_path in [
-            "facebook/bart-large-mnli",
-            "facebook/bart-large-cnn",
-            "facebook/bart-large",
-            "facebook/bart-base",
-            "facebook/bart-large-xsum",
-        ] else False
-    if is_bart and not (training_args.do_predict or training_args.do_eval):
-        raise ValueError("Training is not yet supported for BART. Eval or predict can be enabled")
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
@@ -465,6 +456,10 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+
+    is_bart = model.config.model_type == "bart"
+    if is_bart and training_args.do_train:
+        raise ValueError("Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`.")
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
@@ -688,6 +683,8 @@ def main():
     training_args.generation_config = copy.deepcopy(model.generation_config)
     if training_args.generation_max_length is not None:
         training_args.generation_config.max_length = training_args.generation_max_length
+    elif is_bart:
+        training_args.generation_config.max_new_tokens = training_args.generation_config.max_length
     else:
         training_args.generation_config.max_length = data_args.val_max_target_length
     if data_args.num_beams is not None:
@@ -695,10 +692,6 @@ def main():
     elif training_args.generation_num_beams is not None:
         training_args.generation_config.num_beams = training_args.generation_num_beams
 
-    if is_bart:
-        training_args.generation_max_new_tokens = (
-            model.generation_config.max_new_tokens if model.generation_config.max_new_tokens is not None else model.generation_config.max_length
-        )
     # Initialize our Trainer
     trainer = GaudiSeq2SeqTrainer(
         model=model,
