@@ -24,7 +24,6 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         if model.device.type == "hpu":
             # Force inference mode for the lifetime of TextGenerationService
             self._inference_mode_raii_guard = torch._C._InferenceMode(True)
-            print("INFERNCE MOOOOOODE")
 
     async def Info(self, request, context):
         return self.model.info
