@@ -23,6 +23,7 @@ from .models import (
     GaudiGPT2LMHeadModel,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
+    GaudiLlamaForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     GaudiT5DenseActDense,
@@ -63,6 +64,9 @@ from .models import (
     gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
+    gaudi_llama_attention_forward,
+    gaudi_llama_decoder_layer_forward,
+    gaudi_llama_model_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
@@ -106,6 +110,7 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
     transformers.generation.GenerationMixin._prepare_past_key_values = GaudiGenerationMixin._prepare_past_key_values
     transformers.generation.GenerationMixin._prepare_decoder_attention_mask = GaudiGenerationMixin._prepare_decoder_attention_mask
+    transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
     transformers.generation.GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
     transformers.generation.GenerationMixin.sample = GaudiGenerationMixin.sample
     transformers.generation.GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
@@ -182,6 +187,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
+
+    # Optimization for llama generation on Gaudi
+    transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
+    transformers.models.llama.modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
+    transformers.models.llama.modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
+    transformers.models.llama.modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
 
     # Dropout kernel improvement for Flan-T5
     transformers.models.t5.modeling_t5.T5Stack = GaudiT5Stack

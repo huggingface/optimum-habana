@@ -57,14 +57,7 @@ if TYPE_CHECKING:
     from .streamers import BaseStreamer
 
 
-MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
-    "bloom",
-    "gpt2",
-    "opt",
-    "gptj",
-    "gpt_neox",
-    "bart",
-]
+MODELS_OPTIMIZED_WITH_STATIC_SHAPES = ["bloom", "gpt2", "opt", "gptj", "gpt_neox", "llama", "bart"]
 
 
 logger = logging.get_logger(__name__)
@@ -223,6 +216,36 @@ class GaudiGenerationMixin(GenerationMixin):
             if token_idx is None:
                 max_new_tokens = 1
             return torch.ones((batch_size, max_new_tokens), dtype=torch.long, device=device) * decoder_start_token_id
+
+    # TODO: remove this method when Transformers v4.31 is released since it solves the issue with Llama
+    def _validate_model_kwargs(self, model_kwargs: Dict[str, Any]):
+        """
+        Copied from Transformers: https://github.com/huggingface/transformers/blob/main/src/transformers/generation/utils.py
+
+        Remove `token_type_ids` from model_kwargs, which is not used for llama model
+        """
+        if self.config.is_encoder_decoder:
+            for key in ["decoder_input_ids"]:
+                model_kwargs.pop(key, None)
+        if self.config.model_type == "llama":
+            for key in ["token_type_ids"]:
+                model_kwargs.pop(key, None)
+
+        unused_model_args = []
+        model_args = set(inspect.signature(self.prepare_inputs_for_generation).parameters)
+        # `kwargs`/`model_kwargs` is often used to handle optional forward pass inputs like `attention_mask`. If
+        # `prepare_inputs_for_generation` doesn't accept them, then a stricter check can be made ;)
+        if "kwargs" in model_args or "model_kwargs" in model_args:
+            model_args |= set(inspect.signature(self.forward).parameters)
+        for key, value in model_kwargs.items():
+            if value is not None and key not in model_args:
+                unused_model_args.append(key)
+
+        if unused_model_args:
+            raise ValueError(
+                f"The following `model_kwargs` are not used by the model: {unused_model_args} (note: typos in the"
+                " generate arguments will also show up in this list)"
+            )
 
     @torch.no_grad()
     def generate(
