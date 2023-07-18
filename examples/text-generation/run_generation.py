@@ -25,8 +25,12 @@ import os
 import time
 
 import torch
-import torch.nn.functional as F
-from checkpoint_utils import get_ds_injection_policy, model_is_optimized, write_checkpoints_json
+from checkpoint_utils import (
+    get_ds_injection_policy,
+    get_repo_root,
+    model_is_optimized,
+    write_checkpoints_json,
+)
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 
@@ -197,7 +201,9 @@ def main():
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
-            with deepspeed.OnDevice(dtype=model_dtype, device=args.device):
+            get_repo_root(args.model_name_or_path, args.local_rank)
+            # TODO: revisit placement on CPU when auto-injection is possible
+            with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
                 model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval()
 
@@ -221,6 +227,7 @@ def main():
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         model = model.module
     else:
+        get_repo_root(args.model_name_or_path)
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
         model = model.eval().to(args.device)
         is_optimized = model_is_optimized(model.config)
@@ -252,6 +259,7 @@ def main():
     generation_config = copy.deepcopy(model.generation_config)
     generation_config.max_new_tokens = args.max_new_tokens
     generation_config.use_cache = args.use_kv_cache
+    generation_config.static_shapes = is_optimized
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
     generation_config.bad_words_ids = bad_words_ids
@@ -290,18 +298,6 @@ def main():
             # Tokenization
             input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
 
-            # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
-            input_token_len = input_tokens.input_ids.shape[-1]
-            if is_optimized:
-                input_tokens["input_ids"] = F.pad(
-                    input_tokens.input_ids, (0, args.max_new_tokens), value=model.generation_config.pad_token_id
-                )
-                input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
-                # token_idx is the current index in the generation process, it is incremented each time a new token is generated
-                kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
-            else:
-                kwargs = {}
-
             # Move inputs to target device(s)
             for t in input_tokens:
                 if torch.is_tensor(input_tokens[t]):
@@ -309,7 +305,6 @@ def main():
 
             outputs = model.generate(
                 **input_tokens,
-                **kwargs,
                 generation_config=generation_config,
                 lazy_mode=True,
                 hpu_graphs=args.use_hpu_graphs,
@@ -420,20 +415,11 @@ def main():
         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size)
         for i, batch in enumerate(dataloader):
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
-            # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
-            if is_optimized:
-                batch["input_ids"] = F.pad(
-                    batch["input_ids"], (0, args.max_new_tokens), value=model.generation_config.pad_token_id
-                )
-                batch["attention_mask"] = F.pad(batch["attention_mask"], (0, args.max_new_tokens), value=0)
-            # prompt = batch.pop(column_name)
+
             # Move inputs to target device(s)
             for t in batch:
                 if torch.is_tensor(batch[t]):
                     batch[t] = batch[t].to(args.device)
-            if is_optimized:
-                # token_idx is the current index in the generation process, it is incremented each time a new token is generated
-                batch["token_idx"] = torch.tensor(prompt_length, device=args.device)
 
             # Generate new sequences
             outputs = model.generate(
