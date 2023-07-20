@@ -2,26 +2,32 @@
 < 
 32a32
 > import transformers
-38,39d37
+33a34
+> from habana_dataloader_trainer import HabanaDataloaderTrainer
+38,39d38
 < 
 < import transformers
-45,47d42
+45,47d43
 <     Trainer,
 <     TrainingArguments,
 <     set_seed,
-52a48,50
+52a49,51
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
-57c55
-< check_min_version("4.29.0.dev0")
+57c56
+< check_min_version("4.32.0.dev0")
 ---
-> check_min_version("4.28.0")
-230c228
+> check_min_version("4.31.0")
+171a171,173
+>     mediapipe_dataloader: bool = field(
+>         default=False, metadata={"help": "Turn on MediaPipe hardware-based accelerated data loading."}
+>     )
+230c232
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-258a257,263
+258a261,267
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -29,18 +35,57 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-261,262c266,268
+259a269
+>     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
+261,262c271,273
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+<         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
->         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-399d404
+>         + f"mixed-precision training: {mixed_precision}"
+399d409
 <     image_transformations = torch.jit.script(image_transformations)
-496c501
+446,447c456,464
+<         # Transform images on the fly as doing it on the whole dataset takes too much time.
+<         train_dataset.set_transform(transform_images)
+---
+>         if data_args.mediapipe_dataloader:
+>             train_dataset.image_mean = image_processor.image_mean
+>             train_dataset.image_std = image_processor.image_std
+>             train_dataset.text_max_length = data_args.max_seq_length
+>             train_dataset.image_resize = config.vision_config.image_size
+>             train_dataset.transform_func = transform_images
+>         else:
+>             # Transform images on the fly as doing it on the whole dataset takes too much time.
+>             train_dataset.set_transform(transform_images)
+469,470c486,494
+<         # Transform images on the fly as doing it on the whole dataset takes too much time.
+<         eval_dataset.set_transform(transform_images)
+---
+>         if data_args.mediapipe_dataloader:
+>             eval_dataset.image_mean = image_processor.image_mean
+>             eval_dataset.image_std = image_processor.image_std
+>             eval_dataset.text_max_length = data_args.max_seq_length
+>             eval_dataset.image_resize = config.vision_config.image_size
+>             eval_dataset.transform_func = transform_images
+>         else:
+>             # Transform images on the fly as doing it on the whole dataset takes too much time.
+>             eval_dataset.set_transform(transform_images)
+493a518,526
+>         if data_args.mediapipe_dataloader:
+>             test_dataset.image_mean = image_processor.image_mean
+>             test_dataset.image_std = image_processor.image_std
+>             test_dataset.text_max_length = data_args.max_seq_length
+>             test_dataset.image_resize = config.vision_config.image_size
+>             test_dataset.transform_func = transform_images
+>         else:
+>             # Transform images on the fly as doing it on the whole dataset takes too much time.
+>             test_dataset.set_transform(transform_images)
+496c529,530
 <     trainer = Trainer(
 ---
->     trainer = GaudiTrainer(
-497a503
+>     trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
+>     trainer = trainer_cls(
+497a532
 >         gaudi_config=gaudi_config,
