@@ -129,4 +129,9 @@ def get_ds_injection_policy(config):
 
             policy = {GPTNeoXLayer: ("attention.dense", "mlp.dense_4h_to_h")}
 
+        if model_type == "llama":
+            from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+
+            policy = {LlamaDecoderLayer: ("self_attn.o_proj", "mlp.down_proj")}
+
     return policy
