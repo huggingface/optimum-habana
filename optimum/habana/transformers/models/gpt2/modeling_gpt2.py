@@ -211,9 +211,8 @@ class GaudiGPT2Attention(torch.nn.Module):
         if layer_past is not None:
             past_key, past_value = layer_past
             if token_idx is not None:
-                # HPU bug WA
-                past_key.index_add_(2, token_idx - 1, key - torch.index_select(past_key, 2, token_idx - 1))
-                past_value.index_add_(2, token_idx - 1, value - torch.index_select(past_value, 2, token_idx - 1))
+                past_key.index_copy_(2, token_idx - 1, key)
+                past_value.index_copy_(2, token_idx - 1, value)
                 key = past_key
                 value = past_value
             else:

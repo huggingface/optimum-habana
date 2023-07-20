@@ -60,9 +60,8 @@ def gaudi_gpt_neox_attention_forward(
         past_key = layer_past[0]
         past_value = layer_past[1]
         if token_idx is not None:
-            # HPU bug WA
-            past_key.index_add_(2, token_idx - 1, key - torch.index_select(past_key, 2, token_idx - 1))
-            past_value.index_add_(2, token_idx - 1, value - torch.index_select(past_value, 2, token_idx - 1))
+            past_key.index_copy_(2, token_idx - 1, key)
+            past_value.index_copy_(2, token_idx - 1, value)
             key = past_key
             value = past_value
         else:

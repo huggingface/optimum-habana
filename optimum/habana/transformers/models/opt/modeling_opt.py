@@ -72,13 +72,8 @@ def gaudi_opt_attention_forward(
         key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
         value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
         if token_idx is not None:
-            # HPU bug WA
-            past_key_value[0].index_add_(
-                2, token_idx - 1, key_states - torch.index_select(past_key_value[0], 2, token_idx - 1)
-            )
-            past_key_value[1].index_add_(
-                2, token_idx - 1, value_states - torch.index_select(past_key_value[1], 2, token_idx - 1)
-            )
+            past_key_value[0].index_copy_(2, token_idx - 1, key_states)
+            past_key_value[1].index_copy_(2, token_idx - 1, value_states)
             key_states = past_key_value[0]
             value_states = past_key_value[1]
         else:
