@@ -15,15 +15,12 @@
 """
 Integration with Deepspeed
 """
-import os
-from copy import deepcopy
-from dataclasses import make_dataclass
 
 import torch
 from transformers.deepspeed import (
+    deepspeed_optim_sched,
     HfDeepSpeedConfig,
     HfTrainerDeepSpeedConfig,
-    deepspeed_optim_sched,
     set_hf_deepspeed_config,
 )
 from transformers.dependency_versions_check import dep_version_check
@@ -109,16 +106,18 @@ def deepspeed_init(trainer, num_training_steps, inference=False):
 
     hf_deepspeed_config = trainer.accelerator.state.deepspeed_plugin.hf_ds_config
 
+    print("HERE", hf_deepspeed_config._dtype, hf_deepspeed_config.dtype())
+
+    # TODO: temporary workaround
+    # To remove when it is solved, see https://github.com/HabanaAI/Model-References/blob/17fbab7ceebca15b1560ffb2c4e15a3888bb5f33/PyTorch/nlp/pretraining/deepspeed-bert/run_pretraining.py#L527
+    model.to(dtype=hf_deepspeed_config.dtype(), device="hpu")
+
     # resume config update - some bits like `model` and `num_training_steps` only become available during train
     hf_deepspeed_config.trainer_config_finalize(args, model, num_training_steps)
     config = hf_deepspeed_config.config
 
     # set the Deepspeed log level consistent with the Trainer
     ds_logger.setLevel(args.get_process_log_level())
-
-    # TODO: temporary workaround
-    # To remove when it is solved, see https://github.com/HabanaAI/Model-References/blob/17fbab7ceebca15b1560ffb2c4e15a3888bb5f33/PyTorch/nlp/pretraining/deepspeed-bert/run_pretraining.py#L527
-    model.to(dtype=hf_deepspeed_config._dtype, device="hpu")
 
     if inference:
         # only Z3 makes sense for the inference
@@ -141,43 +140,3 @@ def deepspeed_init(trainer, num_training_steps, inference=False):
     # from pprint import pprint; pprint(config)
 
     return optimizer, lr_scheduler
-
-    HabanaArgs = make_dataclass("HabanaArgs", [("use_hpu", bool), ("no_cuda", bool)])
-    habana_args = HabanaArgs(use_hpu=args.use_habana, no_cuda=args.no_cuda)
-    if args.use_habana:
-        # This env variable is initialized here to make sure it is set to "true"
-        # It should be done by the launcher but it does not work for multi-node runs
-        os.environ["DEEPSPEED_USE_HPU"] = "true"
-
-    kwargs = {
-        "args": habana_args,
-        "model": model,
-        "model_parameters": model_parameters,
-        "config_params": config,
-        "optimizer": optimizer,
-        "lr_scheduler": lr_scheduler,
-    }
-
-    deepspeed_engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
-
-    if resume_from_checkpoint is not None:
-        # it's possible that the user is trying to resume from model_path, which doesn't necessarily
-        # contain a deepspeed checkpoint. e.g. examples just check if the dir exists and assume it's
-        # a resume from a checkpoint and not just a local pretrained weight. So we check here if the
-        # path contains what looks like a deepspeed checkpoint
-        import glob
-
-        deepspeed_checkpoint_dirs = sorted(glob.glob(f"{resume_from_checkpoint}/global_step*"))
-
-        if len(deepspeed_checkpoint_dirs) > 0:
-            logger.info(f"Attempting to resume from {resume_from_checkpoint}")
-            # this magically updates self.optimizer and self.lr_scheduler
-            load_path, _ = deepspeed_engine.load_checkpoint(
-                resume_from_checkpoint, load_optimizer_states=True, load_lr_scheduler_states=True
-            )
-            if load_path is None:
-                raise ValueError(f"[deepspeed] failed to resume from checkpoint {resume_from_checkpoint}")
-        else:
-            raise ValueError(f"Can't find a valid checkpoint at {resume_from_checkpoint}")
-
-    return deepspeed_engine, optimizer, lr_scheduler

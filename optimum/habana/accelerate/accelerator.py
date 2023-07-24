@@ -1,19 +1,77 @@
 from __future__ import annotations
+
 import contextlib
 import os
-import torch
 import warnings
 from collections import OrderedDict
+from contextlib import contextmanager
+from dataclasses import make_dataclass
 
+import torch
 from accelerate import Accelerator
 from accelerate.data_loader import prepare_data_loader
 from accelerate.optimizer import AcceleratedOptimizer
 from accelerate.state import GradientState
 from accelerate.tracking import GeneralTracker, filter_trackers
-from accelerate.utils import PrecisionType, DeepSpeedPlugin, FullyShardedDataParallelPlugin, MegatronLMPlugin, RNGType, LoggerType, ProjectConfiguration, GradientAccumulationPlugin, KwargsHandler, DynamoBackend, TorchDynamoPlugin, is_deepspeed_available, DistributedDataParallelKwargs, GradScalerKwargs, InitProcessGroupKwargs, FP8RecipeKwargs, parse_choice_from_env, DistributedType
-from contextlib import contextmanager
+from accelerate.utils import (
+    DeepSpeedPlugin,
+    DistributedDataParallelKwargs,
+    DistributedType,
+    DynamoBackend,
+    FP8RecipeKwargs,
+    FullyShardedDataParallelPlugin,
+    GradientAccumulationPlugin,
+    GradScalerKwargs,
+    InitProcessGroupKwargs,
+    KwargsHandler,
+    LoggerType,
+    MegatronLMPlugin,
+    PrecisionType,
+    ProjectConfiguration,
+    RNGType,
+    TorchDynamoPlugin,
+    is_deepspeed_available,
+    parse_choice_from_env,
+)
+from torch.optim.lr_scheduler import LRScheduler
+
+
+if is_deepspeed_available():
+    import deepspeed
+    from accelerate.utils import DummyOptim, DummyScheduler, DeepSpeedOptimizerWrapper, DeepSpeedEngineWrapper
 
 from .state import GaudiAcceleratorState
+
+
+# We pass cloned tensors to torch.save() to avoid checkpoint bloat that occurs when torch.save()
+# saves the underlying storage rather than the slice of the storage corresponding to individual tensors.
+# This is a problem in DeepSpeed because we often allocate tensors using slices of large flattened buffers.
+# Tensor cloning helps to avoid this problem because the storage of cloned tensors are closer to the true size.
+# It is expected that the garbage collector will reclaim the cloned tensor storage to avoid memory bloat.
+# See https://pytorch.org/docs/stable/notes/serialization.html#preserve-storage-sharing
+# TODO: remove this method when it is available in Habana's DeepSpeed fork
+def clone_tensors_for_torch_save(item, device=torch.device('cpu')):
+    """
+    Returns a copy of `item` with all enclosed tensors replaced by clones on a specified device.
+    Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
+
+    Parameters:
+        - `item`: tensor to clone or (possibly nested) container of tensors to clone.
+        - `device`: target device (defaults to `cpu`)
+
+    Returns:
+        - copy of `item` with cloned tensors on target device
+    """
+    if torch.is_tensor(item):
+        return item.detach().clone().to(device)
+    elif isinstance(item, list):
+        return [clone_tensors_for_torch_save(v, device) for v in item]
+    elif isinstance(item, tuple):
+        return tuple([clone_tensors_for_torch_save(v, device) for v in item])
+    elif isinstance(item, dict):
+        return type(item)({k: clone_tensors_for_torch_save(v, device) for k, v in item.items()})
+    else:
+        return item
 
 
 class GaudiAccelerator(Accelerator):
@@ -160,7 +218,9 @@ class GaudiAccelerator(Accelerator):
             os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"  # use DeepSpeed if plugin is provided
         if deepspeed_plugin:
             if not is_deepspeed_available():
-                raise ImportError("DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`.")
+                raise ImportError(
+                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
+                )
 
             mixed_precision = (
                 os.environ.get("ACCELERATE_MIXED_PRECISION", "no") if mixed_precision is None else mixed_precision
@@ -487,7 +547,7 @@ class GaudiAccelerator(Accelerator):
                 )
         else:
             batch_size_per_device = deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"]
-            result = [obj for obj in args]
+            result = list(args)
 
         if self.gradient_accumulation_steps != deepspeed_plugin.deepspeed_config["gradient_accumulation_steps"]:
             logger.info(
@@ -552,6 +612,10 @@ class GaudiAccelerator(Accelerator):
                 )
 
         if model is not None:
+            # # TODO: temporary workaround
+            # # To remove when it is solved, see https://github.com/HabanaAI/Model-References/blob/17fbab7ceebca15b1560ffb2c4e15a3888bb5f33/PyTorch/nlp/pretraining/deepspeed-bert/run_pretraining.py#L527
+            # model.to(dtype=deepspeed_plugin.hf_ds_config._dtype, device=self.device)
+
             if hasattr(model, "config"):
                 hidden_size = (
                     max(model.config.hidden_sizes)
@@ -592,7 +656,7 @@ class GaudiAccelerator(Accelerator):
                     )
             deepspeed_plugin.deepspeed_config_process(must_match=False, **config_kwargs)
             self.deepspeed_config = deepspeed_plugin.deepspeed_config
-            kwargs = dict(model=model, config_params=self.deepspeed_config)
+            kwargs = {"model": model, "config_params": self.deepspeed_config}
             if optimizer is not None:
                 if isinstance(optimizer, (DummyOptim)):
                     kwargs["model_parameters"] = optimizer.params
@@ -608,6 +672,16 @@ class GaudiAccelerator(Accelerator):
                     if scheduler is not None:
                         if type(scheduler).__name__ in deepspeed.runtime.lr_schedules.VALID_LR_SCHEDULES:
                             kwargs["lr_scheduler"] = scheduler
+
+            HabanaArgs = make_dataclass("HabanaArgs", [("use_hpu", bool), ("no_cuda", bool)])
+            habana_args = HabanaArgs(
+                use_hpu=True if self.device.type == "hpu" else False,
+                no_cuda=True if self.device.type == "cpu" else False,
+            )
+            if habana_args.use_hpu:
+                # This env variable is initialized here to make sure it is set to "true"
+                # It should be done by the launcher but it does not work for multi-node runs
+                os.environ["DEEPSPEED_USE_HPU"] = "true"
 
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
             if optimizer is not None:
@@ -645,83 +719,6 @@ class GaudiAccelerator(Accelerator):
                 )
         return tuple(result)
 
-    def prepare_data_loader(self, data_loader: torch.utils.data.DataLoader, device_placement=None):
-        """
-        Prepares a PyTorch DataLoader for training in any distributed setup. It is recommended to use
-        [`Accelerator.prepare`] instead.
-
-        Args:
-            data_loader (`torch.utils.data.DataLoader`):
-                A vanilla PyTorch DataLoader to prepare
-            device_placement (`bool`, *optional*):
-                Whether or not to place the batches on the proper device in the prepared dataloader. Will default to
-                `self.device_placement`.
-
-        Example:
-
-        ```python
-        >>> import torch
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator()
-        >>> data_loader = torch.utils.data.DataLoader(...)
-        >>> data_loader = accelerator.prepare_data_loader(data_loader, device_placement=True)
-        ```
-        """
-        # Ensure we can't double wrap a DataLoader due to `find_batch_size`
-        if getattr(data_loader, "_is_accelerate_prepared", False):
-            if data_loader not in self._dataloaders:
-                self._dataloaders.append(data_loader)
-            return data_loader
-        if device_placement is None:
-            device_placement = self.device_placement if self.distributed_type != DistributedType.TPU else False
-        prepared_data_loader = prepare_data_loader(
-            data_loader,
-            self.device,
-            num_processes=self.num_processes,
-            process_index=self.process_index,
-            split_batches=self.split_batches,
-            put_on_device=device_placement,
-            rng_types=self.rng_types.copy(),
-            dispatch_batches=self.dispatch_batches,
-            even_batches=self.even_batches,
-        )
-        self._dataloaders.append(prepared_data_loader)
-        return prepared_data_loader
-
-    def prepare_optimizer(self, optimizer: torch.optim.Optimizer, device_placement=None):
-        """
-        Prepares a PyTorch Optimizer for training in any distributed setup. It is recommended to use
-        [`Accelerator.prepare`] instead.
-
-        Args:
-            optimizer (`torch.optim.Optimizer`):
-                A vanilla PyTorch optimizer to prepare
-            device_placement (`bool`, *optional*):
-                Whether or not to place the optimizer on the proper device. Will default to `self.device_placement`.
-
-        Example:
-
-        ```python
-        >>> import torch
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator()
-        >>> optimizer = torch.optim.Adam(...)
-        >>> optimizer = accelerator.prepare_optimizer(optimizer, device_placement=True)
-        ```
-        """
-        # Ensure we can't double wrap an optimizer due to `find_batch_size`
-        if getattr(optimizer, "_is_accelerate_prepared", False):
-            if optimizer not in self._optimizers:
-                self._optimizers.append(optimizer)
-            return optimizer
-        if device_placement is None:
-            device_placement = self.device_placement
-        optimizer = AcceleratedOptimizer(optimizer, device_placement=device_placement, scaler=self.scaler)
-        self._optimizers.append(optimizer)
-        return optimizer
-
     def clip_grad_norm_(self, parameters, max_norm, norm_type=2):
         """
         Should be used in place of `torch.nn.utils.clip_grad_norm_`.
@@ -749,9 +746,9 @@ class GaudiAccelerator(Accelerator):
         """
         if self.distributed_type == DistributedType.FSDP:
             self.unscale_gradients()
-            parameters = [p for p in parameters]
+            parameters = list(parameters)
             for model in self._models:
-                if parameters == [p for p in model.parameters()]:
+                if parameters == list(model.parameters()):
                     return model.clip_grad_norm_(max_norm, norm_type)
         elif self.distributed_type == DistributedType.DEEPSPEED:
             # `accelerator.backward(loss)` is doing that automatically. Therefore, its implementation is not needed
@@ -1179,18 +1176,12 @@ class GaudiAccelerator(Accelerator):
                         "To save the full checkpoint, run `model.save_checkpoint(save_dir)` and use `zero_to_fp32.py` to recover weights."
                     )
             else:
-                from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
-
+                # from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
                 state_dict = clone_tensors_for_torch_save(self.unwrap_model(model).state_dict())
         else:
             if unwrap:
                 model = self.unwrap_model(model)
             state_dict = model.state_dict()
-
-        if state_dict is not None:
-            for k in state_dict:
-                if getattr(state_dict[k], "dtype", None) == torch.float16:
-                    state_dict[k] = state_dict[k].float()
 
         return state_dict
 

@@ -564,7 +564,12 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         optimizer = torch.optim.SGD(model.parameters(), lr=1.0)
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, cooldown=2)
         trainer = GaudiTrainer(
-            model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset, optimizers=(optimizer, lr_scheduler)
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            optimizers=(optimizer, lr_scheduler),
         )
         trainer.train()
 

@@ -20,27 +20,25 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Union
 
-from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
 from transformers.trainer_utils import EvaluationStrategy, HubStrategy, IntervalStrategy, SchedulerType
 from transformers.training_args import (
     OptimizerNames,
+    ParallelMode,
     TrainingArguments,
     default_logdir,
-    get_int_from_env,
 )
 from transformers.utils import (
-    ccl_version,
     get_full_repo_name,
     is_accelerate_available,
-    is_psutil_available,
     is_safetensors_available,
 )
 
 from optimum.utils import logging
 
+from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
 from ..accelerate.utils import GaudiDistributedType
 
 
@@ -252,7 +250,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
     # Overriding ddp_backend to replace all possible backends by hccl
     ddp_backend: Optional[str] = field(
-        default=None,
+        default="hccl",
         metadata={
             "help": "The backend to be used for distributed training.",
             "choices": ["hccl"],
@@ -615,7 +613,11 @@ class GaudiTrainingArguments(TrainingArguments):
 
         device = self.distributed_state.device
         self.local_rank = self.distributed_state.local_process_index
-        if torch.distributed.is_available() and torch.distributed.is_initialized() and self.parallel_mode != ParallelMode.DISTRIBUTED:
+        if (
+            torch.distributed.is_available()
+            and torch.distributed.is_initialized()
+            and self.parallel_mode != ParallelMode.DISTRIBUTED
+        ):
             logger.warning(
                 "torch.distributed process group is initialized, but parallel_mode != ParallelMode.DISTRIBUTED. "
                 "In order to use Torch DDP, launch your script with `python -m torch.distributed.launch"

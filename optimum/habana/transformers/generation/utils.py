@@ -409,7 +409,10 @@ class GaudiGenerationMixin(GenerationMixin):
             # Note: If using, `inputs_embeds` this check does not work, because we want to be more hands-off.
             if generation_config.pad_token_id is not None:
                 position = model_kwargs["token_idx"] - 1 if "token_idx" in model_kwargs else -1
-                if len(inputs_tensor.shape) == 2 and torch.sum(inputs_tensor[:, position] == generation_config.pad_token_id) > 0:
+                if (
+                    len(inputs_tensor.shape) == 2
+                    and torch.sum(inputs_tensor[:, position] == generation_config.pad_token_id) > 0
+                ):
                     logger.warning(
                         "A decoder-only architecture is being used, but right-padding was detected! For correct "
                         "generation results, please set `padding_side='left'` when initializing the tokenizer."

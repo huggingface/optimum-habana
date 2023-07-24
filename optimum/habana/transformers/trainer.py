@@ -27,23 +27,19 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import numpy as np
 import torch
-from accelerate.utils import GradientAccumulationPlugin
-from packaging import version
+from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin
 from torch.utils.data import DataLoader, Dataset, RandomSampler
-from torch.utils.data.distributed import DistributedSampler
-from tqdm.auto import tqdm
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.deepspeed import deepspeed_load_checkpoint
+from .deepspeed import deepspeed_init
 from transformers.integrations import hp_params
 from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint, unwrap_model
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
-    DistributedLengthGroupedSampler,
-    DistributedSamplerWithLoop,
     DistributedTensorGatherer,
     IterableDatasetShard,
     LengthGroupedSampler,
@@ -54,7 +50,6 @@ from transformers.trainer_pt_utils import (
     nested_concat,
     nested_detach,
     nested_numpify,
-    nested_truncate,
     reissue_pt_warnings,
 )
 from transformers.trainer_utils import (
@@ -71,7 +66,7 @@ from transformers.trainer_utils import (
     get_last_checkpoint,
     has_length,
 )
-from transformers.training_args import TrainingArguments, ParallelMode
+from transformers.training_args import ParallelMode, TrainingArguments
 from transformers.utils import (
     ADAPTER_SAFE_WEIGHTS_NAME,
     ADAPTER_WEIGHTS_NAME,
@@ -87,6 +82,7 @@ from transformers.utils import (
 from optimum.habana.distributed import all_reduce_gradients
 from optimum.utils import logging
 
+from ..accelerate import GaudiAccelerator
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -97,7 +93,6 @@ from ..utils import (
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
-from ..accelerate import GaudiAccelerator
 
 
 if is_datasets_available():
@@ -292,7 +287,18 @@ class GaudiTrainer(Trainer):
             )
 
         else:
-            return RandomSampler(self.train_dataset)
+            num_samples = len(self.train_dataset)
+            if (
+                self.args.use_lazy_mode
+                and not self.args.dataloader_drop_last
+                and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
+            ):
+                # Make the total number of samples divisible by the batch size in lazy mode if needed
+                num_samples += (
+                    self.args.per_device_train_batch_size
+                    - len(self.train_dataset) % self.args.per_device_train_batch_size
+                )
+            return RandomSampler(self.train_dataset, num_samples=num_samples)
 
     def create_optimizer(self):
         """
@@ -798,7 +804,11 @@ class GaudiTrainer(Trainer):
                     is_last_step_and_steps_less_than_grad_acc
                 )
 
-                if args.parallel_mode == ParallelMode.DISTRIBUTED and args.distribution_strategy == "fast_ddp" and is_optimization_step:
+                if (
+                    args.parallel_mode == ParallelMode.DISTRIBUTED
+                    and args.distribution_strategy == "fast_ddp"
+                    and is_optimization_step
+                ):
                     all_reduce_gradients(
                         model, use_hpu_graphs=True
                     )  # use HPU graphs for gradient fusion regardless of args.use_hpu_graphs_for_training setting
@@ -998,9 +1008,7 @@ class GaudiTrainer(Trainer):
             if has_been_loaded:
                 self._issue_warnings_after_load(load_result)
         elif os.path.exists(os.path.join(self.state.best_model_checkpoint, WEIGHTS_INDEX_NAME)):
-            load_result = load_sharded_checkpoint(
-                model, self.state.best_model_checkpoint, strict=False
-            )
+            load_result = load_sharded_checkpoint(model, self.state.best_model_checkpoint, strict=False)
             self._issue_warnings_after_load(load_result)
         else:
             logger.warning(
@@ -1920,7 +1928,7 @@ class GaudiTrainer(Trainer):
         # post accelerator creation setup
         if self.is_deepspeed_enabled:
             if getattr(self.args, "hf_deepspeed_config", None) is None:
-                from transformers.deepspeed import GaudiTrainerDeepSpeedConfig
+                from .deepspeed import GaudiTrainerDeepSpeedConfig
 
                 ds_plugin = self.accelerator.state.deepspeed_plugin
 

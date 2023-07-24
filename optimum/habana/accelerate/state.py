@@ -1,7 +1,9 @@
 import os
+
 import torch
 from accelerate.state import AcceleratorState, PartialState
-from accelerate.utils import is_deepspeed_available, parse_flag_from_env, parse_choice_from_env
+from accelerate.utils import is_deepspeed_available, parse_choice_from_env, parse_flag_from_env
+
 from optimum.utils import logging
 
 from .utils import GaudiDistributedType
@@ -30,6 +32,7 @@ class GaudiPartialState(PartialState):
         - **is_main_process** (`bool`) -- Whether or not the current process is the main one.
         - **is_local_main_process** (`bool`) -- Whether or not the current process is the main one on the local node.
     """
+
     def __init__(self, cpu: bool = False, **kwargs):
         self.__dict__ = self._shared_state
         if not self.initialized:
@@ -55,10 +58,10 @@ class GaudiPartialState(PartialState):
                         import deepspeed
 
                         if world_size > 1:
-                            os.environ["HLS_MODULE_ID"] = str(self.local_rank)
+                            os.environ["HLS_MODULE_ID"] = str(local_rank)
                             os.environ["ID"] = str(rank)
 
-                        deepspeed.init_distributed(dist_backend=self.backend, timeout=timedelta(seconds=self.ddp_timeout))
+                        deepspeed.init_distributed(dist_backend=self.backend, **kwargs)
                         logger.info("DeepSpeed is enabled.")
                     self._mixed_precision = "no"  # deepspeed handles mixed_precision using deepspeed_config
                 else:
@@ -145,6 +148,7 @@ class GaudiAcceleratorState(AcceleratorState):
         - **is_main_process** (`bool`) -- Whether or not the current process is the main one.
         - **is_local_main_process** (`bool`) -- Whether or not the current process is the main one on the local node.
     """
+
     def __init__(
         self,
         mixed_precision: str = None,
@@ -172,7 +176,9 @@ class GaudiAcceleratorState(AcceleratorState):
             )
             self.dynamo_plugin = dynamo_plugin
             # deepspeed handles mixed_precision using deepspeed_config
-            self._mixed_precision = "no" if self.distributed_type == GaudiDistributedType.DEEPSPEED else mixed_precision
+            self._mixed_precision = (
+                "no" if self.distributed_type == GaudiDistributedType.DEEPSPEED else mixed_precision
+            )
             if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true" and not cpu:
                 self.deepspeed_plugin = deepspeed_plugin
             GaudiPartialState._shared_state["distributed_type"] = self.distributed_type
