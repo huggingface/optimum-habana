@@ -84,31 +84,30 @@ class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
             self._dtype = torch.float32
 
 
-def deepspeed_init(trainer, num_training_steps, resume_from_checkpoint=None, inference=False):
+def deepspeed_init(trainer, num_training_steps, inference=False):
     """
     Init DeepSpeed, after updating the DeepSpeed configuration with any relevant Trainer's args.
+
     If `resume_from_checkpoint` was passed then an attempt to resume from a previously saved checkpoint will be made.
+
     Args:
         trainer: Trainer object
         num_training_steps: per single HPU
         resume_from_checkpoint: path to a checkpoint if to resume from after normal DeepSpeedEngine load
         inference: launch in inference mode (no optimizer and no lr scheduler)
-    Returns: model, optimizer, lr_scheduler
+
+    Returns: optimizer, lr_scheduler
+
     We may use `deepspeed_init` more than once during the life of Trainer, when we do - it's a temp hack based on:
     https://github.com/microsoft/DeepSpeed/issues/1394#issuecomment-937405374 until Deepspeed fixes a bug where it
     can't resume from a checkpoint after it did some stepping https://github.com/microsoft/DeepSpeed/issues/1612
     """
-    import deepspeed
     from deepspeed.utils import logger as ds_logger
 
     model = trainer.model
     args = trainer.args
 
-    if hasattr(trainer, "hf_deepspeed_config_orig"):
-        hf_deepspeed_config = deepcopy(trainer.hf_deepspeed_config_orig)
-    else:
-        hf_deepspeed_config = args.hf_deepspeed_config
-        trainer.hf_deepspeed_config_orig = deepcopy(args.hf_deepspeed_config)
+    hf_deepspeed_config = trainer.accelerator.state.deepspeed_plugin.hf_ds_config
 
     # resume config update - some bits like `model` and `num_training_steps` only become available during train
     hf_deepspeed_config.trainer_config_finalize(args, model, num_training_steps)
@@ -133,11 +132,15 @@ def deepspeed_init(trainer, num_training_steps, resume_from_checkpoint=None, inf
         model_parameters = None
     else:
         trainer.optimizer = None  # important for when deepspeed_init is used as re-init
-        optimizer, lr_scheduler = deepspeed_optim_sched(trainer, hf_deepspeed_config, args, num_training_steps)
         model_parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
+        optimizer, lr_scheduler = deepspeed_optim_sched(
+            trainer, hf_deepspeed_config, args, num_training_steps, model_parameters
+        )
 
     # keep for quick debug:
     # from pprint import pprint; pprint(config)
+
+    return optimizer, lr_scheduler
 
     HabanaArgs = make_dataclass("HabanaArgs", [("use_hpu", bool), ("no_cuda", bool)])
     habana_args = HabanaArgs(use_hpu=args.use_habana, no_cuda=args.no_cuda)

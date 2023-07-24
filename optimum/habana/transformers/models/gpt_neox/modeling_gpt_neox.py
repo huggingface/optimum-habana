@@ -111,12 +111,14 @@ def gaudi_gpt_neox_layer_forward(
         token_idx=token_idx,
     )
     attn_output = attention_layer_outputs[0]  # output_attn: attn_output, present, (attn_weights)
+    attn_output = self.post_attention_dropout(attn_output)
     outputs = attention_layer_outputs[1:]
 
     if self.use_parallel_residual:
         # pseudocode:
         # x = x + attn(ln1(x)) + mlp(ln2(x))
         mlp_output = self.mlp(self.post_attention_layernorm(hidden_states))
+        mlp_output = self.post_mlp_dropout(mlp_output)
         hidden_states = mlp_output + attn_output + hidden_states
     else:
         # pseudocode:
@@ -124,6 +126,7 @@ def gaudi_gpt_neox_layer_forward(
         # x = x + mlp(ln2(x))
         attn_output = attn_output + hidden_states
         mlp_output = self.mlp(self.post_attention_layernorm(attn_output))
+        mlp_output = self.post_mlp_dropout(mlp_output)
         hidden_states = mlp_output + attn_output
 
     if use_cache:
@@ -213,7 +216,7 @@ def gaudi_gpt_neox_model_forward(
     if inputs_embeds is None:
         inputs_embeds = self.embed_in(input_ids)
 
-    hidden_states = inputs_embeds
+    hidden_states = self.emb_dropout(inputs_embeds)
 
     if self.gradient_checkpointing and self.training:
         if use_cache:
@@ -345,7 +348,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, token_idx=None, **kwargs
+        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         input_shape = input_ids.shape
 
@@ -371,10 +374,19 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         if attention_mask is None:
             attention_mask = input_ids.new_ones(input_shape)
 
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "position_ids": position_ids,
-            "past_key_values": past_key_values,
-            "token_idx": token_idx,
-        }
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids}
+
+        model_inputs.update(
+            {
+                "attention_mask": attention_mask,
+                "past_key_values": past_key_values,
+                "position_ids": position_ids,
+                "token_idx": token_idx,
+            }
+        )
+
+        return model_inputs

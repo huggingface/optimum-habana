@@ -114,7 +114,9 @@ def gaudi_opt_attention_forward(
                 f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
             )
         attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
-        attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
+        attn_weights = torch.max(
+            attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min, device=attn_weights.device)
+        )
         attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
     from habana_frameworks.torch.hpex import hmp
@@ -168,9 +170,9 @@ def gaudi_opt_decoder_layer_forward(
     hidden_states: torch.Tensor,
     attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
+    past_key_value: Optional[Tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = False,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
     token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """
@@ -280,6 +282,11 @@ def gaudi_opt_decoder_forward(
     # embed positions
     if attention_mask is None:
         attention_mask = torch.ones(batch_size, mask_seq_length, device=inputs_embeds.device)
+    elif attention_mask.shape[1] != mask_seq_length:
+        raise ValueError(
+            f"The provided attention mask has length {attention_mask.shape[1]}, but its length should be "
+            f"{mask_seq_length} (sum of the lengths of current and past inputs)"
+        )
     causal_attention_mask = self._prepare_decoder_attention_mask(
         attention_mask, input_shape, inputs_embeds, past_key_values_length
     )
@@ -316,9 +323,10 @@ def gaudi_opt_decoder_forward(
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        dropout_probability = random.uniform(0, 1)
-        if self.training and (dropout_probability < self.layerdrop):
-            continue
+        if self.training:
+            dropout_probability = torch.rand([])
+            if dropout_probability < self.layerdrop:
+                continue
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
