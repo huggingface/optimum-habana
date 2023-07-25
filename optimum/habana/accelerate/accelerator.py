@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import contextlib
+import math
 import os
+import sys
 import warnings
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -9,8 +11,8 @@ from dataclasses import make_dataclass
 
 import torch
 from accelerate import Accelerator
-from accelerate.data_loader import prepare_data_loader
-from accelerate.optimizer import AcceleratedOptimizer
+from accelerate.logging import get_logger
+from accelerate.scheduler import AcceleratedScheduler
 from accelerate.state import GradientState
 from accelerate.tracking import GeneralTracker, filter_trackers
 from accelerate.utils import (
@@ -38,9 +40,18 @@ from torch.optim.lr_scheduler import LRScheduler
 
 if is_deepspeed_available():
     import deepspeed
-    from accelerate.utils import DummyOptim, DummyScheduler, DeepSpeedOptimizerWrapper, DeepSpeedEngineWrapper
+    from accelerate.utils import (
+        DeepSpeedEngineWrapper,
+        DeepSpeedOptimizerWrapper,
+        DeepSpeedSchedulerWrapper,
+        DummyOptim,
+        DummyScheduler,
+    )
 
 from .state import GaudiAcceleratorState
+
+
+logger = get_logger(__name__)
 
 
 # We pass cloned tensors to torch.save() to avoid checkpoint bloat that occurs when torch.save()
@@ -50,7 +61,7 @@ from .state import GaudiAcceleratorState
 # It is expected that the garbage collector will reclaim the cloned tensor storage to avoid memory bloat.
 # See https://pytorch.org/docs/stable/notes/serialization.html#preserve-storage-sharing
 # TODO: remove this method when it is available in Habana's DeepSpeed fork
-def clone_tensors_for_torch_save(item, device=torch.device('cpu')):
+def clone_tensors_for_torch_save(item, device=torch.device("cpu")):
     """
     Returns a copy of `item` with all enclosed tensors replaced by clones on a specified device.
     Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
@@ -330,188 +341,6 @@ class GaudiAccelerator(Accelerator):
     def use_fp16(self):
         raise ValueError("fp16 is not supported on Habana Gaudi.")
 
-    @contextmanager
-    def accumulate(self, model):
-        """
-        A context manager that will lightly wrap around and perform gradient accumulation automatically
-
-        Args:
-            model (`torch.nn.Module`):
-                PyTorch Module that was prepared with `Accelerator.prepare`
-
-        Example:
-
-        ```python
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator(gradient_accumulation_steps=1)
-        >>> dataloader, model, optimizer, scheduler = accelerator.prepare(dataloader, model, optimizer, scheduler)
-
-        >>> for input, output in dataloader:
-        ...     with accelerator.accumulate(model):
-        ...         outputs = model(input)
-        ...         loss = loss_func(outputs)
-        ...         loss.backward()
-        ...         optimizer.step()
-        ...         scheduler.step()
-        ...         optimizer.zero_grad()
-        ```
-        """
-        self._do_sync()
-        if self.sync_gradients:
-            context = contextlib.nullcontext
-        else:
-            context = self.no_sync
-
-        with context(model):
-            yield
-
-    def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
-        """
-        Prepares a PyTorch model for training in any distributed setup. It is recommended to use
-        [`Accelerator.prepare`] instead.
-
-        Args:
-            model (`torch.nn.Module`):
-                A PyTorch model to prepare. You don't need to prepare a model if it is used only for inference without
-                any kind of mixed precision
-            device_placement (`bool`, *optional*):
-                Whether or not to place the model on the proper device. Will default to `self.device_placement`.
-            evaluation_mode (`bool`, *optional*, defaults to `False`):
-                Whether or not to set the model for evaluation only, by just applying mixed precision and
-                `torch.compile` (if configured in the `Accelerator` object).
-
-        Example:
-
-        ```python
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator()
-        >>> # Assume a model is defined
-        >>> model = accelerator.prepare_model(model)
-        ```
-        """
-        if device_placement is None:
-            device_placement = self.device_placement and self.distributed_type != DistributedType.FSDP
-        self._models.append(model)
-        # We check only for models loaded with `accelerate`
-        # Checks if any of the child module has the attribute `hf_device_map`.
-        has_hf_device_map = False
-        for m in model.modules():
-            if hasattr(m, "hf_device_map"):
-                has_hf_device_map = True
-                break
-
-        if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
-            model, "hf_device_map", False
-        ):
-            model_devices = set(model.hf_device_map.values())
-            if len(model_devices) > 1 and self.distributed_type != DistributedType.NO:
-                raise ValueError(
-                    "You can't train a model that has been loaded in 8-bit precision on multiple devices in any distributed mode."
-                    " In order to use 8-bit models that have been loaded across multiple GPUs the solution is to use Naive Pipeline Parallelism."
-                    " Therefore you should not specify that you are under any distributed regime in your accelerate config."
-                )
-            current_device = list(model_devices)[0]
-            current_device_index = current_device.index if isinstance(current_device, torch.device) else current_device
-
-            if torch.device(current_device_index) != self.device:
-                # if on the first device (GPU 0) we don't care
-                if (self.device.index is not None) or (current_device_index != 0):
-                    raise ValueError(
-                        "You can't train a model that has been loaded in 8-bit precision on a different device than the one "
-                        "you're training on. Make sure you loaded the model on the correct device using for example `device_map={'':torch.cuda.current_device()}"
-                        "you're training on. Make sure you loaded the model on the correct device using for example `device_map={'':torch.cuda.current_device() or device_map={'':torch.xpu.current_device()}"
-                    )
-
-            if "cpu" in model_devices or "disk" in model_devices:
-                raise ValueError(
-                    "You can't train a model that has been loaded in 8-bit precision with CPU or disk offload."
-                )
-        elif device_placement and not has_hf_device_map:
-            model = model.to(self.device)
-
-        if self.native_amp:
-            model._original_forward = model.forward
-            model_forward_func = model.forward.__func__ if hasattr(model.forward, "__func__") else model.forward
-            if self.mixed_precision == "bf16":
-                new_forward = torch.autocast(device_type=self.device.type, dtype=torch.bfloat16)(model_forward_func)
-
-            if hasattr(model.forward, "__func__"):
-                model.forward = MethodType(new_forward, model)
-                model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
-            else:
-                model.forward = convert_outputs_to_fp32(new_forward)
-        elif self.mixed_precision == "fp8":
-            if not has_transformer_engine_layers(model):
-                with torch.no_grad():
-                    convert_model(model)
-                model._converted_to_transformer_engine = True
-            model._original_forward = model.forward
-
-            kwargs = self.fp8_recipe_handler.to_kwargs() if self.fp8_recipe_handler is not None else {}
-            if "fp8_format" in kwargs:
-                kwargs["fp8_format"] = getattr(te_recipe.Format, kwargs["fp8_format"])
-            fp8_recipe = te_recipe.DelayedScaling(**kwargs)
-            cuda_device_capacity = torch.cuda.get_device_capability()
-            fp8_enabled = cuda_device_capacity[0] >= 9 or (
-                cuda_device_capacity[0] == 8 and cuda_device_capacity[1] >= 9
-            )
-            if not fp8_enabled:
-                logger.warn(
-                    f"The current device has compute capability of {cuda_device_capacity} which is "
-                    "insufficient for FP8 mixed precision training (requires a GPU Hopper/Ada Lovelace "
-                    "or higher, compute capability of 8.9 or higher). Will use FP16 instead."
-                )
-            model.forward = fp8_autocast(enabled=fp8_enabled, fp8_recipe=fp8_recipe)(model.forward)
-        if not evaluation_mode:
-            if self.distributed_type in (
-                DistributedType.MULTI_GPU,
-                DistributedType.MULTI_NPU,
-                DistributedType.MULTI_XPU,
-            ):
-                if any(p.requires_grad for p in model.parameters()):
-                    kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
-                    model = torch.nn.parallel.DistributedDataParallel(
-                        model, device_ids=[self.local_process_index], output_device=self.local_process_index, **kwargs
-                    )
-            elif self.distributed_type == DistributedType.FSDP:
-                from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
-
-                # Check if the model is already a FSDP model due to `Manual Wrapping` and if so,
-                # don't wrap it again
-                if type(model) != FSDP:
-                    self.state.fsdp_plugin.set_auto_wrap_policy(model)
-                    fsdp_plugin = self.state.fsdp_plugin
-                    kwargs = {
-                        "sharding_strategy": fsdp_plugin.sharding_strategy,
-                        "cpu_offload": fsdp_plugin.cpu_offload,
-                        "auto_wrap_policy": fsdp_plugin.auto_wrap_policy,
-                        "mixed_precision": fsdp_plugin.mixed_precision_policy,
-                        "sync_module_states": fsdp_plugin.sync_module_states,
-                        "backward_prefetch": fsdp_plugin.backward_prefetch,
-                        "forward_prefetch": fsdp_plugin.forward_prefetch,
-                        "use_orig_params": fsdp_plugin.use_orig_params,
-                        "param_init_fn": fsdp_plugin.param_init_fn,
-                        "ignored_modules": fsdp_plugin.ignored_modules,
-                        "ignored_parameters": fsdp_plugin.ignored_parameters,
-                        "limit_all_gathers": fsdp_plugin.limit_all_gathers,
-                        "device_id": self.device,
-                    }
-                    model = FSDP(model, **kwargs)
-                self._models[-1] = model
-            elif self.distributed_type == DistributedType.MULTI_CPU:
-                kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
-                model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
-            elif self.distributed_type == DistributedType.TPU and self.state.fork_launched:
-                model = xmp.MpModelWrapper(model).to(self.device)
-        # torch.compile should be called last.
-        if self.state.dynamo_plugin.backend != DynamoBackend.NO:
-            if not is_torch_version(">=", "2.0"):
-                raise ValueError("Using `torch.compile` requires PyTorch 2.0 or higher.")
-            model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
-        return model
-
     def _prepare_deepspeed(self, *args):
         deepspeed_plugin = self.state.deepspeed_plugin
 
@@ -612,10 +441,6 @@ class GaudiAccelerator(Accelerator):
                 )
 
         if model is not None:
-            # # TODO: temporary workaround
-            # # To remove when it is solved, see https://github.com/HabanaAI/Model-References/blob/17fbab7ceebca15b1560ffb2c4e15a3888bb5f33/PyTorch/nlp/pretraining/deepspeed-bert/run_pretraining.py#L527
-            # model.to(dtype=deepspeed_plugin.hf_ds_config._dtype, device=self.device)
-
             if hasattr(model, "config"):
                 hidden_size = (
                     max(model.config.hidden_sizes)
@@ -719,424 +544,6 @@ class GaudiAccelerator(Accelerator):
                 )
         return tuple(result)
 
-    def clip_grad_norm_(self, parameters, max_norm, norm_type=2):
-        """
-        Should be used in place of `torch.nn.utils.clip_grad_norm_`.
-
-        Returns:
-            `torch.Tensor`: Total norm of the parameter gradients (viewed as a single vector).
-
-        Example:
-
-        ```python
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator(gradient_accumulation_steps=2)
-        >>> dataloader, model, optimizer, scheduler = accelerator.prepare(dataloader, model, optimizer, scheduler)
-
-        >>> for input, target in dataloader:
-        ...     optimizer.zero_grad()
-        ...     output = model(input)
-        ...     loss = loss_func(output, target)
-        ...     accelerator.backward(loss)
-        ...     if accelerator.sync_gradients:
-        ...         accelerator.clip_grad_norm_(model.parameters(), max_grad_norm)
-        ...     optimizer.step()
-        ```
-        """
-        if self.distributed_type == DistributedType.FSDP:
-            self.unscale_gradients()
-            parameters = list(parameters)
-            for model in self._models:
-                if parameters == list(model.parameters()):
-                    return model.clip_grad_norm_(max_norm, norm_type)
-        elif self.distributed_type == DistributedType.DEEPSPEED:
-            # `accelerator.backward(loss)` is doing that automatically. Therefore, its implementation is not needed
-            # We cannot return the gradient norm because DeepSpeed does it.
-            return None
-        self.unscale_gradients()
-        return torch.nn.utils.clip_grad_norm_(parameters, max_norm, norm_type=norm_type)
-
-    def save(self, obj, f):
-        """
-        Save the object passed to disk once per machine. Use in place of `torch.save`.
-
-        Args:
-            obj (`object`): The object to save.
-            f (`str` or `os.PathLike`): Where to save the content of `obj`.
-
-        Example:
-
-        ```python
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator()
-        >>> arr = [0, 1, 2, 3]
-        >>> accelerator.save(arr, "array.pkl")
-        ```
-        """
-        save(obj, f)
-
-    def save_model(
-        self,
-        model: torch.nn.Module,
-        save_directory: Union[str, os.PathLike],
-        max_shard_size: Union[int, str] = "10GB",
-        safe_serialization: bool = False,
-    ):
-        """
-        Save a model so that it can be re-loaded using load_checkpoint_in_model
-
-        Arguments:
-            model: (`torch.nn.Module`):
-                Model to be saved. The model can be wrapped or unwraped.
-            save_directory (`str` or `os.PathLike`):
-                Directory to which to save. Will be created if it doesn't exist.
-            max_shard_size (`int` or `str`, *optional*, defaults to `"10GB"`):
-                The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
-                lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5MB"`).
-
-                <Tip warning={true}>
-
-                If a single weight of the model is bigger than `max_shard_size`, it will be in its own checkpoint shard
-                which will be bigger than `max_shard_size`.
-
-                </Tip>
-
-            safe_serialization (`bool`, *optional*, defaults to `False`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
-
-        Example:
-
-        ```python
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator()
-        >>> model = ...
-        >>> accelerator.save_model(model, save_directory)
-        ```
-        """
-
-        if safe_serialization and not is_safetensors_available():
-            raise ImportError("`safe_serialization` requires the `safetensors library: `pip install safetensors`.")
-
-        if os.path.isfile(save_directory):
-            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
-            return
-
-        os.makedirs(save_directory, exist_ok=True)
-
-        # get the state_dict of the model
-        state_dict = self.get_state_dict(model)
-
-        if safe_serialization:
-            # Safetensors does not allow tensor aliasing.
-            # We're going to remove aliases before saving
-            ptrs = collections.defaultdict(list)
-            # when bnb serialization is used the weights in the state dict can be strings
-            for name, tensor in state_dict.items():
-                if not isinstance(tensor, str):
-                    ptrs[id_tensor_storage(tensor)].append(name)
-
-            # These are all the pointers of shared tensors.
-            shared_ptrs = {ptr: names for ptr, names in ptrs.items() if len(names) > 1}
-            warn_names = set()
-            for names in shared_ptrs.values():
-                # When not all duplicates have been cleaned, still remove those keys, but put a clear warning.
-                # If the link between tensors was done at runtime then `from_pretrained` will not get
-                # the key back leading to random tensor. A proper warning will be shown
-                # during reload (if applicable), but since the file is not necessarily compatible with
-                # the config, better show a proper warning.
-                found = 0
-                for name in names:
-                    if name in state_dict:
-                        found += 1
-                        if found > 1:
-                            del state_dict[name]
-                            warn_names.add(name)
-            if len(warn_names) > 0:
-                logger.warning_once(
-                    f"Removed shared tensor {warn_names} while saving. This should be OK, but check by verifying that you don't receive any warning while reloading",
-                )
-
-        weights_name = SAFE_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
-
-        # Shard the model if it is too big.
-        shards, index = shard_checkpoint(state_dict, max_shard_size=max_shard_size, weights_name=weights_name)
-
-        # Clean the folder from a previous save
-        for filename in os.listdir(save_directory):
-            full_filename = os.path.join(save_directory, filename)
-            # If we have a shard file that is not going to be replaced, we delete it, but only from the main process
-            # in distributed settings to avoid race conditions.
-            weights_no_suffix = weights_name.replace(".bin", "")
-
-            # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-            filename_no_suffix = filename.replace(".bin", "")
-            reg = re.compile(r"(.*?)-\d{5}-of-\d{5}")
-
-            if (
-                filename.startswith(weights_no_suffix)
-                and os.path.isfile(full_filename)
-                and filename not in shards.keys()
-                and reg.fullmatch(filename_no_suffix) is not None
-                and PartialState().is_main_process
-            ):
-                os.remove(full_filename)
-
-        # Save the model
-        for shard_file, shard in shards.items():
-            self.save(shard, os.path.join(save_directory, shard_file))
-
-        if index is None:
-            path_to_weights = os.path.join(save_directory, WEIGHTS_NAME)
-            logger.info(f"Model weights saved in {path_to_weights}")
-        else:
-            save_index_file = SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME
-            save_index_file = os.path.join(save_directory, save_index_file)
-            # Save the index as well
-            with open(save_index_file, "w", encoding="utf-8") as f:
-                content = json.dumps(index, indent=2, sort_keys=True) + "\n"
-                f.write(content)
-            logger.info(
-                f"The model is bigger than the maximum size per checkpoint ({max_shard_size}) and is going to be "
-                f"split in {len(shards)} checkpoint shards. You can find where each parameters has been saved in the "
-                f"index located at {save_index_file}."
-            )
-
-    def save_state(self, output_dir: str = None, **save_model_func_kwargs):
-        """
-        Saves the current states of the model, optimizer, scaler, RNG generators, and registered objects to a folder.
-
-        If a `ProjectConfiguration` was passed to the `Accelerator` object with `automatic_checkpoint_naming` enabled
-        then checkpoints will be saved to `self.project_dir/checkpoints`. If the number of current saves is greater
-        than `total_limit` then the oldest save is deleted. Each checkpoint is saved in seperate folders named
-        `checkpoint_<iteration>`.
-
-        Otherwise they are just saved to `output_dir`.
-
-        <Tip>
-
-        Should only be used when wanting to save a checkpoint during training and restoring the state in the same
-        environment.
-
-        </Tip>
-
-        Args:
-            output_dir (`str` or `os.PathLike`):
-                The name of the folder to save all relevant weights and states.
-            save_model_func_kwargs (`dict`, *optional*):
-                Additional keyword arguments for saving model which can be passed to the underlying save function, such
-                as optional arguments for DeepSpeed's `save_checkpoint` function.
-
-        Example:
-
-        ```python
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator()
-        >>> model, optimizer, lr_scheduler = ...
-        >>> model, optimizer, lr_scheduler = accelerator.prepare(model, optimizer, lr_scheduler)
-        >>> accelerator.save_state(output_dir="my_checkpoint")
-        ```
-        """
-        if self.project_configuration.automatic_checkpoint_naming:
-            output_dir = os.path.join(self.project_dir, "checkpoints")
-        os.makedirs(output_dir, exist_ok=True)
-        if self.project_configuration.automatic_checkpoint_naming:
-            folders = [os.path.join(output_dir, folder) for folder in os.listdir(output_dir)]
-            if self.project_configuration.total_limit is not None and (
-                len(folders) + 1 > self.project_configuration.total_limit
-            ):
-
-                def _inner(folder):
-                    return list(map(int, re.findall(r"[\/]?([0-9]+)(?=[^\/]*$)", folder)))[0]
-
-                folders.sort(key=_inner)
-                logger.warning(
-                    f"Deleting {len(folders) + 1 - self.project_configuration.total_limit} checkpoints to make room for new checkpoint."
-                )
-                for folder in folders[: len(folders) + 1 - self.project_configuration.total_limit]:
-                    shutil.rmtree(folder)
-            output_dir = os.path.join(output_dir, f"checkpoint_{self.save_iteration}")
-            if os.path.exists(output_dir):
-                raise ValueError(
-                    f"Checkpoint directory {output_dir} ({self.save_iteration}) already exists. Please manually override `self.save_iteration` with what iteration to start with."
-                )
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f"Saving current state to {output_dir}")
-
-        if self.distributed_type == DistributedType.TPU:
-            # Finish running the previous step before checkpointing
-            xm.mark_step()
-
-        # Save the models taking care of FSDP and DeepSpeed nuances
-        weights = []
-        for i, model in enumerate(self._models):
-            if self.distributed_type == DistributedType.FSDP:
-                logger.info("Saving FSDP model")
-                save_fsdp_model(self.state.fsdp_plugin, self, model, output_dir, i)
-                logger.info(f"FSDP Model saved to output dir {output_dir}")
-            elif self.distributed_type == DistributedType.DEEPSPEED:
-                logger.info("Saving DeepSpeed Model and Optimizer")
-                ckpt_id = f"{MODEL_NAME}" if i == 0 else f"{MODEL_NAME}_{i}"
-                model.save_checkpoint(output_dir, ckpt_id, **save_model_func_kwargs)
-                logger.info(f"DeepSpeed Model and Optimizer saved to output dir {os.path.join(output_dir, ckpt_id)}")
-            elif self.distributed_type == DistributedType.MEGATRON_LM:
-                logger.info("Saving Megatron-LM Model, Optimizer and Scheduler")
-                model.save_checkpoint(output_dir)
-                logger.info(f"Megatron-LM Model , Optimizer and Scheduler saved to output dir {output_dir}")
-            else:
-                weights.append(self.get_state_dict(model, unwrap=False))
-
-        # Save the optimizers taking care of FSDP and DeepSpeed nuances
-        optimizers = []
-        if self.distributed_type == DistributedType.FSDP:
-            for opt in self._optimizers:
-                logger.info("Saving FSDP Optimizer")
-                save_fsdp_optimizer(self.state.fsdp_plugin, self, opt, self._models[i], output_dir, i)
-                logger.info(f"FSDP Optimizer saved to output dir {output_dir}")
-        elif self.distributed_type not in [DistributedType.DEEPSPEED, DistributedType.MEGATRON_LM]:
-            optimizers = self._optimizers
-
-        # Save the lr schedulers taking care of DeepSpeed nuances
-        schedulers = []
-        if self.distributed_type == DistributedType.DEEPSPEED:
-            for i, scheduler in enumerate(self._schedulers):
-                if isinstance(scheduler, DeepSpeedSchedulerWrapper):
-                    continue
-                schedulers.append(scheduler)
-        elif self.distributed_type not in [DistributedType.MEGATRON_LM]:
-            schedulers = self._schedulers
-
-        # Call model loading hooks that might have been registered with
-        # accelerator.register_model_state_hook
-        for hook in self._save_model_state_pre_hook.values():
-            hook(self._models, weights, output_dir)
-
-        save_location = save_accelerator_state(
-            output_dir, weights, optimizers, schedulers, self.state.process_index, self.scaler
-        )
-        for i, obj in enumerate(self._custom_objects):
-            save_custom_state(obj, output_dir, i)
-        self.project_configuration.iteration += 1
-        return save_location
-
-    def load_state(self, input_dir: str, **load_model_func_kwargs):
-        """
-        Loads the current states of the model, optimizer, scaler, RNG generators, and registered objects.
-
-        <Tip>
-
-        Should only be used in conjunction with [`Accelerator.save_state`]. If a file is not registered for
-        checkpointing, it will not be loaded if stored in the directory.
-
-        </Tip>
-
-        Args:
-            input_dir (`str` or `os.PathLike`):
-                The name of the folder all relevant weights and states were saved in.
-            load_model_func_kwargs (`dict`, *optional*):
-                Additional keyword arguments for loading model which can be passed to the underlying load function,
-                such as optional arguments for DeepSpeed's `load_checkpoint` function or a `map_location` to load the
-                model and optimizer on.
-
-        Example:
-
-        ```python
-        >>> from accelerate import Accelerator
-
-        >>> accelerator = Accelerator()
-        >>> model, optimizer, lr_scheduler = ...
-        >>> model, optimizer, lr_scheduler = accelerator.prepare(model, optimizer, lr_scheduler)
-        >>> accelerator.load_state("my_checkpoint")
-        ```
-        """
-        # Check if folder exists
-        input_dir = os.path.expanduser(input_dir)
-        if not os.path.isdir(input_dir):
-            raise ValueError(f"Tried to find {input_dir} but folder does not exist")
-        logger.info(f"Loading states from {input_dir}")
-
-        # Load the models taking care of FSDP and DeepSpeed nuances
-        models = []
-        for i, model in enumerate(self._models):
-            if self.distributed_type == DistributedType.FSDP:
-                logger.info("Loading FSDP model")
-                load_fsdp_model(self.state.fsdp_plugin, self, model, input_dir, i)
-                logger.info(f"FSDP Model loaded from input dir {input_dir}")
-            elif self.distributed_type == DistributedType.DEEPSPEED:
-                logger.info("Loading DeepSpeed Model and Optimizer")
-                ckpt_id = f"{MODEL_NAME}" if i == 0 else f"{MODEL_NAME}_{i}"
-                model.load_checkpoint(input_dir, ckpt_id, **load_model_func_kwargs)
-                logger.info(f"DeepSpeed Model and Optimizer loaded from input dir {os.path.join(input_dir, ckpt_id)}")
-            elif self.distributed_type == DistributedType.MEGATRON_LM:
-                logger.info("Loading Megatron-LM Model, Optimizer and Scheduler")
-                model.load_checkpoint(input_dir)
-                logger.info(f"Megatron-LM Model , Optimizer and Scheduler loaded from input dir {input_dir}")
-            else:
-                models.append(model)
-
-        # Load the optimizers taking care of FSDP and DeepSpeed nuances
-        optimizers = []
-        if self.distributed_type == DistributedType.FSDP:
-            for i, opt in enumerate(self._optimizers):
-                logger.info("Loading FSDP Optimizer")
-                load_fsdp_optimizer(self.state.fsdp_plugin, self, opt, self._models[i], input_dir, i)
-                logger.info(f"FSDP Optimizer loaded from input dir {input_dir}")
-        elif self.distributed_type not in [DistributedType.DEEPSPEED, DistributedType.MEGATRON_LM]:
-            optimizers = self._optimizers
-
-        # Load the lr schedulers taking care of DeepSpeed nuances
-        schedulers = []
-        if self.distributed_type == DistributedType.DEEPSPEED:
-            for i, scheduler in enumerate(self._schedulers):
-                if isinstance(scheduler, DeepSpeedSchedulerWrapper):
-                    continue
-                schedulers.append(scheduler)
-        elif self.distributed_type not in [DistributedType.MEGATRON_LM]:
-            schedulers = self._schedulers
-
-        # Call model loading hooks that might have been registered with
-        # accelerator.register_model_state_hook
-        for hook in self._load_model_state_pre_hook.values():
-            hook(models, input_dir)
-
-        map_location = load_model_func_kwargs.pop("map_location", None)
-        if map_location is None:
-            if self.num_processes > 1 and self.distributed_type in (
-                DistributedType.MULTI_GPU,
-                DistributedType.MULTI_NPU,
-            ):
-                map_location = "on_device"
-            else:
-                map_location = "cpu"
-
-        load_accelerator_state(
-            input_dir,
-            models,
-            optimizers,
-            schedulers,
-            self.state.process_index,
-            self.scaler,
-            map_location,
-            **load_model_func_kwargs,
-        )
-        custom_checkpoints = [
-            f for f in os.listdir(input_dir) if re.search(r"^custom_checkpoint_\d+\.pkl$", f) is not None
-        ]
-        if len(custom_checkpoints) != len(self._custom_objects):
-            err = "Number of custom checkpoints in folder {input_dir} does not match the number of registered objects:"
-            err += f"\n\tFound checkpoints: {len(custom_checkpoints)}"
-            err += f"\n\tRegistered objects: {len(self._custom_objects)}\n"
-            err += "Please make sure to only load checkpoints from folders that were created with the same set of registered objects,"
-            err += "or avoid using `custom_checkpoint` in the filename for files in that same directory and load them in manually."
-            raise RuntimeError(err)
-        else:
-            logger.info(f"Loading in {len(custom_checkpoints)} custom states")
-            for index, obj in enumerate(self._custom_objects):
-                load_custom_state(obj, input_dir, index)
-
     def get_state_dict(self, model, unwrap=True):
         """
         Returns the state dictionary of a model sent through [`Accelerator.prepare`] potentially without full
@@ -1202,7 +609,7 @@ class GaudiAccelerator(Accelerator):
         ```
         """
         if self.native_amp:
-            autocast_context = torch.autocast(device_type=state.device.type, dtype=torch.bfloat16)
+            autocast_context = torch.autocast(device_type=self.state.device.type, dtype=torch.bfloat16)
         else:
             autocast_context = contextlib.nullcontext()
 

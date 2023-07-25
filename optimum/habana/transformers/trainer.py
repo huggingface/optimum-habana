@@ -27,13 +27,13 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import numpy as np
 import torch
+from accelerate import skip_first_batches
 from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.deepspeed import deepspeed_load_checkpoint
-from .deepspeed import deepspeed_init
 from transformers.integrations import hp_params
 from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint, unwrap_model
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
@@ -90,6 +90,7 @@ from ..utils import (
     speed_metrics,
     to_device_dtype,
 )
+from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
 from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
@@ -840,6 +841,7 @@ class GaudiTrainer(Trainer):
                             # Some models (like FullyShardedDDP) have a specific way to do gradient clipping
                             model.clip_grad_norm_(args.max_grad_norm)
                         elif self.gaudi_config.use_fused_clip_norm and args.use_habana:
+                            # TODO: to merge self.accelerator.clip_grad_norm_ when HMP is removed
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise

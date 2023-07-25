@@ -18,9 +18,9 @@ Integration with Deepspeed
 
 import torch
 from transformers.deepspeed import (
-    deepspeed_optim_sched,
     HfDeepSpeedConfig,
     HfTrainerDeepSpeedConfig,
+    deepspeed_optim_sched,
     set_hf_deepspeed_config,
 )
 from transformers.dependency_versions_check import dep_version_check
@@ -106,15 +106,12 @@ def deepspeed_init(trainer, num_training_steps, inference=False):
 
     hf_deepspeed_config = trainer.accelerator.state.deepspeed_plugin.hf_ds_config
 
-    print("HERE", hf_deepspeed_config._dtype, hf_deepspeed_config.dtype())
-
     # TODO: temporary workaround
     # To remove when it is solved, see https://github.com/HabanaAI/Model-References/blob/17fbab7ceebca15b1560ffb2c4e15a3888bb5f33/PyTorch/nlp/pretraining/deepspeed-bert/run_pretraining.py#L527
     model.to(dtype=hf_deepspeed_config.dtype(), device="hpu")
 
     # resume config update - some bits like `model` and `num_training_steps` only become available during train
     hf_deepspeed_config.trainer_config_finalize(args, model, num_training_steps)
-    config = hf_deepspeed_config.config
 
     # set the Deepspeed log level consistent with the Trainer
     ds_logger.setLevel(args.get_process_log_level())

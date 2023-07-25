@@ -54,6 +54,8 @@ from .configuration_utils import GaudiGenerationConfig
 
 
 if TYPE_CHECKING:
+    from transformers import PreTrainedModel
+
     from .streamers import BaseStreamer
 
 
