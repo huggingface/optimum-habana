@@ -306,11 +306,6 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.throughput_warmup_steps < 0:
             raise ValueError("--throughput_warmup_steps must be positive.")
 
-        if self.local_rank != -1 and self.use_hpu_graphs_for_training and self.distribution_strategy != "fast_ddp":
-            raise ValueError(
-                "`--use_hpu_graphs_for_training` may only be used with `--distribution_strategy fast_ddp`"
-            )
-
         # expand paths, if not os.makedirs("~/bar") will make directory
         # in the current directory instead of the actual home
         # see https://github.com/huggingface/transformers/issues/10628
@@ -542,6 +537,15 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.bf16:
             mixed_precision_dtype = "bf16"
         os.environ["ACCELERATE_MIXED_PRECISION"] = mixed_precision_dtype
+
+        if (
+            self.parallel_mode == ParallelMode.DISTRIBUTED
+            and self.use_hpu_graphs_for_training
+            and self.distribution_strategy != "fast_ddp"
+        ):
+            raise ValueError(
+                "`--use_hpu_graphs_for_training` may only be used with `--distribution_strategy fast_ddp`."
+            )
 
     def __str__(self):
         self_as_dict = asdict(self)

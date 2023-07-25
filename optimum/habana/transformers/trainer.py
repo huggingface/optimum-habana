@@ -293,6 +293,7 @@ class GaudiTrainer(Trainer):
                 self.args.use_lazy_mode
                 and not self.args.dataloader_drop_last
                 and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
+                and self.args.parallel_mode != ParallelMode.DISTRIBUTED
             ):
                 # Make the total number of samples divisible by the batch size in lazy mode if needed
                 num_samples += (
@@ -683,7 +684,7 @@ class GaudiTrainer(Trainer):
 
         # In multi-worker training: broadcast model parameters from worker:0 to all the others.
         # This must be done manually unless DistributedDataParallel is used.
-        if self.args.local_rank != -1 and self.args.distribution_strategy == "fast_ddp":
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "fast_ddp":
             logger.debug(
                 f"Broadcasting the model parameters to assure that each of {self.args.world_size} workers start the training from the same point."
             )
@@ -1198,7 +1199,7 @@ class GaudiTrainer(Trainer):
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
 
         # Synchronize all processes after saving the current checkpoint
-        if self.args.local_rank != -1 and self.args.use_habana:
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.use_habana:
             torch.distributed.barrier()
 
     def _load_optimizer_and_scheduler(self, checkpoint):
@@ -1502,6 +1503,8 @@ class GaudiTrainer(Trainer):
                 losses_host = losses if losses_host is None else nested_concat(losses_host, losses, padding_index=-100)
             if labels is not None:
                 labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
+                labels = self.accelerator.gather_for_metrics((labels))
+                labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
             if inputs_decode is not None:
                 inputs_decode = self.accelerator.pad_across_processes(inputs_decode, dim=1, pad_index=-100)
                 inputs_decode = self.accelerator.gather_for_metrics((inputs_decode))
@@ -1518,10 +1521,6 @@ class GaudiTrainer(Trainer):
                     logits = self.preprocess_logits_for_metrics(logits, labels)
                 logits = self.accelerator.gather_for_metrics((logits))
                 preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
-
-            if labels is not None:
-                labels = self.accelerator.gather_for_metrics((labels))
-                labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
 
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
@@ -1920,7 +1919,9 @@ class GaudiTrainer(Trainer):
 
         # create accelerator object
         self.accelerator = GaudiAccelerator(
-            deepspeed_plugin=self.args.deepspeed_plugin, gradient_accumulation_plugin=gradient_accumulation_plugin
+            deepspeed_plugin=self.args.deepspeed_plugin,
+            gradient_accumulation_plugin=gradient_accumulation_plugin,
+            even_batches=self.args.use_lazy_mode and not self.args.dataloader_drop_last,
         )
 
         # deepspeed and accelerate flags covering both trainer args and accelerate launcher
@@ -1944,7 +1945,7 @@ class GaudiTrainer(Trainer):
             # Optimization based on setting gradients to None (instead of zeroing them out) may only be used when gradients are not recorded using HPU graphs.
             # HPU graphs rely on fixed tensors - setting gradients to None will enforce their re-allocation during the backward pass each step.
             set_to_none = (
-                self.args.local_rank == -1 or self.args.distribution_strategy == "ddp"
+                self.args.parallel_mode != ParallelMode.DISTRIBUTED or self.args.distribution_strategy == "ddp"
             ) and not self.args.use_hpu_graphs_for_training
 
             try:

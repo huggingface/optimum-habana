@@ -8,6 +8,7 @@ import warnings
 from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import make_dataclass
+from types import MethodType
 
 import torch
 from accelerate import Accelerator
@@ -32,9 +33,11 @@ from accelerate.utils import (
     ProjectConfiguration,
     RNGType,
     TorchDynamoPlugin,
+    convert_outputs_to_fp32,
     is_deepspeed_available,
     parse_choice_from_env,
 )
+from accelerate.utils.operations import _gpu_gather
 from torch.optim.lr_scheduler import LRScheduler
 
 
@@ -48,7 +51,8 @@ if is_deepspeed_available():
         DummyScheduler,
     )
 
-from .state import GaudiAcceleratorState
+from .state import GaudiAcceleratorState, GaudiPartialState
+from .utils import GaudiDistributedType
 
 
 logger = get_logger(__name__)
@@ -341,6 +345,116 @@ class GaudiAccelerator(Accelerator):
     def use_fp16(self):
         raise ValueError("fp16 is not supported on Habana Gaudi.")
 
+    def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
+        """
+        Prepares a PyTorch model for training in any distributed setup. It is recommended to use
+        [`Accelerator.prepare`] instead.
+
+        Args:
+            model (`torch.nn.Module`):
+                A PyTorch model to prepare. You don't need to prepare a model if it is used only for inference without
+                any kind of mixed precision
+            device_placement (`bool`, *optional*):
+                Whether or not to place the model on the proper device. Will default to `self.device_placement`.
+            evaluation_mode (`bool`, *optional*, defaults to `False`):
+                Whether or not to set the model for evaluation only, by just applying mixed precision and
+                `torch.compile` (if configured in the `Accelerator` object).
+
+        Example:
+
+        ```python
+        >>> from accelerate import Accelerator
+
+        >>> accelerator = Accelerator()
+        >>> # Assume a model is defined
+        >>> model = accelerator.prepare_model(model)
+        ```
+        """
+        if device_placement is None:
+            device_placement = self.device_placement and self.distributed_type != DistributedType.FSDP
+        self._models.append(model)
+        # We check only for models loaded with `accelerate`
+        # Checks if any of the child module has the attribute `hf_device_map`.
+        has_hf_device_map = False
+        for m in model.modules():
+            if hasattr(m, "hf_device_map"):
+                has_hf_device_map = True
+                break
+
+        if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
+            model, "hf_device_map", False
+        ):
+            model_devices = set(model.hf_device_map.values())
+            if len(model_devices) > 1 and self.distributed_type != DistributedType.NO:
+                raise ValueError(
+                    "You can't train a model that has been loaded in 8-bit precision on multiple devices in any distributed mode."
+                    " In order to use 8-bit models that have been loaded across multiple GPUs the solution is to use Naive Pipeline Parallelism."
+                    " Therefore you should not specify that you are under any distributed regime in your accelerate config."
+                )
+            current_device = list(model_devices)[0]
+            current_device_index = current_device.index if isinstance(current_device, torch.device) else current_device
+
+            if torch.device(current_device_index) != self.device:
+                # if on the first device (GPU 0) we don't care
+                if (self.device.index is not None) or (current_device_index != 0):
+                    raise ValueError(
+                        "You can't train a model that has been loaded in 8-bit precision on a different device than the one "
+                        "you're training on. Make sure you loaded the model on the correct device using for example `device_map={'':torch.cuda.current_device()}"
+                        "you're training on. Make sure you loaded the model on the correct device using for example `device_map={'':torch.cuda.current_device() or device_map={'':torch.xpu.current_device()}"
+                    )
+
+            if "cpu" in model_devices or "disk" in model_devices:
+                raise ValueError(
+                    "You can't train a model that has been loaded in 8-bit precision with CPU or disk offload."
+                )
+        elif device_placement and not has_hf_device_map:
+            model = model.to(self.device)
+
+        if self.native_amp:
+            model._original_forward = model.forward
+            model_forward_func = model.forward.__func__ if hasattr(model.forward, "__func__") else model.forward
+            if self.mixed_precision == "bf16":
+                new_forward = torch.autocast(device_type=self.state.device.type, dtype=torch.bfloat16)(
+                    model_forward_func
+                )
+
+            if hasattr(model.forward, "__func__"):
+                model.forward = MethodType(new_forward, model)
+                model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
+            else:
+                model.forward = convert_outputs_to_fp32(new_forward)
+        # elif self.mixed_precision == "fp8":
+        #     if not has_transformer_engine_layers(model):
+        #         with torch.no_grad():
+        #             convert_model(model)
+        #         model._converted_to_transformer_engine = True
+        #     model._original_forward = model.forward
+
+        #     kwargs = self.fp8_recipe_handler.to_kwargs() if self.fp8_recipe_handler is not None else {}
+        #     if "fp8_format" in kwargs:
+        #         kwargs["fp8_format"] = getattr(te_recipe.Format, kwargs["fp8_format"])
+        #     fp8_recipe = te_recipe.DelayedScaling(**kwargs)
+        #     cuda_device_capacity = torch.cuda.get_device_capability()
+        #     fp8_enabled = cuda_device_capacity[0] >= 9 or (
+        #         cuda_device_capacity[0] == 8 and cuda_device_capacity[1] >= 9
+        #     )
+        #     if not fp8_enabled:
+        #         logger.warn(
+        #             f"The current device has compute capability of {cuda_device_capacity} which is "
+        #             "insufficient for FP8 mixed precision training (requires a GPU Hopper/Ada Lovelace "
+        #             "or higher, compute capability of 8.9 or higher). Will use FP16 instead."
+        #         )
+        #     model.forward = fp8_autocast(enabled=fp8_enabled, fp8_recipe=fp8_recipe)(model.forward)
+        if not evaluation_mode:
+            if self.distributed_type == GaudiDistributedType.MULTI_HPU:
+                if any(p.requires_grad for p in model.parameters()):
+                    kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
+                    model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
+        # torch.compile should be called last.
+        if self.state.dynamo_plugin.backend != DynamoBackend.NO:
+            model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
+        return model
+
     def _prepare_deepspeed(self, *args):
         deepspeed_plugin = self.state.deepspeed_plugin
 
@@ -543,6 +657,41 @@ class GaudiAccelerator(Accelerator):
                     "You can't use same `Accelerator()` instance with multiple models when using DeepSpeed"
                 )
         return tuple(result)
+
+    def gather(self, tensor):
+        """
+        Gather the values in *tensor* across all processes and concatenate them on the first dimension. Useful to
+        regroup the predictions from all processes when doing evaluation.
+
+        Note:
+            This gather happens in all processes.
+
+        Args:
+            tensor (`torch.Tensor`, or a nested tuple/list/dictionary of `torch.Tensor`):
+                The tensors to gather across all processes.
+
+        Returns:
+            `torch.Tensor`, or a nested tuple/list/dictionary of `torch.Tensor`: The gathered tensor(s). Note that the
+            first dimension of the result is *num_processes* multiplied by the first dimension of the input tensors.
+
+        Example:
+
+        ```python
+        >>> # Assuming four processes
+        >>> import torch
+        >>> from accelerate import Accelerator
+
+        >>> accelerator = Accelerator()
+        >>> process_tensor = torch.tensor([accelerator.process_index])
+        >>> gathered_tensor = accelerator.gather(process_tensor)
+        >>> gathered_tensor
+        tensor([0, 1, 2, 3])
+        ```
+        """
+        if GaudiPartialState().distributed_type in [GaudiDistributedType.MULTI_HPU, GaudiDistributedType.DEEPSPEED]:
+            return _gpu_gather(tensor)
+        else:
+            return tensor
 
     def get_state_dict(self, model, unwrap=True):
         """
