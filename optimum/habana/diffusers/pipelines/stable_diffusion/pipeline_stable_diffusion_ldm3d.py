@@ -47,6 +47,7 @@ logger = logging.get_logger(__name__)
 class GaudiStableDiffusionLDM3DPipelineOutput(BaseOutput):
     rgb: Union[List[PIL.Image.Image], np.ndarray]
     depth: Union[List[PIL.Image.Image], np.ndarray]
+    throughput: float
     nsfw_content_detected: Optional[List[bool]]
 
 
@@ -826,7 +827,7 @@ class GaudiStableDiffusionLDM3DPipeline(
                 return ((rgb, depth), has_nsfw_concept)
 
             return GaudiStableDiffusionLDM3DPipelineOutput(
-                gb=rgb, depth=depth, nsfw_content_detected=has_nsfw_concept,
+                rgb=rgb, depth=depth, nsfw_content_detected=has_nsfw_concept,
                 throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
             )
             
