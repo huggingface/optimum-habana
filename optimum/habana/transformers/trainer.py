@@ -176,14 +176,6 @@ class GaudiTrainer(Trainer):
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
-            if self.args.use_lazy_mode:
-                try:
-                    import habana_frameworks.torch.core as htcore
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
-                    raise error
-                self.htcore = htcore
-
             if self.args.use_hpu_graphs_for_inference:
                 self.already_wrapped_for_hpu_graphs = False
 
@@ -209,6 +201,20 @@ class GaudiTrainer(Trainer):
                     "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
                 )
 
+            if self.use_hpu_amp:
+                if self.gaudi_config.autocast_bf16_ops is not None and self.gaudi_config.autocast_fp32_ops is not None:
+                    # Open temporary files to write mixed-precision ops
+                    with tempfile.NamedTemporaryFile() as autocast_bf16_file:
+                        with tempfile.NamedTemporaryFile() as autocast_fp32_file:
+                            self.gaudi_config.write_bf16_fp32_ops_to_text_files(
+                                autocast_bf16_file.name,
+                                autocast_fp32_file.name,
+                            )
+                            os.environ["LOWER_LIST"] = str(autocast_bf16_file)
+                            os.environ["FP32_LIST"] = str(autocast_fp32_file)
+
+                            import habana_frameworks.torch.core  # noqa
+
             if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
                 try:
                     from habana_frameworks.torch.hpex import hmp
@@ -231,6 +237,14 @@ class GaudiTrainer(Trainer):
                             fp32_file_path=hmp_fp32_file.name,
                             isVerbose=self.gaudi_config.hmp_is_verbose,
                         )
+
+            if self.args.use_lazy_mode:
+                try:
+                    import habana_frameworks.torch.core as htcore
+                except ImportError as error:
+                    error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
+                    raise error
+                self.htcore = htcore
 
             try:
                 from habana_frameworks.torch.hpu import random as hpu_random
