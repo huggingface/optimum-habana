@@ -1,3 +1,18 @@
+# coding=utf-8
+# Copyright 2023 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 
 import torch
@@ -14,6 +29,8 @@ logger = logging.get_logger()
 
 class GaudiPartialState(PartialState):
     """
+    Adapted from: https://github.com/huggingface/accelerate/blob/8514c35192ac9762920f1ab052e5cea4c0e46eeb/src/accelerate/state.py#L96
+
     Singleton class that has information about the current training environment and functions to help with process
     control. Designed to be used when only process control and device execution states are needed. Does *not* need to
     be initialized from `Accelerator`.
@@ -118,7 +135,7 @@ class GaudiPartialState(PartialState):
     def default_device(self) -> torch.device:
         """
         Returns the default device which is:
-        - NPU if `is_npu_available()`
+        - HPU if it is available
         - CPU otherwise
         """
         import habana_frameworks.torch.hpu as hthpu
@@ -131,6 +148,8 @@ class GaudiPartialState(PartialState):
 
 class GaudiAcceleratorState(AcceleratorState):
     """
+    Adapted from: https://github.com/huggingface/accelerate/blob/8514c35192ac9762920f1ab052e5cea4c0e46eeb/src/accelerate/state.py#L683
+
     Singleton class that has information about the current training environment.
 
     **Available attributes:**

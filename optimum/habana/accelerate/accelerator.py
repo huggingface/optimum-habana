@@ -1,3 +1,18 @@
+# coding=utf-8
+# Copyright 2023 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 import contextlib
@@ -67,6 +82,8 @@ logger = get_logger(__name__)
 # TODO: remove this method when it is available in Habana's DeepSpeed fork
 def clone_tensors_for_torch_save(item, device=torch.device("cpu")):
     """
+    Taken from: https://github.com/microsoft/DeepSpeed/blob/09601bb811b28fb0db92b6dcb2b737873e6677e8/deepspeed/checkpoint/utils.py#L41
+
     Returns a copy of `item` with all enclosed tensors replaced by clones on a specified device.
     Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
 
@@ -91,6 +108,8 @@ def clone_tensors_for_torch_save(item, device=torch.device("cpu")):
 
 class GaudiAccelerator(Accelerator):
     """
+    Adapted from: https://github.com/huggingface/accelerate/blob/8514c35192ac9762920f1ab052e5cea4c0e46eeb/src/accelerate/accelerator.py#L145
+
     Creates an instance of an accelerator for distributed training (on multi-GPU, TPU) or mixed precision training.
 
     Args:

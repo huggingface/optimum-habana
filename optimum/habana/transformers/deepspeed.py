@@ -33,8 +33,11 @@ logger = logging.get_logger(__name__)
 
 class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
     """
-    The `HfTrainerDeepSpeedConfig` object is meant to be created during `TrainingArguments` object creation and has the
-    same lifespan as the latter.
+    Adapted from: https://github.com/huggingface/transformers/blob/e42587f596181396e1c4b63660abf0c736b10dae/src/transformers/deepspeed.py#L69
+
+    The differences are:
+    - disable DeepSpeed version check as we run a custom version on HPU
+    - remove uncompatible args (e.g. fp16) in config processing
     """
 
     def __init__(self, config_file_or_dict):
@@ -83,21 +86,10 @@ class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
 
 def deepspeed_init(trainer, num_training_steps, inference=False):
     """
-    Init DeepSpeed, after updating the DeepSpeed configuration with any relevant Trainer's args.
+    Adapted from: https://github.com/huggingface/transformers/blob/e42587f596181396e1c4b63660abf0c736b10dae/src/transformers/deepspeed.py#L316
 
-    If `resume_from_checkpoint` was passed then an attempt to resume from a previously saved checkpoint will be made.
-
-    Args:
-        trainer: Trainer object
-        num_training_steps: per single HPU
-        resume_from_checkpoint: path to a checkpoint if to resume from after normal DeepSpeedEngine load
-        inference: launch in inference mode (no optimizer and no lr scheduler)
-
-    Returns: optimizer, lr_scheduler
-
-    We may use `deepspeed_init` more than once during the life of Trainer, when we do - it's a temp hack based on:
-    https://github.com/microsoft/DeepSpeed/issues/1394#issuecomment-937405374 until Deepspeed fixes a bug where it
-    can't resume from a checkpoint after it did some stepping https://github.com/microsoft/DeepSpeed/issues/1612
+    The difference is:
+    - add a workaround to cast the model to the target dtype
     """
     from deepspeed.utils import logger as ds_logger
 
