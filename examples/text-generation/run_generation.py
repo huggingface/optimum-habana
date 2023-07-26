@@ -22,6 +22,7 @@ import argparse
 import copy
 import logging
 import os
+import re
 import time
 
 import torch
@@ -133,6 +134,12 @@ def main():
         nargs="+",
         help="Optional argument list of words that must be generated.",
     )
+    parser.add_argument(
+        "--peft_model",
+        default=None,
+        type=str,
+        help="Optional argument to give a path of peft model.",
+    )
     parser.add_argument("--num_return_sequences", type=int, default=1)
 
     args = parser.parse_args()
@@ -242,6 +249,18 @@ def main():
     if not model.config.is_encoder_decoder:
         tokenizer.padding_side = "left"
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
+    if re.search("llama", model.config.architectures[0], re.IGNORECASE):
+        # unwind broken decapoda-research config
+        model.generation_config.pad_token_id = 0
+        model.generation_config.bos_token_id = 1
+        model.generation_config.eos_token_id = 2
+        tokenizer.bos_token_id = model.generation_config.bos_token_id
+        tokenizer.eos_token_id = model.generation_config.eos_token_id
+        tokenizer.pad_token_id = model.generation_config.pad_token_id
+        tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
+        tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
+        tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
@@ -256,6 +275,16 @@ def main():
         bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
     if args.force_words is not None:
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
+
+    if args.peft_model:
+        import importlib.util
+
+        if importlib.util.find_spec("peft") is None:
+            raise ImportError("huggingface peft should be installed. see https://github.com/huggingface/peft")
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, args.peft_model)
+        model = model.to(model_dtype)
 
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)
