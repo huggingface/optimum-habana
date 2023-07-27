@@ -118,3 +118,21 @@ python run_generation.py \
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
+
+
+### Use PEFT models for generation
+
+You can also provide the path to a PEFT model to perform generation with the argument `--peft_model`.
+
+For example:
+```bash
+python run_generation.py \
+--model_name_or_path huggyllama/llama-7b \
+--use_hpu_graphs \
+--use_kv_cache \
+--batch_size 1 \
+--bf16 \
+--max_new_tokens 100 \
+--prompt "Here is my prompt" \
+--peft_model trl-lib/llama-7b-se-rm-peft
+```
