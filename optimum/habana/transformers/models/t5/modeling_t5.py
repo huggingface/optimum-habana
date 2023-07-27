@@ -139,11 +139,13 @@ def gaudi_T5Attention_forward(
     attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(
         scores
     )  # (batch_size, n_heads, seq_length, key_length)
-    htcore.mark_step()
+    if self.training:
+        htcore.mark_step()
     attn_weights = nn.functional.dropout(
         attn_weights, p=self.dropout, training=self.training
     )  # (batch_size, n_heads, seq_length, key_length)
-    htcore.mark_step()
+    if self.training:
+        htcore.mark_step()
 
     # Mask heads if we want to
     if layer_head_mask is not None:
@@ -169,9 +171,11 @@ class GaudiDropout(torch.nn.Module):
         """
         Avoids dropout kernel fusion with others to stablize training numerical stability.
         """
-        htcore.mark_step()
+        if self.dropout.training:
+            htcore.mark_step()
         out = self.dropout(x)
-        htcore.mark_step()
+        if self.dropout.training:
+            htcore.mark_step()
         return out
 
 
