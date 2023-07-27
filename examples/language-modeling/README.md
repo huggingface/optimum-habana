@@ -296,3 +296,58 @@ To use the streaming dataset mode which can be very useful for large datasets, a
 ## Low Cpu Memory Usage
 
 To use low cpu memory mode which can be very useful for LLM, add `--low_cpu_mem_usage` to the command line.
+
+
+
+## PEFT
+
+To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with Llama:
+
+Single-card finetuning:
+```bash
+python3 run_lora_clm.py \
+    --model_name_or_path huggyllama/llama-7b \
+    --dataset_name tatsu-lab/alpaca \
+    --bf16 True \
+    --output_dir ./model_lora_llama \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --gradient_accumulation_steps 4 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 2000 \
+    --save_total_limit 1 \
+    --learning_rate 1e-4 \
+    --logging_steps 1 \
+    --dataset_concatenation \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3
+```
+
+Multi-card finetuning:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_lora_clm.py \
+    --model_name_or_path huggyllama/llama-7b \
+    --dataset_name tatsu-lab/alpaca \
+    --bf16 True \
+    --output_dir ./model_lora_llama \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --gradient_accumulation_steps 4 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 2000 \
+    --save_total_limit 1 \
+    --learning_rate 1e-4 \
+    --logging_steps 1 \
+    --dataset_concatenation \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3
+```
