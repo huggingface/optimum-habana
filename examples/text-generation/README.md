@@ -125,9 +125,9 @@ python run_generation.py \
 You can also provide the path to a PEFT model to perform generation with the argument `--peft_model`.
 
 For example:
-```
+```bash
 python run_generation.py \
---model_name_or_path "decapoda-research/llama-7b-hf" \
+--model_name_or_path gpt2\
 --use_hpu_graphs \
 --use_kv_cache \
 --batch_size 1 \

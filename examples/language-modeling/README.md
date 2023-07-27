@@ -301,15 +301,15 @@ To use low cpu memory mode which can be very useful for LLM, add `--low_cpu_mem_
 
 ## PEFT
 
-To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with LLAMA:
+To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with GPT2:
 
 Single-card finetuning:
 ```bash
 python3 run_lora_clm.py \
-    --model_name_or_path "decapoda-research/llama-7b-hf" \
+    --model_name_or_path gpt2 \
     --train_file ./alpaca_data.json \
     --bf16 True \
-    --output_dir ./model_lora_llama \
+    --output_dir ./model_lora_gpt2 \
     --num_train_epochs 3 \
     --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 2 \
@@ -330,10 +330,10 @@ Multi-card finetuning:
 ```bash
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
-    --model_name_or_path "decapoda-research/llama-7b-hf" \
+    --model_name_or_path gpt2 \
     --train_file ./alpaca_data.json \
     --bf16 True \
-    --output_dir ./model_lora_llama \
+    --output_dir ./model_lora_gpt2 \
     --num_train_epochs 3 \
     --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 2 \
