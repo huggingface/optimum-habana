@@ -120,9 +120,9 @@ python run_generation.py \
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
 
 
-### Use peft model for generation
+### Use PEFT models for generation
 
-You can also provide the path of peft model to perform generation with argument `--peft_model`
+You can also provide the path to a PEFT model to perform generation with the argument `--peft_model`.
 
 For example:
 ```

@@ -20,7 +20,6 @@
 import copy
 import logging
 import os
-import re
 import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -420,7 +419,7 @@ def main():
     else:
         raise ValueError("Must provide model_name_or_path to load a pretrained CausalLM model.")
 
-    if re.search("llama", model.config.architectures[0], re.IGNORECASE):
+    if model.config.model_type == "llama":
         # unwind broken decapoda-research config
         model.generation_config.pad_token_id = 0
         model.generation_config.bos_token_id = 1

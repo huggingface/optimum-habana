@@ -22,7 +22,6 @@ import argparse
 import copy
 import logging
 import os
-import re
 import time
 
 import torch
@@ -138,7 +137,7 @@ def main():
         "--peft_model",
         default=None,
         type=str,
-        help="Optional argument to give a path of peft model.",
+        help="Optional argument to give a path to a PEFT model.",
     )
     parser.add_argument("--num_return_sequences", type=int, default=1)
 
@@ -249,7 +248,7 @@ def main():
     if not model.config.is_encoder_decoder:
         tokenizer.padding_side = "left"
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
-    if re.search("llama", model.config.architectures[0], re.IGNORECASE):
+    if model.config.model_type == "llama":
         # unwind broken decapoda-research config
         model.generation_config.pad_token_id = 0
         model.generation_config.bos_token_id = 1
@@ -280,7 +279,7 @@ def main():
         import importlib.util
 
         if importlib.util.find_spec("peft") is None:
-            raise ImportError("huggingface peft should be installed. see https://github.com/huggingface/peft")
+            raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
         from peft import PeftModel
 
         model = PeftModel.from_pretrained(model, args.peft_model)
