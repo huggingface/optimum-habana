@@ -50,7 +50,7 @@ from optimum.habana.utils import set_seed
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.28.0")
+check_min_version("4.31.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 
@@ -511,10 +511,9 @@ def main():
             # Concatenate all texts.
             concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
             total_length = len(concatenated_examples[list(examples.keys())[0]])
-            # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
-            # customize this part to your needs.
-            if total_length >= max_seq_length:
-                total_length = (total_length // max_seq_length) * max_seq_length
+            # We drop the small remainder, and if the total_length < max_seq_length  we exclude this batch and return an empty dict.
+            # We could add padding if the model supported it instead of this drop, you can customize this part to your needs.
+            total_length = (total_length // max_seq_length) * max_seq_length
             # Split by chunks of max_len.
             result = {
                 k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
