@@ -38,7 +38,7 @@ from optimum.habana.utils import set_seed
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.31.0")
+check_min_version("4.28.0")
 
 require_version("datasets>=1.14.0", "To fix: pip install -r examples/pytorch/audio-classification/requirements.txt")
 

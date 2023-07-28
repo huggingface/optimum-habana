@@ -21,9 +21,9 @@
 > from optimum.habana.utils import set_seed
 > 
 48c41
-< check_min_version("4.32.0.dev0")
+< check_min_version("4.29.0.dev0")
 ---
-> check_min_version("4.31.0")
+> check_min_version("4.28.0")
 164,166d156
 <     freeze_feature_extractor: Optional[bool] = field(
 <         default=None, metadata={"help": "Whether to freeze the feature extractor layers of the model."}
@@ -56,22 +56,20 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-222a205
->     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-224,225c207,209
+224,225c206,208
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu} "
-<         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
+<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
->         + f"mixed-precision training: {mixed_precision}"
-291a276,278
+>         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
+291a275,277
 >     # Max input length
 >     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
 > 
-296a284
+296a283
 > 
-302c290,296
+302c289,295
 <         inputs = feature_extractor(subsampled_wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
 >         inputs = feature_extractor(
@@ -81,7 +79,7 @@
 >             padding="max_length",
 >             truncation=True,
 >         )
-311c305,311
+311c304,310
 <         inputs = feature_extractor(wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
 >         inputs = feature_extractor(
@@ -91,9 +89,9 @@
 >             padding="max_length",
 >             truncation=True,
 >         )
-376c376
+376c375
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-377a378
+377a377
 >         gaudi_config=gaudi_config,

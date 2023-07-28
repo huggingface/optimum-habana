@@ -25,9 +25,9 @@
 > from optimum.habana.utils import set_seed
 > 
 58c55
-< check_min_version("4.32.0.dev0")
+< check_min_version("4.29.0.dev0")
 ---
-> check_min_version("4.31.0")
+> check_min_version("4.28.0")
 79c76,77
 <                 "The model checkpoint for weights initialization.Don't set if you want to train a model from scratch."
 ---
@@ -60,24 +60,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-263a279
->     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-265,266c281,283
+265,266c280,282
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-<         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
+<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
->         + f"mixed-precision training: {mixed_precision}"
-376a394
+>         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
+376a393
 >         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
-561c579
+562c579
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-562a581
+563a581
 >         gaudi_config=gaudi_config,
-569,572c588,589
+570,573c588,589
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -85,7 +83,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-626,630d642
+627,631d642
 < 
 < 
 < def _mp_fn(index):

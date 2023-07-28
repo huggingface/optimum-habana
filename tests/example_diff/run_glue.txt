@@ -13,9 +13,9 @@
 > from optimum.habana.utils import set_seed
 > 
 51c50
-< check_min_version("4.32.0.dev0")
+< check_min_version("4.29.0.dev0")
 ---
-> check_min_version("4.31.0")
+> check_min_version("4.28.0")
 211c210
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
@@ -28,22 +28,20 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-241a248
->     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-243,244c250,252
+243,244c249,251
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-<         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
+<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
->         + f"mixed-precision training: {mixed_precision}"
-514c522
+>         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
+514c521
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-515a524
+515a523
 >         gaudi_config=gaudi_config,
-615,619d623
+615,619d622
 < 
 < 
 < def _mp_fn(index):

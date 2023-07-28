@@ -113,8 +113,8 @@ class DistributedRunner:
             self.create_single_card_setup(use_deepspeed)
 
     def get_peval(self):
-        cmd1 = r"lscpu 2>/dev/null | awk '/Socket\(s\)/  { print $2 }'"
-        cmd2 = r"lscpu 2>/dev/null | awk '/Core\(s\) per socket/  { print $4 }'"
+        cmd1 = "lscpu 2>/dev/null | awk '/Socket\(s\)/  { print $2 }'"
+        cmd2 = "lscpu 2>/dev/null | awk '/Core\(s\) per socket/  { print $4 }'"
         with subprocess.Popen(
             cmd1, shell=True, executable="/bin/bash", stdout=subprocess.PIPE, stderr=subprocess.STDOUT
         ) as proc:
