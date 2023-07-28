@@ -25,9 +25,8 @@ class GaudiGPT2Attention(torch.nn.Module):
             torch.tril(torch.ones((max_positions, max_positions), dtype=torch.uint8)).view(
                 1, 1, max_positions, max_positions
             ),
-            persistent=False,
         )
-        self.register_buffer("masked_bias", torch.tensor(-1e4), persistent=False)
+        self.register_buffer("masked_bias", torch.tensor(-1e4))
 
         self.embed_dim = config.hidden_size
         self.num_heads = config.num_attention_heads

@@ -49,7 +49,7 @@ from optimum.habana.utils import set_seed
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.31.0")
+check_min_version("4.28.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 
@@ -599,12 +599,12 @@ def main():
         # Format the result to the format the metric expects.
         if data_args.version_2_with_negative:
             formatted_predictions = [
-                {"id": str(k), "prediction_text": v, "no_answer_probability": 0.0} for k, v in predictions.items()
+                {"id": k, "prediction_text": v, "no_answer_probability": 0.0} for k, v in predictions.items()
             ]
         else:
-            formatted_predictions = [{"id": str(k), "prediction_text": v} for k, v in predictions.items()]
+            formatted_predictions = [{"id": k, "prediction_text": v} for k, v in predictions.items()]
 
-        references = [{"id": str(ex["id"]), "answers": ex[answer_column_name]} for ex in examples]
+        references = [{"id": ex["id"], "answers": ex[answer_column_name]} for ex in examples]
         return EvalPrediction(predictions=formatted_predictions, label_ids=references)
 
     metric = evaluate.load("squad_v2" if data_args.version_2_with_negative else "squad")
