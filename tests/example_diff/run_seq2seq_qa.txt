@@ -11,9 +11,9 @@
 > from optimum.habana.utils import set_seed
 > 
 49c49
-< check_min_version("4.29.0.dev0")
+< check_min_version("4.32.0.dev0")
 ---
-> check_min_version("4.28.0")
+> check_min_version("4.31.0")
 168c168
 <                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
 ---
@@ -30,16 +30,18 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-300,301c307,309
+298a306
+>     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
+300,301c308,310
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+<         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
->         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-645a654
+>         + f"mixed-precision training: {mixed_precision}"
+645a655
 >         gaudi_config=gaudi_config,
-719,723d727
+719,723d728
 < 
 < 
 < def _mp_fn(index):

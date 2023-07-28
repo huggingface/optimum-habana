@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+from transformers import AutoTokenizer, T5ForConditionalGeneration
 from transformers.testing_utils import TestCasePlus, require_torch
 from transformers.utils import is_datasets_available
 
@@ -28,7 +28,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
     @require_torch
     def test_finetune_t5(self):
         model = T5ForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-t5-v1.1")
-        tokenizer = T5Tokenizer.from_pretrained("t5-small")
+        tokenizer = AutoTokenizer.from_pretrained("t5-small")
 
         model.config.max_length = 128
 
@@ -77,7 +77,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
         )
         train_dataset.set_format(
             type="torch",
-            columns=["input_ids", "attention_mask", "decoder_input_ids", "decoder_attention_mask", "labels"],
+            columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],
         )
 
         # same for validation dataset
@@ -89,7 +89,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
         )
         val_dataset.set_format(
             type="torch",
-            columns=["input_ids", "attention_mask", "decoder_input_ids", "decoder_attention_mask", "labels"],
+            columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],
         )
 
         output_dir = self.get_auto_remove_tmp_dir()

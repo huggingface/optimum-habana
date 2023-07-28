@@ -20,9 +20,9 @@
 > from optimum.habana.utils import set_seed
 > 
 56c53
-< check_min_version("4.29.0.dev0")
+< check_min_version("4.32.0.dev0")
 ---
-> check_min_version("4.28.0")
+> check_min_version("4.31.0")
 209c206
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
@@ -39,22 +39,24 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-265,266c269,271
+263a268
+>     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
+265,266c270,272
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+<         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {bool(training_args.local_rank != -1)}, "
->         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-268d272
+>         + f"mixed-precision training: {mixed_precision}"
+268d273
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-588c592
+587c592
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-589a594
+588a594
 >         gaudi_config=gaudi_config,
-595,598c600,601
+594,597c600,601
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -62,7 +64,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-651,655d653
+650,654d653
 < 
 < 
 < def _mp_fn(index):
