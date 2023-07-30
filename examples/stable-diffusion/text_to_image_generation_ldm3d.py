@@ -32,7 +32,7 @@ def main():
 
     parser.add_argument(
         "--model_name_or_path",
-        default="runwayml/stable-diffusion-v1-5",
+        default="Intel/ldm3d-4c",
         type=str,
         help="Path to pre-trained model",
     )
@@ -174,8 +174,10 @@ def main():
             image_save_dir = Path(args.image_save_dir)
             image_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
-            for i, image in enumerate(outputs.images):
-                image.save(image_save_dir / f"image_{i+1}.png")
+            for i, rgb in enumerate(outputs.rgb):
+                rgb.save(image_save_dir / f"rgb_{i+1}.png")
+            for i, depth in enumerate(outputs.depth):
+                depth.save(image_save_dir / f"depth_{i+1}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 
