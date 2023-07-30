@@ -27,7 +27,12 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from transformers.testing_utils import slow
 
 from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline, GaudiStableDiffusionPipeline, GaudiStableDiffusionLDM3DPipeline
+from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiDiffusionPipeline,
+    GaudiStableDiffusionLDM3DPipeline,
+    GaudiStableDiffusionPipeline,
+)
 from optimum.habana.utils import set_seed
 
 
@@ -630,11 +635,9 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 output_type="np",
             )
 
-            expected_slice_rgb = np.array(
-                [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
-            )
+            expected_slice_rgb = np.array([0.7083766, 1.0, 1.0, 0.70610344, 0.9867363, 1.0, 0.7214538, 1.0, 1.0])
             expected_slice_depth = np.array(
-                [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
+                [0.919621, 0.92072034, 0.9184986, 0.91994286, 0.9242079, 0.93387043, 0.92345214, 0.93558526, 0.9223714]
             )
             rgb = outputs.rgb[0]
             depth = outputs.depth[0]

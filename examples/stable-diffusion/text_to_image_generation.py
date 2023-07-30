@@ -121,7 +121,10 @@ def main():
         ),
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
-    parser.add_argument("--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt.")    parser.add_argument(
+    parser.add_argument(
+        "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
+    )
+    parser.add_argument(
         "--ldm3d_model_name_or_path",
         default="Intel/ldm3d-4c",
         type=str,
@@ -132,6 +135,7 @@ def main():
 
     if args.ldm3d:
         from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
+
         args.model_name_or_path = args.ldm3d_model_name_or_path
     else:
         from optimum.habana.diffusers import GaudiStableDiffusionPipeline
@@ -186,8 +190,14 @@ def main():
             image_save_dir = Path(args.image_save_dir)
             image_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
-            for i, image in enumerate(outputs.images):
-                image.save(image_save_dir / f"image_{i+1}.png")
+            if args.ldm3d:
+                for i, rgb in enumerate(outputs.rgb):
+                    rgb.save(image_save_dir / f"rgb_{i+1}.png")
+                for i, depth in enumerate(outputs.depth):
+                    depth.save(image_save_dir / f"depth_{i+1}.png")
+            else:
+                for i, image in enumerate(outputs.images):
+                    image.save(image_save_dir / f"image_{i+1}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 

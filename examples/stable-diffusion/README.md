@@ -86,3 +86,32 @@ python text_to_image_generation.py \
 > There are two different checkpoints for Stable Diffusion 2:
 > - use [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) for generating 768x768 images
 > - use [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base) for generating 512x512 images
+
+
+### Latent Diffusion Model for 3D (LDM3D)
+
+[LDM3D](https://arxiv.org/abs/2305.10853) generates both image and depth map data from a given text prompt, allowing users to generate RGBD images from text prompts. 
+
+[Original checkpoint](https://huggingface.co/Intel/ldm3d) and [latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) are open source.
+
+
+```python
+python text_to_image_generation.py \
+    --ldm3d_model_name_or_path "Intel/ldm3d-4c" \
+    --prompts "An image of a squirrel in Picasso style" \
+    --num_images_per_prompt 10 \
+    --batch_size 2 \
+    --height 768 \
+    --width 768 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion-2
+    --ldm3d
+```
+
+> There are three different checkpoints for LDM3D:
+> - use [original checkpoint](https://huggingface.co/Intel/ldm3d) to generate outputs from the paper
+> - use [the latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) for generating improved results
+> - use [the pano checkpoint](https://huggingface.co/Intel/ldm3d-pano) to generate panoramic view
+
