@@ -20,7 +20,7 @@ from pathlib import Path
 
 import torch
 
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
+from optimum.habana.diffusers import GaudiDDIMScheduler
 from optimum.habana.utils import set_seed
 
 
@@ -121,8 +121,20 @@ def main():
         ),
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
+    parser.add_argument("--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt.")    parser.add_argument(
+        "--ldm3d_model_name_or_path",
+        default="Intel/ldm3d-4c",
+        type=str,
+        help="Path to pre-trained model",
+    )
 
     args = parser.parse_args()
+
+    if args.ldm3d:
+        from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
+        args.model_name_or_path = args.ldm3d_model_name_or_path
+    else:
+        from optimum.habana.diffusers import GaudiStableDiffusionPipeline
 
     # Setup logging
     logging.basicConfig(
