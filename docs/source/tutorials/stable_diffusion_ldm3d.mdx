@@ -25,7 +25,7 @@ The abstract from the paper is:
 
 ## How to generate rgb and depth images?
 
-To generate rgb and depth images with Stable Diffusion LDM3D on Gaudi, you need to instantiate two instances:
+To generate RGB and depth images with Stable Diffusion LDM3D on Gaudi, you need to instantiate two instances:
 - A pipeline with [`GaudiStableDiffusionLDM3DPipeline`]. This pipeline supports *text-to-(rgb, depth) generation*.
 - A scheduler with [`GaudiDDIMScheduler`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
 
