@@ -93,7 +93,7 @@ python text_to_image_generation.py \
 [LDM3D](https://arxiv.org/abs/2305.10853) generates both image and depth map data from a given text prompt, allowing users to generate RGBD images from text prompts. 
 
 [Original checkpoint](https://huggingface.co/Intel/ldm3d) and [latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) are open source.
-
+A [demo](https://huggingface.co/spaces/Intel/ldm3d) is also available
 
 ```python
 python text_to_image_generation.py \
