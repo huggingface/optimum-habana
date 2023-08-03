@@ -232,7 +232,6 @@ class GaudiGenerationMixin(GenerationMixin):
         
         token_idx = model_kwargs.get("token_idx", None)
 
-
         # 2. Encoder-decoder models expect the `decoder_input_ids` to start with a special token. Let's ensure that.
         decoder_start_token_id = self._get_decoder_start_token_id(decoder_start_token_id, bos_token_id)
         if device is None:
@@ -260,26 +259,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 model_kwargs["decoder_attention_mask"] = decoder_attention_mask
         return decoder_input_ids, model_kwargs
-
-    # def _prepare_decoder_input_ids_for_generation(
-    #     self,
-    #     batch_size: int,
-    #     max_new_tokens: int,
-    #     decoder_start_token_id: int = None,
-    #     bos_token_id: int = None,
-    #     model_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-    #     device: torch.device = None,
-    # ) -> torch.LongTensor:
-    #     if model_kwargs is not None and "decoder_input_ids" in model_kwargs:
-    #         return model_kwargs.pop("decoder_input_ids")
-    #     else:
-    #         token_idx = model_kwargs.get("token_idx", None)
-    #         decoder_start_token_id = self._get_decoder_start_token_id(decoder_start_token_id, bos_token_id)
-    #         if device is None:
-    #             device = self.device
-    #         if token_idx is None:
-    #             max_new_tokens = 1
-    #         return torch.ones((batch_size, max_new_tokens), dtype=torch.long, device=device) * decoder_start_token_id
 
     # TODO: remove this method when Transformers v4.31 is released since it solves the issue with Llama
     def _validate_model_kwargs(self, model_kwargs: Dict[str, Any]):
@@ -664,13 +643,6 @@ class GaudiGenerationMixin(GenerationMixin):
         stopping_criteria = _get_stopping_criteria(
             self, generation_config=generation_config, stopping_criteria=stopping_criteria
         )
-        # if "token_idx" in model_kwargs:
-        #     if generation_config.max_length is not None:
-        #         stopping_criteria.append(StaticMaxLengthCriteria(generation_config.max_length))
-        #     else:
-        #         raise ValueError(
-        #             "You need to set `max_new_tokens` in your generation configuration to use static shapes."
-        #         )
 
         # In lazy mode, import Habana torch to be able to add mark_step()
         if lazy_mode:

@@ -440,7 +440,6 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
     )
-
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -683,8 +682,6 @@ def main():
     training_args.generation_config = copy.deepcopy(model.generation_config)
     if training_args.generation_max_length is not None:
         training_args.generation_config.max_length = training_args.generation_max_length
-    # elif is_bart:
-    #     training_args.generation_config.max_new_tokens = training_args.generation_config.max_length
     else:
         training_args.generation_config.max_length = data_args.val_max_target_length
     if data_args.num_beams is not None:
