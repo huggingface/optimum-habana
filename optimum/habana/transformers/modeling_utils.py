@@ -26,12 +26,6 @@ from .models import (
     GaudiLlamaForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
-    GaudiT5DenseActDense,
-    GaudiT5DenseGatedActDense,
-    GaudiT5LayerCrossAttention,
-    GaudiT5LayerFF,
-    GaudiT5LayerSelfAttention,
-    GaudiT5Stack,
     _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
@@ -64,7 +58,6 @@ from .models import (
     gaudi_opt_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
-    gaudi_T5Attention_forward,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
 )
@@ -74,8 +67,10 @@ def adapt_transformers_to_gaudi():
     """
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
-    """
 
+    Args:
+        use_habana_mixed_precision (bool): whether HMP is used or not.
+    """
     # optimize Conv1D
     transformers.pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
 
@@ -168,12 +163,3 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
     transformers.models.llama.modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
     transformers.models.llama.modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
-
-    # Dropout kernel improvement for Flan-T5
-    transformers.models.t5.modeling_t5.T5Stack = GaudiT5Stack
-    transformers.models.t5.modeling_t5.T5DenseGatedActDense = GaudiT5DenseGatedActDense
-    transformers.models.t5.modeling_t5.T5LayerFF = GaudiT5LayerFF
-    transformers.models.t5.modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
-    transformers.models.t5.modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
-    transformers.models.t5.modeling_t5.T5DenseActDense = GaudiT5DenseActDense
-    transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
