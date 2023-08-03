@@ -14,10 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ PyTorch BART model."""
-import copy
-import math
-import random
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -26,45 +22,27 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 
 # __package__ = 'transformers.models.bart'
-from transformers.activations import ACT2FN
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
-    CausalLMOutputWithCrossAttentions,
     Seq2SeqLMOutput,
     Seq2SeqModelOutput,
-    Seq2SeqQuestionAnsweringModelOutput,
-    Seq2SeqSequenceClassifierOutput,
 )
-from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import (
-    add_code_sample_docstrings,
-    add_end_docstrings,
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
-    logging,
-    replace_return_docstrings,
-)
-from transformers.models.bart.configuration_bart import BartConfig
 from transformers.models.bart.modeling_bart import (
-    BartLearnedPositionalEmbedding,
-    BartAttention,
-    BartEncoderLayer,
-    BartDecoderLayer,
-    BartPretrainedModel,
-    PretrainedBartModel,
-    BartEncoder,
-    BartDecoder,
-    BartModel,
-    BartForConditionalGeneration,
-    shift_tokens_right,
     _expand_mask,
+    shift_tokens_right,
 )
+from transformers.utils import (
+    logging,
+)
+
+
 logger = logging.get_logger(__name__)
 
 
 # Copied from modeling_bart.py: https://raw.githubusercontent.com/huggingface/transformers/648d0deb1dd28a5d9956e63d8cf8c18f96a6a2aa/src/transformers/models/bart/modeling_bart.py
 # The difference is: modified dynamic shapes to static shapes with `mark_step` for performance improvement.
+
 
 class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
     """
@@ -77,16 +55,15 @@ class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
         self.offset = 2
         super().__init__(num_embeddings + self.offset, embedding_dim)
 
-    def forward(self, input_ids: torch.Tensor, past_key_values_length: torch.Tensor=torch.tensor(0)):
+    def forward(self, input_ids: torch.Tensor, past_key_values_length: torch.Tensor = torch.tensor(0)):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
 
         bsz, seq_len = input_ids.shape[:2]
-        positions = torch.arange(
-            0, seq_len, dtype=torch.long, device=self.weight.device
-        ).expand(bsz, -1)
+        positions = torch.arange(0, seq_len, dtype=torch.long, device=self.weight.device).expand(bsz, -1)
         positions += past_key_values_length
 
         return super().forward(positions + self.offset)
+
 
 def gaudi_BartAttention_forward(
     self,
@@ -96,7 +73,7 @@ def gaudi_BartAttention_forward(
     attention_mask: Optional[torch.Tensor] = None,
     layer_head_mask: Optional[torch.Tensor] = None,
     output_attentions: bool = False,
-    token_idx : Optional[torch.Tensor] = None,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     """Input shape: Batch x Time x Channel"""
 
@@ -112,11 +89,7 @@ def gaudi_BartAttention_forward(
     # `past_key_value[0].shape[2] == key_value_states.shape[1]`
     # is checking that the `sequence_length` of the `past_key_value` is the same as
     # the provided `key_value_states` to support prefix tuning
-    if (
-        is_cross_attention
-        and past_key_value is not None
-        and past_key_value[0].shape[2] == key_value_states.shape[1]
-    ):
+    if is_cross_attention and past_key_value is not None and past_key_value[0].shape[2] == key_value_states.shape[1]:
         # reuse k,v, cross_attentions
         key_states = past_key_value[0]
         value_states = past_key_value[1]
@@ -131,8 +104,12 @@ def gaudi_BartAttention_forward(
         if token_idx is not None:
             # HPU bug WA
             key_states, value_states = past_key_value
-            key_states.index_add_(2, token_idx - 1, present_key_states - torch.index_select(key_states, 2, token_idx - 1))
-            value_states.index_add_(2, token_idx - 1, present_value_states - torch.index_select(value_states, 2, token_idx - 1))
+            key_states.index_add_(
+                2, token_idx - 1, present_key_states - torch.index_select(key_states, 2, token_idx - 1)
+            )
+            value_states.index_add_(
+                2, token_idx - 1, present_value_states - torch.index_select(value_states, 2, token_idx - 1)
+            )
         else:
             key_states = torch.cat([past_key_value[0], present_key_states], dim=2)
             value_states = torch.cat([past_key_value[1], present_value_states], dim=2)
@@ -215,6 +192,7 @@ def gaudi_BartAttention_forward(
 
     return attn_output, attn_weights_reshaped, past_key_value
 
+
 def gaudi_BartEncoderLayer_forward(
     self,
     hidden_states: torch.FloatTensor,
@@ -243,9 +221,7 @@ def gaudi_BartEncoderLayer_forward(
     hidden_states = residual + hidden_states
     hidden_states = self.final_layer_norm(hidden_states)
 
-    if hidden_states.dtype == torch.float16 and (
-        torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()
-    ):
+    if hidden_states.dtype == torch.float16 and (torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()):
         clamp_value = torch.finfo(hidden_states.dtype).max - 1000
         hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
 
@@ -255,6 +231,7 @@ def gaudi_BartEncoderLayer_forward(
         outputs += (attn_weights,)
 
     return outputs
+
 
 def gaudi_BartDecoderLayer_forward(
     self,
@@ -334,6 +311,7 @@ def gaudi_BartDecoderLayer_forward(
 
     return outputs
 
+
 def gaudi_BartEncoder_forward(
     self,
     input_ids: torch.LongTensor = None,
@@ -367,6 +345,7 @@ def gaudi_BartEncoder_forward(
 
     embed_pos = self.embed_positions(input)
     import habana_frameworks.torch.core as htcore
+
     htcore.mark_step()
     embed_pos = embed_pos.to(inputs_embeds.device)
 
@@ -435,9 +414,8 @@ def gaudi_BartEncoder_forward(
 
     if not return_dict:
         return tuple(v for v in [hidden_states, encoder_states, all_attentions] if v is not None)
-    return BaseModelOutput(
-        last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
-    )
+    return BaseModelOutput(last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions)
+
 
 def gaudi_BartDecoder_forward(
     self,
@@ -493,9 +471,11 @@ def gaudi_BartDecoder_forward(
 
     # embed positions
     import habana_frameworks.torch.core as htcore
+
     htcore.mark_step()
     positions = self.embed_positions(input, tensor_past_key_values_length)
     import habana_frameworks.torch.core as htcore
+
     htcore.mark_step()
     positions = positions.to(inputs_embeds.device)
 
@@ -563,9 +543,7 @@ def gaudi_BartDecoder_forward(
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attention_mask=encoder_attention_mask,
                 layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                cross_attn_layer_head_mask=(
-                    cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None
-                ),
+                cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
                 past_key_value=past_key_value,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
@@ -581,7 +559,6 @@ def gaudi_BartDecoder_forward(
 
             if encoder_hidden_states is not None:
                 all_cross_attentions += (layer_outputs[2],)
-
 
     # add hidden states from the last decoder layer
     if output_hidden_states:
@@ -601,6 +578,7 @@ def gaudi_BartDecoder_forward(
         attentions=all_self_attns,
         cross_attentions=all_cross_attentions,
     )
+
 
 def gaudi_BartModel_forward(
     self,
@@ -631,9 +609,7 @@ def gaudi_BartModel_forward(
                 "`input_ids` or `decoder_input_ids` or `decoder_inputs_embeds`."
             )
 
-        decoder_input_ids = shift_tokens_right(
-            input_ids, self.config.pad_token_id, self.config.decoder_start_token_id
-        )
+        decoder_input_ids = shift_tokens_right(input_ids, self.config.pad_token_id, self.config.decoder_start_token_id)
 
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
@@ -691,6 +667,7 @@ def gaudi_BartModel_forward(
         encoder_hidden_states=encoder_outputs.hidden_states,
         encoder_attentions=encoder_outputs.attentions,
     )
+
 
 def gaudi_BartForConditionalGeneration_forward(
     self,
@@ -767,6 +744,7 @@ def gaudi_BartForConditionalGeneration_forward(
         encoder_attentions=outputs.encoder_attentions,
     )
 
+
 def gaudi_BartForConditionalGeneration_prepare_inputs_for_generation(
     self,
     decoder_input_ids,
@@ -799,5 +777,5 @@ def gaudi_BartForConditionalGeneration_prepare_inputs_for_generation(
         "decoder_head_mask": decoder_head_mask,
         "cross_attn_head_mask": cross_attn_head_mask,
         "use_cache": use_cache,  # change this to avoid caching (presumably for debugging)
-        "token_idx": token_idx
+        "token_idx": token_idx,
     }

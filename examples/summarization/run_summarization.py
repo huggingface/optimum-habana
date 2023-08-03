@@ -458,7 +458,9 @@ def main():
 
     is_bart = model.config.model_type == "bart"
     if is_bart and training_args.do_train:
-        raise ValueError("Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`.")
+        raise ValueError(
+            "Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`."
+        )
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.

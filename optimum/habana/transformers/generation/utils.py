@@ -26,6 +26,7 @@ from transformers.generation.beam_constraints import DisjunctiveConstraint, Phra
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.logits_process import LogitsProcessorList
 from transformers.generation.stopping_criteria import (
+    MaxTimeCriteria,
     StoppingCriteria,
     StoppingCriteriaList,
     validate_stopping_criteria,
@@ -51,9 +52,6 @@ from optimum.utils import logging
 
 from ...utils import HabanaProfile
 from .configuration_utils import GaudiGenerationConfig
-from transformers.generation.stopping_criteria import (
-    MaxTimeCriteria,
-)
 
 
 if TYPE_CHECKING:
@@ -75,6 +73,7 @@ class StaticMaxLengthCriteria(StoppingCriteria):
         self.cur_step += 1
         return self.cur_step >= self.max_steps
 
+
 def _get_stopping_criteria(
     self, generation_config: GaudiGenerationConfig, stopping_criteria: Optional[StoppingCriteriaList]
 ) -> StoppingCriteriaList:
@@ -85,6 +84,8 @@ def _get_stopping_criteria(
         criteria.append(MaxTimeCriteria(max_time=generation_config.max_time))
     criteria = self._merge_criteria_processor_list(criteria, stopping_criteria)
     return criteria
+
+
 class GaudiGenerationMixin(GenerationMixin):
     """
     This class enables to perform fast generation in lazy mode and with HPU graphs.
@@ -187,26 +188,33 @@ class GaudiGenerationMixin(GenerationMixin):
 
     def _prepare_decoder_attention_mask(
         self,
-        max_steps: int,  #current stopping criteria
+        max_steps: int,  # current stopping criteria
         batch_size: int,
         pad_token_id: int,
         device: str,
         dtype: str = torch.int64,
     ) -> torch.Tensor:
         x = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
-        return x.index_fill(1, torch.tensor([0]), pad_token_id)    # First the position with pad_token_id
+        return x.index_fill(1, torch.tensor([0]), pad_token_id)  # First the position with pad_token_id
 
     def _prepare_past_key_values(
         self,
-        max_steps: int,  #current stopping criteria
+        max_steps: int,  # current stopping criteria
         batch_size: int,
         device: str,
     ) -> Tuple[torch.LongTensor, torch.LongTensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         n_heads = self.config.decoder_attention_heads
         embed_size_per_head = self.config.d_model // n_heads
-        key_states_ = torch.zeros((self.config.decoder_layers, batch_size, n_heads, max_steps, embed_size_per_head), device=device)
-        value_states_ = torch.zeros((self.config.decoder_layers, batch_size, n_heads, max_steps, embed_size_per_head), device=device)
-        past_key_values = tuple((key_states_[i, :, :, :, :], value_states_[i, :, :, :, :], None, None) for i in range(self.config.decoder_layers))
+        key_states_ = torch.zeros(
+            (self.config.decoder_layers, batch_size, n_heads, max_steps, embed_size_per_head), device=device
+        )
+        value_states_ = torch.zeros(
+            (self.config.decoder_layers, batch_size, n_heads, max_steps, embed_size_per_head), device=device
+        )
+        past_key_values = tuple(
+            (key_states_[i, :, :, :, :], value_states_[i, :, :, :, :], None, None)
+            for i in range(self.config.decoder_layers)
+        )
         return past_key_values
 
     def _prepare_decoder_input_ids_for_generation(
@@ -222,14 +230,14 @@ class GaudiGenerationMixin(GenerationMixin):
         """Prepares `decoder_input_ids` for generation with encoder-decoder models"""
         # 1. Check whether the user has defined `decoder_input_ids` manually. To facilitate in terms of input naming,
         # we also allow the user to pass it under `input_ids`, if the encoder does not use it as the main input.
-        
+
         if model_kwargs is not None and "decoder_input_ids" in model_kwargs:
             decoder_input_ids = model_kwargs.pop("decoder_input_ids")
         elif "input_ids" in model_kwargs and model_input_name != "input_ids":
             decoder_input_ids = model_kwargs.pop("input_ids")
         else:
             decoder_input_ids = None
-        
+
         token_idx = model_kwargs.get("token_idx", None)
 
         # 2. Encoder-decoder models expect the `decoder_input_ids` to start with a special token. Let's ensure that.
@@ -237,10 +245,14 @@ class GaudiGenerationMixin(GenerationMixin):
         if device is None:
             device = self.device
         if token_idx is None:
-            decoder_input_ids_start = torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+            decoder_input_ids_start = (
+                torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+            )
         else:
-            decoder_input_ids_start = torch.ones((batch_size, max_length), dtype=torch.long, device=device) * decoder_start_token_id
-        
+            decoder_input_ids_start = (
+                torch.ones((batch_size, max_length), dtype=torch.long, device=device) * decoder_start_token_id
+            )
+
         # no user input -> use decoder_start_token_id as decoder_input_ids
         if decoder_input_ids is None:
             decoder_input_ids = decoder_input_ids_start
@@ -476,12 +488,17 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["attention_mask"], (0, generation_config.max_length), value=0
                 )
             if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
-                model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(generation_config.max_length,
-                                                        inputs_tensor.shape[0], generation_config.pad_token_id, inputs_tensor.device)
+                model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
+                    generation_config.max_length,
+                    inputs_tensor.shape[0],
+                    generation_config.pad_token_id,
+                    inputs_tensor.device,
+                )
 
             if model_kwargs.get("past_key_values", None) is None and generation_config.use_cache:
-                model_kwargs["past_key_values"] = self._prepare_past_key_values(generation_config.max_length,
-                                                        inputs_tensor.shape[0], inputs_tensor.device)
+                model_kwargs["past_key_values"] = self._prepare_past_key_values(
+                    generation_config.max_length, inputs_tensor.shape[0], inputs_tensor.device
+                )
 
         # decoder-only models should use left-padding for generation
         if not self.config.is_encoder_decoder:
@@ -501,7 +518,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # 5. Prepare `input_ids` which will be used for auto-regressive generation
-        
+
         if self.config.is_encoder_decoder:
             input_ids, _ = self._prepare_decoder_input_ids_for_generation(
                 batch_size=batch_size,
@@ -1268,7 +1285,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
                 if self.config.is_encoder_decoder:
-                    next_token_logits = outputs.logits[:, token_idx-1, :]
+                    next_token_logits = outputs.logits[:, token_idx - 1, :]
                     next_tokens_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
                 else:
                     next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)

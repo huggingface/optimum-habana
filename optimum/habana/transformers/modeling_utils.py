@@ -32,17 +32,17 @@ from .models import (
     GaudiT5LayerFF,
     GaudiT5LayerSelfAttention,
     GaudiT5Stack,
-    gaudi_BartLearnedPositionalEmbedding,
-    gaudi_BartAttention_forward,
-    gaudi_BartEncoderLayer_forward,
-    gaudi_BartDecoderLayer_forward,
-    gaudi_BartEncoder_forward,
-    gaudi_BartDecoder_forward,
-    gaudi_BartModel_forward,
-    gaudi_BartForConditionalGeneration_forward,
-    gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
     _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
+    gaudi_BartAttention_forward,
+    gaudi_BartDecoder_forward,
+    gaudi_BartDecoderLayer_forward,
+    gaudi_BartEncoder_forward,
+    gaudi_BartEncoderLayer_forward,
+    gaudi_BartForConditionalGeneration_forward,
+    gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_BartLearnedPositionalEmbedding,
+    gaudi_BartModel_forward,
     gaudi_bloom_attention_forward,
     gaudi_bloom_block_forward,
     gaudi_bloom_convert_to_bloom_cache,
@@ -105,11 +105,17 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._expand_inputs_for_generation = staticmethod(
         GaudiGenerationMixin._expand_inputs_for_generation
     )
-    transformers.generation.GenerationMixin._prepare_attention_mask_for_generation = GaudiGenerationMixin._prepare_attention_mask_for_generation
-    transformers.generation.GenerationMixin._prepare_decoder_input_ids_for_generation = GaudiGenerationMixin._prepare_decoder_input_ids_for_generation
+    transformers.generation.GenerationMixin._prepare_attention_mask_for_generation = (
+        GaudiGenerationMixin._prepare_attention_mask_for_generation
+    )
+    transformers.generation.GenerationMixin._prepare_decoder_input_ids_for_generation = (
+        GaudiGenerationMixin._prepare_decoder_input_ids_for_generation
+    )
     transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
     transformers.generation.GenerationMixin._prepare_past_key_values = GaudiGenerationMixin._prepare_past_key_values
-    transformers.generation.GenerationMixin._prepare_decoder_attention_mask = GaudiGenerationMixin._prepare_decoder_attention_mask
+    transformers.generation.GenerationMixin._prepare_decoder_attention_mask = (
+        GaudiGenerationMixin._prepare_decoder_attention_mask
+    )
     transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
     transformers.generation.GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
     transformers.generation.GenerationMixin.sample = GaudiGenerationMixin.sample
@@ -141,8 +147,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.bart.modeling_bart.BartEncoder.forward = gaudi_BartEncoder_forward
     transformers.models.bart.modeling_bart.BartDecoder.forward = gaudi_BartDecoder_forward
     transformers.models.bart.modeling_bart.BartModel.forward = gaudi_BartModel_forward
-    transformers.models.bart.modeling_bart.BartForConditionalGeneration.forward = gaudi_BartForConditionalGeneration_forward
-    transformers.models.bart.modeling_bart.BartForConditionalGeneration.prepare_inputs_for_generation = gaudi_BartForConditionalGeneration_prepare_inputs_for_generation
+    transformers.models.bart.modeling_bart.BartForConditionalGeneration.forward = (
+        gaudi_BartForConditionalGeneration_forward
+    )
+    transformers.models.bart.modeling_bart.BartForConditionalGeneration.prepare_inputs_for_generation = (
+        gaudi_BartForConditionalGeneration_prepare_inputs_for_generation
+    )
 
     # Replace invert_attention_mask and get_extended_attention_mask
     # so that HMP is disabled for specific parts of the code
