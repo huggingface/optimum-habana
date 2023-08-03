@@ -151,9 +151,9 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
 
         gen_kwargs = gen_kwargs.copy()
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            if self.model.config.model_type == "bart":
-                gen_kwargs["max_new_tokens"] = self.model.generation_config.max_length
-            else:
+            # if self.model.config.model_type == "bart":
+            #     gen_kwargs["max_new_tokens"] = self.model.generation_config.max_length
+            # else:
                 gen_kwargs["max_length"] = self.args.generation_max_length
         gen_kwargs["num_beams"] = (
             gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
@@ -204,9 +204,9 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
 
         gen_kwargs = gen_kwargs.copy()
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            if self.model.config.model_type == "bart":
-                gen_kwargs["max_new_tokens"] = self.model.generation_config.max_length
-            else:
+            # if self.model.config.model_type == "bart":
+            #     gen_kwargs["max_new_tokens"] = self.model.generation_config.max_length
+            # else:
                 gen_kwargs["max_length"] = self.args.generation_max_length
         gen_kwargs["num_beams"] = (
             gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams

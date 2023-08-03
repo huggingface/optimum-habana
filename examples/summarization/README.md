@@ -247,4 +247,4 @@ python run_summarization.py \
 ```
 
 
-Only `--num_beams 1` is supported for BART
+Only `--num_beams 1` is supported for BART.
