@@ -26,8 +26,8 @@ from .gpt_neox import (
     gaudi_gpt_neox_model_forward,
 )
 from .gptj import (
+    GaudiGPTJAttention,
     GaudiGPTJForCausalLM,
-    gaudi_gptj_attention_forward,
     gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
 )
