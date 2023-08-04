@@ -6,6 +6,17 @@ import torch.nn as nn
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaForCausalLM, apply_rotary_pos_emb, logger
 
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError as e:
+    print("Not using HPU kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
+
+try:
+    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
+except ImportError as e:
+    print("Not using HPU kernel for RMSNorm")
+    FusedRMSNorm = None
 
 def gaudi_llama_attention_forward(
     self,
@@ -34,7 +45,7 @@ def gaudi_llama_attention_forward(
         else:
             kv_seq_len = past_key_value[0].shape[-2]
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+    query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
     # [bsz, nh, t, hd]
     if past_key_value is not None:
         # reuse k, v, self_attention
@@ -238,6 +249,27 @@ def gaudi_llama_model_forward(
     )
 
 
+def gaudi_llama_rmsnorm_forward(self, hidden_states):
+    """
+    Copied from LlamaRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+    The only differences are:
+        - override RMSNorm with Habana fused RMSNorm
+    """
+    if hidden_states.device.type == "hpu" and FusedRMSNorm:
+        orig_dtype = hidden_states.dtype
+        hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
+        return hidden_states.to(orig_dtype)
+    else:
+        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+
+        # convert into half-precision if necessary
+        if self.weight.dtype in [torch.float16, torch.bfloat16]:
+            hidden_states = hidden_states.to(self.weight.dtype)
+
+        return self.weight * hidden_states
+
+
 class GaudiLlamaForCausalLM(LlamaForCausalLM):
     """
     Inherits from LlamaForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -346,3 +378,11 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             }
         )
         return model_inputs
+
+
+def apply_customized_rope(q, k, cos, sin, position_ids):
+    if q.device.type == "hpu" and FusedRoPE:
+        return FusedRoPE.apply(q, cos, sin, position_ids), \
+            FusedRoPE.apply(k, cos, sin, position_ids)
+    else:
+        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
