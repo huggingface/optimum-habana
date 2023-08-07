@@ -18,6 +18,7 @@ except ImportError as e:
     print("Not using HPU kernel for RMSNorm")
     FusedRMSNorm = None
 
+
 def gaudi_llama_attention_forward(
     self,
     hidden_states: torch.Tensor,
@@ -382,7 +383,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(q, cos, sin, position_ids), \
-            FusedRoPE.apply(k, cos, sin, position_ids)
+        return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
