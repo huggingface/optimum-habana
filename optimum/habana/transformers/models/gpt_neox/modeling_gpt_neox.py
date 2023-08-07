@@ -4,11 +4,13 @@ import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXForCausalLM, apply_rotary_pos_emb, logger
+
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 except ImportError:
     print("Not using HPU kernel for apply_rotary_pos_emb")
     FusedRoPE = None
+
 
 def gaudi_gpt_neox_attention_forward(
     self,
@@ -386,7 +388,6 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(q, cos, sin, position_ids), \
-            FusedRoPE.apply(k, cos, sin, position_ids)
+        return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
