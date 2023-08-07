@@ -6,15 +6,16 @@ import torch.nn as nn
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaForCausalLM, apply_rotary_pos_emb, logger
 
+
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-except ImportError as e:
+except ImportError:
     print("Not using HPU kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
-except ImportError as e:
+except ImportError:
     print("Not using HPU kernel for RMSNorm")
     FusedRMSNorm = None
 
