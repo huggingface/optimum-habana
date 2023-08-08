@@ -16,7 +16,7 @@ except ImportError:
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
 except ImportError:
-    print("Not using HPU kernel for RMSNorm")
+    print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
 
 
