@@ -9,7 +9,7 @@ from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXForCausalLM, a
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 except ImportError:
-    print("Not using HPU kernel for apply_rotary_pos_emb")
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
 
