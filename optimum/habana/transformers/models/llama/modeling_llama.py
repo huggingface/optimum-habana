@@ -10,7 +10,7 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM, apply_rot
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 except ImportError:
-    print("Not using HPU kernel for apply_rotary_pos_emb")
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
 try:
