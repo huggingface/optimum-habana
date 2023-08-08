@@ -8,6 +8,12 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
+from .codegen import (
+    GaudiCodeGenForCausalLM,
+    gaudi_codegen_attention_forward,
+    gaudi_codegen_block_forward,
+    gaudi_codegen_model_forward,
+)
 from .esm import (
     _gaudi_esmfold_attention_wrap_up,
     gaudi_esm_for_protein_folding_forward,
