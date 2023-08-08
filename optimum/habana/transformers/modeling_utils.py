@@ -58,6 +58,7 @@ from .models import (
     gaudi_llama_attention_forward,
     gaudi_llama_decoder_layer_forward,
     gaudi_llama_model_forward,
+    gaudi_llama_rmsnorm_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
@@ -170,6 +171,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
     transformers.models.llama.modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
     transformers.models.llama.modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
+    transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
     # Dropout kernel improvement for Flan-T5
     transformers.models.t5.modeling_t5.T5Stack = GaudiT5Stack
