@@ -127,7 +127,6 @@ class GaudiCodeGenAttention(nn.Module):
         # TODO(enijkamp): factor out number of logical TPU-v4 cores or make forward pass agnostic
         mp_num = 4
         qkv_split = qkv.reshape(qkv.shape[:-1] + (mp_num, -1))
-
         local_dim = self.head_dim * self.num_attention_heads // mp_num
         query, value, key = torch.split(qkv_split, local_dim, dim=-1)
         query = self._split_heads(query, self.num_attention_heads, self.head_dim, mp_num=mp_num)
