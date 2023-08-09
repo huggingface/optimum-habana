@@ -26,8 +26,8 @@ from .gpt_neox import (
     gaudi_gpt_neox_model_forward,
 )
 from .gptj import (
+    GaudiGPTJAttention,
     GaudiGPTJForCausalLM,
-    gaudi_gptj_attention_forward,
     gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
 )
@@ -36,6 +36,7 @@ from .llama import (
     gaudi_llama_attention_forward,
     gaudi_llama_decoder_layer_forward,
     gaudi_llama_model_forward,
+    gaudi_llama_rmsnorm_forward,
 )
 from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
 from .opt import (

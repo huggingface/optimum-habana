@@ -21,6 +21,7 @@ from .models import (
     GaudiBloomMLP,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
+    GaudiGPTJAttention,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
     GaudiLlamaForCausalLM,
@@ -45,13 +46,13 @@ from .models import (
     gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
-    gaudi_gptj_attention_forward,
     gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_attention_forward,
     gaudi_llama_decoder_layer_forward,
     gaudi_llama_model_forward,
+    gaudi_llama_rmsnorm_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
@@ -145,7 +146,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
 
     # Optimization for GPTJ on Gaudi
-    transformers.models.gptj.modeling_gptj.GPTJAttention.forward = gaudi_gptj_attention_forward
+    # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
+    # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
+    transformers.models.gptj.modeling_gptj.GPTJAttention = GaudiGPTJAttention
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
     transformers.models.gptj.modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
     transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
@@ -161,3 +164,4 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
     transformers.models.llama.modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
     transformers.models.llama.modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
+    transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
