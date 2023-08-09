@@ -9,19 +9,19 @@ from transformers.models.codegen.modeling_codegen import CodeGenForCausalLM, app
 
 
 def gaudi_codegen_attention_forward(
-        self,
-        hidden_states: Optional[torch.FloatTensor],
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = False,
-        output_attentions: Optional[bool] = False,
-        token_idx = None
-    ) -> Union[
-        Tuple[torch.Tensor, Tuple[torch.Tensor]],
-        Optional[Tuple[torch.Tensor, Tuple[torch.Tensor], Tuple[torch.Tensor, ...]]],
-    ]:
+    self,
+    hidden_states: Optional[torch.FloatTensor],
+    layer_past: Optional[Tuple[torch.Tensor]] = None,
+    attention_mask: Optional[torch.FloatTensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    head_mask: Optional[torch.FloatTensor] = None,
+    use_cache: Optional[bool] = False,
+    output_attentions: Optional[bool] = False,
+    token_idx=None,
+) -> Union[
+    Tuple[torch.Tensor, Tuple[torch.Tensor]],
+    Optional[Tuple[torch.Tensor, Tuple[torch.Tensor], Tuple[torch.Tensor, ...]]],
+]:
     """
     Copied from CodeGenAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
     The only differences are:
@@ -72,8 +72,8 @@ def gaudi_codegen_attention_forward(
         past_key = layer_past[0]
         past_value = layer_past[1]
         if token_idx is not None:
-            key = past_key.index_add_(2, token_idx-1, key - torch.index_select(past_key, 2, token_idx-1))
-            value = past_value.index_add_(2, token_idx-1, value - torch.index_select(past_value, 2, token_idx-1))
+            key = past_key.index_add_(2, token_idx - 1, key - torch.index_select(past_key, 2, token_idx - 1))
+            value = past_value.index_add_(2, token_idx - 1, value - torch.index_select(past_value, 2, token_idx - 1))
         else:
             key = torch.cat((past_key, key), dim=-2)
             value = torch.cat((past_value, value), dim=-2)
@@ -106,7 +106,7 @@ def gaudi_codegen_block_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
-    token_idx = None
+    token_idx=None,
 ) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
     """
     Copied from CodeGenBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
@@ -123,7 +123,7 @@ def gaudi_codegen_block_forward(
         head_mask=head_mask,
         use_cache=use_cache,
         output_attentions=output_attentions,
-        token_idx=token_idx
+        token_idx=token_idx,
     )
     attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
     outputs = attn_outputs[1:]
@@ -140,20 +140,20 @@ def gaudi_codegen_block_forward(
 
 
 def gaudi_codegen_model_forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        token_idx = None
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
+    self,
+    input_ids: Optional[torch.LongTensor] = None,
+    past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+    attention_mask: Optional[torch.FloatTensor] = None,
+    token_type_ids: Optional[torch.LongTensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    head_mask: Optional[torch.FloatTensor] = None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
+    use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    token_idx=None,
+) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from CodeGenBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
     The only differences are:
@@ -276,7 +276,7 @@ def gaudi_codegen_model_forward(
                 head_mask=head_mask[i],
                 use_cache=use_cache,
                 output_attentions=output_attentions,
-                token_idx=token_idx
+                token_idx=token_idx,
             )
 
         hidden_states = outputs[0]
@@ -347,9 +347,8 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
             "position_ids": position_ids,
             "attention_mask": attention_mask,
             "token_type_ids": token_type_ids,
-            "token_idx": token_idx
+            "token_idx": token_idx,
         }
-
 
     def forward(
         self,
@@ -365,7 +364,7 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        token_idx = None
+        token_idx=None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -387,7 +386,7 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            token_idx=token_idx
+            token_idx=token_idx,
         )
         hidden_states = transformer_outputs[0]
 
