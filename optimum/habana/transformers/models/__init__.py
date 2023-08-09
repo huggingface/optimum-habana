@@ -47,15 +47,6 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
-from .t5 import (
-    GaudiT5DenseActDense,
-    GaudiT5DenseGatedActDense,
-    GaudiT5LayerCrossAttention,
-    GaudiT5LayerFF,
-    GaudiT5LayerSelfAttention,
-    GaudiT5Stack,
-    gaudi_T5Attention_forward,
-)
 from .vit import gaudi_vit_self_attention_forward
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
