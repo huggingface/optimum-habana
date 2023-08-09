@@ -19,6 +19,7 @@ from .generation import GaudiGenerationConfig, GaudiGenerationMixin
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
+    GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
@@ -41,7 +42,6 @@ from .models import (
     gaudi_bloom_convert_to_bloom_cache,
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
-    gaudi_codegen_attention_forward,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
     gaudi_conv1d_forward,
@@ -124,10 +124,12 @@ def adapt_transformers_to_gaudi():
     )
 
     # Optimization for codegen generation on Gaudi
+    # The bias in the CodeGenAttention layer is a Boolean
+    # Since HCCL cannot handle this dtype, we revert it back to uint8
+    transformers.models.codegen.modeling_codegen.CodeGenAttention = GaudiCodeGenAttention
     transformers.models.codegen.modeling_codegen.CodeGenForCausalLM = GaudiCodeGenForCausalLM
     transformers.models.codegen.modeling_codegen.CodeGenModel.forward = gaudi_codegen_model_forward
     transformers.models.codegen.modeling_codegen.CodeGenBlock.forward = gaudi_codegen_block_forward
-    transformers.models.codegen.modeling_codegen.CodeGenAttention.forward = gaudi_codegen_attention_forward
 
     # Replace invert_attention_mask and get_extended_attention_mask
     # so that HMP is disabled for specific parts of the code
@@ -162,7 +164,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
 
     # Optimization for GPTJ on Gaudi
-    # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
+    # The bias in the GPTJAttention layer is a Boolean
     # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
     transformers.models.gptj.modeling_gptj.GPTJAttention = GaudiGPTJAttention
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM

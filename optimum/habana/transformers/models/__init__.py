@@ -9,8 +9,8 @@ from .bloom import (
     gaudi_bloom_model_forward,
 )
 from .codegen import (
+    GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
-    gaudi_codegen_attention_forward,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
 )
