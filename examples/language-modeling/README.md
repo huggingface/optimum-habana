@@ -100,6 +100,7 @@ a perplexity of 21.7968 once fine-tuned on the dataset.
 The following command triggers fine-tuning of GPT-J-6B model on WikiText-2 with Deepspeed ZeRO-2.
 Fine tuning on 8 HPU cards takes around 6 minutes with batch size of 32 (4 per device).
 It reaches a perplexity of 14.011 once finetuned with the dataset.
+This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
 ### Multi-card Training with Deepspeed
 
 ```bash
@@ -119,13 +120,15 @@ python ../gaudi_spawn.py \
     --gradient_checkpointing \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
-    --deepspeed path_for_deepspeed_zero2_config
+    --deepspeed path_for_deepspeed_config
+
 ```
 ## GPT-NEOX-20B and causal language modeling
 
 The following command triggers fine-tuning of GPT-NeoX-20B model on WikiText-2 with Deepspeed ZeRO-2.
-Fine tuning on 16 HPU cards takes around 9 minutes with batch size of 32 (2 per device).
+Fine tuning on 16 HPU cards (2 Gaudi2 nodes) takes around 9 minutes with batch size of 32 (2 per device).
 It reaches a perplexity of 10.469 once finetuned with the dataset.
+This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
 ### Multi-Node Training with Deepspeed
 Please refer : https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training  for  script adaptations to perform multi-node training
 
@@ -146,7 +149,7 @@ python ../gaudi_spawn.py \
     --gradient_checkpointing \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
-    --deepspeed path_for_deepspeed_zero2_config
+    --deepspeed path_for_deepspeed_config
 ```
 
 ## RoBERTa/BERT/DistilBERT and masked language modeling
