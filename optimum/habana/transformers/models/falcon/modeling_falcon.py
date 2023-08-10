@@ -8,8 +8,9 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithCrossAttentions,
 )
 
-from transformers.models.falcon.modeling_falcon import FalconForCausalLM, FalconModel, dropout_add#, rotate_half
+from transformers.models.falcon.modeling_falcon import FalconForCausalLM, FalconModel, dropout_add
 from habana_frameworks.torch.hpex.kernels import FusedSDPA, RotaryPosEmbeddingHelperV1
+
 
 def gaudi_falcon_rotary_embedding_forward(self, query, key, seq_len, position_ids, past_key_values_length=0):
     """
@@ -24,8 +25,7 @@ def gaudi_falcon_rotary_embedding_forward(self, query, key, seq_len, position_id
     cos = cos.squeeze(0)[position_ids]
     sin = sin.squeeze(0)[position_ids]
 
-    return RotaryPosEmbeddingHelperV1.apply(query, cos, sin, 0), \
-        RotaryPosEmbeddingHelperV1.apply(key, cos, sin, 0)
+    return RotaryPosEmbeddingHelperV1.apply(query, cos, sin, 0), RotaryPosEmbeddingHelperV1.apply(key, cos, sin, 0)
 
 
 def gaudi_falcon_attention_forward(
@@ -53,7 +53,9 @@ def gaudi_falcon_attention_forward(
 
     batch_size, query_length, _, _ = query_layer.shape
 
-    query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, query_length, self.head_dim) #self.num_heads=71
+    query_layer = query_layer.transpose(1, 2).reshape(
+        batch_size * self.num_heads, query_length, self.head_dim
+    )
     key_layer = key_layer.transpose(1, 2).reshape(
         batch_size * num_kv_heads,
         query_length,
@@ -79,8 +81,8 @@ def gaudi_falcon_attention_forward(
         if token_idx is not None:
             past_key.index_copy_(1, token_idx - 1, key_layer)
             past_value.index_copy_(1, token_idx - 1, value_layer)
-            key_layer=past_key
-            value_layer=past_value
+            key_layer = past_key
+            value_layer = past_value
         else:
             # concatenate along seq_length dimension:
             #  - key: [batch_size * self.num_heads, kv_length, head_dim]
@@ -107,9 +109,7 @@ def gaudi_falcon_attention_forward(
             attention_scores = query_layer_ @ key_layer_.transpose(-1, -2)
             attention_scores /= math.sqrt(self.head_dim)
 
-            attention_scores = F.softmax(
-                attention_scores + attention_mask_float, dim=-1, dtype=hidden_states.dtype
-            )
+            attention_scores = F.softmax(attention_scores + attention_mask_float, dim=-1, dtype=hidden_states.dtype)
             attn_output = attention_scores @ value_layer_
         else:
             attn_output = FusedSDPA.apply(query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False)
@@ -166,6 +166,7 @@ def gaudi_falcon_attention_forward(
         else:
             return output_tensor, present
 
+
 def gaudi_falcon_decoder_layer_forward(
     self,
     hidden_states: torch.Tensor,
@@ -211,9 +212,7 @@ def gaudi_falcon_decoder_layer_forward(
         if self.config.parallel_attn:
             mlp_layernorm_out = attention_layernorm_out
         else:
-            residual = dropout_add(
-                attention_output, residual, self.config.attention_dropout, training=self.training
-            )
+            residual = dropout_add(attention_output, residual, self.config.attention_dropout, training=self.training)
             mlp_layernorm_out = self.post_attention_layernorm(residual)
 
     outputs = attn_outputs[1:]
@@ -233,13 +232,14 @@ def gaudi_falcon_decoder_layer_forward(
 
     return outputs  # hidden_states, present, attentions
 
+
 def _expand_mask(mask: torch.Tensor, past_key_values_length: int, tgt_len: int) -> torch.BoolTensor:
     """
     Copied from transformers.models.falcon.modeling_falcon._expand_mask
     Expands attention_mask from `[batch_size, seq_length]` to `[batch_size, 1, seq_length, seq_length + past_length]`
     when past_key_values_length is not 0 or to `[batch_size, 1, seq_length, tgt_len] when past_key_values_lenght is 0.`
     """
-    batch_size, total_length = mask.shape ##1, 104
+    batch_size, total_length = mask.shape
     if tgt_len > 0:
         seq_length = tgt_len
     else:
@@ -247,6 +247,7 @@ def _expand_mask(mask: torch.Tensor, past_key_values_length: int, tgt_len: int) 
 
     expanded_mask = ~(mask[:, None, None, :].to(torch.bool))
     return expanded_mask.expand(batch_size, 1, seq_length, total_length)
+
 
 def _make_causal_mask(
     input_ids_shape: torch.Size, device: torch.device, past_key_values_length: int
@@ -264,6 +265,7 @@ def _make_causal_mask(
 
     expanded_mask = mask[None, None, :, :].expand(batch_size, 1, target_length, target_length + past_key_values_length)
     return expanded_mask
+
 
 class GaudiFalconModel(FalconModel):
     """
@@ -301,7 +303,9 @@ class GaudiFalconModel(FalconModel):
             )
 
         # [batch_size, seq_length + past_key_values_length] -> [batch_size, 1, seq_length, seq_length + past_key_values_length]
-        expanded_attn_mask = _expand_mask(attention_mask, past_key_values_length=past_key_values_length, tgt_len=seq_length)
+        expanded_attn_mask = _expand_mask(
+            attention_mask, past_key_values_length=past_key_values_length, tgt_len=seq_length
+        )
 
         combined_attention_mask = (
             expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask | combined_attention_mask
@@ -454,6 +458,7 @@ class GaudiFalconModel(FalconModel):
             attentions=all_self_attentions,
         )
 
+
 class GaudiFalconForCausalLM(FalconForCausalLM):
     """
     Inherits from FalconForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
@@ -463,6 +468,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
+
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
