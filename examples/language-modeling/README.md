@@ -128,7 +128,7 @@ It reaches a perplexity of 10.469 once finetuned with the dataset.
 
 ```bash
 python ../gaudi_spawn.py \
-    --hostfile './hostfile' \
+    --hostfile path_for_the_hostfile \
     --world_size 8 --use_deepspeed run_clm.py \
     --model_name_or_path EleutherAI/gpt-neox-20b \
     --dataset_name wikitext \
