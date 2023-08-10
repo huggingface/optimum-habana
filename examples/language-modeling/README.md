@@ -97,7 +97,8 @@ a perplexity of 21.7968 once fine-tuned on the dataset.
 
 ## GPT-J-6B and causal language modeling
 
-The following command triggers fine-tuning of GPT-J-6b model on WikiText-2 with Deepspeed ZeRO-2. Fine tuning on 8 HPU cards takes around 6 mins with batchsize of 4.
+The following command triggers fine-tuning of GPT-J-6B model on WikiText-2 with Deepspeed ZeRO-2.
+Fine tuning on 8 HPU cards takes around 6 mins with batchsize of 32 (per device is 4).
 It reaches a perplexity of 14.011 once finetuned with the dataset.
 ### Multi-card Training with Deepspeed
 
@@ -118,11 +119,12 @@ python ../gaudi_spawn.py \
     --gradient_checkpointing \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 2 \
-    --deepspeed path_to_my_deepspeed_config
+    --deepspeed path_for_deepspeed_config
 ```
-## GPT-J-6B and causal language modeling
+## GPT-NEOX-20B and causal language modeling
 
-The following command triggers fine-tuning of  GPT-NEOX-20b model on WikiText-2 with Deepspeed ZeRO-2. Fine tuning on 16 HPU cards takes around 9 mins with batch size of 2
+The following command triggers fine-tuning of GPT-NeoX-20B model on WikiText-2 with Deepspeed ZeRO-2.
+Fine tuning on 16 HPU cards takes around 9 mins with batch size of 32 (per device is 2).
 It reaches a perplexity of 10.469 once finetuned with the dataset.
 ### Multi-Node Training with Deepspeed
 
@@ -144,7 +146,7 @@ python ../gaudi_spawn.py \
     --gradient_checkpointing \
     --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 2 \
-    --deepspeed path_to_my_deepspeed_config
+    --deepspeed path_for_deepspeed_config
 ```
 
 ## RoBERTa/BERT/DistilBERT and masked language modeling
