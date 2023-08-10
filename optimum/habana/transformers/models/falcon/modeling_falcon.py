@@ -53,9 +53,7 @@ def gaudi_falcon_attention_forward(
 
     batch_size, query_length, _, _ = query_layer.shape
 
-    query_layer = query_layer.transpose(1, 2).reshape(
-        batch_size * self.num_heads, query_length, self.head_dim
-    )
+    query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, query_length, self.head_dim)
     key_layer = key_layer.transpose(1, 2).reshape(
         batch_size * num_kv_heads,
         query_length,
