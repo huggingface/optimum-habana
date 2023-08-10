@@ -1,15 +1,19 @@
-from typing import Optional, Tuple, Union, List
+import math
+from typing import Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
-
+from habana_frameworks.torch.hpex.kernels import FusedSDPA, RotaryPosEmbeddingHelperV1
+from torch.nn import CrossEntropyLoss
+from torch.nn import functional as F
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
 )
+from transformers.models.falcon.modeling_falcon import FalconForCausalLM, FalconModel, build_alibi_tensor, dropout_add
+from transformers.utils import logging
 
-from transformers.models.falcon.modeling_falcon import FalconForCausalLM, FalconModel, dropout_add
-from habana_frameworks.torch.hpex.kernels import FusedSDPA, RotaryPosEmbeddingHelperV1
+
+logger = logging.get_logger(__name__)
 
 
 def gaudi_falcon_rotary_embedding_forward(self, query, key, seq_len, position_ids, past_key_values_length=0):

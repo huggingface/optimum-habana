@@ -21,8 +21,8 @@ from .esm import (
 from .falcon import (
     GaudiFalconForCausalLM,
     GaudiFalconModel,
-    gaudi_falcon_decoder_layer_forward,
     gaudi_falcon_attention_forward,
+    gaudi_falcon_decoder_layer_forward,
     gaudi_falcon_rotary_embedding_forward,
 )
 from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
