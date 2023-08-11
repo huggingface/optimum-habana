@@ -2,11 +2,11 @@ name: Unit and integration tests
 
 
 # WARNING: As this workflow supports the pull_request_target event, please exercise extra care when editing it.
-# Reference: https://gist.github.com/fxmarty/fba1ea3b2ebbf9a75cca71c08f05a85b
 on:
   workflow_dispatch:
   pull_request_target:
     branches: [ main ]
+    types: [ opened, synchronize, reopened, labeled ]
     paths:
       - "optimum/**.py"
       - "tests/**.py"
@@ -18,10 +18,7 @@ concurrency:
 
 jobs:
   authorize:
-    environment:
-      ${{ github.event_name == 'pull_request_target' &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'external' || 'internal' }}
+    if: (github.event.action == 'labeled' && github.event.label.name == 'run-test') || github.event_name != 'pull_request_target' || (! github.event.pull_request.head.repo.fork)
     runs-on: ubuntu-latest
     steps:
       - run: true
@@ -79,12 +76,7 @@ jobs:
         if: github.event_name == 'pull_request_target'
         uses: actions/checkout@v2
         with:
-          ref: "refs/pull/${{ github.event.number }}/merge"
-          fetch-depth: 2
-      - name: Security - check PR SHA
-        if: github.event_name == 'pull_request_target'
-        run: |
-            [[ "$(git rev-parse 'HEAD^2')" == "${{ github.event.pull_request.head.sha }}" ]]
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
@@ -120,12 +112,7 @@ jobs:
         if: github.event_name == 'pull_request_target'
         uses: actions/checkout@v2
         with:
-          ref: "refs/pull/${{ github.event.number }}/merge"
-          fetch-depth: 2
-      - name: Security - check PR SHA
-        if: github.event_name == 'pull_request_target'
-        run: |
-            [[ "$(git rev-parse 'HEAD^2')" == "${{ github.event.pull_request.head.sha }}" ]]
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
