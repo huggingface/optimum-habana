@@ -2,14 +2,33 @@ import math
 from typing import Optional, Tuple, Union
 
 import torch
-from habana_frameworks.torch.hpex.kernels import FusedSDPA, RotaryPosEmbeddingHelperV1
+
+
+try:
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused kernel for scaled_dot_product_attention")
+    FusedSDPA = None
+
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV1 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
+
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
 )
-from transformers.models.falcon.modeling_falcon import FalconForCausalLM, FalconModel, build_alibi_tensor, dropout_add
+from transformers.models.falcon.modeling_falcon import (
+    FalconForCausalLM,
+    FalconModel,
+    build_alibi_tensor,
+    dropout_add,
+    rotate_half,
+)
 from transformers.utils import logging
 
 
@@ -29,7 +48,10 @@ def gaudi_falcon_rotary_embedding_forward(self, query, key, seq_len, position_id
     cos = cos.squeeze(0)[position_ids]
     sin = sin.squeeze(0)[position_ids]
 
-    return RotaryPosEmbeddingHelperV1.apply(query, cos, sin, 0), RotaryPosEmbeddingHelperV1.apply(key, cos, sin, 0)
+    if FusedRoPE:
+        return FusedRoPE.apply(query, cos, sin, 0), FusedRoPE.apply(key, cos, sin, 0)
+    else:
+        return (query * cos) + (rotate_half(query) * sin), (key * cos) + (rotate_half(key) * sin)
 
 
 def gaudi_falcon_attention_forward(
@@ -48,7 +70,7 @@ def gaudi_falcon_attention_forward(
     Copied from FalconAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
     The only differences are:
     - add new args token_idx and position_ids
-    - replace F.scaled_dot_product_Attention with Habana torch's version
+    - replace F.scaled_dot_product_attention with Habana torch's version
     """
     fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
     num_kv_heads = self.num_heads if self.new_decoder_architecture else self.num_kv_heads
@@ -114,7 +136,12 @@ def gaudi_falcon_attention_forward(
             attention_scores = F.softmax(attention_scores + attention_mask_float, dim=-1, dtype=hidden_states.dtype)
             attn_output = attention_scores @ value_layer_
         else:
-            attn_output = FusedSDPA.apply(query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False)
+            if FusedSDPA:
+                attn_output = FusedSDPA.apply(query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False)
+            else:
+                attn_output = F.scaled_dot_product_attention(
+                    query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, is_causal=False
+                )
             attention_scores = None
 
         attn_output = attn_output.view(batch_size, self.num_heads, query_length, self.head_dim)
