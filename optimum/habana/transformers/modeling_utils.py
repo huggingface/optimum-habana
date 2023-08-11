@@ -23,6 +23,7 @@ from .models import (
     GaudiCodeGenForCausalLM,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
+    GaudiGPTBigCodeForCausalLM,
     GaudiGPTJAttention,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
@@ -53,6 +54,9 @@ from .models import (
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
+    gaudi_gpt_bigcode_attention_forward,
+    gaudi_gpt_bigcode_block_forward,
+    gaudi_gpt_bigcode_model_forward,
     gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
@@ -170,6 +174,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
     transformers.models.gptj.modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
     transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
+
+    # Optimization for GPTBigCode on Gaudi
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeAttention.forward = gaudi_gpt_bigcode_attention_forward
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeForCausalLM = GaudiGPTBigCodeForCausalLM
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeBlock.forward = gaudi_gpt_bigcode_block_forward
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeModel.forward = gaudi_gpt_bigcode_model_forward
 
     # Optimization for gpt-neox generation on Gaudi
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM

@@ -25,6 +25,12 @@ from .esm import (
     gaudi_rot_vec_mul,
 )
 from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
+from .gpt_bigcode import (
+    gaudi_gpt_bigcode_model_forward,
+    GaudiGPTBigCodeForCausalLM,
+    gaudi_gpt_bigcode_attention_forward,
+    gaudi_gpt_bigcode_block_forward,
+)
 from .gpt_neox import (
     GaudiGPTNeoXForCausalLM,
     gaudi_gpt_neox_attention_forward,
