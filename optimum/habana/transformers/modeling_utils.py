@@ -21,17 +21,12 @@ from .models import (
     GaudiBloomMLP,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
+    GaudiGPTJAttention,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
     GaudiLlamaForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
-    GaudiT5DenseActDense,
-    GaudiT5DenseGatedActDense,
-    GaudiT5LayerCrossAttention,
-    GaudiT5LayerFF,
-    GaudiT5LayerSelfAttention,
-    GaudiT5Stack,
     _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
@@ -51,20 +46,19 @@ from .models import (
     gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
-    gaudi_gptj_attention_forward,
     gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_attention_forward,
     gaudi_llama_decoder_layer_forward,
     gaudi_llama_model_forward,
+    gaudi_llama_rmsnorm_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
-    gaudi_T5Attention_forward,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
 )
@@ -152,7 +146,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
 
     # Optimization for GPTJ on Gaudi
-    transformers.models.gptj.modeling_gptj.GPTJAttention.forward = gaudi_gptj_attention_forward
+    # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
+    # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
+    transformers.models.gptj.modeling_gptj.GPTJAttention = GaudiGPTJAttention
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
     transformers.models.gptj.modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
     transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
@@ -168,12 +164,4 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
     transformers.models.llama.modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
     transformers.models.llama.modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
-
-    # Dropout kernel improvement for Flan-T5
-    transformers.models.t5.modeling_t5.T5Stack = GaudiT5Stack
-    transformers.models.t5.modeling_t5.T5DenseGatedActDense = GaudiT5DenseGatedActDense
-    transformers.models.t5.modeling_t5.T5LayerFF = GaudiT5LayerFF
-    transformers.models.t5.modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
-    transformers.models.t5.modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
-    transformers.models.t5.modeling_t5.T5DenseActDense = GaudiT5DenseActDense
-    transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
+    transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
