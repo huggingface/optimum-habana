@@ -1,9 +1,7 @@
-20d19
-< import warnings
-28,29d26
+28,29d27
 < from datasets import DatasetDict, load_dataset
 < 
-31,39c28,29
+31,39c29,30
 < from transformers import (
 <     AutoConfig,
 <     AutoFeatureExtractor,
@@ -16,19 +14,19 @@
 ---
 > from datasets import DatasetDict, load_dataset
 > from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser
-43a34,36
+43a35,37
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
-48c41
+48c42
 < check_min_version("4.32.0.dev0")
 ---
 > check_min_version("4.31.0")
-164,166d156
+180,182d173
 <     freeze_feature_extractor: Optional[bool] = field(
 <         default=None, metadata={"help": "Whether to freeze the feature extractor layers of the model."}
 <     )
-172,186d161
+188,202d178
 <     def __post_init__(self):
 <         if not self.freeze_feature_extractor and self.freeze_feature_encoder:
 <             warnings.warn(
@@ -44,11 +42,17 @@
 <                 "Only make use of `--freeze_feature_encoder`."
 <             )
 < 
-193c168
+209c185
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-221a197,203
+218c194,196
+<         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
+---
+>         warnings.warn(
+>             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
+>         )
+243a222,228
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -56,22 +60,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-222a205
+244a230
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-224,225c207,209
+246,247c232,234
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu} "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
->         + f"distributed training: {bool(training_args.local_rank != -1)}, "
+>         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-291a276,278
+314a302,304
 >     # Max input length
 >     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
 > 
-296a284
+319a310
 > 
-302c290,296
+325c316,322
 <         inputs = feature_extractor(subsampled_wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
 >         inputs = feature_extractor(
@@ -81,7 +85,7 @@
 >             padding="max_length",
 >             truncation=True,
 >         )
-311c305,311
+334c331,337
 <         inputs = feature_extractor(wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
 >         inputs = feature_extractor(
@@ -91,9 +95,9 @@
 >             padding="max_length",
 >             truncation=True,
 >         )
-376c376
+401c404
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-377a378
+402a406
 >         gaudi_config=gaudi_config,

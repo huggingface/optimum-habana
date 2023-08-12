@@ -1,27 +1,33 @@
 14a15
 > # limitations under the License.
-24a26
+25a27
 > import transformers
-36,37d37
+37,38d38
 < 
 < import transformers
-44,46d43
+45,47d44
 <     Trainer,
 <     TrainingArguments,
 <     set_seed,
-51a49,51
+52a50,52
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
-58c58
+59c59
 < check_min_version("4.32.0.dev0")
 ---
 > check_min_version("4.31.0")
-171c171
+188c188
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-199a200,206
+197c197,199
+<         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
+---
+>         warnings.warn(
+>             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
+>         )
+222a225,231
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -29,18 +35,18 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-200a208
+223a233
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-202,203c210,212
+225,226c235,237
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
->         + f"distributed training: {bool(training_args.local_rank != -1)}, "
+>         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-353c362
+379c390
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-354a364
+380a392
 >         gaudi_config=gaudi_config,

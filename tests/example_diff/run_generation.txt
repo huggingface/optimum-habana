@@ -14,9 +14,9 @@
 ---
 > import os
 > import time
-26d26
-< import numpy as np
-28,49c28,33
+27,50c28,33
+< from accelerate import PartialState
+< from accelerate.utils import set_seed
 < 
 < from transformers import (
 <     AutoTokenizer,
@@ -46,11 +46,11 @@
 >     model_is_bloom,
 >     model_is_optimized,
 >     write_checkpoints_json,
-51c35
+52c35
 < from transformers.modeling_outputs import CausalLMOutputWithPast
 ---
 > from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-61,290d44
+62,284d44
 < MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 < 
 < MODEL_CLASSES = {
@@ -79,13 +79,6 @@
 < man is chased outside and beaten. Twenty years later, Rasputin sees a vision of
 < the Virgin Mary, prompting him to become a priest. Rasputin quickly becomes famous,
 < with people, even a bishop, begging for his blessing. <eod> </s> <eos>"""
-< 
-< 
-< def set_seed(args):
-<     np.random.seed(args.seed)
-<     torch.manual_seed(args.seed)
-<     if args.n_gpu > 0:
-<         torch.cuda.manual_seed_all(args.seed)
 < 
 < 
 < #
@@ -281,17 +274,17 @@
 <         """
 <         return self._default._reorder_cache(past_key_values, beam_idx)
 < 
-292a47
+286a47
 >     # Arguments management
-295c50
+289c50
 <         "--model_type",
 ---
 >         "--model_name_or_path",
-299c54
+293c54
 <         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 ---
 >         help="Path to pre-trained model (on the HF Hub or locally).",
-302c57,76
+296c57,76
 <         "--model_name_or_path",
 ---
 >         "--bf16",
@@ -314,40 +307,34 @@
 >     )
 >     parser.add_argument(
 >         "--dataset_name",
-305,306c79,85
+299,300c79
 <         required=True,
 <         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 ---
 >         help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
->     )
->     parser.add_argument(
->         "--column_name",
->         default=None,
->         type=str,
->         help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
-308,312d86
+302,306d80
 < 
 <     parser.add_argument("--prompt", type=str, default="")
 <     parser.add_argument("--length", type=int, default=20)
 <     parser.add_argument("--stop_token", type=str, default=None, help="Token at which text generation is stopped")
 < 
-314,317c88,90
+308,311c82,85
 <         "--temperature",
 <         type=float,
 <         default=1.0,
 <         help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
 ---
+>         "--column_name",
+>         default=None,
+>         type=str,
+>         help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
+314c88,90
+<         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
+---
 >         "--do_sample",
 >         action="store_true",
 >         help="Whether to use sampling for generation.",
-320c93,96
-<         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
----
->         "--num_beams",
->         default=1,
->         type=int,
->         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
-322,331d97
+316,323d91
 <     parser.add_argument("--k", type=int, default=0)
 <     parser.add_argument("--p", type=float, default=0.9)
 < 
@@ -356,9 +343,18 @@
 <     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
 < 
 <     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
-<     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
+325,327c93,96
+<         "--use_cpu",
+<         action="store_true",
+<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
+---
+>         "--num_beams",
+>         default=1,
+>         type=int,
+>         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
+329d97
 <     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
-333,335c99,127
+331,333c99,140
 <         "--fp16",
 <         action="store_true",
 <         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
@@ -392,9 +388,7 @@
 >         type=str,
 >         nargs="+",
 >         help="Optional argument list of words that are not allowed to be generated.",
-337c129,137
-<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
----
+>     )
 >     parser.add_argument(
 >         "--force_words",
 >         default=None,
@@ -402,11 +396,19 @@
 >         nargs="+",
 >         help="Optional argument list of words that must be generated.",
 >     )
+>     parser.add_argument(
+>         "--peft_model",
+>         default=None,
+>         type=str,
+>         help="Optional argument to give a path to a PEFT model.",
+335c142,143
+<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
+---
 >     parser.add_argument("--num_return_sequences", type=int, default=1)
 > 
-340,341c140,174
-<     args.device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-<     args.n_gpu = 0 if args.no_cuda else torch.cuda.device_count()
+338,339c146,180
+<     # Initialize the distributed state.
+<     distributed_state = PartialState(cpu=args.use_cpu)
 ---
 >     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
 >     # For multi node, the value of the env variable WORLD_SIZE should be larger than 8
@@ -443,16 +445,17 @@
 >         logger.info("DeepSpeed is enabled.")
 >     else:
 >         logger.info("Single-device run.")
-343c176,177
-<     logger.warning(f"device: {args.device}, n_gpu: {args.n_gpu}, 16-bits training: {args.fp16}")
+341c182,183
+<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
 >     # Tweak generation so that it runs faster on Gaudi
 >     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-345c179
-<     set_seed(args)
+343,344c185
+<     if args.seed is not None:
+<         set_seed(args.seed)
 ---
 >     adapt_transformers_to_gaudi()
-347,352c181,182
+346,351c187,188
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -462,15 +465,22 @@
 ---
 >     # Set seed before initializing model.
 >     from optimum.habana.utils import set_seed
-354,358c184
+353,356c190
 <     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
 <     if tokenizer.pad_token is None:
 <         tokenizer.pad_token = tokenizer.eos_token
 <     model = model_class.from_pretrained(args.model_name_or_path)
-<     model.to(args.device)
 ---
 >     set_seed(args.seed)
-360,372c186,189
+358,359c192,195
+<     # Set the model to the right device
+<     model.to(distributed_state.device)
+---
+>     if args.bad_words is not None or args.force_words is not None:
+>         tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
+>     else:
+>         tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+361,373c197,200
 <     if args.fp16:
 <         model.half()
 <     max_seq_length = getattr(model.config, "max_position_embeddings", 0)
@@ -485,19 +495,14 @@
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
 ---
->     if args.bad_words is not None or args.force_words is not None:
->         tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
->     else:
->         tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
-374,375c191,204
-<         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
-<             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
----
 >     if use_deepspeed or args.bf16:
 >         model_dtype = torch.bfloat16
 >     else:
 >         model_dtype = torch.float
-> 
+375,376c202,210
+<         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
+<             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
+---
 >     if use_deepspeed:
 >         config = AutoConfig.from_pretrained(args.model_name_or_path)
 >         is_optimized = model_is_optimized(config)
@@ -507,7 +512,7 @@
 >             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
 >             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
 >                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
-377c206,227
+378c212,233
 <             tokenizer_kwargs = {}
 ---
 >             get_repo_root(args.model_name_or_path, args.local_rank)
@@ -532,17 +537,17 @@
 >         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
 >         if is_bloom:
 >             ds_inference_kwargs["checkpoint"] = checkpoints_json
-379,381c229,230
+380,382c235,236
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
 ---
 >         model = deepspeed.init_inference(model, **ds_inference_kwargs)
 >         model = model.module
-383,385c232,247
+384,386c238,265
 <         prefix = args.prefix if args.prefix else args.padding_text
 <         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
-<     encoded_prompt = encoded_prompt.to(args.device)
+<     encoded_prompt = encoded_prompt.to(distributed_state.device)
 ---
 >         get_repo_root(args.model_name_or_path)
 >         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
@@ -557,10 +562,22 @@
 >     if not model.config.is_encoder_decoder:
 >         tokenizer.padding_side = "left"
 >     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
+>     if model.config.model_type == "llama":
+>         # unwind broken decapoda-research config
+>         model.generation_config.pad_token_id = 0
+>         model.generation_config.bos_token_id = 1
+>         model.generation_config.eos_token_id = 2
+>         tokenizer.bos_token_id = model.generation_config.bos_token_id
+>         tokenizer.eos_token_id = model.generation_config.eos_token_id
+>         tokenizer.pad_token_id = model.generation_config.pad_token_id
+>         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
+>         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
+>         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+> 
 >     if tokenizer.pad_token is None:
 >         tokenizer.pad_token = tokenizer.eos_token
 >         model.generation_config.pad_token_id = model.generation_config.eos_token_id
-387,388c249,367
+388,389c267,395
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
@@ -574,6 +591,16 @@
 >         bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
 >     if args.force_words is not None:
 >         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
+> 
+>     if args.peft_model:
+>         import importlib.util
+> 
+>         if importlib.util.find_spec("peft") is None:
+>             raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+>         from peft import PeftModel
+> 
+>         model = PeftModel.from_pretrained(model, args.peft_model)
+>         model = model.to(model_dtype)
 > 
 >     # Generation configuration
 >     generation_config = copy.deepcopy(model.generation_config)
@@ -683,7 +710,7 @@
 >                 ):
 >                     print(f"output {j+1}: {output}")
 >                 print(separator)
-390c369,380
+391c397,408
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -698,7 +725,7 @@
 >         else:
 >             split = "train"
 >         raw_dataset = raw_dataset[split]
-392,398c382,390
+393,399c410,418
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -716,7 +743,7 @@
 >                 logger.info(
 >                     f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >                 )
-400,439c392
+401,440c420
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -759,13 +786,13 @@
 <         )
 ---
 >             column_name = args.column_name
-441,442c394,395
+442,443c422,423
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
 >         # Remove unused columns
 >         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
-444c397,445
+445c425,473
 <     return generated_sequences
 ---
 >         # Set the prompt length to 16
