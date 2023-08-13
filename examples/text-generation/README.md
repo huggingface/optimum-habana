@@ -100,7 +100,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 > And then you can run it as any other model:
 > ```
 >   python run_generation.py \
->   --model_name_or_path bigscience/bloom \
+>   --model_name_or_path bigcode/starcoder \
 >   --batch_size 1 \
 >   --use_hpu_graphs \
 >   --use_kv_cache \
