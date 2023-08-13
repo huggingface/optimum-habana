@@ -91,6 +91,8 @@ def speed_metrics(
 
     runtime = time.time() - start_time
     result = {f"{split}_runtime": round(runtime, 4)}
+    if runtime == 0:
+        return result
 
     # Adjust runtime if log_evaluate_save_time should not be included
     if log_evaluate_save_time is not None:
