@@ -145,7 +145,7 @@ Check out [the documentation of Optimum Habana](https://huggingface.co/docs/opti
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
 
-> In the tables below, :heavy_check_mark: means single-card, multi-card and DeepSpeed are all validated.
+> In the tables below, :heavy_check_mark: means single-card, multi-card and DeepSpeed have all been validated.
 
 - Transformers:
 <div align="center">
