@@ -20,6 +20,7 @@ import inspect
 import os
 import sys
 import tempfile
+import warnings
 from typing import Optional, Union
 
 import torch
@@ -126,13 +127,18 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                             os.environ["FP32_LIST"] = str(hmp_fp32_file)
 
                             import habana_frameworks.torch.core  # noqa
-
                 elif self.gaudi_config.use_habana_mixed_precision:
                     try:
                         from habana_frameworks.torch.hpex import hmp
                     except ImportError as error:
                         error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
                         raise error
+
+                    warnings.warn(
+                        "Habana Mixed Precision is deprecated and will be removed in SynapseAI v1.12. Please"
+                        " use Torch Autocast instead setting `use_torch_autocast=true` in your Gaudi configuration.",
+                        FutureWarning,
+                    )
 
                     # Open temporary files to write mixed-precision ops
                     with tempfile.NamedTemporaryFile() as hmp_bf16_file:
