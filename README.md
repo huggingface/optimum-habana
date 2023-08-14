@@ -178,8 +178,8 @@ The following model architectures, tasks and device distributions have been vali
 
 <div align="center">
 
-| Architecture     | Training | Inference            | <center>Tasks</center> |
-|------------------|:--------:|:--------------------:|:-----------------------|
+| Architecture     | Training | Inference            | Tasks |
+|------------------|:--------:|:--------------------:|:-----:|
 | Stable Diffusion | :x:      | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | LDM3D            | :x:      | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 
