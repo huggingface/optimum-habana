@@ -32,11 +32,13 @@ If you are not familiar with HPUs and would like to know more about them, we rec
 
 
 ## Install
-To install the latest release of this package:
+To install the latest stable release of this package:
 
 ```bash
-pip install optimum[habana]
+pip install --upgrade-strategy eager optimum[habana]
 ```
+
+The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is upgraded to the latest stable release.
 
 > To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
