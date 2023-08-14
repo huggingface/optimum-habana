@@ -145,6 +145,8 @@ Check out [the documentation of Optimum Habana](https://huggingface.co/docs/opti
 
 The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
 
+> :heavy_check_mark: means single-card, multi-card and DeepSpeed are all supported.
+
 - Transformers:
 <div align="center">
 
@@ -182,8 +184,6 @@ The following model architectures, tasks and device distributions have been vali
 | LDM3D            | :x:      | <div style="text-align:left"><li>Single card</li></div> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 
 </div>
-
-> :heavy_check_mark: means single-card, multi-card and DeepSpeed are all supported.
 
 Other models and tasks supported by the 🤗 Transformers and 🤗 Diffusers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 
