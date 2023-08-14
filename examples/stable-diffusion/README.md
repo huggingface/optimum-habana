@@ -106,7 +106,7 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2
+    --gaudi_config Habana/stable-diffusion-2 \
     --ldm3d
 ```
 
