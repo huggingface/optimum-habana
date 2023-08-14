@@ -201,6 +201,7 @@ class GaudiAcceleratorState(AcceleratorState):
             if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true" and not cpu:
                 self.deepspeed_plugin = deepspeed_plugin
             GaudiPartialState._shared_state["distributed_type"] = self.distributed_type
+            self.use_ipex = False
 
     @property
     def mixed_precision(self):
