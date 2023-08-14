@@ -567,7 +567,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         input_ids: torch.LongTensor,
         past_key_values: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        token_idx=None,
+        token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> dict:
         if past_key_values is not None:
