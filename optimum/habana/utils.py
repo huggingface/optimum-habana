@@ -290,3 +290,22 @@ class HabanaProfile(object):
                 HabanaProfile.HABANA_PROFILE_ENABLED = True
         else:
             HabanaProfile.HABANA_PROFILE_ENABLED = True
+
+
+def check_optimum_habana_min_version(min_version):
+    """
+    Checks if the installed version of `optimum-habana` is larger than or equal to `min_version`.
+
+    Copied from: https://github.com/huggingface/transformers/blob/c41291965f078070c5c832412f5d4a5f633fcdc4/src/transformers/utils/__init__.py#L212
+    """
+    if version.parse(__version__) < version.parse(min_version):
+        error_message = (
+            f"This example requires `optimum-habana` to have a minimum version of {min_version},"
+            f" but the version found is {__version__}.\n"
+        )
+        if "dev" in min_version:
+            error_message += (
+                "You can install it from source with: "
+                "`pip install git+https://github.com/huggingface/optimum-habana.git`."
+            )
+        raise ImportError(error_message)

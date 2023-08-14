@@ -50,15 +50,16 @@ from transformers.utils import check_min_version, is_offline_mode, send_example_
 from transformers.utils.versions import require_version
 
 from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import check_optimum_habana_min_version, set_seed
 
-
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.31.0")
-
-require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
 logger = logging.getLogger(__name__)
+
+# Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
+check_min_version("4.31.0")
+check_optimum_habana_min_version("1.7.0")
+
+require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
 try:
     nltk.data.find("tokenizers/punkt")

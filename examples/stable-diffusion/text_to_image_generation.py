@@ -21,7 +21,11 @@ from pathlib import Path
 import torch
 
 from optimum.habana.diffusers import GaudiDDIMScheduler
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import check_optimum_habana_min_version, set_seed
+
+
+# Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
+check_optimum_habana_min_version("1.7.0")
 
 
 logger = logging.getLogger(__name__)

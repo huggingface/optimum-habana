@@ -198,7 +198,10 @@ def main():
     adapt_transformers_to_gaudi()
 
     # Set seed before initializing model.
-    from optimum.habana.utils import set_seed
+    from optimum.habana.utils import check_optimum_habana_min_version, set_seed
+
+    # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
+    check_optimum_habana_min_version("1.7.0")
 
     set_seed(args.seed)
 
