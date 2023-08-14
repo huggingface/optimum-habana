@@ -124,19 +124,14 @@ def main():
     parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
-    parser.add_argument(
-        "--ldm3d_model_name_or_path",
-        default="Intel/ldm3d-4c",
-        type=str,
-        help="Path to pre-trained model",
-    )
 
     args = parser.parse_args()
 
     if args.ldm3d:
         from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
 
-        args.model_name_or_path = args.ldm3d_model_name_or_path
+        if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
+            args.model_name_or_path = "Intel/ldm3d-4c"
     else:
         from optimum.habana.diffusers import GaudiStableDiffusionPipeline
 
