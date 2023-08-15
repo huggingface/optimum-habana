@@ -157,6 +157,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                                 isVerbose=self.gaudi_config.hmp_is_verbose,
                             )
 
+            # Workaround for Synapse 1.11 for full bf16 and Torch Autocast
             if bf16_full_eval or self.gaudi_config.use_torch_autocast:
                 import diffusers
 
