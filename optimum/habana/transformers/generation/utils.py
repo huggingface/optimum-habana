@@ -687,7 +687,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
         else:
             stopping_criteria = self._get_stopping_criteria(
-                self, generation_config=generation_config, stopping_criteria=stopping_criteria
+                generation_config=generation_config, stopping_criteria=stopping_criteria
             )
 
         # In lazy mode, import Habana torch to be able to add mark_step()
