@@ -176,7 +176,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
 
     # Optimization for GPTBigCode on Gaudi
-    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeAttention.forward = gaudi_gpt_bigcode_attention_forward
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeAttention.forward = (
+        gaudi_gpt_bigcode_attention_forward
+    )
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeForCausalLM = GaudiGPTBigCodeForCausalLM
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeBlock.forward = gaudi_gpt_bigcode_block_forward
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeModel.forward = gaudi_gpt_bigcode_model_forward

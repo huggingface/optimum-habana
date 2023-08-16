@@ -23,6 +23,7 @@ class GaudiCodeGenAttention(nn.Module):
             torch.tril(torch.ones((max_positions, max_positions), dtype=torch.uint8)).view(
                 1, 1, max_positions, max_positions
             ),
+            persistent=False,
         )
 
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
@@ -112,7 +113,7 @@ class GaudiCodeGenAttention(nn.Module):
         head_mask: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
-        token_idx=None,
+        token_idx: Optional[torch.Tensor] = None,
     ) -> Union[
         Tuple[torch.Tensor, Tuple[torch.Tensor]],
         Optional[Tuple[torch.Tensor, Tuple[torch.Tensor], Tuple[torch.Tensor, ...]]],
@@ -202,7 +203,7 @@ def gaudi_codegen_block_forward(
     head_mask: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
-    token_idx=None,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
     """
     Copied from CodeGenBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
@@ -248,7 +249,7 @@ def gaudi_codegen_model_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
-    token_idx=None,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from CodeGenBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/codegen/modeling_codegen.py
@@ -460,7 +461,7 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        token_idx=None,
+        token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):

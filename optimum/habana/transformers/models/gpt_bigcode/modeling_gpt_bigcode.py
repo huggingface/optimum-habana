@@ -2,9 +2,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
-from torch import nn
 from torch.nn import CrossEntropyLoss
-
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.gpt_bigcode.modeling_gpt_bigcode import GPTBigCodeForCausalLM
 
@@ -19,7 +17,7 @@ def gaudi_gpt_bigcode_attention_forward(
     encoder_attention_mask: Optional[torch.Tensor] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
-    token_idx: Optional[bool] = False,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Union[
     Tuple[torch.Tensor, Optional[torch.Tensor]],
     Tuple[torch.Tensor, Optional[torch.Tensor], Tuple[torch.Tensor, ...]],
@@ -92,7 +90,7 @@ def gaudi_gpt_bigcode_block_forward(
     encoder_attention_mask: Optional[torch.Tensor] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
-    token_idx: Optional[bool] = False,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
     Copied from GPTBigCodeBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
@@ -166,7 +164,7 @@ def gaudi_gpt_bigcode_model_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
-    token_idx: Optional[bool] = False,
+    token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
     """
     Copied from GPTBigCodeModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py
@@ -410,7 +408,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        token_idx: Optional[bool] = False,
+        token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
