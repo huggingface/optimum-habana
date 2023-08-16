@@ -1,4 +1,5 @@
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -58,9 +59,13 @@ def gaudi_llama_attention_forward(
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
 
+    tp_world_size = 1 if self.training else int(os.environ.get("WORLD_SIZE", 1))
+
     query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-    value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+    key_states = key_states.view(bsz, q_len, self.num_key_value_heads // tp_world_size, self.head_dim).transpose(1, 2)
+    value_states = value_states.view(bsz, q_len, self.num_key_value_heads // tp_world_size, self.head_dim).transpose(
+        1, 2
+    )
 
     kv_seq_len = key_states.shape[-2]
     if past_key_value is not None:
