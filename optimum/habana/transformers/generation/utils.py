@@ -221,11 +221,11 @@ class GaudiGenerationMixin(GenerationMixin):
         self,
         batch_size: int,
         model_input_name: str,
+        model_kwargs: Dict[str, torch.Tensor],
         decoder_start_token_id: int = None,
         bos_token_id: int = None,
-        max_length: int = 1,
-        model_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         device: torch.device = None,
+        max_length: int = 1,
     ) -> Tuple[torch.LongTensor, Dict[str, torch.Tensor]]:
         """Prepares `decoder_input_ids` for generation with encoder-decoder models"""
         # 1. Check whether the user has defined `decoder_input_ids` manually. To facilitate in terms of input naming,
@@ -657,9 +657,14 @@ class GaudiGenerationMixin(GenerationMixin):
         )
 
         # 9. prepare stopping criteria
-        stopping_criteria = _get_stopping_criteria(
-            self, generation_config=generation_config, stopping_criteria=stopping_criteria
-        )
+        if is_greedy_gen_mode:
+            stopping_criteria = _get_stopping_criteria(
+                self, generation_config=generation_config, stopping_criteria=stopping_criteria
+            )
+        else:
+            stopping_criteria = self._get_stopping_criteria(
+                self, generation_config=generation_config, stopping_criteria=stopping_criteria
+            )
 
         # In lazy mode, import Habana torch to be able to add mark_step()
         if lazy_mode:
