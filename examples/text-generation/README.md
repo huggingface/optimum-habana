@@ -96,6 +96,17 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 > - agree to the terms of use of the model in its model card on the HF Hub
 > - set a read token as explained [here](https://huggingface.co/docs/hub/security-tokens)
 > - login to your account using the HF CLI: run `huggingface-cli login` before launching your script
+>
+> And then you can run it as any other model:
+> ```
+>   python run_generation.py \
+>   --model_name_or_path bigcode/starcoder \
+>   --batch_size 1 \
+>   --use_hpu_graphs \
+>   --use_kv_cache \
+>   --max_new_tokens 100 \
+>   --bf16
+> ```
 
 
 ### Use any dataset from the Hugging Face Hub

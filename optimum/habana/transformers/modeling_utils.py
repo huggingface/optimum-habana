@@ -21,6 +21,8 @@ from .models import (
     GaudiBloomMLP,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
+    GaudiFalconForCausalLM,
+    GaudiFalconModel,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
@@ -30,12 +32,6 @@ from .models import (
     GaudiLlamaForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
-    GaudiT5DenseActDense,
-    GaudiT5DenseGatedActDense,
-    GaudiT5LayerCrossAttention,
-    GaudiT5LayerFF,
-    GaudiT5LayerSelfAttention,
-    GaudiT5Stack,
     _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
@@ -51,6 +47,9 @@ from .models import (
     gaudi_esmfolding_trunk_forward,
     gaudi_esmoutput_forward,
     gaudi_esmselfoutput_forward,
+    gaudi_falcon_attention_forward,
+    gaudi_falcon_decoder_layer_forward,
+    gaudi_falcon_rotary_embedding_forward,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
@@ -66,13 +65,13 @@ from .models import (
     gaudi_llama_attention_forward,
     gaudi_llama_decoder_layer_forward,
     gaudi_llama_model_forward,
+    gaudi_llama_rmsnorm_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
-    gaudi_T5Attention_forward,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
 )
@@ -194,12 +193,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
     transformers.models.llama.modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
     transformers.models.llama.modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
+    transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
-    # Dropout kernel improvement for Flan-T5
-    transformers.models.t5.modeling_t5.T5Stack = GaudiT5Stack
-    transformers.models.t5.modeling_t5.T5DenseGatedActDense = GaudiT5DenseGatedActDense
-    transformers.models.t5.modeling_t5.T5LayerFF = GaudiT5LayerFF
-    transformers.models.t5.modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
-    transformers.models.t5.modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
-    transformers.models.t5.modeling_t5.T5DenseActDense = GaudiT5DenseActDense
-    transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
+    # Optimization for falcon generation on Gaudi
+    transformers.models.falcon.modeling_falcon.FalconForCausalLM = GaudiFalconForCausalLM
+    transformers.models.falcon.modeling_falcon.FalconModel = GaudiFalconModel
+    transformers.models.falcon.modeling_falcon.FalconDecoderLayer.forward = gaudi_falcon_decoder_layer_forward
+    transformers.models.falcon.modeling_falcon.FalconAttention.forward = gaudi_falcon_attention_forward
+    transformers.models.falcon.modeling_falcon.FalconRotaryEmbedding.forward = gaudi_falcon_rotary_embedding_forward

@@ -140,6 +140,19 @@ def main():
         help="Optional argument to give a path to a PEFT model.",
     )
     parser.add_argument("--num_return_sequences", type=int, default=1)
+    parser.add_argument(
+        "--token",
+        default=None,
+        type=str,
+        help="The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+        "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
+    )
+    parser.add_argument(
+        "--model_revision",
+        default="main",
+        type=str,
+        help="The specific model version to use (can be a branch name, tag name or commit id).",
+    )
 
     args = parser.parse_args()
 
@@ -189,18 +202,37 @@ def main():
 
     set_seed(args.seed)
 
+    # TODO: remove the following hack when Falcon is available in Transformers
+    # Temporary hack for Falcon
+    if args.model_name_or_path == "tiiuae/falcon-7b":
+        args.model_revision = "4e2d06f0a7c6370ebabbc30c6f59377ae8f73d76"
+    elif args.model_name_or_path == "tiiuae/falcon-7b-instruct":
+        args.model_revision = "f8dac3fff96d5debd43edf56fb4e1abcfffbef28"
+    elif args.model_name_or_path == "tiiuae/falcon-40b":
+        args.model_revision = "f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232"
+    elif args.model_name_or_path == "tiiuae/falcon-40b-instruct":
+        args.model_revision = "7475ff8cfc36ed9a962b658ae3c33391566a85a5"
+
+    tokenizer_kwargs = {
+        "revision": args.model_revision,
+        "token": args.token,
+    }
     if args.bad_words is not None or args.force_words is not None:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+        tokenizer_kwargs["add_prefix_space"] = True
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
 
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
 
+    model_kwargs = {
+        "revision": args.model_revision,
+        "token": args.token,
+    }
+
     if use_deepspeed:
-        config = AutoConfig.from_pretrained(args.model_name_or_path)
+        config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
         is_optimized = model_is_optimized(config)
         is_bloom = model_is_bloom(config)
 
@@ -212,7 +244,9 @@ def main():
             get_repo_root(args.model_name_or_path, args.local_rank)
             # TODO: revisit placement on CPU when auto-injection is possible
             with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
-                model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+                )
         model = model.eval()
 
         # Initialize the model
@@ -236,7 +270,7 @@ def main():
         model = model.module
     else:
         get_repo_root(args.model_name_or_path)
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = model.eval().to(args.device)
         is_optimized = model_is_optimized(model.config)
 

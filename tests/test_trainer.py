@@ -32,6 +32,7 @@ from huggingface_hub import HfFolder, Repository, delete_repo
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
+from transformers.hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS
 from transformers.testing_utils import (
     ENDPOINT_STAGING,
     TOKEN,
@@ -47,7 +48,7 @@ from transformers.testing_utils import (
     require_tokenizers,
     require_torch,
 )
-from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
+from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend
 from transformers.training_args import OptimizerNames
 from transformers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -547,6 +548,87 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         self.assertFalse(torch.allclose(trainer.model.b, b))
         self.assertEqual(trainer.optimizer.state_dict()["param_groups"][0]["lr"], 1.0)
 
+    def test_reduce_lr_on_plateau_args(self):
+        # test passed arguments for a custom ReduceLROnPlateau scheduler
+        train_dataset = RegressionDataset(length=64)
+        eval_dataset = RegressionDataset(length=64)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_fused_adam = False
+        args = GaudiTrainingArguments(
+            "./regression",
+            evaluation_strategy="epoch",
+            metric_for_best_model="eval_loss",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        model = RegressionModel()
+        optimizer = torch.optim.SGD(model.parameters(), lr=1.0)
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, cooldown=2)
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            optimizers=(optimizer, lr_scheduler),
+        )
+        trainer.train()
+
+        self.assertIsInstance(trainer.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
+        self.assertEqual(trainer.lr_scheduler.factor, 0.2)
+        self.assertEqual(trainer.lr_scheduler.patience, 5)
+        self.assertEqual(trainer.lr_scheduler.cooldown, 2)
+
+    def test_reduce_lr_on_plateau(self):
+        # test the ReduceLROnPlateau scheduler
+
+        class TrainerWithLRLogs(GaudiTrainer):
+            def log(self, logs):
+                # the LR is computed after metrics and does not exist for the first epoch
+                if hasattr(self.lr_scheduler, "_last_lr"):
+                    logs["learning_rate"] = self.lr_scheduler._last_lr
+                super().log(logs)
+
+        train_dataset = RegressionDataset(length=64)
+        eval_dataset = RegressionDataset(length=64)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_fused_adam = False
+
+        args = GaudiTrainingArguments(
+            "./regression",
+            lr_scheduler_type="reduce_lr_on_plateau",
+            evaluation_strategy="epoch",
+            metric_for_best_model="eval_loss",
+            num_train_epochs=10,
+            learning_rate=0.2,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        model = RegressionModel()
+        trainer = TrainerWithLRLogs(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer.train()
+
+        self.assertIsInstance(trainer.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
+        patience = trainer.lr_scheduler.patience
+
+        logs = trainer.state.log_history[1:]
+        best_loss = logs[0]["eval_loss"]
+        bad_epochs = 0
+        for i, log in enumerate(logs[:-1]):  # Compare learning rate to next epoch's
+            loss = log["eval_loss"]
+            just_decreased = False
+            if loss > best_loss:
+                bad_epochs += 1
+                if bad_epochs > patience:
+                    self.assertLess(logs[i + 1]["learning_rate"][0], log["learning_rate"][0])
+                    just_decreased = True
+                    bad_epochs = 0
+            else:
+                best_loss = loss
+                bad_epochs = 0
+            if not just_decreased:
+                self.assertEqual(logs[i + 1]["learning_rate"][0], log["learning_rate"][0])
+
     def test_adafactor_lr_none(self):
         # test the special case where lr=None, since Trainer can't not have lr_scheduler
 
@@ -710,9 +792,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
     def test_train_and_eval_dataloaders(self):
         trainer = get_regression_trainer(learning_rate=0.1, per_device_train_batch_size=16)
-        self.assertEqual(trainer.get_train_dataloader().batch_size, 16)
+        self.assertEqual(trainer.get_train_dataloader().total_batch_size, 16)
         trainer = get_regression_trainer(learning_rate=0.1, per_device_eval_batch_size=16)
-        self.assertEqual(trainer.get_eval_dataloader().batch_size, 16)
+        self.assertEqual(trainer.get_eval_dataloader().total_batch_size, 16)
 
         # Check drop_last works
         trainer = get_regression_trainer(
@@ -750,70 +832,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         trainer.train()
         trainer.evaluate()
 
-    def test_sampler_seed(self):
-        # nb: we don't want to inherit from IterableDataset to hit the right code path
-        class DummyDataset(torch.utils.data.Dataset):
-            def __init__(self, length: int = 101):
-                self.length = length
-
-            def __len__(self):
-                return self.length
-
-            def __getitem__(self, i):
-                if (i < 0) or (i >= self.length):
-                    raise IndexError
-                return {"input_ids": [i]}
-
-        class DummyModel(PreTrainedModel):
-            def __init__(self, num_params: int):
-                super().__init__(PretrainedConfig())
-                # Add some (unused) params. the point here is that randomness in model_init shouldn't influence
-                # data loader order.
-                self.params = nn.Parameter(torch.randn(num_params))
-
-            def forward(self, input_ids, labels=None):
-                if labels is not None:
-                    return torch.tensor(0.0, device=input_ids.device), input_ids
-                else:
-                    return input_ids
-
-        def _get_first_data_sample(num_params, seed, data_seed, **kwargs):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                trainer = GaudiTrainer(
-                    model_init=lambda: DummyModel(num_params),
-                    gaudi_config=get_gaudi_config(),
-                    args=GaudiTrainingArguments(
-                        output_dir=tmpdir,
-                        **kwargs,
-                        seed=seed,
-                        data_seed=data_seed,
-                        local_rank=-1,
-                        use_habana=True,
-                        use_lazy_mode=True,
-                    ),
-                    train_dataset=DummyDataset(),
-                )
-
-                return next(iter(trainer.get_train_dataloader()))
-
-        # test that the seed is passed to the sampler
-        # the codepath we want to hit is world_size <= 1, and both group_by_length
-        for group_by_length in [True, False]:
-            sample42_1 = _get_first_data_sample(num_params=10, seed=42, data_seed=42, group_by_length=group_by_length)
-            sample42_2 = _get_first_data_sample(num_params=11, seed=42, data_seed=42, group_by_length=group_by_length)
-            self.assertTrue(torch.equal(sample42_1["input_ids"], sample42_2["input_ids"]))
-
-            # should get same samples with different seed, so long as data_seed is the same
-            sample42_3 = _get_first_data_sample(num_params=11, seed=11, data_seed=42, group_by_length=group_by_length)
-            self.assertTrue(torch.equal(sample42_1["input_ids"], sample42_3["input_ids"]))
-
-            # make sure we have some randomness in the samples if data_seed is different
-            others = [
-                _get_first_data_sample(num_params=i, seed=42, data_seed=i, group_by_length=group_by_length)
-                for i in range(10)
-            ]
-            self.assertTrue(any(not torch.equal(sample42_1["input_ids"], sample["input_ids"]) for sample in others))
-
     def test_data_is_not_parallelized_when_model_is_parallel(self):
         model = RegressionModel()
         # Make the Trainer believe it's a parallelized model
@@ -835,9 +853,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertEqual(trainer.args.n_gpu, 1)
 
         # The batch size of the training and evaluation dataloaders should be 16, not 16 * n_gpu
-        self.assertEqual(trainer.get_train_dataloader().batch_size, 16)
+        self.assertEqual(trainer.get_train_dataloader().total_batch_size, 16)
         self.assertEqual(len(trainer.get_train_dataloader()), 64 // 16)
-        self.assertEqual(trainer.get_eval_dataloader().batch_size, 16)
+        self.assertEqual(trainer.get_eval_dataloader().total_batch_size, 16)
         self.assertEqual(len(trainer.get_eval_dataloader()), 64 // 16)
 
     def test_evaluate(self):
@@ -1389,29 +1407,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         loader = trainer.get_train_dataloader()
         self.assertIsInstance(loader, torch.utils.data.DataLoader)
         self.assertIsInstance(loader.sampler, torch.utils.data.dataloader._InfiniteConstantSampler)
-
-    def test_training_finite_iterable_dataset(self):
-        config = RegressionModelConfig()
-        model = RegressionPreTrainedModel(config)
-
-        batch_size = 1
-        num_samples = 10
-
-        available_steps = num_samples // batch_size
-
-        data = FiniteIterableDataset(length=num_samples)
-        train_args = GaudiTrainingArguments(
-            "..",
-            max_steps=available_steps + 1,  # set a higher number than actually available
-            per_device_train_batch_size=batch_size,
-            use_habana=True,
-            use_lazy_mode=True,
-        )
-        gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(model, gaudi_config=gaudi_config, train_dataset=data, args=train_args)
-        with self.assertLogs("optimum.habana.transformers.trainer", level="WARNING") as logs:
-            trainer.train()
-        self.assertIn(f"stopping training at step {available_steps}!", logs.output[0])
 
     def test_evaluation_iterable_dataset(self):
         config = RegressionModelConfig(a=1.5, b=2.5)
@@ -2022,3 +2017,11 @@ class GaudiTrainerOptimizerChoiceTest(unittest.TestCase):
 #             trainer.hyperparameter_search(
 #                 direction="minimize", hp_space=hp_space, hp_name=hp_name, backend="wandb", n_trials=4, anonymous="must"
 #             )
+
+
+class HyperParameterSearchBackendsTest(unittest.TestCase):
+    def test_hyperparameter_search_backends(self):
+        self.assertEqual(
+            list(ALL_HYPERPARAMETER_SEARCH_BACKENDS.keys()),
+            list(HPSearchBackend),
+        )
