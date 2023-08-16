@@ -19,10 +19,13 @@ from .generation import GaudiGenerationConfig, GaudiGenerationMixin
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
+    GaudiCodeGenAttention,
+    GaudiCodeGenForCausalLM,
     GaudiFalconForCausalLM,
     GaudiFalconModel,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
+    GaudiGPTBigCodeForCausalLM,
     GaudiGPTJAttention,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
@@ -36,6 +39,8 @@ from .models import (
     gaudi_bloom_convert_to_bloom_cache,
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
+    gaudi_codegen_block_forward,
+    gaudi_codegen_model_forward,
     gaudi_conv1d_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfold_self_attention_forward,
@@ -48,6 +53,9 @@ from .models import (
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
+    gaudi_gpt_bigcode_attention_forward,
+    gaudi_gpt_bigcode_block_forward,
+    gaudi_gpt_bigcode_model_forward,
     gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
@@ -118,6 +126,14 @@ def adapt_transformers_to_gaudi():
         gaudi_bloom_convert_to_bloom_cache
     )
 
+    # Optimization for codegen generation on Gaudi
+    # The bias in the CodeGenAttention layer is a Boolean
+    # Since HCCL cannot handle this dtype, we revert it back to uint8
+    transformers.models.codegen.modeling_codegen.CodeGenAttention = GaudiCodeGenAttention
+    transformers.models.codegen.modeling_codegen.CodeGenForCausalLM = GaudiCodeGenForCausalLM
+    transformers.models.codegen.modeling_codegen.CodeGenModel.forward = gaudi_codegen_model_forward
+    transformers.models.codegen.modeling_codegen.CodeGenBlock.forward = gaudi_codegen_block_forward
+
     # Replace invert_attention_mask and get_extended_attention_mask
     # so that HMP is disabled for specific parts of the code
     transformers.modeling_utils.ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
@@ -151,12 +167,20 @@ def adapt_transformers_to_gaudi():
     transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
 
     # Optimization for GPTJ on Gaudi
-    # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
+    # The bias in the GPTJAttention layer is a Boolean
     # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
     transformers.models.gptj.modeling_gptj.GPTJAttention = GaudiGPTJAttention
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
     transformers.models.gptj.modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
     transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
+
+    # Optimization for GPTBigCode on Gaudi
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeAttention.forward = (
+        gaudi_gpt_bigcode_attention_forward
+    )
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeForCausalLM = GaudiGPTBigCodeForCausalLM
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeBlock.forward = gaudi_gpt_bigcode_block_forward
+    transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeModel.forward = gaudi_gpt_bigcode_model_forward
 
     # Optimization for gpt-neox generation on Gaudi
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXForCausalLM = GaudiGPTNeoXForCausalLM
