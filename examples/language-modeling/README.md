@@ -95,6 +95,62 @@ python ../gaudi_spawn.py \
 This takes about 4 minutes to train on 8 HPUs. It reaches
 a perplexity of 21.7968 once fine-tuned on the dataset.
 
+## GPT-J-6B and causal language modeling
+
+The following command triggers fine-tuning of GPT-J-6B model on WikiText-2 with Deepspeed ZeRO-2.
+Fine tuning on 8 HPU cards takes around 6 minutes with batch size of 32 (4 per device).
+It reaches a perplexity of 14.011 once finetuned with the dataset.
+This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
+### Multi-card Training with Deepspeed
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --model_name_or_path EleutherAI/gpt-j-6b \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm-xl-1 \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --gradient_checkpointing \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
+    --deepspeed path_for_deepspeed_config
+
+```
+## GPT-NEOX-20B and causal language modeling
+
+The following command triggers fine-tuning of GPT-NeoX-20B model on WikiText-2 with Deepspeed ZeRO-2.
+Fine tuning on 16 HPU cards (2 Gaudi2 nodes) takes around 9 minutes with batch size of 32 (2 per device).
+It reaches a perplexity of 10.469 once finetuned with the dataset.
+This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
+### Multi-Node Training with Deepspeed
+Please refer : https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training  for  script adaptations to perform multi-node training
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --model_name_or_path EleutherAI/gpt-neox-20b \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 2\
+    --per_device_eval_batch_size 2 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm-xl-bs2 \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --gradient_checkpointing \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
+    --deepspeed path_for_deepspeed_config
+```
 
 ## RoBERTa/BERT/DistilBERT and masked language modeling
 
