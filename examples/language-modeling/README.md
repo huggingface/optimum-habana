@@ -97,7 +97,7 @@ a perplexity of 21.7968 once fine-tuned on the dataset.
 
 ### Multi-card Training with Deepspeed (GPT-J)
 
-The following command triggers the fine-tuning of [GPT-J-6B](https://huggingface.co/EleutherAI/gpt-j-6b) model on WikiText-2 with DeepSpeed ZeRO-2.
+The following command triggers the fine-tuning of [GPT-J-6B](https://huggingface.co/EleutherAI/gpt-j-6b) on WikiText-2 with DeepSpeed ZeRO-2.
 Fine tuning on 8 HPU cards takes around 6 minutes with a batch size of 32 (4 per device).
 It reaches a perplexity of 14.011.
 
@@ -126,7 +126,7 @@ This example has been validated with the following DeepSpeed ZeRO-2 config: http
 
 ## Multi-Node Training with Deepspeed (GPT-NeoX)
 
-The following command triggers the fine-tuning of [GPT-NeoX-20B](https://huggingface.co/EleutherAI/gpt-neox-20b) model on WikiText-2 with Deepspeed ZeRO-2.
+The following command triggers the fine-tuning of [GPT-NeoX-20B](https://huggingface.co/EleutherAI/gpt-neox-20b) on WikiText-2 with Deepspeed ZeRO-2.
 Fine-tuning on 16 HPU cards (2 Gaudi2 nodes) takes around 9 minutes with a batch size of 32 (2 per device).
 It reaches a perplexity of 10.469.
 
