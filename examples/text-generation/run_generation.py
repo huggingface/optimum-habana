@@ -133,7 +133,26 @@ def main():
         nargs="+",
         help="Optional argument list of words that must be generated.",
     )
+    parser.add_argument(
+        "--peft_model",
+        default=None,
+        type=str,
+        help="Optional argument to give a path to a PEFT model.",
+    )
     parser.add_argument("--num_return_sequences", type=int, default=1)
+    parser.add_argument(
+        "--token",
+        default=None,
+        type=str,
+        help="The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+        "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
+    )
+    parser.add_argument(
+        "--model_revision",
+        default="main",
+        type=str,
+        help="The specific model version to use (can be a branch name, tag name or commit id).",
+    )
 
     args = parser.parse_args()
 
@@ -183,18 +202,37 @@ def main():
 
     set_seed(args.seed)
 
+    # TODO: remove the following hack when Falcon is available in Transformers
+    # Temporary hack for Falcon
+    if args.model_name_or_path == "tiiuae/falcon-7b":
+        args.model_revision = "4e2d06f0a7c6370ebabbc30c6f59377ae8f73d76"
+    elif args.model_name_or_path == "tiiuae/falcon-7b-instruct":
+        args.model_revision = "f8dac3fff96d5debd43edf56fb4e1abcfffbef28"
+    elif args.model_name_or_path == "tiiuae/falcon-40b":
+        args.model_revision = "f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232"
+    elif args.model_name_or_path == "tiiuae/falcon-40b-instruct":
+        args.model_revision = "7475ff8cfc36ed9a962b658ae3c33391566a85a5"
+
+    tokenizer_kwargs = {
+        "revision": args.model_revision,
+        "token": args.token,
+    }
     if args.bad_words is not None or args.force_words is not None:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+        tokenizer_kwargs["add_prefix_space"] = True
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
 
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
 
+    model_kwargs = {
+        "revision": args.model_revision,
+        "token": args.token,
+    }
+
     if use_deepspeed:
-        config = AutoConfig.from_pretrained(args.model_name_or_path)
+        config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
         is_optimized = model_is_optimized(config)
         is_bloom = model_is_bloom(config)
 
@@ -206,7 +244,9 @@ def main():
             get_repo_root(args.model_name_or_path, args.local_rank)
             # TODO: revisit placement on CPU when auto-injection is possible
             with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
-                model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+                )
         model = model.eval()
 
         # Initialize the model
@@ -230,7 +270,7 @@ def main():
         model = model.module
     else:
         get_repo_root(args.model_name_or_path)
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = model.eval().to(args.device)
         is_optimized = model_is_optimized(model.config)
 
@@ -242,6 +282,18 @@ def main():
     if not model.config.is_encoder_decoder:
         tokenizer.padding_side = "left"
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
+    if model.config.model_type == "llama":
+        # unwind broken decapoda-research config
+        model.generation_config.pad_token_id = 0
+        model.generation_config.bos_token_id = 1
+        model.generation_config.eos_token_id = 2
+        tokenizer.bos_token_id = model.generation_config.bos_token_id
+        tokenizer.eos_token_id = model.generation_config.eos_token_id
+        tokenizer.pad_token_id = model.generation_config.pad_token_id
+        tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
+        tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
+        tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
@@ -256,6 +308,16 @@ def main():
         bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
     if args.force_words is not None:
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
+
+    if args.peft_model:
+        import importlib.util
+
+        if importlib.util.find_spec("peft") is None:
+            raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, args.peft_model)
+        model = model.to(model_dtype)
 
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)

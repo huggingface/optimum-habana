@@ -6,6 +6,13 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXForCausalLM, apply_rotary_pos_emb, logger
 
 
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+    FusedRoPE = None
+
+
 def gaudi_gpt_neox_attention_forward(
     self,
     hidden_states: torch.FloatTensor,
@@ -51,7 +58,7 @@ def gaudi_gpt_neox_attention_forward(
     if has_layer_past:
         seq_len += layer_past[0].shape[-2]
     cos, sin = self.rotary_emb(value, seq_len=seq_len)
-    query, key = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, position_ids)
+    query, key = apply_customized_rope(query_rot, key_rot, cos, sin, position_ids)
     query = torch.cat((query, query_pass), dim=-1)
     key = torch.cat((key, key_pass), dim=-1)
 
@@ -60,9 +67,8 @@ def gaudi_gpt_neox_attention_forward(
         past_key = layer_past[0]
         past_value = layer_past[1]
         if token_idx is not None:
-            # HPU bug WA
-            past_key.index_add_(2, token_idx - 1, key - torch.index_select(past_key, 2, token_idx - 1))
-            past_value.index_add_(2, token_idx - 1, value - torch.index_select(past_value, 2, token_idx - 1))
+            past_key.index_copy_(2, token_idx - 1, key)
+            past_value.index_copy_(2, token_idx - 1, value)
             key = past_key
             value = past_value
         else:
@@ -112,12 +118,14 @@ def gaudi_gpt_neox_layer_forward(
         token_idx=token_idx,
     )
     attn_output = attention_layer_outputs[0]  # output_attn: attn_output, present, (attn_weights)
+    attn_output = self.post_attention_dropout(attn_output)
     outputs = attention_layer_outputs[1:]
 
     if self.use_parallel_residual:
         # pseudocode:
         # x = x + attn(ln1(x)) + mlp(ln2(x))
         mlp_output = self.mlp(self.post_attention_layernorm(hidden_states))
+        mlp_output = self.post_mlp_dropout(mlp_output)
         hidden_states = mlp_output + attn_output + hidden_states
     else:
         # pseudocode:
@@ -125,6 +133,7 @@ def gaudi_gpt_neox_layer_forward(
         # x = x + mlp(ln2(x))
         attn_output = attn_output + hidden_states
         mlp_output = self.mlp(self.post_attention_layernorm(attn_output))
+        mlp_output = self.post_mlp_dropout(mlp_output)
         hidden_states = mlp_output + attn_output
 
     if use_cache:
@@ -214,7 +223,7 @@ def gaudi_gpt_neox_model_forward(
     if inputs_embeds is None:
         inputs_embeds = self.embed_in(input_ids)
 
-    hidden_states = inputs_embeds
+    hidden_states = self.emb_dropout(inputs_embeds)
 
     if self.gradient_checkpointing and self.training:
         if use_cache:
@@ -346,7 +355,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, token_idx=None, **kwargs
+        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         input_shape = input_ids.shape
 
@@ -372,10 +381,26 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         if attention_mask is None:
             attention_mask = input_ids.new_ones(input_shape)
 
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "position_ids": position_ids,
-            "past_key_values": past_key_values,
-            "token_idx": token_idx,
-        }
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids}
+
+        model_inputs.update(
+            {
+                "attention_mask": attention_mask,
+                "past_key_values": past_key_values,
+                "position_ids": position_ids,
+                "token_idx": token_idx,
+            }
+        )
+
+        return model_inputs
+
+
+def apply_customized_rope(q, k, cos, sin, position_ids):
+    if q.device.type == "hpu" and FusedRoPE:
+        return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
+    else:
+        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

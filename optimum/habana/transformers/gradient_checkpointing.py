@@ -22,6 +22,7 @@ import warnings
 from typing import Any, Iterable, Tuple
 
 import habana_frameworks.torch.core as htcore
+import habana_frameworks.torch.hpu as hthpu
 import torch
 
 
@@ -46,6 +47,22 @@ def check_backward_validity(inputs: Iterable[Any]) -> None:
         warnings.warn("None of the inputs have requires_grad=True. Gradients will be None")
 
 
+def _get_autocast_kwargs():
+    hpu_autocast_kwargs = {
+        "device_type": "hpu",
+        "enabled": hthpu.is_autocast_hpu_enabled(),
+        "dtype": hthpu.get_autocast_hpu_dtype(),
+    }
+
+    cpu_autocast_kwargs = {
+        "enabled": torch.is_autocast_cpu_enabled(),
+        "dtype": torch.get_autocast_cpu_dtype(),
+        "cache_enabled": torch.is_autocast_cache_enabled(),
+    }
+
+    return hpu_autocast_kwargs, cpu_autocast_kwargs
+
+
 class CheckpointFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, run_function, preserve_rng_state, *args):
@@ -53,6 +70,7 @@ class CheckpointFunction(torch.autograd.Function):
             check_backward_validity(args)
         ctx.run_function = run_function
         ctx.preserve_rng_state = preserve_rng_state
+        ctx.hpu_autocast_kwargs, ctx.cpu_autocast_kwargs = _get_autocast_kwargs()
         if preserve_rng_state:
             ctx.fwd_cpu_state = torch.get_rng_state()
             # Don't eagerly initialize the cuda context by accident.
@@ -108,7 +126,9 @@ class CheckpointFunction(torch.autograd.Function):
             if ctx.preserve_rng_state:
                 torch.set_rng_state(ctx.fwd_cpu_state)
             detached_inputs = detach_variable(tuple(inputs))
-            with torch.enable_grad():
+            with torch.enable_grad(), torch.autocast(**ctx.hpu_autocast_kwargs), torch.cpu.amp.autocast(
+                **ctx.cpu_autocast_kwargs
+            ):
                 outputs = ctx.run_function(*detached_inputs)
 
         if isinstance(outputs, torch.Tensor):

@@ -1,0 +1,67 @@
+<!---
+Copyright 2022 The Intel authors Team and HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# Text-to-(RGB, depth)
+
+LDM3D was proposed in [LDM3D: Latent Diffusion Model for 3D](https://huggingface.co/papers/2305.10853) by Gabriela Ben Melech Stan, Diana Wofk, Scottie Fox, Alex Redden, Will Saxton, Jean Yu, Estelle Aflalo, Shao-Yen Tseng, Fabio Nonato, Matthias Muller, and Vasudev Lal. LDM3D generates an image and a depth map from a given text prompt unlike the existing text-to-image diffusion models such as [Stable Diffusion](./stable_diffusion) which only generates an image. With almost the same number of parameters, LDM3D achieves to create a latent space that can compress both the RGB images and the depth maps. 
+
+The abstract from the paper is:
+
+*This research paper proposes a Latent Diffusion Model for 3D (LDM3D) that generates both image and depth map data from a given text prompt, allowing users to generate RGBD images from text prompts. The LDM3D model is fine-tuned on a dataset of tuples containing an RGB image, depth map and caption, and validated through extensive experiments. We also develop an application called DepthFusion, which uses the generated RGB images and depth maps to create immersive and interactive 360-degree-view experiences using TouchDesigner. This technology has the potential to transform a wide range of industries, from entertainment and gaming to architecture and design. Overall, this paper presents a significant contribution to the field of generative AI and computer vision, and showcases the potential of LDM3D and DepthFusion to revolutionize content creation and digital experiences. A short video summarizing the approach can be found at [this url](https://t.ly/tdi2).*
+
+
+## How to generate RGB and depth images?
+
+To generate RGB and depth images with Stable Diffusion LDM3D on Gaudi, you need to instantiate two instances:
+- A pipeline with [`GaudiStableDiffusionLDM3DPipeline`]. This pipeline supports *text-to-(rgb, depth) generation*.
+- A scheduler with [`GaudiDDIMScheduler`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
+
+When initializing the pipeline, you have to specify `use_habana=True` to deploy it on HPUs.
+Furthermore, to get the fastest possible generations you should enable **HPU graphs** with `use_hpu_graphs=True`.
+Finally, you will need to specify a [Gaudi configuration](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config) which can be downloaded from the Hugging Face Hub.
+
+```python
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionLDM3DPipeline
+from optimum.habana.utils import set_seed
+
+model_name = "Intel/ldm3d-4c"
+
+scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+set_seed(42)
+
+pipeline = GaudiStableDiffusionLDM3DPipeline.from_pretrained(
+    model_name,
+    scheduler=scheduler,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+)
+outputs = pipeline(
+    prompt=["High quality photo of an astronaut riding a horse in space"],
+    num_images_per_prompt=1,
+    batch_size=1,
+    output_type="pil",
+    num_inference_steps=40,
+    guidance_scale=5.0,
+    negative_prompt=None
+)
+
+
+rgb_image, depth_image = outputs.rgb, outputs.depth
+rgb_image[0].save("astronaut_ldm3d_rgb.png")
+depth_image[0].save("astronaut_ldm3d_depth.png")
+```
