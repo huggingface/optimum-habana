@@ -1,4 +1,4 @@
-FROM vault.habana.ai/gaudi-docker/1.11.0/ubuntu22.04/habanalabs/pytorch-installer-2.0.1:latest
+FROM vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
 
 # Installs pdsh and upgrade pip
 RUN apt-get update && apt-get install -y pdsh && \
