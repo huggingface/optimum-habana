@@ -32,7 +32,6 @@ from .models import (
     GaudiLlamaForCausalLM,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
-    _gaudi_esmfold_attention_wrap_up,
     gaudi_albert_forward,
     gaudi_bloom_attention_forward,
     gaudi_bloom_block_forward,
@@ -43,7 +42,6 @@ from .models import (
     gaudi_codegen_model_forward,
     gaudi_conv1d_forward,
     gaudi_esm_for_protein_folding_forward,
-    gaudi_esmfold_self_attention_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_esmoutput_forward,
     gaudi_esmselfoutput_forward,
@@ -152,8 +150,6 @@ def adapt_transformers_to_gaudi():
     # Optimization for EsmFold on Gaudi
     transformers.models.esm.modeling_esmfold.EsmFoldingTrunk.forward = gaudi_esmfolding_trunk_forward
     transformers.models.esm.modeling_esmfold.EsmForProteinFolding.forward = gaudi_esm_for_protein_folding_forward
-    transformers.models.esm.modeling_esmfold.EsmFoldAttention._wrap_up = _gaudi_esmfold_attention_wrap_up
-    transformers.models.esm.modeling_esmfold.EsmFoldSelfAttention.forward = gaudi_esmfold_self_attention_forward
     transformers.models.esm.openfold_utils.rigid_utils.rot_matmul = gaudi_rot_matmul
     transformers.models.esm.openfold_utils.rigid_utils.rot_vec_mul = gaudi_rot_vec_mul
     transformers.models.esm.modeling_esm.EsmSelfOutput.forward = gaudi_esmselfoutput_forward

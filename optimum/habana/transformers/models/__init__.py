@@ -15,9 +15,7 @@ from .codegen import (
     gaudi_codegen_model_forward,
 )
 from .esm import (
-    _gaudi_esmfold_attention_wrap_up,
     gaudi_esm_for_protein_folding_forward,
-    gaudi_esmfold_self_attention_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_esmoutput_forward,
     gaudi_esmselfoutput_forward,
