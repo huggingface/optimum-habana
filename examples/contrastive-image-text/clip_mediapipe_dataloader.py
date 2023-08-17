@@ -18,7 +18,7 @@ import torch
 from optimum.utils import logging
 
 
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
 
 
 class MediaApiDataLoader(torch.utils.data.DataLoader):

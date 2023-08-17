@@ -19,7 +19,7 @@ from torch.utils.data.sampler import BatchSampler
 from optimum.utils import logging
 
 
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
 
 
 try:
