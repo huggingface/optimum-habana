@@ -36,8 +36,8 @@ from optimum.habana.diffusers import (
 from optimum.habana.utils import set_seed
 
 
-THROUGHPUT_BASELINE_HMP = 0.287
-THROUGHPUT_BASELINE_BF16 = 0.302
+THROUGHPUT_BASELINE_HMP = 0.289
+THROUGHPUT_BASELINE_BF16 = 0.294
 THROUGHPUT_BASELINE_AUTOCAST = 0.108
 
 
