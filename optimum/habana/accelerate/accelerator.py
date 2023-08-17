@@ -23,7 +23,6 @@ import warnings
 from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import make_dataclass
-from types import MethodType
 
 import torch
 from accelerate import Accelerator
@@ -48,7 +47,6 @@ from accelerate.utils import (
     ProjectConfiguration,
     RNGType,
     TorchDynamoPlugin,
-    convert_outputs_to_fp32,
     is_deepspeed_available,
     parse_choice_from_env,
 )
@@ -253,7 +251,7 @@ class GaudiAccelerator(Accelerator):
         if deepspeed_plugin:
             if not is_deepspeed_available():
                 raise ImportError(
-                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
+                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0`."
                 )
 
             mixed_precision = (
@@ -429,19 +427,21 @@ class GaudiAccelerator(Accelerator):
         elif device_placement and not has_hf_device_map:
             model = model.to(self.device)
 
-        if self.native_amp:
-            model._original_forward = model.forward
-            model_forward_func = model.forward.__func__ if hasattr(model.forward, "__func__") else model.forward
-            if self.mixed_precision == "bf16":
-                new_forward = torch.autocast(device_type=self.state.device.type, dtype=torch.bfloat16)(
-                    model_forward_func
-                )
+        # The following block is commented because forward+backward+loss is already wrapped with autocast in Trainer
+        # if self.native_amp:
+        #     model._original_forward = model.forward
+        #     model_forward_func = model.forward.__func__ if hasattr(model.forward, "__func__") else model.forward
+        #     if self.mixed_precision == "bf16":
+        #         new_forward = torch.autocast(device_type=self.state.device.type, dtype=torch.bfloat16)(
+        #             model_forward_func
+        #         )
 
-            if hasattr(model.forward, "__func__"):
-                model.forward = MethodType(new_forward, model)
-                model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
-            else:
-                model.forward = convert_outputs_to_fp32(new_forward)
+        #     if hasattr(model.forward, "__func__"):
+        #         model.forward = MethodType(new_forward, model)
+        #         model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
+        #     else:
+        #         model.forward = convert_outputs_to_fp32(new_forward)
+        # FP8 is not supported on Gaudi2 yet
         # elif self.mixed_precision == "fp8":
         #     if not has_transformer_engine_layers(model):
         #         with torch.no_grad():

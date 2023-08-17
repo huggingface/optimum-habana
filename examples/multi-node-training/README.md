@@ -30,7 +30,7 @@ where `--argX` is an argument of the script to run.
 Check out the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) to know how to set up your Gaudi instances for multi-node runs on premises or on AWS.
 
 A `Dockerfile` is provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/Dockerfile) to easily start a multi-node run.
-It is based on an image compatible with Ubuntu 22.04 but you can easily adapt it to another OS.
+It is based on an image compatible with Ubuntu 20.04 but you can easily adapt it to another OS.
 To build the Docker image, run:
 ```bash
 docker build -t gaudi_multi_node PATH
