@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset
 from transformers.deepspeed import is_deepspeed_zero3_enabled
 
 from optimum.utils import logging
@@ -114,6 +114,73 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         gen_config = GaudiGenerationConfig.from_pretrained(pretrained_model_name, config_file_name)
         return gen_config
 
+    def _evaluation_warmup(
+        self,
+        eval_dataset: Optional[Dataset] = None,
+        ignore_keys: Optional[List[str]] = None,
+        is_predict: bool = False,
+    ) -> None:
+        """
+        copy the code from prediction(evaluation) path, but remove all the report(logging states)
+        """
+        if is_predict:
+            dataloader = self.get_test_dataloader(eval_dataset)
+        else:
+            dataloader = self.get_eval_dataloader(eval_dataset)
+        self._warmup_prediction_loop(
+            dataloader,
+            description="Warmup for Evaluation",
+            prediction_loss_only=True if self.compute_metrics is None else None,
+            ignore_keys=ignore_keys,
+        )
+
+    def _warmup_prediction_loop(
+        self,
+        dataloader: DataLoader,
+        description: str,
+        prediction_loss_only: Optional[bool] = None,
+        ignore_keys: Optional[List[str]] = None,
+    ) -> None:
+        args = self.args
+
+        prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
+        if args.deepspeed and not self.deepspeed:
+            return
+
+        model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+        if not self.is_in_train:
+            if args.fp16_full_eval:
+                model = model.to(dtype=torch.float16, device=args.device)
+            elif args.bf16_full_eval:
+                model = model.to(dtype=torch.bfloat16, device=args.device)
+
+        if args.use_hpu_graphs_for_inference and not self.is_in_train:
+            # Do not wrap the model in HPU graphs if it has already been done
+            if not self.already_wrapped_for_hpu_graphs:
+                from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
+                model = wrap_in_hpu_graph(model)
+                self.already_wrapped_for_hpu_graphs = True
+
+        logger.info(f"***** Running {description} *****")
+
+        model.eval()
+        count = 0
+        for step, inputs in enumerate(dataloader):
+            # disable warmup stage if throughput_warmup_steps is 0, otherwise enable warmup
+            # warmup contains first 3 batch and the last one if the last BS < batch_size
+            if step < args.throughput_warmup_steps or (
+                args.throughput_warmup_steps != 0 and step == len(dataloader) - 1
+            ):
+                self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+                count += 1
+
+        import habana_frameworks.torch.hpu as torch_hpu
+
+        torch_hpu.synchronize()
+
+        logger.info(f"***** Running {description} {count} steps done *****")
+
     def evaluate(
         self,
         eval_dataset: Optional[Dataset] = None,
@@ -156,6 +223,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
         )
         self._gen_kwargs = gen_kwargs
+        self._evaluation_warmup(eval_dataset, ignore_keys=ignore_keys)
 
         return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
@@ -206,6 +274,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
         )
         self._gen_kwargs = gen_kwargs
+        self._evaluation_warmup(test_dataset, ignore_keys=ignore_keys, is_predict=True)
 
         return super().predict(test_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
