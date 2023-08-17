@@ -1854,7 +1854,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if synced_gpus and this_peer_finished:
                 cur_len = cur_len + 1
                 continue  # don't waste resources running the code we don't need
-            
+
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
@@ -1902,7 +1902,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # stateless
             beam_outputs = beam_scorer.process(
-                input_ids[:, : cur_len],
+                input_ids[:, :cur_len],
                 next_token_scores,
                 next_tokens,
                 next_indices,
@@ -2496,7 +2496,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if synced_gpus and this_peer_finished:
                 cur_len = cur_len + 1
                 continue  # don't waste resources running the code we don't need
-            
+
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
@@ -2545,7 +2545,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # stateless
             beam_outputs = constrained_beam_scorer.process(
-                input_ids[:, : cur_len],
+                input_ids[:, :cur_len],
                 next_token_scores,
                 next_tokens,
                 next_indices,
