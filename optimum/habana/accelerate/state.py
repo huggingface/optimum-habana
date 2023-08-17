@@ -68,7 +68,7 @@ class GaudiPartialState(PartialState):
                     if not is_deepspeed_available():
                         raise ImportError(
                             "DeepSpeed is not available, install it with: `pip install"
-                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
+                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0`."
                         )
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
                     if not torch.distributed.is_initialized():
@@ -201,6 +201,7 @@ class GaudiAcceleratorState(AcceleratorState):
             if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true" and not cpu:
                 self.deepspeed_plugin = deepspeed_plugin
             GaudiPartialState._shared_state["distributed_type"] = self.distributed_type
+            self.use_ipex = False
 
     @property
     def mixed_precision(self):

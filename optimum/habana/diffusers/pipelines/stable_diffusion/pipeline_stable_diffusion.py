@@ -128,6 +128,10 @@ class GaudiStableDiffusionPipeline(
             bf16_full_eval,
         )
 
+        # Workaround for Synapse 1.11 for full bf16
+        if bf16_full_eval:
+            unet.conv_in.float()
+
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"

@@ -60,7 +60,18 @@ if TYPE_CHECKING:
     from .streamers import BaseStreamer
 
 
-MODELS_OPTIMIZED_WITH_STATIC_SHAPES = ["bloom", "gpt2", "opt", "gptj", "gpt_neox", "llama", "falcon", "bart"]
+MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
+    "bloom",
+    "gpt2",
+    "opt",
+    "gptj",
+    "gpt_neox",
+    "llama",
+    "falcon",
+    "codegen",
+    "gpt_bigcode",
+    "bart",
+]
 
 
 logger = logging.get_logger(__name__)
