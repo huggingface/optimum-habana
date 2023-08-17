@@ -72,6 +72,7 @@ from .models import (
     gaudi_opt_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
+    gaudi_t5_layernorm_forward,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
 )
@@ -201,3 +202,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.falcon.modeling_falcon.FalconDecoderLayer.forward = gaudi_falcon_decoder_layer_forward
     transformers.models.falcon.modeling_falcon.FalconAttention.forward = gaudi_falcon_attention_forward
     transformers.models.falcon.modeling_falcon.FalconRotaryEmbedding.forward = gaudi_falcon_rotary_embedding_forward
+
+    # Optimization for t5 on Gaudi
+    transformers.models.t5.modeling_t5.T5LayerNorm.forward = gaudi_t5_layernorm_forward
