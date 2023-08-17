@@ -16,6 +16,11 @@
 import numpy as np
 from torch.utils.data.sampler import BatchSampler
 
+from optimum.utils import logging
+
+
+logger = logging.getLogger(__name__)
+
 
 try:
     from habana_frameworks.mediapipe import fn
@@ -42,15 +47,16 @@ class read_image_text_from_dataset(MediaReaderNode):
         self.dataset = params["dataset"]
         self.epoch = 0
 
+        print("HERE", ClipMediaPipe.batch_sampler.sampler, ClipMediaPipe.batch_sampler)
         self.num_imgs_slice = len(ClipMediaPipe.batch_sampler.sampler)
         self.num_batches_slice = len(ClipMediaPipe.batch_sampler)
 
-        print("Finding largest file ...")
+        logger.info("Finding largest file ...")
         if "image_path" in self.dataset.column_names:
             self.max_file = get_max_file(self.dataset["image_path"])
         else:
             self.max_file = get_max_file([img["path"] for img in self.dataset["image"]])
-        print("largest file is ", self.max_file)
+        logger.info(f"The largest file is {self.max_file}.")
 
     def set_params(self, params):
         self.batch_size = params.batch_size
