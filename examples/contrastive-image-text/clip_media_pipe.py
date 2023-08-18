@@ -47,7 +47,6 @@ class read_image_text_from_dataset(MediaReaderNode):
         self.dataset = params["dataset"]
         self.epoch = 0
 
-        print("HERE", ClipMediaPipe.batch_sampler.sampler, ClipMediaPipe.batch_sampler)
         self.num_imgs_slice = len(ClipMediaPipe.batch_sampler.sampler)
         self.num_batches_slice = len(ClipMediaPipe.batch_sampler)
 

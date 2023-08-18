@@ -213,6 +213,7 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
 --num_train_epochs 5 \
 --learning_rate="1e-5" \
 --overwrite_output_dir \
+--save_strategy no \
 --use_habana --use_lazy_mode --use_hpu_graphs_for_inference --gaudi_config_name Habana/clip \
 --throughput_warmup_steps 3 \
 --logging_steps 10 \

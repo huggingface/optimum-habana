@@ -41,8 +41,6 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
             from clip_media_pipe import ClipMediaPipe
             from habana_frameworks.mediapipe.plugins.iterator_pytorch import HPUGenericPytorchIterator
 
-            print("AAA", sampler)
-
             pipeline = ClipMediaPipe(
                 dataset=dataset,
                 sampler=sampler,
