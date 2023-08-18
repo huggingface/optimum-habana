@@ -16,69 +16,19 @@ limitations under the License.
 
 # Gaudi Configuration
 
-In order to make the most of Gaudi, it is advised to rely on advanced features such as Habana Mixed Precision or optimized operators.
-You can specify which features to use in a Gaudi configuration, which will take the form of a JSON file following this template:
-
-```JSON
-{
-  "use_habana_mixed_precision": true/false,
-  "hmp_is_verbose": true/false,
-  "use_fused_adam": true/false,
-  "use_fused_clip_norm": true/false,
-  "hmp_bf16_ops": [
-    "torch operator to compute in bf16",
-    "..."
-  ],
-  "hmp_fp32_ops": [
-    "torch operator to compute in fp32",
-    "..."
-  ]
-}
-```
-
 Here is a description of each configuration parameter:
-- `use_habana_mixed_precision` enables to decide whether or not Habana Mixed Precision (HMP) should be used. HMP allows to mix *fp32* and *bf16* operations. You can find more information [here](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Mixed_Precision/PT_Mixed_Precision.html).
-- `hmp_is_verbose` enables to decide whether to log precision decisions for each operation for debugging purposes. It is disabled by default. You can find an example of such log [here](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Mixed_Precision/PT_Mixed_Precision.html#hmp-logs).
 - `use_fused_adam` enables to decide whether to use the [custom fused implementation of the ADAM optimizer provided by Habana](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
 - `use_fused_clip_norm` enables to decide whether to use the [custom fused implementation of gradient norm clipping provided by Habana](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
-- `hmp_bf16_ops` enables to specify the Torch operations that should be computed in *bf16*. You can find more information about casting rules [here](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Mixed_Precision/PT_Mixed_Precision.html#basic-design-rules).
-- `hmp_fp32_ops` enables to specify the Torch operations that should be computed in *fp32*. You can find more information about casting rules [here](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Mixed_Precision/PT_Mixed_Precision.html#basic-design-rules).
-
-<Tip warning={true}>
-
-`hmp_is_verbose`, `hmp_bf16_ops` and `hmp_fp32_ops` will not be used if `use_habana_mixed_precision` is false.
-
-</Tip>
+- `use_torch_autocast` enables PyTorch autocast; used to define good pre-defined config; users should favor --bf16 training argument
+- `autocast_bf16ops` list of operations that should be run with bf16 precision under autocast context
+- `autocast_fp32_ops` list of operations that should be run with fp32 precision under autocast context
 
 You can find examples of Gaudi configurations in the [Habana model repository on the Hugging Face Hub](https://huggingface.co/habana). For instance, [for BERT Large we have](https://huggingface.co/Habana/bert-large-uncased-whole-word-masking/blob/main/gaudi_config.json):
 
 ```JSON
 {
-  "use_habana_mixed_precision": true,
-  "hmp_is_verbose": false,
   "use_fused_adam": true,
   "use_fused_clip_norm": true,
-  "hmp_bf16_ops": [
-    "add",
-    "addmm",
-    "bmm",
-    "div",
-    "dropout",
-    "gelu",
-    "iadd",
-    "linear",
-    "layer_norm",
-    "matmul",
-    "mm",
-    "rsub",
-    "softmax",
-    "truediv"
-  ],
-  "hmp_fp32_ops": [
-    "embedding",
-    "nll_loss",
-    "log_softmax"
-  ]
 }
 ```
 
