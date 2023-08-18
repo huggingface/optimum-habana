@@ -218,7 +218,6 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
 --throughput_warmup_steps 3 \
 --logging_steps 10 \
 --dataloader_num_workers 1 \
---distribution_strategy fast_ddp \
 --mediapipe_dataloader
 ```
 

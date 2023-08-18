@@ -88,7 +88,7 @@ class HabanaDataloaderTrainer(GaudiTrainer):
 
         if not isinstance(eval_dataset, torch.utils.data.IterableDataset):
             dataloader_params["sampler"] = self._get_eval_sampler(eval_dataset)
-            dataloader_params["drop_last"] = self.args.dataloader_drop_last
+            dataloader_params["drop_last"] = True
 
         return MediaApiDataLoader(eval_dataset, **dataloader_params)
 
@@ -112,7 +112,7 @@ class HabanaDataloaderTrainer(GaudiTrainer):
 
         if not isinstance(test_dataset, torch.utils.data.IterableDataset):
             dataloader_params["sampler"] = self._get_eval_sampler(test_dataset)
-            dataloader_params["drop_last"] = self.args.dataloader_drop_last
+            dataloader_params["drop_last"] = True
 
         # We use the same batch_size as for eval.
         return MediaApiDataLoader(test_dataset, **dataloader_params)
