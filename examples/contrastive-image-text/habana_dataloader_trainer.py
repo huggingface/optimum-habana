@@ -21,9 +21,9 @@ from typing import Optional
 import datasets
 import torch
 from clip_mediapipe_dataloader import MediaApiDataLoader
-from torch.utils.data import DataLoader
-from transformers.trainer_pt_utils import IterableDatasetShard
+from torch.utils.data import DataLoader, Dataset, SequentialSampler
 from transformers.trainer_utils import seed_worker
+from transformers.trainer_pt_utils import ShardSampler
 from transformers.utils import is_datasets_available
 
 from optimum.habana import GaudiTrainer
@@ -116,3 +116,14 @@ class HabanaDataloaderTrainer(GaudiTrainer):
 
         # We use the same batch_size as for eval.
         return MediaApiDataLoader(test_dataset, **dataloader_params)
+
+    def _get_eval_sampler(self, eval_dataset: Dataset) -> Optional[torch.utils.data.Sampler]:
+        if self.args.world_size <= 1:
+            return SequentialSampler(eval_dataset)
+        else:
+            return ShardSampler(
+                eval_dataset,
+                batch_size=self.args.per_device_eval_batch_size,
+                num_processes=self.args.world_size,
+                process_index=self.args.process_index,
+            )
