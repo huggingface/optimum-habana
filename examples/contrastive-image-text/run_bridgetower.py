@@ -17,6 +17,7 @@
 Training BridgeTower with a contrastive text-image loss.
 """
 
+import logging
 import os
 import sys
 import warnings
@@ -41,13 +42,11 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
-from optimum.utils import logging
-
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
 
 
-logger = logging.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.31.0")
