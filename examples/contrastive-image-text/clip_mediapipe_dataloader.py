@@ -50,7 +50,7 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
             )
             self.iterator = HPUGenericPytorchIterator(mediapipe=pipeline)
         except Exception as e:
-            logger.warning("Using Pytorch native dataloader because:", e)
+            logger.warning("Using Pytorch native dataloader because:", str(e))
             self.fallback_activated = True
             dataset.set_transform(dataset.transform_func)
             super(MediaApiDataLoader, self).__init__(
