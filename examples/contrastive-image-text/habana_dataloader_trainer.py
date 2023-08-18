@@ -119,7 +119,9 @@ class HabanaDataloaderTrainer(GaudiTrainer):
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         """
-        Copied from: https://github.com/huggingface/transformers/blob/v4.28.1/src/transformers/trainer.py#L797
+        Copied from: https://github.com/huggingface/optimum-habana/blob/v1.6.1/optimum/habana/transformers/trainer.py#L257
+        `_get_train_sampler` from Transformers v4.31 does not work with distributed runs using the media pipe.
+        Probably because a `DistributedSampler` is not used there.
         """
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
