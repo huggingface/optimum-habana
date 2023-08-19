@@ -15,6 +15,7 @@
                     "--predict_with_generate",
                     "--ignore_pad_token_for_loss False",
                     "--pad_to_max_length",
+                    "--use_hpu_graphs_for_inference",
                     "--save_strategy epoch"
                 ]
             }
@@ -39,6 +40,7 @@
                     "--predict_with_generate",
                     "--ignore_pad_token_for_loss False",
                     "--pad_to_max_length",
+                    "--use_hpu_graphs_for_inference",
                     "--save_strategy epoch"
                 ]
             }

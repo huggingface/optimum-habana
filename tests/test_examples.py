@@ -352,7 +352,6 @@ class ExampleTesterBase(TestCase):
             f" --num_train_epochs {num_epochs}",
             "--use_habana",
             "--use_lazy_mode",
-            "--use_hpu_graphs_for_inference",
             "--throughput_warmup_steps 3",
         ]
 
@@ -486,10 +485,10 @@ class MultiCardAudioClassificationExampleTester(
 #     TASK_NAME = "librispeech_asr"
 
 
-# class MultiCardSpeechRecognitionExampleTester(
-#     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
-# ):
-#     TASK_NAME = "librispeech_asr"
+class MultiCardSpeechRecognitionExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
+):
+    TASK_NAME = "librispeech_asr"
 
 
 class MultiCardSummarizationExampleTester(

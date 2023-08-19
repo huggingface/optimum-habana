@@ -10,7 +10,8 @@
                 "train_runtime": 1247.1031,
                 "train_samples_per_second": 143.431,
                 "extra_arguments": [
-                    "--max_seq_length 384"
+                    "--max_seq_length 384",
+                    "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
@@ -20,7 +21,8 @@
                 "train_runtime": 190.1891,
                 "train_samples_per_second": 1047.799,
                 "extra_arguments": [
-                    "--max_seq_length 384"
+                    "--max_seq_length 384",
+                    "--use_hpu_graphs_for_inference"
                 ]
             }
         }
@@ -37,6 +39,7 @@
                 "train_samples_per_second": 555.899,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
+                    "--use_hpu_graphs_for_inference",
                     "--ddp_find_unused_parameters True"
                 ]
             }

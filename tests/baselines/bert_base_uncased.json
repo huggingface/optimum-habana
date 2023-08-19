@@ -10,7 +10,8 @@
                 "train_runtime": 1104.5473,
                 "train_samples_per_second": 162.998,
                 "extra_arguments": [
-                    "--max_seq_length 384"
+                    "--max_seq_length 384",
+                    "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
@@ -20,7 +21,8 @@
                 "train_runtime": 168.0596,
                 "train_samples_per_second": 1250.972,
                 "extra_arguments": [
-                    "--max_seq_length 384"
+                    "--max_seq_length 384",
+                    "--use_hpu_graphs_for_inference"
                 ]
             }
         }
@@ -36,7 +38,8 @@
                 "train_runtime": 35.5682,
                 "train_samples_per_second": 519.291,
                 "extra_arguments": [
-                    "--max_seq_length 128"
+                    "--max_seq_length 128",
+                    "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
@@ -46,7 +49,8 @@
                 "train_runtime": 24.9151,
                 "train_samples_per_second": 1586.414,
                 "extra_arguments": [
-                    "--max_seq_length 128"
+                    "--max_seq_length 128",
+                    "--use_hpu_graphs_for_inference"
                 ]
             }
         }
