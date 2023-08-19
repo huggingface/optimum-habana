@@ -92,12 +92,14 @@ clean:
 	find . -name "habana_log.livealloc.log_*" -type f -delete
 	find . -name .lock -type f -delete
 	find . -name .graph_dumps -type d -delete
+	find . -name save-hpu.pdb -type f -delete
 	rm -rf regression/
 	rm -rf tmp_trainer/
 	rm -rf test/
 	rm -rf build/
 	rm -rf dist/
 	rm -rf optimum_habana.egg-info/
+	rm -rf hpu_profile/
 
 test_installs:
 	python -m pip install .[tests]

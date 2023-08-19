@@ -538,15 +538,6 @@ class GaudiTrainingArguments(TrainingArguments):
             mixed_precision_dtype = "bf16"
         os.environ["ACCELERATE_MIXED_PRECISION"] = mixed_precision_dtype
 
-        if (
-            self.parallel_mode == ParallelMode.DISTRIBUTED
-            and self.use_hpu_graphs_for_training
-            and self.distribution_strategy != "fast_ddp"
-        ):
-            raise ValueError(
-                "`--use_hpu_graphs_for_training` may only be used with `--distribution_strategy fast_ddp`."
-            )
-
     def __str__(self):
         self_as_dict = asdict(self)
 

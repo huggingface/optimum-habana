@@ -33,6 +33,7 @@ from transformers import (
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
+    MODEL_MAPPING,
 )
 from transformers.testing_utils import slow
 
@@ -40,6 +41,7 @@ from .utils import (
     MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION,
     MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING,
     MODELS_TO_TEST_FOR_IMAGE_CLASSIFICATION,
+    MODELS_TO_TEST_FOR_IMAGE_TEXT,
     MODELS_TO_TEST_FOR_MASKED_LANGUAGE_MODELING,
     MODELS_TO_TEST_FOR_QUESTION_ANSWERING,
     MODELS_TO_TEST_FOR_SEQ2SEQ,
@@ -130,6 +132,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
         MODELS_TO_TEST_FOR_SEQ2SEQ,
     ),
+    "run_clip": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        MODELS_TO_TEST_FOR_IMAGE_TEXT,
+    ),
 }
 
 
@@ -158,7 +165,14 @@ class ExampleTestMeta(type):
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
-                raise AttributeError(f"Could not create class because no model was found for example {example_name}")
+                if example_name == "run_esmfold":
+                    attrs["test_run_esmfold_single_card"] = cls._create_test(None, None, None, None)
+                    attrs["EXAMPLE_NAME"] = example_name
+                    return super().__new__(cls, name, bases, attrs)
+                else:
+                    raise AttributeError(
+                        f"Could not create class because no model was found for example {example_name}"
+                    )
         for model_name, gaudi_config_name in models_to_test:
             if cls.to_test(model_name, multi_card, deepspeed):
                 distribution = "single_card"
@@ -199,6 +213,22 @@ class ExampleTestMeta(type):
                 raise RuntimeError(f"Found more than {self.EXAMPLE_NAME}.py in examples located in {self.EXAMPLE_DIR}")
             else:
                 example_script = example_script[0]
+
+            # The ESMFold example has no arguments, so we can execute it right away
+            if self.EXAMPLE_NAME == "run_esmfold":
+                p = subprocess.Popen(["python3", example_script])
+                return_code = p.wait()
+
+                # Ensure the run finished without any issue
+                self.assertEqual(return_code, 0)
+
+                return
+            # The CLIP example requires COCO and a clip-roberta model
+            elif self.EXAMPLE_NAME == "run_clip":
+                from .clip_coco_utils import create_clip_roberta_model, download_coco
+
+                download_coco()
+                create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
 
@@ -358,11 +388,14 @@ class ExampleTesterBase(TestCase):
             if metric_name in baseline and metric_name in results:
                 metrics_to_assess.append(metric_name)
 
+        # There is no accuracy metric for `run_clip.py`
+        min_number_metrics = 2 if self.EXAMPLE_NAME == "run_clip" else 3
+
         # Check that at least 3 metrics are assessed:
         # training time + throughput + accuracy metric (F1, accuracy, perplexity,...)
         self.assertGreaterEqual(
             len(metrics_to_assess),
-            3,
+            min_number_metrics,
             (
                 f"{len(metrics_to_assess)} asserted metric(s) while at least 3 are expected (throughput + training"
                 f" time + accuracy). Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received:"
@@ -469,3 +502,13 @@ class MultiCardSeq2SeqQuestionAnsweringExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_seq2seq_qa", multi_card=True
 ):
     TASK_NAME = "squad_v2"
+
+
+class MultiCardVisionLanguageExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clip", multi_card=True
+):
+    TASK_NAME = "ydshieh/coco_dataset_script"
+
+
+class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_esmfold"):
+    pass
