@@ -561,5 +561,7 @@ class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, 
     pass
 
 
-class MultiCardCausalLanguageModelingLORAExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"):
+class MultiCardCausalLanguageModelingLORAExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"
+):
     pass

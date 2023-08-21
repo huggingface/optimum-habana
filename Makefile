@@ -57,6 +57,10 @@ slow_tests_diffusers: test_installs
 	python -m pip install ftfy
 	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 
+# Run text-generation non-regression tests
+slow_tests_text_generation_example: test_installs
+	python -m pytest tests/test_text_generation_example.py -v -s --token $(TOKEN)
+
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs
 	python -m pytest tests/test_examples_match_transformers.py
