@@ -241,6 +241,7 @@ class ExampleTestMeta(type):
 
                 command = [
                     "python3",
+                    # TODO: uncomment the following lines when LoRA 8x is fixed
                     # f"{example_script.parent.parent / 'gaudi_spawn.py'}",
                     # "--use_mpi",
                     # "--world_size 8",

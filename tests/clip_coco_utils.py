@@ -1,12 +1,8 @@
-import logging
 import os
 from pathlib import Path
 from urllib.request import urlretrieve
 
 from transformers import AutoImageProcessor, AutoTokenizer, VisionTextDualEncoderModel, VisionTextDualEncoderProcessor
-
-
-logger = logging.getLogger(__name__)
 
 
 def download_coco(path=None):
@@ -21,17 +17,17 @@ def download_coco(path=None):
     if path is None:
         path = os.getcwd()
 
-    logger.info("Downloading COCO...")
+    print("Downloading COCO...")
 
     for url in urls:
         filename = url.split("/")[-1]
         urlretrieve(url, Path(path, filename))
 
-    logger.info("COCO downloaded.")
+    print("COCO downloaded.")
 
 
 def create_clip_roberta_model():
-    logger.info("Generating a CLIP-RoBERTa model...")
+    print("Generating a CLIP-RoBERTa model...")
 
     model = VisionTextDualEncoderModel.from_vision_text_pretrained("openai/clip-vit-base-patch32", "roberta-base")
 
@@ -43,4 +39,4 @@ def create_clip_roberta_model():
     model.save_pretrained("clip-roberta")
     processor.save_pretrained("clip-roberta")
 
-    logger.info("Model generated.")
+    print("Model generated.")
