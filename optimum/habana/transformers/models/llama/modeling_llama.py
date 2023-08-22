@@ -20,6 +20,24 @@ except ImportError:
     FusedRMSNorm = None
 
 
+def gaudi_llama_rmsnorm_forward(self, hidden_states):
+    """
+    Copied from LlamaRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+    The only differences are:
+        - override RMSNorm with Habana fused RMSNorm
+    """
+    if not self.training and hidden_states.device.type == "hpu" and FusedRMSNorm:
+        orig_dtype = hidden_states.dtype
+        hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
+        return hidden_states.to(orig_dtype)
+    else:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * hidden_states.to(input_dtype)
+
+
 def gaudi_llama_attention_forward(
     self,
     hidden_states: torch.Tensor,
@@ -38,19 +56,19 @@ def gaudi_llama_attention_forward(
     """
     bsz, q_len, _ = hidden_states.size()
 
-    if self.pretraining_tp > 1:
-        key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.pretraining_tp
-        query_slices = self.q_proj.weight.split((self.num_heads * self.head_dim) // self.pretraining_tp, dim=0)
+    if self.config.pretraining_tp > 1:
+        key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
+        query_slices = self.q_proj.weight.split((self.num_heads * self.head_dim) // self.config.pretraining_tp, dim=0)
         key_slices = self.k_proj.weight.split(key_value_slicing, dim=0)
         value_slices = self.v_proj.weight.split(key_value_slicing, dim=0)
 
-        query_states = [F.linear(hidden_states, query_slices[i]) for i in range(self.pretraining_tp)]
+        query_states = [F.linear(hidden_states, query_slices[i]) for i in range(self.config.pretraining_tp)]
         query_states = torch.cat(query_states, dim=-1)
 
-        key_states = [F.linear(hidden_states, key_slices[i]) for i in range(self.pretraining_tp)]
+        key_states = [F.linear(hidden_states, key_slices[i]) for i in range(self.config.pretraining_tp)]
         key_states = torch.cat(key_states, dim=-1)
 
-        value_states = [F.linear(hidden_states, value_slices[i]) for i in range(self.pretraining_tp)]
+        value_states = [F.linear(hidden_states, value_slices[i]) for i in range(self.config.pretraining_tp)]
         value_states = torch.cat(value_states, dim=-1)
 
     else:
@@ -119,10 +137,10 @@ def gaudi_llama_attention_forward(
     attn_output = attn_output.transpose(1, 2).contiguous()
     attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
-    if self.pretraining_tp > 1:
-        attn_output = attn_output.split(self.hidden_size // self.pretraining_tp, dim=2)
-        o_proj_slices = self.o_proj.weight.split(self.hidden_size // self.pretraining_tp, dim=1)
-        attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.pretraining_tp)])
+    if self.config.pretraining_tp > 1:
+        attn_output = attn_output.split(self.hidden_size // self.config.pretraining_tp, dim=2)
+        o_proj_slices = self.o_proj.weight.split(self.hidden_size // self.config.pretraining_tp, dim=1)
+        attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.config.pretraining_tp)])
     else:
         attn_output = self.o_proj(attn_output)
 
@@ -265,7 +283,7 @@ def gaudi_llama_model_forward(
             def create_custom_forward(module):
                 def custom_forward(*inputs):
                     # None for past_key_value
-                    return module(*inputs, output_attentions, None)
+                    return module(*inputs, past_key_value, output_attentions)
 
                 return custom_forward
 
@@ -274,7 +292,6 @@ def gaudi_llama_model_forward(
                 hidden_states,
                 attention_mask,
                 position_ids,
-                None,
             )
         else:
             layer_outputs = decoder_layer(
@@ -310,24 +327,6 @@ def gaudi_llama_model_forward(
         hidden_states=all_hidden_states,
         attentions=all_self_attns,
     )
-
-
-def gaudi_llama_rmsnorm_forward(self, hidden_states):
-    """
-    Copied from LlamaRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
-    The only differences are:
-        - override RMSNorm with Habana fused RMSNorm
-    """
-    if not self.training and hidden_states.device.type == "hpu" and FusedRMSNorm:
-        orig_dtype = hidden_states.dtype
-        hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
-        return hidden_states.to(orig_dtype)
-    else:
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return self.weight * hidden_states.to(input_dtype)
 
 
 class GaudiLlamaForCausalLM(LlamaForCausalLM):
@@ -375,9 +374,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         )
 
         hidden_states = outputs[0]
-        if self.pretraining_tp > 1:
-            lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.pretraining_tp, dim=0)
-            logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.pretraining_tp)]
+        if self.config.pretraining_tp > 1:
+            lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
+            logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.config.pretraining_tp)]
             logits = torch.cat(logits, dim=-1)
         else:
             logits = self.lm_head(hidden_states)
