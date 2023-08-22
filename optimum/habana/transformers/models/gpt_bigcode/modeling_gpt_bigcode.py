@@ -221,9 +221,9 @@ def gaudi_gpt_bigcode_model_forward(
     query_length = input_shape[-1]
     key_length = past_length + query_length
     if past_length > 0 and token_idx is not None:
-        self_attention_mask = self.bias[None, past_length - 1 : past_length, :past_length]
+        self_attention_mask = self.bias[None, past_length - 1 : past_length, :past_length].bool()
     else:
-        self_attention_mask = self.bias[None, key_length - query_length : key_length, :key_length]
+        self_attention_mask = self.bias[None, key_length - query_length : key_length, :key_length].bool()
 
     if attention_mask is not None:
         self_attention_mask = self_attention_mask * attention_mask.view(batch_size, 1, -1).to(
