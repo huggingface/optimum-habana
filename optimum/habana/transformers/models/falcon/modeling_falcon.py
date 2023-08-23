@@ -44,7 +44,7 @@ def gaudi_falcon_rotary_embedding_forward(self, query, key, seq_len, position_id
     """
     cos, sin = self.cos_sin(seq_len, past_key_values_length, query.device, query.dtype)
 
-    # copied from apply_rotary_pos_emb in transformers/models/llama/modeling_llama
+    # Copied from apply_rotary_pos_emb in transformers/models/llama/modeling_llama
     if position_ids is not None:
         cos = cos.squeeze(0)[position_ids[-1]].unsqueeze(0)
         sin = sin.squeeze(0)[position_ids[-1]].unsqueeze(0)
