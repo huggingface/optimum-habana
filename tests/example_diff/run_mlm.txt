@@ -20,9 +20,9 @@
 > from optimum.habana.utils import set_seed
 > 
 57c54
-< check_min_version("4.32.0.dev0")
+< check_min_version("4.33.0.dev0")
 ---
-> check_min_version("4.31.0")
+> check_min_version("4.32.0")
 226c223
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
