@@ -141,9 +141,10 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
     --mediapipe_dataloader \
-    --use_hpu_graphs_for_training \
-    --distribution_strategy fast_ddp
+    --use_hpu_graphs_for_training
 ```
+
+> `--mediapipe_dataloader` only works on Gaudi2.
 
 
 ### DeepSpeed
@@ -220,6 +221,8 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
 --dataloader_num_workers 1 \
 --mediapipe_dataloader
 ```
+
+> `--mediapipe_dataloader` only works on Gaudi2.
 
 
 ## Inference

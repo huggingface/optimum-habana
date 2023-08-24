@@ -57,6 +57,10 @@ slow_tests_diffusers: test_installs
 	python -m pip install ftfy
 	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 
+# Run text-generation non-regression tests
+slow_tests_text_generation_example: test_installs
+	python -m pytest tests/test_text_generation_example.py -v -s --token $(TOKEN)
+
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs
 	python -m pytest tests/test_examples_match_transformers.py
@@ -93,12 +97,14 @@ clean:
 	find . -name "habana_log.livealloc.log_*" -type f -delete
 	find . -name .lock -type f -delete
 	find . -name .graph_dumps -type d -delete
+	find . -name save-hpu.pdb -type f -delete
 	rm -rf regression/
 	rm -rf tmp_trainer/
 	rm -rf test/
 	rm -rf build/
 	rm -rf dist/
 	rm -rf optimum_habana.egg-info/
+	rm -rf hpu_profile/
 
 test_installs:
 	python -m pip install .[tests]

@@ -20,9 +20,11 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 
 import argparse
 import copy
+import json
 import logging
 import os
 import time
+from pathlib import Path
 
 import torch
 from checkpoint_utils import (
@@ -157,6 +159,12 @@ def main():
         type=str,
         help="The specific model version to use (can be a branch name, tag name or commit id).",
     )
+    parser.add_argument(
+        "--output_dir",
+        default=None,
+        type=str,
+        help="Output directory to store results in.",
+    )
 
     args = parser.parse_args()
 
@@ -245,7 +253,7 @@ def main():
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
-            get_repo_root(args.model_name_or_path, args.local_rank)
+            get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
             # TODO: revisit placement on CPU when auto-injection is possible
             with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
                 model = AutoModelForCausalLM.from_pretrained(
@@ -273,7 +281,7 @@ def main():
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         model = model.module
     else:
-        get_repo_root(args.model_name_or_path)
+        get_repo_root(args.model_name_or_path, token=args.token)
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = model.eval().to(args.device)
         is_optimized = model_is_optimized(model.config)
@@ -431,6 +439,18 @@ def main():
                 ):
                     print(f"output {j+1}: {output}")
                 print(separator)
+
+            # Store results if necessary
+            if args.output_dir is not None:
+                output_dir = Path(args.output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                results = {
+                    "throughput": throughput,
+                    "output": output,
+                }
+                with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+                    json.dump(results, f, ensure_ascii=False, indent=4)
     else:
         # Downloading and loading a dataset from the hub.
         from datasets import load_dataset
