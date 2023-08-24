@@ -54,7 +54,6 @@ slow_tests_deepspeed: test_installs
 
 slow_tests_diffusers: test_installs
 	python -m pip install git+https://github.com/huggingface/diffusers.git
-	python -m pip install ftfy
 	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 
 # Check if examples are up to date with the Transformers library
@@ -103,3 +102,4 @@ clean:
 test_installs:
 	python -m pip install .[tests]
 	python -m pip install git+https://github.com/huggingface/transformers.git
+	python -m pip install git+https://github.com/huggingface/accelerate.git
