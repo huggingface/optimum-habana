@@ -28,8 +28,8 @@ import torch
 from checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
-    model_on_meta,
     model_is_optimized,
+    model_on_meta,
     write_checkpoints_json,
 )
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
