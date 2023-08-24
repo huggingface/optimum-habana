@@ -75,11 +75,11 @@ def write_checkpoints_json(model_name_or_path, local_rank, checkpoints_json):
             json.dump(data, fp)
 
 
-def model_is_bloom(config):
+def model_on_meta(config):
     """
-    Checks if the given config belongs to a BLOOM-like model.
+    Checks if load the model to meta.
     """
-    return config.model_type == "bloom"
+    return config.model_type == "bloom" or config.model_type == "llama"
 
 
 def get_optimized_model_name(config):

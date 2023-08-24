@@ -28,7 +28,7 @@ import torch
 from checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
-    model_is_bloom,
+    model_on_meta,
     model_is_optimized,
     write_checkpoints_json,
 )
@@ -238,9 +238,9 @@ def main():
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
         is_optimized = model_is_optimized(config)
-        is_bloom = model_is_bloom(config)
+        load_to_meta = model_on_meta(config)
 
-        if is_bloom:
+        if load_to_meta:
             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
@@ -258,8 +258,8 @@ def main():
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
-        if is_bloom:
-            # BLOOM is managed differently
+        if load_to_meta:
+            # model loaded to meta is managed differently
             checkpoints_json = "checkpoints.json"
             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
 
@@ -267,7 +267,7 @@ def main():
         torch.distributed.barrier()
 
         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
-        if is_bloom:
+        if load_to_meta:
             ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
