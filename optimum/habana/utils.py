@@ -126,7 +126,7 @@ def to_gb_rounded(mem: float) -> float:
     return np.round(mem / 1024**3, 2)
 
 
-def get_hpu_memory_stats() -> Dict[str, float]:
+def get_hpu_memory_stats(device=None) -> Dict[str, float]:
     """
     Returns memory stats of HPU as a dictionary:
     - current memory allocated (GB)
@@ -136,7 +136,7 @@ def get_hpu_memory_stats() -> Dict[str, float]:
     Returns:
         Dict[str, float]: memory stats.
     """
-    mem_stats = memory_stats()
+    mem_stats = memory_stats(device)
 
     mem_dict = {
         "memory_allocated (GB)": to_gb_rounded(mem_stats["InUse"]),

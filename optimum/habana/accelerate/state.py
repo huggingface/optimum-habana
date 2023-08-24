@@ -30,24 +30,6 @@ logger = logging.get_logger()
 class GaudiPartialState(PartialState):
     """
     Adapted from: https://github.com/huggingface/accelerate/blob/8514c35192ac9762920f1ab052e5cea4c0e46eeb/src/accelerate/state.py#L96
-
-    Singleton class that has information about the current training environment and functions to help with process
-    control. Designed to be used when only process control and device execution states are needed. Does *not* need to
-    be initialized from `Accelerator`.
-
-    **Available attributes:**
-
-        - **device** (`torch.device`) -- The device to use.
-        - **distributed_type** ([`GaudiDistributedType`]) -- The type of distributed environment currently
-          in use.
-        - **local_process_index** (`int`) -- The index of the current process on the current server.
-        - **mixed_precision** (`str`) -- Whether or not the current script will use mixed precision, and if so the type
-          of mixed precision being performed.
-        - **num_processes** (`int`) -- The number of processes currently launched in parallel.
-        - **process_index** (`int`) -- The index of the current process.
-        - **is_last_process** (`bool`) -- Whether or not the current process is the last one.
-        - **is_main_process** (`bool`) -- Whether or not the current process is the main one.
-        - **is_local_main_process** (`bool`) -- Whether or not the current process is the main one on the local node.
     """
 
     def __init__(self, cpu: bool = False, **kwargs):
@@ -57,6 +39,7 @@ class GaudiPartialState(PartialState):
             self.backend = None
             env_device = os.environ.get("ACCELERATE_TORCH_DEVICE", None)
             self.device = torch.device(env_device) if env_device is not None else None
+            self.debug = parse_flag_from_env("ACCELERATE_DEBUG_MODE")
 
             if int(os.environ.get("LOCAL_RANK", -1)) != -1 and not cpu:
                 from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
@@ -149,23 +132,6 @@ class GaudiPartialState(PartialState):
 class GaudiAcceleratorState(AcceleratorState):
     """
     Adapted from: https://github.com/huggingface/accelerate/blob/8514c35192ac9762920f1ab052e5cea4c0e46eeb/src/accelerate/state.py#L683
-
-    Singleton class that has information about the current training environment.
-
-    **Available attributes:**
-
-        - **device** (`torch.device`) -- The device to use.
-        - **distributed_type** ([`GaudiDistributedType`]) -- The type of distributed environment currently
-          in use.
-        - **initialized** (`bool`) -- Whether or not the `AcceleratorState` has been initialized from `Accelerator`.
-        - **local_process_index** (`int`) -- The index of the current process on the current server.
-        - **mixed_precision** (`str`) -- Whether or not the current script will use mixed precision, and if so the type
-          of mixed precision being performed.
-        - **num_processes** (`int`) -- The number of processes currently launched in parallel.
-        - **process_index** (`int`) -- The index of the current process.
-        - **is_last_process** (`bool`) -- Whether or not the current process is the last one.
-        - **is_main_process** (`bool`) -- Whether or not the current process is the main one.
-        - **is_local_main_process** (`bool`) -- Whether or not the current process is the main one on the local node.
     """
 
     def __init__(
@@ -188,6 +154,7 @@ class GaudiAcceleratorState(AcceleratorState):
         self._check_initialized(mixed_precision, cpu)
         if not self.initialized:
             self.deepspeed_plugin = None
+            self.use_ipex = None
             mixed_precision = (
                 parse_choice_from_env("ACCELERATE_MIXED_PRECISION", "no")
                 if mixed_precision is None

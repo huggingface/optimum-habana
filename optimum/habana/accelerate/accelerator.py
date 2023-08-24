@@ -31,6 +31,7 @@ from accelerate.scheduler import AcceleratedScheduler
 from accelerate.state import GradientState
 from accelerate.tracking import GeneralTracker, filter_trackers
 from accelerate.utils import (
+    AutocastKwargs,
     DeepSpeedPlugin,
     DistributedDataParallelKwargs,
     DistributedType,
@@ -71,135 +72,9 @@ from .utils import GaudiDistributedType
 logger = get_logger(__name__)
 
 
-# We pass cloned tensors to torch.save() to avoid checkpoint bloat that occurs when torch.save()
-# saves the underlying storage rather than the slice of the storage corresponding to individual tensors.
-# This is a problem in DeepSpeed because we often allocate tensors using slices of large flattened buffers.
-# Tensor cloning helps to avoid this problem because the storage of cloned tensors are closer to the true size.
-# It is expected that the garbage collector will reclaim the cloned tensor storage to avoid memory bloat.
-# See https://pytorch.org/docs/stable/notes/serialization.html#preserve-storage-sharing
-# TODO: remove this method when it is available in Habana's DeepSpeed fork
-def clone_tensors_for_torch_save(item, device=torch.device("cpu")):
-    """
-    Taken from: https://github.com/microsoft/DeepSpeed/blob/09601bb811b28fb0db92b6dcb2b737873e6677e8/deepspeed/checkpoint/utils.py#L41
-
-    Returns a copy of `item` with all enclosed tensors replaced by clones on a specified device.
-    Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
-
-    Parameters:
-        - `item`: tensor to clone or (possibly nested) container of tensors to clone.
-        - `device`: target device (defaults to `cpu`)
-
-    Returns:
-        - copy of `item` with cloned tensors on target device
-    """
-    if torch.is_tensor(item):
-        return item.detach().clone().to(device)
-    elif isinstance(item, list):
-        return [clone_tensors_for_torch_save(v, device) for v in item]
-    elif isinstance(item, tuple):
-        return tuple([clone_tensors_for_torch_save(v, device) for v in item])
-    elif isinstance(item, dict):
-        return type(item)({k: clone_tensors_for_torch_save(v, device) for k, v in item.items()})
-    else:
-        return item
-
-
 class GaudiAccelerator(Accelerator):
     """
     Adapted from: https://github.com/huggingface/accelerate/blob/8514c35192ac9762920f1ab052e5cea4c0e46eeb/src/accelerate/accelerator.py#L145
-
-    Creates an instance of an accelerator for distributed training (on multi-GPU, TPU) or mixed precision training.
-
-    Args:
-        device_placement (`bool`, *optional*, defaults to `True`):
-            Whether or not the accelerator should put objects on device (tensors yielded by the dataloader, model,
-            etc...).
-        split_batches (`bool`, *optional*, defaults to `False`):
-            Whether or not the accelerator should split the batches yielded by the dataloaders across the devices. If
-            `True` the actual batch size used will be the same on any kind of distributed processes, but it must be a
-            round multiple of the `num_processes` you are using. If `False`, actual batch size used will be the one set
-            in your script multiplied by the number of processes.
-        mixed_precision (`str`, *optional*):
-            Whether or not to use mixed precision training. Choose from 'no','fp16','bf16 or 'fp8'. Will default to the
-            value in the environment variable `ACCELERATE_MIXED_PRECISION`, which will use the default value in the
-            accelerate config of the current system or the flag passed with the `accelerate.launch` command. 'fp16'
-            requires pytorch 1.6 or higher. 'bf16' requires pytorch 1.10 or higher. 'fp8' requires the installation of
-            transformers-engine.
-        gradient_accumulation_steps (`int`, *optional*, default to 1):
-            The number of steps that should pass before gradients are accumulated. A number > 1 should be combined with
-            `Accelerator.accumulate`. If not passed, will default to the value in the environment variable
-            `ACCELERATE_GRADIENT_ACCUMULATION_STEPS`. Can also be configured through a `GradientAccumulationPlugin`.
-        cpu (`bool`, *optional*):
-            Whether or not to force the script to execute on CPU. Will ignore GPU available if set to `True` and force
-            the execution on one process only.
-        deepspeed_plugin (`DeepSpeedPlugin`, *optional*):
-            Tweak your DeepSpeed related args using this argument. This argument is optional and can be configured
-            directly using *accelerate config*
-        fsdp_plugin (`FullyShardedDataParallelPlugin`, *optional*):
-            Tweak your FSDP related args using this argument. This argument is optional and can be configured directly
-            using *accelerate config*
-        megatron_lm_plugin (`MegatronLMPlugin`, *optional*):
-            Tweak your MegatronLM related args using this argument. This argument is optional and can be configured
-            directly using *accelerate config*
-        rng_types (list of `str` or [`~utils.RNGType`]):
-            The list of random number generators to synchronize at the beginning of each iteration in your prepared
-            dataloaders. Should be one or several of:
-
-            - `"torch"`: the base torch random number generator
-            - `"cuda"`: the CUDA random number generator (GPU only)
-            - `"xla"`: the XLA random number generator (TPU only)
-            - `"generator"`: the `torch.Generator` of the sampler (or batch sampler if there is no sampler in your
-              dataloader) or of the iterable dataset (if it exists) if the underlying dataset is of that type.
-
-            Will default to `["torch"]` for PyTorch versions <=1.5.1 and `["generator"]` for PyTorch versions >= 1.6.
-        log_with (list of `str`, [`~utils.LoggerType`] or [`~tracking.GeneralTracker`], *optional*):
-            A list of loggers to be setup for experiment tracking. Should be one or several of:
-
-            - `"all"`
-            - `"tensorboard"`
-            - `"wandb"`
-            - `"comet_ml"`
-            If `"all"` is selected, will pick up all available trackers in the environment and initialize them. Can
-            also accept implementations of `GeneralTracker` for custom trackers, and can be combined with `"all"`.
-        project_config (`ProjectConfiguration`, *optional*):
-            A configuration for how saving the state can be handled.
-        project_dir (`str`, `os.PathLike`, *optional*):
-            A path to a directory for storing data such as logs of locally-compatible loggers and potentially saved
-            checkpoints.
-        dispatch_batches (`bool`, *optional*):
-            If set to `True`, the dataloader prepared by the Accelerator is only iterated through on the main process
-            and then the batches are split and broadcast to each process. Will default to `True` for `DataLoader` whose
-            underlying dataset is an `IterableDataset`, `False` otherwise.
-        even_batches (`bool`, *optional*, defaults to `True`):
-            If set to `True`, in cases where the total batch size across all processes does not exactly divide the
-            dataset, samples at the start of the dataset will be duplicated so the batch can be divided equally among
-            all workers.
-        step_scheduler_with_optimizer (`bool`, *optional`, defaults to `True`):
-            Set `True` if the learning rate scheduler is stepped at the same time as the optimizer, `False` if only
-            done under certain circumstances (at the end of each epoch, for instance).
-        kwargs_handlers (`list[KwargHandler]`, *optional*)
-            A list of `KwargHandler` to customize how the objects related to distributed training or mixed precision
-            are created. See [kwargs](kwargs) for more information.
-        dynamo_backend (`str` or `DynamoBackend`, *optional*, defaults to `"no"`):
-            Set to one of the possible dynamo backends to optimize your training with torch dynamo.
-        gradient_accumulation_plugin (`GradientAccumulationPlugin`, *optional*):
-            A configuration for how gradient accumulation should be handled, if more tweaking than just the
-            `gradient_accumulation_steps` is needed.
-
-    **Available attributes:**
-
-        - **device** (`torch.device`) -- The device to use.
-        - **distributed_type** ([`~utils.DistributedType`]) -- The distributed training configuration.
-        - **local_process_index** (`int`) -- The process index on the current machine.
-        - **mixed_precision** (`str`) -- The configured mixed precision mode.
-        - **num_processes** (`int`) -- The total number of processes used for training.
-        - **optimizer_step_was_skipped** (`bool`) -- Whether or not the optimizer update was skipped (because of
-          gradient overflow in mixed precision), in which
-        case the learning rate should not be changed.
-        - **process_index** (`int`) -- The overall index of the current process among all processes.
-        - **state** ([`~state.AcceleratorState`]) -- The distributed setup state.
-        - **sync_gradients** (`bool`) -- Whether the gradients are currently being synced across all processes.
-        - **use_distributed** (`bool`) -- Whether the current configuration is for distributed training.
     """
 
     def __init__(
@@ -265,6 +140,7 @@ class GaudiAccelerator(Accelerator):
         self.scaler_handler = None
         self.init_handler = None
         self.fp8_recipe_handler = None
+        self.autocast_handler = None
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
                 assert isinstance(
@@ -290,6 +166,11 @@ class GaudiAccelerator(Accelerator):
                         raise ValueError("You can only pass one `FP8RecipeKwargs` in `kwargs_handler`.")
                     else:
                         self.fp8_recipe_handler = handler
+                elif isinstance(handler, AutocastKwargs):
+                    if self.autocast_handler is not None:
+                        raise ValueError("You can only pass one `AutocastKwargs` in `kwargs_handler`.")
+                    else:
+                        self.autocast_handler = handler
 
         kwargs = self.init_handler.to_kwargs() if self.init_handler is not None else {}
         self.state = GaudiAcceleratorState(
@@ -390,13 +271,12 @@ class GaudiAccelerator(Accelerator):
         if device_placement is None:
             device_placement = self.device_placement and self.distributed_type != DistributedType.FSDP
         self._models.append(model)
-        # We check only for models loaded with `accelerate`
-        # Checks if any of the child module has the attribute `hf_device_map`.
-        has_hf_device_map = False
-        for m in model.modules():
-            if hasattr(m, "hf_device_map"):
-                has_hf_device_map = True
-                break
+
+        if self.verify_device_map(model) and self.distributed_type != DistributedType.NO:
+            raise ValueError(
+                "You can't train a model that has been loaded with `device_map='auto'` in any distributed mode."
+                " Please rerun your script specifying `--num_processes=1` or by launching with `python {{myscript.py}}`."
+            )
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
             model, "hf_device_map", False
@@ -424,7 +304,7 @@ class GaudiAccelerator(Accelerator):
                 raise ValueError(
                     "You can't train a model that has been loaded in 8-bit precision with CPU or disk offload."
                 )
-        elif device_placement and not has_hf_device_map:
+        elif device_placement and not self.verify_device_map(model):
             model = model.to(self.device)
 
         # The following block is commented because forward+backward+loss is already wrapped with autocast in Trainer
@@ -751,7 +631,8 @@ class GaudiAccelerator(Accelerator):
                         "To save the full checkpoint, run `model.save_checkpoint(save_dir)` and use `zero_to_fp32.py` to recover weights."
                     )
             else:
-                # from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
+                from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
+
                 state_dict = clone_tensors_for_torch_save(self.unwrap_model(model).state_dict())
         else:
             if unwrap:
