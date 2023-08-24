@@ -1288,7 +1288,7 @@ class GaudiTrainer(Trainer):
         if self.state.epoch is not None:
             logs["epoch"] = round(self.state.epoch, 2)
 
-        mem_stats = get_hpu_memory_stats()
+        mem_stats = get_hpu_memory_stats(self.args.device)
         logs.update(mem_stats)
 
         output = {**logs, **{"step": self.state.global_step}}
