@@ -70,7 +70,7 @@ def write_checkpoints_json(model_name_or_path, local_rank, checkpoints_json):
     """
     checkpoint_files = get_checkpoint_files(model_name_or_path, local_rank)
     if local_rank == 0:
-        data = {"type": "BLOOM", "checkpoints": checkpoint_files, "version": 1.0}
+        data = {"type": "ds_model", "checkpoints": checkpoint_files, "version": 1.0}
         with open(checkpoints_json, "w") as fp:
             json.dump(data, fp)
 
