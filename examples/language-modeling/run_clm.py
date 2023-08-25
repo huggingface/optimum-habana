@@ -547,7 +547,7 @@ def main():
         if "train" not in tokenized_datasets:
             raise ValueError("--do_train requires a train dataset")
         train_dataset = lm_datasets["train"]
-        if data_args.max_train_samples is not None and not data_args.streaming:
+        if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
 
@@ -555,7 +555,7 @@ def main():
         if "validation" not in tokenized_datasets:
             raise ValueError("--do_eval requires a validation dataset")
         eval_dataset = lm_datasets["validation"]
-        if data_args.max_eval_samples is not None and not data_args.streaming:
+        if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
@@ -603,12 +603,10 @@ def main():
         metrics = train_result.metrics
 
         if data_args.streaming:
-            train_samples = training_args.max_steps * training_args.per_device_train_batch_size
+            metrics["train_samples"] = training_args.max_steps * training_args.per_device_train_batch_size
         else:
-            train_samples = len(train_dataset)
-
-        max_train_samples = data_args.max_train_samples if data_args.max_train_samples is not None else train_samples
-        metrics["train_samples"] = min(max_train_samples, train_samples)
+            max_train_samples = data_args.max_train_samples if data_args.max_train_samples is not None else  len(train_dataset)
+            metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
@@ -619,13 +617,9 @@ def main():
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
 
-        if data_args.streaming:
-            eval_samples = training_args.max_steps * training_args.per_device_eval_batch_size
-        else:
-            eval_samples = len(eval_dataset)
-
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else eval_samples
-        metrics["eval_samples"] = min(max_eval_samples, eval_samples)
+        if not data_args.streaming:
+            max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+            metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 
         try:
             perplexity = math.exp(metrics["eval_loss"])

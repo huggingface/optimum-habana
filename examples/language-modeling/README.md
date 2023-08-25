@@ -69,28 +69,6 @@ python run_clm.py \
     --throughput_warmup_steps 3
 ```
 
-To run with streaming dataset, use the '--streaming' flag with '--max_steps' and optionally'--max_eval_samples' (only when evaluation is enabled) specified like so:
-
-```bash
-python run_clm.py \
-    --model_name_or_path gpt2 \
-    --dataset_name wikitext \
-    --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --do_train \
-    --output_dir /tmp/test-clm \
-    --gaudi_config_name Habana/gpt2 \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
-    --throughput_warmup_steps 3 \
-    --streaming \
-    --max_steps 1000 \
-    --do_eval \
-    --max_eval_samples 200
-```
-
 ### Multi-card Training
 
 ```bash
@@ -311,7 +289,29 @@ python run_clm.py \
 
 ## Streaming
 
-To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` to the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
+To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified to the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
+
+To run with streaming dataset, use the '--streaming' flag with '--max_steps' and optionally'--max_eval_samples' (only when evaluation is enabled) specified like so:
+
+For example:
+```bash
+python run_clm.py \
+    --model_name_or_path gpt2 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
+    --streaming \
+    --max_steps 1000 \
+    --do_eval
+```
 
 
 ## Low Cpu Memory Usage
