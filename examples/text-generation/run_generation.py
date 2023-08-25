@@ -383,7 +383,6 @@ def main():
                 **input_tokens,
                 generation_config=generation_config,
                 lazy_mode=True,
-                hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
@@ -514,7 +513,6 @@ def main():
                 **batch,
                 generation_config=generation_config,
                 lazy_mode=True,
-                hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()

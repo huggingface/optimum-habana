@@ -202,7 +202,7 @@ class GaudiGenerationMixin(GenerationMixin):
         negative_prompt_ids: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         lazy_mode: Optional[bool] = False,
-        hpu_graphs: Optional[bool] = False,
+        hpu_graphs: Optional[bool] = None,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         **kwargs,
@@ -271,7 +271,7 @@ class GaudiGenerationMixin(GenerationMixin):
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
             hpu_graphs (`bool`, *optional*, defaults to `False`):
-                Whether to use HPU graphs for inference.
+                Deprecated. Whether to use HPU graphs for inference.
             profiling_warmup_steps (`int`, *optional*, defaults to 0):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
@@ -305,9 +305,10 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # 1. Handle `generation_config` and kwargs that might update it, and validate the `.generate()` call
         self._validate_model_class()
-        if hpu_graphs and not lazy_mode:
-            raise ValueError(
-                "`hpu_graphs` is True but `lazy_mode` is False. HPU graphs require `lazy_mode` to be set to True."
+        if hpu_graphs is not None:
+            warnings.warn(
+                "The argument `hpu_graphs` of the `generate` method is deprecated and will be removed in Optimum Habana v1.9.",
+                FutureWarning,
             )
 
         # priority: `generation_config` argument > `model.generation_config` (the default generation config)
@@ -1075,13 +1076,13 @@ class GaudiGenerationMixin(GenerationMixin):
         if not ignore_eos:
             unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
-        hb_profer.start()
+        hb_profiler = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profiler.start()
         this_peer_finished = False  # used by synced_gpus only
-        while True:
-            if lazy_mode:
-                self.htcore_generation.mark_step()
 
+        if lazy_mode:
+            self.htcore_generation.mark_step()
+        while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
@@ -1169,12 +1170,15 @@ class GaudiGenerationMixin(GenerationMixin):
             if stopping_criteria(input_ids, scores):
                 this_peer_finished = True
 
-            hb_profer.step()
+            if lazy_mode:
+                self.htcore_generation.mark_step()
+
+            hb_profiler.step()
 
             if this_peer_finished and not synced_gpus:
                 break
 
-        hb_profer.stop()
+        hb_profiler.stop()
         if streamer is not None:
             streamer.end()
 
@@ -1386,8 +1390,8 @@ class GaudiGenerationMixin(GenerationMixin):
         # keep track of which sequences are already finished
         # TODO: no ignore_eos check here since there is a compilation error, will add ignore_eos here if fixed
         unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
-        hb_profer.start()
+        hb_profiler = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profiler.start()
         this_peer_finished = False  # used by synced_gpus only
         # auto-regressive generation
         while True:
@@ -1484,12 +1488,12 @@ class GaudiGenerationMixin(GenerationMixin):
             if stopping_criteria(input_ids, scores):
                 this_peer_finished = True
 
-            hb_profer.step()
+            hb_profiler.step()
 
             if this_peer_finished and not synced_gpus:
                 break
 
-        hb_profer.stop()
+        hb_profiler.stop()
         if streamer is not None:
             streamer.end()
 
@@ -1705,8 +1709,8 @@ class GaudiGenerationMixin(GenerationMixin):
         beam_scores = torch.zeros((batch_size, num_beams), dtype=torch.float, device=input_ids.device)
         beam_scores[:, 1:] = -1e9
         beam_scores = beam_scores.view((batch_size * num_beams,))
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
-        hb_profer.start()
+        hb_profiler = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profiler.start()
         this_peer_finished = False  # used by synced_gpus only
         while True:
             if synced_gpus:
@@ -1810,13 +1814,13 @@ class GaudiGenerationMixin(GenerationMixin):
             # increase cur_len
             cur_len = cur_len + 1
 
-            hb_profer.step()
+            hb_profiler.step()
             if stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
                 if not synced_gpus:
                     break
                 else:
                     this_peer_finished = True
-        hb_profer.stop()
+        hb_profiler.stop()
 
         sequence_outputs = beam_scorer.finalize(
             input_ids,
@@ -2345,8 +2349,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
         this_peer_finished = False  # used by synced_gpus only
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
-        hb_profer.start()
+        hb_profiler = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profiler.start()
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -2451,14 +2455,14 @@ class GaudiGenerationMixin(GenerationMixin):
             # increase cur_len
             cur_len = cur_len + 1
 
-            hb_profer.step()
+            hb_profiler.step()
             if constrained_beam_scorer.is_done or stopping_criteria(input_ids, scores):
                 if not synced_gpus:
                     break
                 else:
                     this_peer_finished = True
 
-        hb_profer.stop()
+        hb_profiler.stop()
         sequence_outputs = constrained_beam_scorer.finalize(
             input_ids,
             beam_scores,
