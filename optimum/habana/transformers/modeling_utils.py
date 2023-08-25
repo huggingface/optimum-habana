@@ -30,6 +30,8 @@ from .models import (
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
     GaudiLlamaForCausalLM,
+    GaudiMptForCausalLM,
+    GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     gaudi_albert_forward,
@@ -64,6 +66,8 @@ from .models import (
     gaudi_llama_decoder_layer_forward,
     gaudi_llama_model_forward,
     gaudi_llama_rmsnorm_forward,
+    gaudi_mpt_attention_forward,
+    gaudi_mpt_block_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
@@ -201,3 +205,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for t5 on Gaudi
     transformers.models.t5.modeling_t5.T5LayerNorm.forward = gaudi_t5_layernorm_forward
+
+    # Optimization for mpt on Gaudi
+    transformers.models.mpt.modeling_mpt.MptForCausalLM = GaudiMptForCausalLM
+    transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
+    transformers.models.mpt.modeling_mpt.MptAttention.forward = gaudi_mpt_attention_forward
+    transformers.models.mpt.modeling_mpt.MptBlock.forward = gaudi_mpt_block_forward

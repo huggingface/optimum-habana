@@ -70,6 +70,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "falcon",
     "codegen",
     "gpt_bigcode",
+    "mpt",
 ]
 
 
