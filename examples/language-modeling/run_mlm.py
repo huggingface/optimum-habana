@@ -643,7 +643,9 @@ def main():
         if data_args.streaming:
             metrics["train_samples"] = training_args.max_steps * training_args.per_device_train_batch_size
         else:
-            max_train_samples = data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+            max_train_samples = (
+                data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+            )
             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
         trainer.log_metrics("train", metrics)
@@ -656,7 +658,9 @@ def main():
         metrics = trainer.evaluate()
 
         if not data_args.streaming:
-            max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+            max_eval_samples = (
+                data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+            )
             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 
         try:
