@@ -136,6 +136,7 @@ def get_hpu_memory_stats(device=None) -> Dict[str, float]:
     Returns:
         Dict[str, float]: memory stats.
     """
+    print("DEVICE", device)
     mem_stats = memory_stats(device)
 
     mem_dict = {
