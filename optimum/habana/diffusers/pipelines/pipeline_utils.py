@@ -20,6 +20,7 @@ import inspect
 import os
 import sys
 import tempfile
+import warnings
 from typing import Optional, Union
 
 import torch
@@ -114,6 +115,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                         "`use_habana_mixed_precision` or `use_torch_autocast` is True in the given Gaudi configuration but "
                         "`torch_dtype=torch.blfloat16` was given. Disabling mixed precision and continuing in bf16 only."
                     )
+                    self.gaudi_config.use_torch_autocast = False
+                    self.gaudi_config.use_habana_mixed_precision = False
                 elif self.gaudi_config.use_torch_autocast:
                     # Open temporary files to write mixed-precision ops
                     with tempfile.NamedTemporaryFile() as hmp_bf16_file:
@@ -126,13 +129,18 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                             os.environ["FP32_LIST"] = str(hmp_fp32_file)
 
                             import habana_frameworks.torch.core  # noqa
-
                 elif self.gaudi_config.use_habana_mixed_precision:
                     try:
                         from habana_frameworks.torch.hpex import hmp
                     except ImportError as error:
                         error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
                         raise error
+
+                    warnings.warn(
+                        "Habana Mixed Precision is deprecated and will be removed in SynapseAI v1.12. Please"
+                        " use Torch Autocast instead setting `use_torch_autocast=true` in your Gaudi configuration.",
+                        FutureWarning,
+                    )
 
                     # Open temporary files to write mixed-precision ops
                     with tempfile.NamedTemporaryFile() as hmp_bf16_file:
@@ -148,6 +156,14 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                                 fp32_file_path=hmp_fp32_file.name,
                                 isVerbose=self.gaudi_config.hmp_is_verbose,
                             )
+
+            # Workaround for Synapse 1.11 for full bf16 and Torch Autocast
+            if bf16_full_eval or self.gaudi_config.use_torch_autocast:
+                import diffusers
+
+                from ..models import gaudi_unet_2d_condition_model_forward
+
+                diffusers.models.unet_2d_condition.UNet2DConditionModel.forward = gaudi_unet_2d_condition_model_forward
 
             if self.use_hpu_graphs:
                 try:
@@ -334,7 +350,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         diffusers.pipelines.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
         diffusers.pipelines.pipeline_utils.ALL_IMPORTABLE_CLASSES = GAUDI_ALL_IMPORTABLE_CLASSES
 
-        # Define a new kwarg here to know in the __init__ whether to use mixed precision or not
+        # Define a new kwarg here to know in the __init__ whether to use full bf16 precision or not
         bf16_full_eval = kwargs.get("torch_dtype", None) == torch.bfloat16
         kwargs["bf16_full_eval"] = bf16_full_eval
 

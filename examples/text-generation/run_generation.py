@@ -20,9 +20,11 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 
 import argparse
 import copy
+import json
 import logging
 import os
 import time
+from pathlib import Path
 
 import torch
 from checkpoint_utils import (
@@ -33,7 +35,11 @@ from checkpoint_utils import (
     write_checkpoints_json,
 )
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers.utils import check_min_version
 
+
+# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+check_min_version("4.32.0")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -140,6 +146,25 @@ def main():
         help="Optional argument to give a path to a PEFT model.",
     )
     parser.add_argument("--num_return_sequences", type=int, default=1)
+    parser.add_argument(
+        "--token",
+        default=None,
+        type=str,
+        help="The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+        "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
+    )
+    parser.add_argument(
+        "--model_revision",
+        default="main",
+        type=str,
+        help="The specific model version to use (can be a branch name, tag name or commit id).",
+    )
+    parser.add_argument(
+        "--output_dir",
+        default=None,
+        type=str,
+        help="Output directory to store results in.",
+    )
 
     args = parser.parse_args()
 
@@ -169,7 +194,7 @@ def main():
         if not is_deepspeed_available():
             raise ImportError(
                 "This script requires deepspeed: `pip install"
-                " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
+                " git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0`."
             )
         import deepspeed
 
@@ -189,18 +214,37 @@ def main():
 
     set_seed(args.seed)
 
+    # TODO: remove the following hack when Falcon is available in Transformers
+    # Temporary hack for Falcon
+    if args.model_name_or_path == "tiiuae/falcon-7b":
+        args.model_revision = "4e2d06f0a7c6370ebabbc30c6f59377ae8f73d76"
+    elif args.model_name_or_path == "tiiuae/falcon-7b-instruct":
+        args.model_revision = "f8dac3fff96d5debd43edf56fb4e1abcfffbef28"
+    elif args.model_name_or_path == "tiiuae/falcon-40b":
+        args.model_revision = "f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232"
+    elif args.model_name_or_path == "tiiuae/falcon-40b-instruct":
+        args.model_revision = "7475ff8cfc36ed9a962b658ae3c33391566a85a5"
+
+    tokenizer_kwargs = {
+        "revision": args.model_revision,
+        "token": args.token,
+    }
     if args.bad_words is not None or args.force_words is not None:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+        tokenizer_kwargs["add_prefix_space"] = True
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
 
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
 
+    model_kwargs = {
+        "revision": args.model_revision,
+        "token": args.token,
+    }
+
     if use_deepspeed:
-        config = AutoConfig.from_pretrained(args.model_name_or_path)
+        config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
         is_optimized = model_is_optimized(config)
         is_bloom = model_is_bloom(config)
 
@@ -209,10 +253,12 @@ def main():
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
-            get_repo_root(args.model_name_or_path, args.local_rank)
+            get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
             # TODO: revisit placement on CPU when auto-injection is possible
             with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
-                model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+                )
         model = model.eval()
 
         # Initialize the model
@@ -235,8 +281,8 @@ def main():
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         model = model.module
     else:
-        get_repo_root(args.model_name_or_path)
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+        get_repo_root(args.model_name_or_path, token=args.token)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = model.eval().to(args.device)
         is_optimized = model_is_optimized(model.config)
 
@@ -393,6 +439,18 @@ def main():
                 ):
                     print(f"output {j+1}: {output}")
                 print(separator)
+
+            # Store results if necessary
+            if args.output_dir is not None:
+                output_dir = Path(args.output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                results = {
+                    "throughput": throughput,
+                    "output": output,
+                }
+                with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+                    json.dump(results, f, ensure_ascii=False, indent=4)
     else:
         # Downloading and loading a dataset from the hub.
         from datasets import load_dataset

@@ -25,8 +25,9 @@ class GaudiGPT2Attention(torch.nn.Module):
             torch.tril(torch.ones((max_positions, max_positions), dtype=torch.uint8)).view(
                 1, 1, max_positions, max_positions
             ),
+            persistent=False,
         )
-        self.register_buffer("masked_bias", torch.tensor(-1e4))
+        self.register_buffer("masked_bias", torch.tensor(-1e4), persistent=False)
 
         self.embed_dim = config.hidden_size
         self.num_heads = config.num_attention_heads
@@ -344,6 +345,7 @@ def gaudi_gpt2_forward(
     if input_ids is not None and inputs_embeds is not None:
         raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
     elif input_ids is not None:
+        self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
         input_shape = input_ids.size()
         input_ids = input_ids.view(-1, input_shape[-1])
         batch_size = input_ids.shape[0]
@@ -421,7 +423,7 @@ def gaudi_gpt2_forward(
 
     hidden_states = self.drop(hidden_states)
 
-    output_shape = input_shape + (hidden_states.size(-1),)
+    output_shape = (-1,) + input_shape[1:] + (hidden_states.size(-1),)
 
     if self.gradient_checkpointing and self.training:
         if use_cache:

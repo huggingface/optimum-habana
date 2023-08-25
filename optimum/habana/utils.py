@@ -33,7 +33,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.10.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.11.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -91,6 +91,8 @@ def speed_metrics(
 
     runtime = time.time() - start_time
     result = {f"{split}_runtime": round(runtime, 4)}
+    if runtime == 0:
+        return result
 
     # Adjust runtime if log_evaluate_save_time should not be included
     if log_evaluate_save_time is not None:
@@ -124,7 +126,7 @@ def to_gb_rounded(mem: float) -> float:
     return np.round(mem / 1024**3, 2)
 
 
-def get_hpu_memory_stats() -> Dict[str, float]:
+def get_hpu_memory_stats(device=None) -> Dict[str, float]:
     """
     Returns memory stats of HPU as a dictionary:
     - current memory allocated (GB)
@@ -134,7 +136,7 @@ def get_hpu_memory_stats() -> Dict[str, float]:
     Returns:
         Dict[str, float]: memory stats.
     """
-    mem_stats = memory_stats()
+    mem_stats = memory_stats(device)
 
     mem_dict = {
         "memory_allocated (GB)": to_gb_rounded(mem_stats["InUse"]),

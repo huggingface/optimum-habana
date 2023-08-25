@@ -3,11 +3,11 @@ import os
 from pathlib import Path
 
 import torch
-from huggingface_hub import list_repo_files, snapshot_download
-from transformers.utils import is_offline_mode, is_safetensors_available
+from huggingface_hub import snapshot_download
+from transformers.utils import is_offline_mode
 
 
-def get_repo_root(model_name_or_path, local_rank=-1):
+def get_repo_root(model_name_or_path, local_rank=-1, token=None):
     """
     Downloads the specified model checkpoint and returns the repository where it was downloaded.
     """
@@ -22,11 +22,6 @@ def get_repo_root(model_name_or_path, local_rank=-1):
 
         # Only download PyTorch weights by default
         allow_patterns = ["*.bin"]
-        # If the model repo contains any .safetensors file and
-        # safetensors is installed, only download safetensors weights
-        if is_safetensors_available():
-            if any(".safetensors" in filename for filename in list_repo_files(model_name_or_path)):
-                allow_patterns = ["*.safetensors"]
 
         # Download only on first process
         if local_rank in [-1, 0]:
@@ -36,6 +31,7 @@ def get_repo_root(model_name_or_path, local_rank=-1):
                 cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
                 allow_patterns=allow_patterns,
                 max_workers=16,
+                token=token,
             )
             if local_rank == -1:
                 # If there is only one process, then the method is finished
@@ -49,6 +45,7 @@ def get_repo_root(model_name_or_path, local_rank=-1):
             local_files_only=is_offline_mode(),
             cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
             allow_patterns=allow_patterns,
+            token=token,
         )
 
 

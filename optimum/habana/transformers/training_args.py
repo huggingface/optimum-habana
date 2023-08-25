@@ -26,19 +26,21 @@ from transformers.file_utils import cached_property, is_torch_available, require
 from transformers.trainer_utils import EvaluationStrategy, HubStrategy, IntervalStrategy, SchedulerType
 from transformers.training_args import (
     OptimizerNames,
+    ParallelMode,
     TrainingArguments,
     default_logdir,
-    get_int_from_env,
 )
 from transformers.utils import (
-    ccl_version,
     get_full_repo_name,
     is_accelerate_available,
-    is_psutil_available,
     is_safetensors_available,
+    strtobool,
 )
 
 from optimum.utils import logging
+
+from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
+from ..accelerate.utils import GaudiDistributedType
 
 
 if is_torch_available():
@@ -242,8 +244,17 @@ class GaudiTrainingArguments(TrainingArguments):
     half_precision_backend: str = field(
         default="hpu_amp",
         metadata={
-            "help": "The backend to use for half precision.",
+            "help": "The backend to be used for half precision.",
             "choices": ["cpu_amp", "hpu_amp"],
+        },
+    )
+
+    # Overriding ddp_backend to replace all possible backends by hccl
+    ddp_backend: Optional[str] = field(
+        default="hccl",
+        metadata={
+            "help": "The backend to be used for distributed training.",
+            "choices": ["hccl"],
         },
     )
 
@@ -296,17 +307,6 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.throughput_warmup_steps < 0:
             raise ValueError("--throughput_warmup_steps must be positive.")
 
-        # Handle --use_env option in torch.distributed.launch (local_rank not passed as an arg then).
-        # This needs to happen before any call to self.device or self.n_gpu.
-        env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
-        if env_local_rank != -1 and env_local_rank != self.local_rank:
-            self.local_rank = env_local_rank
-
-        if self.local_rank != -1 and self.use_hpu_graphs_for_training and self.distribution_strategy != "fast_ddp":
-            raise ValueError(
-                "`--use_hpu_graphs_for_training` may only be used with `--distribution_strategy fast_ddp`"
-            )
-
         # expand paths, if not os.makedirs("~/bar") will make directory
         # in the current directory instead of the actual home
         # see https://github.com/huggingface/transformers/issues/10628
@@ -355,6 +355,19 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.logging_strategy == IntervalStrategy.STEPS and self.logging_steps == 0:
             raise ValueError(f"logging strategy {self.logging_strategy} requires non-zero --logging_steps")
 
+        if self.logging_strategy == IntervalStrategy.STEPS and self.logging_steps > 1:
+            if self.logging_steps != int(self.logging_steps):
+                raise ValueError(f"--logging_steps must be an integer if bigger than 1: {self.logging_steps}")
+            self.logging_steps = int(self.logging_steps)
+        if self.evaluation_strategy == IntervalStrategy.STEPS and self.eval_steps > 1:
+            if self.eval_steps != int(self.eval_steps):
+                raise ValueError(f"--eval_steps must be an integer if bigger than 1: {self.eval_steps}")
+            self.eval_steps = int(self.eval_steps)
+        if self.save_strategy == IntervalStrategy.STEPS and self.save_steps > 1:
+            if self.save_steps != int(self.save_steps):
+                raise ValueError(f"--save_steps must be an integer if bigger than 1: {self.save_steps}")
+            self.save_steps = int(self.save_steps)
+
         # Sanity checks for load_best_model_at_end: we require save and eval strategies to be compatible.
         if self.load_best_model_at_end:
             if self.evaluation_strategy != self.save_strategy:
@@ -363,6 +376,20 @@ class GaudiTrainingArguments(TrainingArguments):
                     f"strategy: {self.evaluation_strategy}\n- Save strategy: {self.save_strategy}"
                 )
             if self.evaluation_strategy == IntervalStrategy.STEPS and self.save_steps % self.eval_steps != 0:
+                if self.eval_steps < 1 or self.save_steps < 1:
+                    if not (self.eval_steps < 1 and self.save_steps < 1):
+                        raise ValueError(
+                            "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
+                            "steps, which cannot get guaranteed when mixing ratio and absolute steps for save_steps"
+                            f"{self.save_steps} and eval_steps {self.eval_steps}."
+                        )
+                    # Work around floating point precision issues
+                    LARGE_MULTIPLIER = 1_000_000
+                    if (self.save_steps * LARGE_MULTIPLIER) % (self.eval_steps * LARGE_MULTIPLIER) != 0:
+                        raise ValueError(
+                            "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
+                            f"steps, but found {self.save_steps}, which is not a multiple of {self.eval_steps}."
+                        )
                 raise ValueError(
                     "--load_best_model_at_end requires the saving steps to be a round multiple of the evaluation "
                     f"steps, but found {self.save_steps}, which is not a round multiple of {self.eval_steps}."
@@ -379,12 +406,20 @@ class GaudiTrainingArguments(TrainingArguments):
                 f"https://github.com/huggingface/safetensors!"
             )
 
-        if self.load_best_model_at_end and self.metric_for_best_model is None:
+        if (
+            self.load_best_model_at_end or self.lr_scheduler_type == SchedulerType.REDUCE_ON_PLATEAU
+        ) and self.metric_for_best_model is None:
             self.metric_for_best_model = "loss"
         if self.greater_is_better is None and self.metric_for_best_model is not None:
             self.greater_is_better = self.metric_for_best_model not in ["loss", "eval_loss"]
         if self.run_name is None:
             self.run_name = self.output_dir
+
+        if self.lr_scheduler_type == SchedulerType.REDUCE_ON_PLATEAU:
+            if self.evaluation_strategy == IntervalStrategy.NO:
+                raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires an eval strategy")
+            if not is_torch_available():
+                raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires torch>=0.2.0")
 
         self.optim = OptimizerNames(self.optim)
         if self.adafactor:
@@ -399,6 +434,12 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.optim == OptimizerNames.ADAMW_TORCH_FUSED and is_torch_available():
             if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
                 raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
+
+        # if training args is specified, it will override the one specified in the accelerate config
+        mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
+        if self.bf16:
+            mixed_precision_dtype = "bf16"
+        os.environ["ACCELERATE_MIXED_PRECISION"] = mixed_precision_dtype
 
         if self.report_to is None:
             logger.info(
@@ -427,10 +468,13 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if isinstance(self.debug, str):
             self.debug = [DebugOption(s) for s in self.debug.split()]
+        elif self.debug is None:
+            self.debug = []
 
         # This call to self.device is necessary to call _setup_devices so that
         # torch.distributed is initialized
         device_is_hpu = self.device.type == "hpu"
+        self.deepspeed_plugin = None
         if self.deepspeed:
             if not device_is_hpu:
                 raise ValueError("This version of DeepSpeed must be run on HPUs.")
@@ -445,6 +489,20 @@ class GaudiTrainingArguments(TrainingArguments):
             # note: leave self.deepspeed unmodified in case a user relies on it not to be modified)
             self.hf_deepspeed_config = GaudiTrainerDeepSpeedConfig(self.deepspeed)
             self.hf_deepspeed_config.trainer_config_process(self)
+
+            # Accelerate DeepSpeed Plugin
+            from accelerate.utils import DeepSpeedPlugin
+
+            os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
+            self.deepspeed_plugin = DeepSpeedPlugin(hf_ds_config=self.hf_deepspeed_config)
+        elif strtobool(os.environ.get("ACCELERATE_USE_DEEPSPEED", "false")):
+            # Accelerate DeepSpeed Plugin
+            from accelerate.utils import DeepSpeedPlugin
+
+            self.deepspeed_plugin = DeepSpeedPlugin()
+            mixed_precision = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
+            self.deepspeed_plugin.set_mixed_precision(mixed_precision)
+            self.deepspeed_plugin.set_deepspeed_weakref()
 
         if self.push_to_hub_token is not None:
             warnings.warn(
@@ -489,6 +547,10 @@ class GaudiTrainingArguments(TrainingArguments):
                 FutureWarning,
             )
 
+        # TODO: change to True after further testing with examples (cf. summarization)
+        # Finally set the `TrainingArguments` to be immutable
+        self._frozen = False
+
     def __str__(self):
         self_as_dict = asdict(self)
 
@@ -511,75 +573,25 @@ class GaudiTrainingArguments(TrainingArguments):
     def _setup_devices(self) -> "torch.device":
         requires_backends(self, ["torch"])
 
+        logger.info("PyTorch: setting up devices")
+        if not is_accelerate_available(min_version="0.21.0"):
+            raise ImportError(
+                "Using the `GaudiTrainer` requires `accelerate>=0.21.0`: Please run `pip install accelerate -U`."
+            )
+        GaudiAcceleratorState._reset_state()
+        GaudiPartialState._reset_state()
+        self.distributed_state = None
+
         # Set the log level here for optimum.utils.logging
         # otherwise logs are not sent in this method.
         log_level = self.get_process_log_level()
         logging.set_verbosity(log_level)
 
-        logger.info("PyTorch: setting up devices")
-        if torch.distributed.is_available() and torch.distributed.is_initialized() and self.local_rank == -1:
-            logger.warning("torch.distributed process group is initialized, but local_rank == -1. ")
-        if self.no_cuda:
-            device = torch.device("cpu")
+        if not self.use_ipex and "ACCELERATE_USE_IPEX" not in os.environ:
+            os.environ["ACCELERATE_USE_IPEX"] = "false"
+        if self.use_cpu or strtobool(os.environ.get("ACCELERATE_USE_CPU", "False")):
+            self.distributed_state = GaudiPartialState(cpu=True, backend=self.ddp_backend)
             self._n_gpu = 0
-            self.local_rank = get_int_from_env(
-                ["LOCAL_RANK", "MPI_LOCALRANKID", "OMPI_COMM_WORLD_LOCAL_RANK", "MV2_COMM_WORLD_LOCAL_RANK"],
-                self.local_rank,
-            )
-            if self.local_rank != -1 and not torch.distributed.is_initialized():
-                # Initializes distributed backend for cpu
-                if self.xpu_backend not in ("mpi", "ccl", "gloo"):
-                    raise ValueError(
-                        "CPU distributed training backend is not properly set. "
-                        "Please set '--xpu_backend' to either 'mpi' or 'ccl' or 'gloo'."
-                    )
-                if self.xpu_backend == "ccl":
-                    requires_backends(self, "oneccl_bind_pt")
-                    if ccl_version >= "1.12":
-                        import oneccl_bindings_for_pytorch  # noqa: F401
-                    else:
-                        import torch_ccl  # noqa: F401
-                    if int(os.environ.get("CCL_WORKER_COUNT", 0)) < 1:
-                        raise ValueError(
-                            "CPU distributed training backend is ccl. but CCL_WORKER_COUNT is not correctly set. "
-                            "Please use like 'export CCL_WORKER_COUNT = 1' to set."
-                        )
-
-                # Try to get launch configuration from environment variables set by MPI launcher - works for Intel MPI, OpenMPI and MVAPICH
-                rank = get_int_from_env(["RANK", "PMI_RANK", "OMPI_COMM_WORLD_RANK", "MV2_COMM_WORLD_RANK"], 0)
-                size = get_int_from_env(["WORLD_SIZE", "PMI_SIZE", "OMPI_COMM_WORLD_SIZE", "MV2_COMM_WORLD_SIZE"], 1)
-                local_size = get_int_from_env(
-                    ["MPI_LOCALNRANKS", "OMPI_COMM_WORLD_LOCAL_SIZE", "MV2_COMM_WORLD_LOCAL_SIZE"], 1
-                )
-                os.environ["RANK"] = str(rank)
-                os.environ["WORLD_SIZE"] = str(size)
-                os.environ["LOCAL_RANK"] = str(self.local_rank)
-                if not os.environ.get("MASTER_PORT", None):
-                    os.environ["MASTER_PORT"] = "29500"
-                if not os.environ.get("MASTER_ADDR", None):
-                    if local_size != size or self.xpu_backend != "mpi":
-                        raise ValueError(
-                            "Looks like distributed multinode run but MASTER_ADDR env not set, "
-                            "please try exporting rank 0's hostname as MASTER_ADDR"
-                        )
-                if (
-                    torch.get_num_threads() == 1
-                    and get_int_from_env(["OMP_NUM_THREADS", "MKL_NUM_THREADS"], 0) == 0
-                    and is_psutil_available()
-                ):
-                    import psutil
-
-                    num_cpu_threads_per_process = int(psutil.cpu_count(logical=False) / local_size)
-                    if num_cpu_threads_per_process == 0:
-                        num_cpu_threads_per_process = 1
-                    torch.set_num_threads(num_cpu_threads_per_process)
-                    logger.info(
-                        f"num_cpu_threads_per_process unset, we set it at {num_cpu_threads_per_process} to improve oob"
-                        " performance."
-                    )
-                torch.distributed.init_process_group(
-                    backend=self.xpu_backend, rank=rank, world_size=size, timeout=self.ddp_timeout_delta
-                )
         elif self.use_habana:
             # Some methods needs to be tweaked to optimally run on Gaudi
             # Calling this method here to be sure it is done before model instantiation
@@ -594,40 +606,34 @@ class GaudiTrainingArguments(TrainingArguments):
                 os.environ["PT_HPU_LAZY_MODE"] = "2"
                 logger.info("Enabled eager mode because use_lazy_mode=False.")
 
-            device = torch.device("hpu")
-            self._n_gpu = 1
-
-            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
-
-            world_size, rank, self.local_rank = initialize_distributed_hpu()
-
             if self.deepspeed:
-                # deepspeed inits torch.distributed internally
-                from transformers.deepspeed import is_deepspeed_available
-
-                if not is_deepspeed_available():
-                    raise ImportError(
-                        "--deepspeed requires deepspeed: `pip install"
-                        " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
-                    )
-                import deepspeed
-
-                if world_size > 1:
-                    os.environ["HLS_MODULE_ID"] = str(self.local_rank)
-                    os.environ["ID"] = str(rank)
-
-                deepspeed.init_distributed(dist_backend="hccl", timeout=timedelta(seconds=self.ddp_timeout))
-                logger.info("DeepSpeed is enabled.")
+                # Need to do similar for Accelerator init
+                os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
+                self.distributed_state = GaudiPartialState(timeout=timedelta(seconds=self.ddp_timeout))
+                del os.environ["ACCELERATE_USE_DEEPSPEED"]
             else:
-                if self.local_rank != -1:
-                    if not torch.distributed.is_initialized():
-                        torch.distributed.init_process_group(backend="hccl", rank=rank, world_size=world_size)
-                        logger.info("Enabled distributed run.")
-                else:
-                    logger.info("Single-device run.")
+                self.distributed_state = GaudiPartialState(
+                    backend=self.ddp_backend, timeout=timedelta(seconds=self.ddp_timeout)
+                )
+            self._n_gpu = 1
         else:
             raise ValueError(
                 "No device has been set. Use either --use_habana to run on HPU or --no_cuda to run on CPU."
             )
+
+        device = self.distributed_state.device
+        self.local_rank = self.distributed_state.local_process_index
+        if (
+            torch.distributed.is_available()
+            and torch.distributed.is_initialized()
+            and self.parallel_mode != ParallelMode.DISTRIBUTED
+        ):
+            logger.warning(
+                "torch.distributed process group is initialized, but parallel_mode != ParallelMode.DISTRIBUTED. "
+                "In order to use Torch DDP, launch your script with `python -m torch.distributed.launch"
+            )
+
+        if self.distributed_state.distributed_type == GaudiDistributedType.NO:
+            self._n_gpu = 0
 
         return device

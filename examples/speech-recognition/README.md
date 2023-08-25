@@ -51,6 +51,7 @@ python run_speech_recognition_ctc.py \
     --eval_split_name="validation" \
     --output_dir="/tmp/wav2vec2-librispeech-clean-100h-demo-dist" \
     --preprocessing_num_workers="64" \
+    --dataloader_num_workers 8 \
     --overwrite_output_dir \
     --num_train_epochs="3" \
     --per_device_train_batch_size="4" \
@@ -88,6 +89,7 @@ python ../gaudi_spawn.py \
     --eval_split_name validation \
     --output_dir /tmp/wav2vec2-librispeech-clean-100h-demo-dist \
     --preprocessing_num_workers 64 \
+    --dataloader_num_workers 8 \
     --overwrite_output_dir \
     --num_train_epochs 3 \
     --per_device_train_batch_size 4 \
@@ -117,7 +119,7 @@ On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -135,6 +137,7 @@ python ../gaudi_spawn.py \
     --eval_split_name validation \
     --output_dir /tmp/wav2vec2-librispeech-clean-100h-demo-dist \
     --preprocessing_num_workers 64 \
+    --dataloader_num_workers 8 \
     --overwrite_output_dir \
     --num_train_epochs 3 \
     --per_device_train_batch_size 4 \
@@ -175,6 +178,7 @@ python run_speech_recognition_ctc.py \
     --eval_split_name="validation" \
     --output_dir="/tmp/wav2vec2-librispeech-clean-100h-demo-dist" \
     --preprocessing_num_workers="64" \
+    --dataloader_num_workers 8 \
     --overwrite_output_dir \
     --text_column_name="text" \
     --chars_to_ignore , ? . ! - \; \: \" “ % ‘ ” \

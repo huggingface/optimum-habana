@@ -22,13 +22,12 @@ GPT-2 is trained or fine-tuned using a causal language modeling (CLM) loss while
 The following examples will run on datasets hosted on our [hub](https://huggingface.co/datasets) or with your own
 text files for training and validation. We give examples of both below.
 
-## GPT-2/GPT and causal language modeling
+## GPT2/GPT-J/GPT-NeoX and causal language modeling
 
-The following examples fine-tune GPT-2 on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before
-the tokenization). The loss here is that of causal language modeling.
+The following examples fine-tune GPT-2, GPT-J-6B and GPT-NeoX-20B on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before the tokenization). The loss here is the one of causal language modeling.
 
 
-### Single-card Training
+### Single-card Training (GPT2)
 
 ```bash
 python run_clm.py \
@@ -69,7 +68,8 @@ python run_clm.py \
     --throughput_warmup_steps 3
 ```
 
-### Multi-card Training
+
+### Multi-card Training (GPT2)
 
 ```bash
 python ../gaudi_spawn.py \
@@ -95,11 +95,70 @@ This takes about 4 minutes to train on 8 HPUs. It reaches
 a perplexity of 21.7968 once fine-tuned on the dataset.
 
 
+### Multi-card Training with Deepspeed (GPT-J)
+
+The following command triggers the fine-tuning of [GPT-J-6B](https://huggingface.co/EleutherAI/gpt-j-6b) on WikiText-2 with DeepSpeed ZeRO-2.
+Fine tuning on 8 HPU cards takes around 6 minutes with a batch size of 32 (4 per device).
+It reaches a perplexity of 14.011.
+
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --model_name_or_path EleutherAI/gpt-j-6b \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm-xl-1 \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --gradient_checkpointing \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
+    --deepspeed path_for_deepspeed_config
+```
+
+This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
+
+
+## Multi-Node Training with Deepspeed (GPT-NeoX)
+
+The following command triggers the fine-tuning of [GPT-NeoX-20B](https://huggingface.co/EleutherAI/gpt-neox-20b) on WikiText-2 with Deepspeed ZeRO-2.
+Fine-tuning on 16 HPU cards (2 Gaudi2 nodes) takes around 9 minutes with a batch size of 32 (2 per device).
+It reaches a perplexity of 10.469.
+
+> Please refer to [this page](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training) for performing multi-node training properly.
+
+```bash
+python ../gaudi_spawn.py \
+    --hostfile path_to_my_hostfile --world_size 16 --use_deepspeed run_clm.py \
+    --model_name_or_path EleutherAI/gpt-neox-20b \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 2\
+    --per_device_eval_batch_size 2 \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-clm-xl-bs2 \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --gradient_checkpointing \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
+    --deepspeed path_for_deepspeed_config
+```
+
+This example has been validated with the following DeepSpeed ZeRO-2 config: https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_2.json
+
+
 ## RoBERTa/BERT/DistilBERT and masked language modeling
 
 The following examples fine-tune RoBERTa on WikiText-2. Here too, we're using the raw WikiText-2. The loss is different as BERT/RoBERTa have a bidirectional mechanism; we're therefore using the same loss that was used during their pre-training: masked language modeling.
-
-In accordance with the RoBERTa paper, we use dynamic masking rather than static masking. The model may, therefore,
+Following the RoBERTa paper, we use dynamic masking rather than static masking. The model may, therefore,
 converge slightly slower (over-fitting takes more epochs).
 
 
@@ -192,48 +251,21 @@ python run_clm.py \
 ```
 
 
-## Creating a model on the fly
-
-When training a model from scratch, configuration values may be overridden with the help of `--config_overrides`:
-
-```bash
-python run_clm.py \
-    --model_type gpt2 \
-    --tokenizer_name gpt2 \
-    --config_overrides="n_embd=1024,n_head=16,n_layer=48,n_positions=1024" \
-    --dataset_name wikitext \
-    --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 2 \
-    --per_device_eval_batch_size 2 \
-    --do_train \
-    --do_eval \
-    --gradient_checkpointing \
-    --use_cache False \
-    --output_dir /tmp/test-clm \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
-    --gaudi_config_name Habana/gpt2 \
-    --throughput_warmup_steps 3
-```
-
-<!-- This feature is only available in `run_clm.py` and `run_mlm.py`. -->
-
-
 ## Using DeepSpeed
 
-Multi-card examples can be simply adapted to be run with DeepSpeed. Here is the CLM example with GPT-2:
+Multi-card examples can be simply adapted to be run with DeepSpeed. Here is the CLM example with GPT2-XL:
 
 ```bash
 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_clm.py \
-    --model_name_or_path gpt2 \
+    --model_name_or_path gpt2-xl \
     --dataset_name wikitext \
     --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 4 \
+    --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 4 \
     --do_train \
     --do_eval \
+    --learning_rate 4e-4 \
     --output_dir /tmp/test-clm \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
@@ -285,39 +317,6 @@ python run_clm.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference
 ```
-
-
-## Streaming
-
-To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified to the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
-
-To run with streaming dataset, use the '--streaming' flag with '--max_steps' and optionally'--max_eval_samples' (only when evaluation is enabled) specified like so:
-
-For example:
-```bash
-python run_clm.py \
-    --model_name_or_path gpt2 \
-    --dataset_name wikitext \
-    --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --do_train \
-    --output_dir /tmp/test-clm \
-    --gaudi_config_name Habana/gpt2 \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
-    --throughput_warmup_steps 3 \
-    --streaming \
-    --max_steps 1000 \
-    --do_eval
-```
-
-
-## Low Cpu Memory Usage
-
-To use low cpu memory mode which can be very useful for LLM, add `--low_cpu_mem_usage` to the command line.
-
 
 
 ## PEFT
@@ -372,3 +371,61 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --throughput_warmup_steps 3
 ```
+
+
+## Streaming
+
+To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified in the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
+
+For example:
+```bash
+python run_clm.py \
+    --model_name_or_path gpt2 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --do_train \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/gpt2 \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
+    --streaming \
+    --max_steps 1000 \
+    --do_eval
+```
+
+
+## Creating a model on the fly
+
+When training a model from scratch, configuration values may be overridden with the help of `--config_overrides`:
+
+```bash
+python run_clm.py \
+    --model_type gpt2 \
+    --tokenizer_name gpt2 \
+    --config_overrides="n_embd=1024,n_head=16,n_layer=48,n_positions=1024" \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --do_train \
+    --do_eval \
+    --gradient_checkpointing \
+    --use_cache False \
+    --output_dir /tmp/test-clm \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --gaudi_config_name Habana/gpt2 \
+    --throughput_warmup_steps 3
+```
+
+<!-- This feature is only available in `run_clm.py` and `run_mlm.py`. -->
+
+
+## Low Cpu Memory Usage
+
+To use low cpu memory mode which can be very useful for LLM, add `--low_cpu_mem_usage` to the command line.

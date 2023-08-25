@@ -1,28 +1,34 @@
-29a30
+30a31
 > import transformers
-32,33d32
+33,34d33
 < 
 < import transformers
-40,41d38
+41,42d39
 <     Seq2SeqTrainingArguments,
 <     set_seed,
-46a44,46
+47a45,47
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
-49c49
-< check_min_version("4.29.0.dev0")
+50c50
+< check_min_version("4.33.0.dev0")
 ---
-> check_min_version("4.28.0")
-168c168
+> check_min_version("4.32.0")
+185c185
 <                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
 ---
 >                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on HPU)."
-268c268
+285c285
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-297a298,304
+294c294,296
+<         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
+---
+>         warnings.warn(
+>             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
+>         )
+320a323,329
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -30,16 +36,18 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-300,301c307,309
+321a331
+>     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
+323,324c333,335
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+<         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
->         + f"distributed training: {bool(training_args.local_rank != -1)}, "
->         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-645a654
+>         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
+>         + f"mixed-precision training: {mixed_precision}"
+671a683
 >         gaudi_config=gaudi_config,
-719,723d727
+745,749d756
 < 
 < 
 < def _mp_fn(index):
