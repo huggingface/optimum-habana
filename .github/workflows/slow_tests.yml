@@ -263,6 +263,7 @@ jobs:
       - multi-card
       - single-card
       - albert-xxl-single-card
+      - text-generation
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2
