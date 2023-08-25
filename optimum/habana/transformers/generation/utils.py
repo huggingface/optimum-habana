@@ -1393,11 +1393,11 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profiler = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profiler.start()
         this_peer_finished = False  # used by synced_gpus only
+
+        if lazy_mode:
+            self.htcore_generation.mark_step()
         # auto-regressive generation
         while True:
-            if lazy_mode:
-                self.htcore_generation.mark_step()
-
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
@@ -1487,6 +1487,9 @@ class GaudiGenerationMixin(GenerationMixin):
             # stop if we exceed the maximum length
             if stopping_criteria(input_ids, scores):
                 this_peer_finished = True
+
+            if lazy_mode:
+                self.htcore_generation.mark_step()
 
             hb_profiler.step()
 
@@ -1712,6 +1715,9 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profiler = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profiler.start()
         this_peer_finished = False  # used by synced_gpus only
+
+        if lazy_mode:
+            self.htcore_generation.mark_step()
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -1814,12 +1820,17 @@ class GaudiGenerationMixin(GenerationMixin):
             # increase cur_len
             cur_len = cur_len + 1
 
+            if lazy_mode:
+                self.htcore_generation.mark_step()
+
             hb_profiler.step()
+
             if stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
                 if not synced_gpus:
                     break
                 else:
                     this_peer_finished = True
+
         hb_profiler.stop()
 
         sequence_outputs = beam_scorer.finalize(
@@ -2351,6 +2362,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
         hb_profiler = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profiler.start()
+
+        if lazy_mode:
+            self.htcore_generation.mark_step()
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -2454,6 +2468,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # increase cur_len
             cur_len = cur_len + 1
+
+            if lazy_mode:
+                self.htcore_generation.mark_step()
 
             hb_profiler.step()
             if constrained_beam_scorer.is_done or stopping_criteria(input_ids, scores):
