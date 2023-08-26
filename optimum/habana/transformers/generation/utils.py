@@ -1679,6 +1679,10 @@ class GaudiGenerationMixin(GenerationMixin):
         num_beams = beam_scorer.num_beams
 
         batch_beam_size, cur_len = input_ids.shape
+        token_idx = model_kwargs.get("token_idx", None)
+        if token_idx is not None:
+            # Update cur_len in case of static shapes
+            cur_len = token_idx.item()
 
         if num_beams * batch_size != batch_beam_size:
             raise ValueError(
@@ -1779,7 +1783,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # stateless
             beam_outputs = beam_scorer.process(
-                input_ids,
+                input_ids[:, :cur_len],
                 next_token_scores,
                 next_tokens,
                 next_indices,
@@ -1793,6 +1797,7 @@ class GaudiGenerationMixin(GenerationMixin):
             beam_idx = beam_outputs["next_beam_indices"]
 
             if token_idx is not None:
+                input_ids = input_ids[beam_idx, :]
                 input_ids.index_copy_(
                     1, token_idx, beam_next_tokens.unsqueeze(-1) if beam_next_tokens.dim() == 1 else beam_next_tokens
                 )
@@ -2316,6 +2321,10 @@ class GaudiGenerationMixin(GenerationMixin):
         num_beams = constrained_beam_scorer.num_beams
 
         batch_beam_size, cur_len = input_ids.shape
+        token_idx = model_kwargs.get("token_idx", None)
+        if token_idx is not None:
+            # Update cur_len in case of static shapes
+            cur_len = token_idx.item()
 
         if num_beams * batch_size != batch_beam_size:
             raise ValueError(
@@ -2372,7 +2381,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 cur_len = cur_len + 1
                 continue  # don't waste resources running the code we don't need
 
-            token_idx = model_kwargs.get("token_idx", None)
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
@@ -2420,7 +2428,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # stateless
             beam_outputs = constrained_beam_scorer.process(
-                input_ids[:, : token_idx.item()],
+                input_ids[:, :cur_len],
                 next_token_scores,
                 next_tokens,
                 next_indices,
