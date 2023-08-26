@@ -17,8 +17,11 @@ import transformers
 
 from .generation import GaudiGenerationConfig, GaudiGenerationMixin
 from .models import (
+    GaudiBloomAttention,
+    GaudiBloomBlock,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
+    GaudiBloomModel,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     GaudiFalconForCausalLM,
@@ -35,11 +38,8 @@ from .models import (
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     gaudi_albert_forward,
-    gaudi_bloom_attention_forward,
-    gaudi_bloom_block_forward,
     gaudi_bloom_convert_to_bloom_cache,
     gaudi_bloom_convert_to_standard_cache,
-    gaudi_bloom_model_forward,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
     gaudi_conv1d_forward,
@@ -117,9 +117,9 @@ def adapt_transformers_to_gaudi():
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
 
     # Optimization for BLOOM generation on Gaudi
-    transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
-    transformers.models.bloom.modeling_bloom.BloomBlock.forward = gaudi_bloom_block_forward
-    transformers.models.bloom.modeling_bloom.BloomModel.forward = gaudi_bloom_model_forward
+    transformers.models.bloom.modeling_bloom.BloomAttention = GaudiBloomAttention
+    transformers.models.bloom.modeling_bloom.BloomBlock = GaudiBloomBlock
+    transformers.models.bloom.modeling_bloom.BloomModel = GaudiBloomModel
     transformers.models.bloom.modeling_bloom.BloomMLP = GaudiBloomMLP
     transformers.models.bloom.modeling_bloom.BloomForCausalLM = GaudiBloomForCausalLM
     transformers.models.bloom.modeling_bloom.BloomPreTrainedModel._convert_to_standard_cache = (

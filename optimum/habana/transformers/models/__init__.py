@@ -1,12 +1,12 @@
 from .albert import gaudi_albert_forward
 from .bloom import (
+    GaudiBloomAttention,
+    GaudiBloomBlock,
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
-    gaudi_bloom_attention_forward,
-    gaudi_bloom_block_forward,
+    GaudiBloomModel,
     gaudi_bloom_convert_to_bloom_cache,
     gaudi_bloom_convert_to_standard_cache,
-    gaudi_bloom_model_forward,
 )
 from .codegen import (
     GaudiCodeGenAttention,

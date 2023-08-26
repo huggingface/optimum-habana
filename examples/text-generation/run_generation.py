@@ -175,8 +175,9 @@ def main():
     )
     if use_deepspeed:
         # Set necessary env variables
-        os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
+        if int(os.environ["WORLD_SIZE"]) < 9:
+            os.environ.setdefault("HCL_USE_IN_ORDER_COLLECTIVE_GAUDI2", "1")
 
     # Device is HPU
     args.device = "hpu"
