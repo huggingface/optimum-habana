@@ -1,5 +1,5 @@
 {
-    "common_language": {
+    "jmhessel/newyorker_caption_contest": {
         "num_train_epochs": 10,
         "eval_batch_size": 32,
         "distribution": {

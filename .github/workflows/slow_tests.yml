@@ -222,6 +222,38 @@ jobs:
       - name: Warning
         if: github.event.schedule != '0 21 * * 6'
         run: echo "ALBERT XXL 1x is only tested on Saturdays."
+  text-generation:
+    name: Test text-generation example
+    if: ${{ !cancelled() && (success() || failure()) }}
+    needs:
+      - start-runner
+      - example-diff
+      - deepspeed
+      - multi-card
+      - single-card
+      - albert-xxl-single-card  # run the job when the previous test jobs are done
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    env:
+      AWS_REGION: us-west-2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Pull image
+        run: |
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+      - name: Run tests
+        run: |
+            docker run \
+            -v $PWD:/root/workspace \
+            --workdir=/root/workspace \
+            --runtime=habana \
+            -e HABANA_VISIBLE_DEVICES=all \
+            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            --cap-add=sys_nice \
+            --net=host \
+            --ipc=host \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            make slow_tests_text_generation_example TOKEN=${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
@@ -231,6 +263,7 @@ jobs:
       - multi-card
       - single-card
       - albert-xxl-single-card
+      - text-generation
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2
