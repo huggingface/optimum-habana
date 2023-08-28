@@ -270,6 +270,8 @@ class GaudiAccelerator(Accelerator):
         """
         if device_placement is None:
             device_placement = self.device_placement and self.distributed_type != DistributedType.FSDP
+            if not evaluation_mode and self.distributed_type == GaudiDistributedType.MULTI_HPU:
+                device_placement = None
         self._models.append(model)
 
         if self.verify_device_map(model) and self.distributed_type != DistributedType.NO:
