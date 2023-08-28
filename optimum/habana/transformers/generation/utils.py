@@ -623,7 +623,7 @@ class GaudiGenerationMixin(GenerationMixin):
         )
 
         # 9. prepare stopping criteria
-        if is_greedy_gen_mode:
+        if generation_mode == GenerationMode.GREEDY_SEARCH:
             stopping_criteria = _get_stopping_criteria(
                 self, generation_config=generation_config, stopping_criteria=stopping_criteria
             )
