@@ -489,7 +489,7 @@ class CausalLM(Model):
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
     def forward(
-        self, input_ids, attention_mask, token_idx=None, past_key_values: Optional = None
+        self, input_ids, attention_mask, position_ids, token_idx=None, past_key_values: Optional = None
     ) -> Tuple[torch.Tensor, List[Tuple[torch.Tensor, torch.Tensor]]]:
         # Model Forward
         kwargs = {
@@ -501,8 +501,14 @@ class CausalLM(Model):
         }
 
         if self.is_optimized_for_gaudi:
+            if not past_key_values:
+                # add padding to position_id
+                position_ids = attention_mask.long().cumsum(-1) - 1
+                position_ids.masked_fill_(attention_mask == 0, 1)
             kwargs["token_idx"] = token_idx
 
+        if self.has_position_ids:
+            kwargs["position_ids"] = position_ids
         outputs = self.model.forward(**kwargs)
         return outputs.logits, outputs.past_key_values
 
@@ -519,6 +525,7 @@ class CausalLM(Model):
         logits, past = self.forward(
             batch.input_ids,
             attention_mask,
+            batch.position_ids,
             token_idx,
             batch.past_key_values,
         )
