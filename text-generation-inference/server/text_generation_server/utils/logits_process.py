@@ -3,6 +3,7 @@ import torch
 
 from functools import lru_cache
 from typing import Optional, List, Dict, Union
+import habana_frameworks.torch.core as htcore
 
 from transformers import (
     LogitsWarper,
@@ -40,10 +41,6 @@ class StaticWarper:
         self.static_scores = None
         self.static_warped_scores = None
         self.static_next_logprob = None
-
-        import habana_frameworks.torch.core as htcore
-
-        self.htcore = htcore
 
     def __call__(self, scores):
         if self.hpu_graph is None:
