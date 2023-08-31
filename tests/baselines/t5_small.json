@@ -9,6 +9,7 @@
                 "eval_rougeLsum": 38.5497,
                 "train_runtime": 3612.5274,
                 "train_samples_per_second": 240.042,
+		"eval_samples_per_second": 19.774,
                 "extra_arguments": [
                     "--dataset_config \"3.0.0\"",
                     "--source_prefix \"summarize: \"",
@@ -47,3 +48,4 @@
         }
     }
 }
+
