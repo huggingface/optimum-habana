@@ -1,4 +1,5 @@
 import asyncio
+import os
 import torch
 
 from grpc import aio
@@ -11,9 +12,8 @@ from typing import List, Optional
 from text_generation_server.cache import Cache
 from text_generation_server.interceptor import ExceptionInterceptor
 from text_generation_server.models import Model, get_model
-from text_generation_server.pb import generate_pb2, generate_pb2_grpc
+from text_generation_server.pb import generate_pb2_grpc, generate_pb2
 from text_generation_server.tracing import UDSOpenTelemetryAioServerInterceptor
-
 
 class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
     def __init__(self, model: Model, cache: Cache, server_urls: List[str]):
@@ -24,6 +24,7 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         if model.device.type == "hpu":
             # Force inference mode for the lifetime of TextGenerationService
             self._inference_mode_raii_guard = torch._C._InferenceMode(True)
+
 
     async def Info(self, request, context):
         return self.model.info
@@ -50,21 +51,17 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         filtered_batch = batch.filter(request.request_ids)
         self.cache.set(filtered_batch)
 
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
         return generate_pb2.FilterBatchResponse(batch=filtered_batch.to_pb())
 
     async def Warmup(self, request, context):
         # batch = self.model.batch_type.from_pb(
         #     request.batch, self.model.tokenizer, self.model.dtype, self.model.device
         # )
-        # self.model.warmup(batch, request.max_total_tokens)
+        # max_supported_total_tokens = self.model.warmup(batch)
 
-        # if torch.cuda.is_available():
-        #     torch.cuda.empty_cache()
-
-        # return generate_pb2.WarmupResponse()
+        # return generate_pb2.WarmupResponse(
+        #     max_supported_total_tokens=max_supported_total_tokens
+        # )
         logger.warning("Warmup is not enabled on HPU.")
         return generate_pb2.WarmupResponse()
 
@@ -97,8 +94,6 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
 
         if len(batches) > 1:
             batch = self.model.batch_type.concatenate(batches)
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
         else:
             batch = batches[0]
 
