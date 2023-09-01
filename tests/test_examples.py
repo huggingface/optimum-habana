@@ -54,10 +54,8 @@ from .utils import (
 BASELINE_DIRECTORY = Path(__file__).parent.resolve() / Path("baselines")
 # Models should reach at least 99% of their baseline accuracy
 ACCURACY_PERF_FACTOR = 0.99
-# Trainings should last at most 5% longer than the baseline
-TRAINING_TIME_PERF_FACTOR = 1.05
-# Evaluations should last at most 5% longer than the baseline
-EVAL_TIME_PERF_FACTOR = 1.05
+# Trainings/Evaluations should last at most 5% longer than the baseline
+TIME_PERF_FACTOR = 1.05
 
 
 def _get_supported_models_for_script(
@@ -352,10 +350,10 @@ class ExampleTesterBase(TestCase):
         "eval_accuracy": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
         "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
-        "train_runtime": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
+        "train_runtime": (TestCase.assertLessEqual, TIME_PERF_FACTOR),
         "eval_wer": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
-        "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TRAINING_TIME_PERF_FACTOR),
-        "eval_samples_per_second": (TestCase.assertGreaterEqual, 2 - EVAL_TIME_PERF_FACTOR),
+        "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
+        "eval_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
     }
 
     def _create_command_line(
