@@ -20,7 +20,6 @@ def get_model(
     revision: Optional[str],
     dtype: Optional[torch.dtype] = None,
 ) -> Model:
-
     config = AutoConfig.from_pretrained(model_id, revision=revision)
     model_type = config.model_type
 
