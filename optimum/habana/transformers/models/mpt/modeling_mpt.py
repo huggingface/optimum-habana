@@ -46,10 +46,14 @@ def gaudi_mpt_attention_forward(
     batch_size, seq_length = hidden_states.shape[:2]
 
     mixed_qkv = self.Wqkv(hidden_states)
-    query_states, key_states, value_states = mixed_qkv.chunk(3, dim=2)
-    query_states = query_states.reshape(batch_size, seq_length, self.n_heads, self.head_dim).transpose(1, 2)
-    key_states = key_states.reshape(batch_size, seq_length, self.n_heads, self.head_dim).transpose(1, 2)
-    value_states = value_states.reshape(batch_size, seq_length, self.n_heads, self.head_dim).transpose(1, 2)
+    bs, seq_len, three_times_hidden_size = mixed_qkv.shape
+    mixed_qkv = mixed_qkv.view(bs, seq_len, self.n_heads * 3, self.head_dim)
+    mixed_qkv = mixed_qkv.transpose(1, 2)
+    query_states, key_states, value_states = (
+        mixed_qkv[:, : self.n_heads, ...],
+        mixed_qkv[:, self.n_heads : 2 * self.n_heads, ...],
+        mixed_qkv[:, 2 * self.n_heads :, ...],
+    )
 
     if past_key_value is not None:
         if len(past_key_value) != 0:
