@@ -22,7 +22,7 @@ MODELS_TO_TEST = {
         ("tiiuae/falcon-7b", 44.288602257903726),
         ("bigcode/starcoder", 15.955986010526113),
         ("Salesforce/codegen2-1B", 109.03016111561857),
-        ("mosaicml/mpt-7b", 43.74548923259602),
+        ("mosaicml/mpt-7b", 44.888696119070424),
     ],
     "deepspeed": [
         ("bigscience/bloomz-7b1", 27.34439410425298),
