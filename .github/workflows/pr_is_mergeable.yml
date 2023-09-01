@@ -2,7 +2,7 @@ name: Check if PR is mergeable
 
 on:
   status:
-    branches: [ main, ci_update ]
+    branches: [ main ]
 
 jobs:
   check:
