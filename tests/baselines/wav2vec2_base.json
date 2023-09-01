@@ -9,6 +9,7 @@
                 "eval_accuracy": 0.8088,
                 "train_runtime": 611.0691,
                 "train_samples_per_second": 392.788,
+                "eval_samples_per_second": 568.0,
                 "extra_arguments": [
                     "--audio_column_name audio",
                     "--label_column_name language",

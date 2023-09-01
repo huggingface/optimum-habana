@@ -15,6 +15,7 @@ from text_generation_server.models import Model, get_model
 from text_generation_server.pb import generate_pb2_grpc, generate_pb2
 from text_generation_server.tracing import UDSOpenTelemetryAioServerInterceptor
 
+
 class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
     def __init__(self, model: Model, cache: Cache, server_urls: List[str]):
         self.cache = cache
@@ -24,7 +25,6 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         if model.device.type == "hpu":
             # Force inference mode for the lifetime of TextGenerationService
             self._inference_mode_raii_guard = torch._C._InferenceMode(True)
-
 
     async def Info(self, request, context):
         return self.model.info
