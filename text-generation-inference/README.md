@@ -36,7 +36,14 @@ To use [🤗 text-generation-inference](https://github.com/huggingface/text-gene
      -d '{"inputs":"What is Deep Learning?","parameters":{"max_new_tokens":17, "do_sample": true}}' \
      -H 'Content-Type: application/json'
    ```
+   > The first call will be slower as the model is compiled.
 
 > For gated models such as [StarCoder](https://huggingface.co/bigcode/starcoder), you will have to pass `-e HUGGING_FACE_HUB_TOKEN=<token>` to the `docker run` command above with a valid Hugging Face Hub read token.
 
 For more information and documentation about Text Generation Inference, checkout [the README](https://github.com/huggingface/text-generation-inference#text-generation-inference) of the original repo.
+
+Not all features of TGI are currently supported as this is still a work in progress.
+It has been tested for batches of 1 sample so far.
+New features will be added soon, including:
+- support for DeepSpeed-inference to use sharded models
+- batching strategy to have less model compilations
