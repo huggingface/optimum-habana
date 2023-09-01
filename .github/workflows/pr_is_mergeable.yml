@@ -18,6 +18,6 @@ jobs:
       id: result
       run: |
         cat status.json | jq .data.repository.object.statusCheckRollup.state
-    - name: Raie error if necessary
+    - name: Raise error if necessary
       if: steps.result.outcome != "SUCCESS"
       run: exit 1
