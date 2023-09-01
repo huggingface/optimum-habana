@@ -9,6 +9,7 @@ from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
+from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
 from text_generation_server.models import Model
 from text_generation_server.models.types import (
     Batch,
@@ -501,7 +502,7 @@ class CausalLM(Model):
             torch_dtype=dtype,
         )
 
-        if model.config.model_type in ["bloom", "gpt2", "gptj", "gpt_neox", "opt"]:
+        if model.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES:
             self.is_optimized_for_gaudi = True
         else:
             self.is_optimized_for_gaudi = False
