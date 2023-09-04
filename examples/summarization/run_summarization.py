@@ -52,10 +52,12 @@ from transformers.utils.versions import require_version
 from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 from optimum.habana.utils import set_seed
 
+
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
 except ImportError:
-    check_optimum_habana_min_version = lambda *a, **b: ()
+    def check_optimum_habana_min_version(*a, **b):
+        return ()
 
 
 logger = logging.getLogger(__name__)

@@ -215,7 +215,8 @@ def main():
     try:
         from optimum.habana.utils import check_optimum_habana_min_version
     except ImportError:
-        check_optimum_habana_min_version = lambda *a, **b: ()
+        def check_optimum_habana_min_version(*a, **b):
+            return ()
 
     # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
     check_optimum_habana_min_version("1.8.0.dev0")
