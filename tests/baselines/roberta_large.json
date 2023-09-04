@@ -1,25 +1,25 @@
 {
     "squad": {
-        "num_train_epochs": 2,
+        "num_train_epochs": 1,
         "eval_batch_size": 8,
         "distribution": {
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 12,
-                "eval_f1": 94.2227,
-                "train_runtime": 3669.5534,
-                "train_samples_per_second": 48.808,
+                "eval_f1": 94.3336,
+                "train_runtime": 1832.1485,
+                "train_samples_per_second": 49.032,
                 "extra_arguments": [
                     "--max_seq_length 384",
                     "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
-                "learning_rate": 3e-5,
+                "learning_rate": 8e-5,
                 "train_batch_size": 12,
-                "eval_f1": 94.5817,
-                "train_runtime": 543.7884,
-                "train_samples_per_second": 363.143,
+                "eval_f1": 94.465,
+                "train_runtime": 294.5057,
+                "train_samples_per_second": 369.397,
                 "extra_arguments": [
                     "--max_seq_length 384",
                     "--use_hpu_graphs_for_inference"
@@ -28,15 +28,15 @@
         }
     },
     "wikitext": {
-        "num_train_epochs": 3,
+        "num_train_epochs": 2,
         "eval_batch_size": 8,
         "distribution": {
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 8,
-                "perplexity": 2.7705,
-                "train_runtime": 91.0521,
-                "train_samples_per_second": 221.671,
+                "perplexity": 2.7785,
+                "train_runtime": 72.1696,
+                "train_samples_per_second": 216.891,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--use_hpu_graphs_for_inference",
