@@ -25,7 +25,7 @@ from optimum.habana.utils import check_optimum_habana_min_version, set_seed
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.7.0")
+check_optimum_habana_min_version("1.7.2")
 
 
 logger = logging.getLogger(__name__)

@@ -1,26 +1,28 @@
 {
     "squad": {
-        "num_train_epochs": 2,
+        "num_train_epochs": 1,
         "eval_batch_size": 8,
         "distribution": {
             "single_card": {
                 "learning_rate": 3e-5,
                 "train_batch_size": 24,
-                "eval_f1": 93.1319,
-                "train_runtime": 3397.6042,
-                "train_samples_per_second": 53.121,
+                "eval_f1": 93.3123,
+                "train_runtime": 1710.7828,
+                "train_samples_per_second": 53.811,
                 "extra_arguments": [
-                    "--max_seq_length 384"
+                    "--max_seq_length 384",
+                    "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
-                "learning_rate": 3e-5,
+                "learning_rate": 7e-5,
                 "train_batch_size": 24,
-                "eval_f1": 93.1075,
-                "train_runtime": 515.2929,
-                "train_samples_per_second": 405.972,
+                "eval_f1": 93.328,
+                "train_runtime": 295.0599,
+                "train_samples_per_second": 410.506,
                 "extra_arguments": [
-                    "--max_seq_length 384"
+                    "--max_seq_length 384",
+                    "--use_hpu_graphs_for_inference"
                 ]
             }
         }
@@ -36,7 +38,8 @@
                 "train_runtime": 104.437,
                 "train_samples_per_second": 169.053,
                 "extra_arguments": [
-                    "--max_seq_length 128"
+                    "--max_seq_length 128",
+                    "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
@@ -46,7 +49,8 @@
                 "train_runtime": 61.0806,
                 "train_samples_per_second": 798.072,
                 "extra_arguments": [
-                    "--max_seq_length 128"
+                    "--max_seq_length 128",
+                    "--use_hpu_graphs_for_inference"
                 ]
             }
         }

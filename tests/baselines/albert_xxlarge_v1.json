@@ -10,7 +10,8 @@
                 "train_runtime": 18678.8253,
                 "train_samples_per_second": 9.554,
                 "extra_arguments": [
-                    "--max_seq_length 384"
+                    "--max_seq_length 384",
+                    "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
@@ -20,7 +21,8 @@
                 "train_runtime": 2466.4572,
                 "train_samples_per_second": 75.626,
                 "extra_arguments": [
-                    "--max_seq_length 384"
+                    "--max_seq_length 384",
+                    "--use_hpu_graphs_for_inference"
                 ]
             }
         }

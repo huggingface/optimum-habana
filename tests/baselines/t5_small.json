@@ -9,12 +9,14 @@
                 "eval_rougeLsum": 38.5497,
                 "train_runtime": 3612.5274,
                 "train_samples_per_second": 240.042,
+		"eval_samples_per_second": 19.774,
                 "extra_arguments": [
                     "--dataset_config \"3.0.0\"",
                     "--source_prefix \"summarize: \"",
                     "--predict_with_generate",
                     "--ignore_pad_token_for_loss False",
                     "--pad_to_max_length",
+                    "--use_hpu_graphs_for_inference",
                     "--save_strategy epoch"
                 ]
             }
@@ -39,9 +41,11 @@
                     "--predict_with_generate",
                     "--ignore_pad_token_for_loss False",
                     "--pad_to_max_length",
+                    "--use_hpu_graphs_for_inference",
                     "--save_strategy epoch"
                 ]
             }
         }
     }
 }
+

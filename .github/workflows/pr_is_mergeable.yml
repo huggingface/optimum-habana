@@ -1,0 +1,23 @@
+name: Check if PR is mergeable
+
+on:
+  status:
+    branches: [ main ]
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Write status
+      run: |
+        curl -X POST \
+        -H "Authorization: bearer ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}" \
+        -d '{"query": "query { repository(name: \"optimum-habana\", owner:\"HuggingFace\"){object(oid: ${{ github.event.status.sha }}) { ... on Commit { statusCheckRollup { state } } }}}"}' https://api.github.com/graphql \
+        -o status.json
+    - name: Get status
+      id: result
+      run: |
+        cat status.json | jq .data.repository.object.statusCheckRollup.state
+    - name: Raise error if necessary
+      if: steps.result.outcome != "SUCCESS"
+      run: exit 1

@@ -99,7 +99,7 @@ python run_clip.py \
     --caption_column caption \
     --remove_unused_columns=False \
     --do_train  --do_eval \
-    --per_device_train_batch_size="64" \
+    --per_device_train_batch_size="512" \
     --per_device_eval_batch_size="64" \
     --learning_rate="5e-5" --warmup_steps="0" --weight_decay 0.1 \
     --overwrite_output_dir \
@@ -129,7 +129,7 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --caption_column caption \
     --remove_unused_columns=False \
     --do_train  --do_eval \
-    --per_device_train_batch_size="64" \
+    --per_device_train_batch_size="512" \
     --per_device_eval_batch_size="64" \
     --learning_rate="5e-5" --warmup_steps="0" --weight_decay 0.1 \
     --overwrite_output_dir \
@@ -141,9 +141,10 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
     --mediapipe_dataloader \
-    --use_hpu_graphs_for_training \
-    --distribution_strategy fast_ddp
+    --use_hpu_graphs_for_training
 ```
+
+> `--mediapipe_dataloader` only works on Gaudi2.
 
 
 ### DeepSpeed
@@ -161,7 +162,7 @@ python ../gaudi_spawn.py --world_size 8 --use_deepspeed run_clip.py \
     --caption_column caption \
     --remove_unused_columns=False \
     --do_train  --do_eval \
-    --per_device_train_batch_size="64" \
+    --per_device_train_batch_size="512" \
     --per_device_eval_batch_size="64" \
     --learning_rate="5e-5" --warmup_steps="0" --weight_decay 0.1 \
     --overwrite_output_dir \
@@ -213,13 +214,15 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
 --num_train_epochs 5 \
 --learning_rate="1e-5" \
 --overwrite_output_dir \
+--save_strategy no \
 --use_habana --use_lazy_mode --use_hpu_graphs_for_inference --gaudi_config_name Habana/clip \
 --throughput_warmup_steps 3 \
 --logging_steps 10 \
 --dataloader_num_workers 1 \
---distribution_strategy fast_ddp \
 --mediapipe_dataloader
 ```
+
+> `--mediapipe_dataloader` only works on Gaudi2.
 
 
 ## Inference

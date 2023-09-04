@@ -20,20 +20,27 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 
 import argparse
 import copy
+import json
 import logging
 import os
 import time
+from pathlib import Path
 
 import torch
 from checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
-    model_is_bloom,
     model_is_optimized,
+    model_on_meta,
     write_checkpoints_json,
 )
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers.utils import check_min_version
 
+
+# Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
+check_min_version("4.32.0")
+check_optimum_habana_min_version("1.8.0.dev0")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -153,6 +160,12 @@ def main():
         type=str,
         help="The specific model version to use (can be a branch name, tag name or commit id).",
     )
+    parser.add_argument(
+        "--output_dir",
+        default=None,
+        type=str,
+        help="Output directory to store results in.",
+    )
 
     args = parser.parse_args()
 
@@ -237,14 +250,14 @@ def main():
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
         is_optimized = model_is_optimized(config)
-        is_bloom = model_is_bloom(config)
+        load_to_meta = model_on_meta(config)
 
-        if is_bloom:
+        if load_to_meta:
             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
-            get_repo_root(args.model_name_or_path, args.local_rank)
+            get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
             # TODO: revisit placement on CPU when auto-injection is possible
             with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
                 model = AutoModelForCausalLM.from_pretrained(
@@ -257,8 +270,8 @@ def main():
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
-        if is_bloom:
-            # BLOOM is managed differently
+        if load_to_meta:
+            # model loaded to meta is managed differently
             checkpoints_json = "checkpoints.json"
             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
 
@@ -266,13 +279,13 @@ def main():
         torch.distributed.barrier()
 
         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
-        if is_bloom:
+        if load_to_meta:
             ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         model = model.module
     else:
-        get_repo_root(args.model_name_or_path)
+        get_repo_root(args.model_name_or_path, token=args.token)
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = model.eval().to(args.device)
         is_optimized = model_is_optimized(model.config)
@@ -430,6 +443,18 @@ def main():
                 ):
                     print(f"output {j+1}: {output}")
                 print(separator)
+
+            # Store results if necessary
+            if args.output_dir is not None:
+                output_dir = Path(args.output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                results = {
+                    "throughput": throughput,
+                    "output": output,
+                }
+                with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+                    json.dump(results, f, ensure_ascii=False, indent=4)
     else:
         # Downloading and loading a dataset from the hub.
         from datasets import load_dataset

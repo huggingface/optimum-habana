@@ -250,6 +250,7 @@ def gaudi_opt_decoder_forward(
     Copied from OPTDecoder.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
     The only differences are:
     - add new args token_idx
+    - update calculation of mask_seq_length
     """
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
@@ -274,9 +275,12 @@ def gaudi_opt_decoder_forward(
         inputs_embeds = self.embed_tokens(input_ids)
 
     batch_size, seq_length = input_shape
-    past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-    # required mask seq length can be calculated via length of past
-    mask_seq_length = past_key_values_length + seq_length
+    if past_key_values is not None:
+        past_key_values_length = past_key_values[0][0].shape[2]
+        mask_seq_length = past_key_values_length
+    else:
+        past_key_values_length = 0
+        mask_seq_length = seq_length
 
     # embed positions
     if attention_mask is None:

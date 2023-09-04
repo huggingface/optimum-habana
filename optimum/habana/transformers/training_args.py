@@ -34,6 +34,7 @@ from transformers.utils import (
     get_full_repo_name,
     is_accelerate_available,
     is_safetensors_available,
+    strtobool,
 )
 
 from optimum.utils import logging
@@ -434,6 +435,12 @@ class GaudiTrainingArguments(TrainingArguments):
             if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
                 raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
 
+        # if training args is specified, it will override the one specified in the accelerate config
+        mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
+        if self.bf16:
+            mixed_precision_dtype = "bf16"
+        os.environ["ACCELERATE_MIXED_PRECISION"] = mixed_precision_dtype
+
         if self.report_to is None:
             logger.info(
                 "The default value for the training argument `--report_to` will change in v5 (from all installed "
@@ -488,6 +495,14 @@ class GaudiTrainingArguments(TrainingArguments):
 
             os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
             self.deepspeed_plugin = DeepSpeedPlugin(hf_ds_config=self.hf_deepspeed_config)
+        elif strtobool(os.environ.get("ACCELERATE_USE_DEEPSPEED", "false")):
+            # Accelerate DeepSpeed Plugin
+            from accelerate.utils import DeepSpeedPlugin
+
+            self.deepspeed_plugin = DeepSpeedPlugin()
+            mixed_precision = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
+            self.deepspeed_plugin.set_mixed_precision(mixed_precision)
+            self.deepspeed_plugin.set_deepspeed_weakref()
 
         if self.push_to_hub_token is not None:
             warnings.warn(
@@ -532,20 +547,9 @@ class GaudiTrainingArguments(TrainingArguments):
                 FutureWarning,
             )
 
-        # if training args is specified, it will override the one specified in the accelerate config
-        mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
-        if self.bf16:
-            mixed_precision_dtype = "bf16"
-        os.environ["ACCELERATE_MIXED_PRECISION"] = mixed_precision_dtype
-
-        if (
-            self.parallel_mode == ParallelMode.DISTRIBUTED
-            and self.use_hpu_graphs_for_training
-            and self.distribution_strategy != "fast_ddp"
-        ):
-            raise ValueError(
-                "`--use_hpu_graphs_for_training` may only be used with `--distribution_strategy fast_ddp`."
-            )
+        # TODO: change to True after further testing with examples (cf. summarization)
+        # Finally set the `TrainingArguments` to be immutable
+        self._frozen = False
 
     def __str__(self):
         self_as_dict = asdict(self)
@@ -583,7 +587,9 @@ class GaudiTrainingArguments(TrainingArguments):
         log_level = self.get_process_log_level()
         logging.set_verbosity(log_level)
 
-        if self.no_cuda:
+        if not self.use_ipex and "ACCELERATE_USE_IPEX" not in os.environ:
+            os.environ["ACCELERATE_USE_IPEX"] = "false"
+        if self.use_cpu or strtobool(os.environ.get("ACCELERATE_USE_CPU", "False")):
             self.distributed_state = GaudiPartialState(cpu=True, backend=self.ddp_backend)
             self._n_gpu = 0
         elif self.use_habana:

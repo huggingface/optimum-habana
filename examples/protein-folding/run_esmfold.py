@@ -29,7 +29,7 @@ from optimum.habana.utils import check_optimum_habana_min_version
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.7.0")
+check_optimum_habana_min_version("1.7.2")
 
 
 def convert_outputs_to_pdb(outputs):

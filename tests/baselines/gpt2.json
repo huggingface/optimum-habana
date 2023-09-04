@@ -11,6 +11,7 @@
                 "train_samples_per_second": 20.727,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
+                    "--use_hpu_graphs_for_inference",
                     "--gradient_checkpointing"
                 ]
             },
@@ -22,6 +23,7 @@
                 "train_samples_per_second": 159.159,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
+                    "--use_hpu_graphs_for_inference",
                     "--gradient_checkpointing"
                 ]
             }
