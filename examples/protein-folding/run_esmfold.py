@@ -30,6 +30,7 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
 except ImportError:
+
     def check_optimum_habana_min_version(*a, **b):
         return ()
 

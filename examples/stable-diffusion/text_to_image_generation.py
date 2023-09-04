@@ -27,6 +27,7 @@ from optimum.habana.utils import set_seed
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
 except ImportError:
+
     def check_optimum_habana_min_version(*a, **b):
         return ()
 
