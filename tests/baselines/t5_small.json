@@ -1,15 +1,15 @@
 {
     "cnn_dailymail": {
-        "num_train_epochs": 3,
+        "num_train_epochs": 1,
         "eval_batch_size": 4,
         "distribution": {
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 4,
-                "eval_rougeLsum": 38.5497,
-                "train_runtime": 3612.5274,
-                "train_samples_per_second": 240.042,
-		"eval_samples_per_second": 19.774,
+                "eval_rougeLsum": 38.4667,
+                "train_runtime": 1222.3181,
+                "train_samples_per_second": 239.759,
+                "eval_samples_per_second": 19.774,
                 "extra_arguments": [
                     "--dataset_config \"3.0.0\"",
                     "--source_prefix \"summarize: \"",
@@ -48,4 +48,3 @@
         }
     }
 }
-

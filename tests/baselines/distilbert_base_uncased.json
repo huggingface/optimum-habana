@@ -1,25 +1,25 @@
 {
     "squad": {
-        "num_train_epochs": 3,
+        "num_train_epochs": 1,
         "eval_batch_size": 8,
         "distribution": {
             "single_card": {
-                "learning_rate": 5e-5,
-                "train_batch_size": 8,
-                "eval_f1": 85.6907,
-                "train_runtime": 1037.4943,
-                "train_samples_per_second": 257.235,
+                "learning_rate": 1e-4,
+                "train_batch_size": 48,
+                "eval_f1": 84.1981,
+                "train_runtime": 275.0124,
+                "train_samples_per_second": 329.976,
                 "extra_arguments": [
                     "--max_seq_length 384",
                     "--use_hpu_graphs_for_inference"
                 ]
             },
             "multi_card": {
-                "learning_rate": 5e-5,
-                "train_batch_size": 8,
-                "eval_f1": 85.0821,
-                "train_runtime": 207.6378,
-                "train_samples_per_second": 1334.169,
+                "learning_rate": 3e-4,
+                "train_batch_size": 48,
+                "eval_f1": 82.81705504372714,
+                "train_runtime": 53.9406,
+                "train_samples_per_second": 2482.825,
                 "extra_arguments": [
                     "--max_seq_length 384",
                     "--use_hpu_graphs_for_inference"
