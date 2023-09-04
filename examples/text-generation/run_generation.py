@@ -38,9 +38,8 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
 
 
-# Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
+# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.32.0")
-check_optimum_habana_min_version("1.8.0.dev0")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -214,7 +213,7 @@ def main():
     from optimum.habana.utils import check_optimum_habana_min_version, set_seed
 
     # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-    check_optimum_habana_min_version("1.7.0")
+    check_optimum_habana_min_version("1.8.0.dev0")
 
     set_seed(args.seed)
 
