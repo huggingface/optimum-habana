@@ -44,7 +44,12 @@ from transformers.modeling_utils import unwrap_model
 from transformers.trainer_utils import is_main_process
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import set_seed
+
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+    check_optimum_habana_min_version = lambda *a, **b: ()
 
 
 IGNORE_INDEX = -100
@@ -54,7 +59,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.7.0")
+check_optimum_habana_min_version("1.7.2")
 
 
 @dataclass

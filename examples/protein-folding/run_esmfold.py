@@ -25,7 +25,11 @@ from transformers.models.esm.openfold_utils.protein import Protein as OFProtein
 from transformers.models.esm.openfold_utils.protein import to_pdb
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-from optimum.habana.utils import check_optimum_habana_min_version
+
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+    check_optimum_habana_min_version = lambda *a, **b: ()
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.

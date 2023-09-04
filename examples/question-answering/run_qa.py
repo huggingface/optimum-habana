@@ -46,7 +46,12 @@ from transformers.utils.versions import require_version
 from utils_qa import postprocess_qa_predictions
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
-from optimum.habana.utils import check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import set_seed
+
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+    check_optimum_habana_min_version = lambda *a, **b: ()
 
 
 logger = logging.getLogger(__name__)
