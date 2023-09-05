@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Fine-tuning a 🤗 Transformers model for image classification"""
 
 import logging
 import os
@@ -51,12 +52,19 @@ from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
 
 
-""" Fine-tuning a 🤗 Transformers model for image classification"""
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+
+    def check_optimum_habana_min_version(*a, **b):
+        return ()
+
 
 logger = logging.getLogger(__name__)
 
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+# Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 check_min_version("4.32.0")
+check_optimum_habana_min_version("1.7.2")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/image-classification/requirements.txt")
 

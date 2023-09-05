@@ -20,20 +20,35 @@
 49,50d44
 <     is_torch_tpu_available,
 <     set_seed,
-56a51,53
+56a51,52
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-> 
-59c56
-< check_min_version("4.33.0.dev0")
+58,59d53
+< # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+< check_min_version("4.34.0.dev0")
+61c55,61
+< require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
+> try:
+>     from optimum.habana.utils import check_optimum_habana_min_version
+> except ImportError:
+> 
+>     def check_optimum_habana_min_version(*a, **b):
+>         return ()
+> 
+64a65,70
+> # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.32.0")
-80c77,78
+> check_optimum_habana_min_version("1.7.2")
+> 
+> require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
+> 
+80c86,87
 <                 "The model checkpoint for weights initialization.Don't set if you want to train a model from scratch."
 ---
 >                 "The model checkpoint for weights initialization. Don't set it if you want to train a model from"
 >                 " scratch."
-149a148,156
+149a157,165
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -43,22 +58,22 @@
 >             )
 >         },
 >     )
-202c209,210
+202c218,219
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
 > 
 >     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
-250c258
+250c267
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-259c267,269
+259c276,278
 <         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
 ---
 >         warnings.warn(
 >             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
 >         )
-285a296,302
+285a305,311
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -66,24 +81,24 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-286a304
+286a313
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-288,289c306,308
+288,289c315,317
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-400a420
+400a429
 >         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
-587c607
+587c616
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-588a609
+588a618
 >         gaudi_config=gaudi_config,
-595,598c616,617
+595,598c625,626
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -91,7 +106,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-613,616c632,638
+613,616c641,647
 <         max_train_samples = (
 <             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 <         )
@@ -104,9 +119,9 @@
 >                 data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-625d646
+625d655
 < 
-628,629c649,654
+628,629c658,663
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 ---
@@ -116,7 +131,7 @@
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 > 
-652,656d676
+652,656d685
 < 
 < 
 < def _mp_fn(index):

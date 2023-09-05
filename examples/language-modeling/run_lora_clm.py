@@ -39,12 +39,20 @@ from transformers import (
     AutoTokenizer,
     DataCollatorForSeq2Seq,
     HfArgumentParser,
-    set_seed,
 )
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer_utils import is_main_process
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
+
+
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+
+    def check_optimum_habana_min_version(*a, **b):
+        return ()
 
 
 IGNORE_INDEX = -100
@@ -52,6 +60,9 @@ IGNORE_INDEX = -100
 os.environ["WANDB_DISABLED"] = "true"
 
 logger = logging.getLogger(__name__)
+
+# Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
+check_optimum_habana_min_version("1.7.2")
 
 
 @dataclass

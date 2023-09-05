@@ -15,15 +15,30 @@
 <     set_seed,
 ---
 >     default_data_collator,
-53a52,54
+53a52,53
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
-> 
-56c57
-< check_min_version("4.33.0.dev0")
+55,56d54
+< # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+< check_min_version("4.34.0.dev0")
+58c56,62
+< require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 ---
+> try:
+>     from optimum.habana.utils import check_optimum_habana_min_version
+> except ImportError:
+> 
+>     def check_optimum_habana_min_version(*a, **b):
+>         return ()
+> 
+61a66,71
+> # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.32.0")
-136a138,146
+> check_optimum_habana_min_version("1.7.2")
+> 
+> require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
+> 
+136a147,155
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -33,23 +48,23 @@
 >             )
 >         },
 >     )
-220c230
+220c239
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-268a279
+268a288
 >     source_suffix: Optional[str] = field(default="", metadata={"help": "A suffix to add after every source text."})
-324c335
+324c344
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-333c344,346
+333c353,355
 <         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
 ---
 >         warnings.warn(
 >             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
 >         )
-359a373,379
+359a382,388
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -57,27 +72,27 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-360a381
+360a390
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-362,363c383,385
+362,363c392,394
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-444a467
+444a476
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-499a523
+499a532
 >     suffix = data_args.source_suffix if data_args.source_suffix is not None else ""
-570a595,596
+570a604,605
 >             else:
 >                 raise ValueError("Found case where either text or summary is missing.")
-572c598
+572c607
 <         inputs = [prefix + inp for inp in inputs]
 ---
 >         inputs = [prefix + inp + suffix for inp in inputs]
-637,642c663,671
+637,642c672,680
 <     data_collator = DataCollatorForSeq2Seq(
 <         tokenizer,
 <         model=model,
@@ -94,7 +109,7 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-677,684c706,714
+677,684c715,723
 <     training_args.generation_max_length = (
 <         training_args.generation_max_length
 <         if training_args.generation_max_length is not None
@@ -113,13 +128,13 @@
 >         training_args.generation_config.num_beams = data_args.num_beams
 >     elif training_args.generation_num_beams is not None:
 >         training_args.generation_config.num_beams = training_args.generation_num_beams
-687c717
+687c726
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-688a719
+688a728
 >         gaudi_config=gaudi_config,
-777,781d807
+777,781d816
 < 
 < 
 < def _mp_fn(index):

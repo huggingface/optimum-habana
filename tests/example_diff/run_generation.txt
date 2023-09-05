@@ -361,7 +361,7 @@
 >         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
 329d103
 <     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
-331,333c105,166
+331,333c105,160
 <         "--fp16",
 <         action="store_true",
 <         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
@@ -422,22 +422,19 @@
 >         default="main",
 >         type=str,
 >         help="The specific model version to use (can be a branch name, tag name or commit id).",
->     )
+335c162,168
+<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
+---
 >     parser.add_argument(
 >         "--output_dir",
 >         default=None,
 >         type=str,
 >         help="Output directory to store results in.",
-335,336d167
-<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
-<     args = parser.parse_args()
-338,339c169
+>     )
+> 
+338,339c171,208
 <     # Initialize the distributed state.
 <     distributed_state = PartialState(cpu=args.use_cpu)
----
->     args = parser.parse_args()
-341c171,199
-<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
 >     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
 >     # For multi node, the value of the env variable WORLD_SIZE should be larger than 8
@@ -468,39 +465,64 @@
 >                 " git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0`."
 >             )
 >         import deepspeed
-343,344c201,205
-<     if args.seed is not None:
-<         set_seed(args.seed)
----
+> 
 >         # Initialize process(es) for DeepSpeed
 >         deepspeed.init_distributed(dist_backend="hccl")
 >         logger.info("DeepSpeed is enabled.")
 >     else:
 >         logger.info("Single-device run.")
-346,351c207,208
+> 
+>     # Tweak generation so that it runs faster on Gaudi
+>     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+341c210
+<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
+---
+>     adapt_transformers_to_gaudi()
+343,344c212,213
+<     if args.seed is not None:
+<         set_seed(args.seed)
+---
+>     # Set seed before initializing model.
+>     from optimum.habana.utils import set_seed
+346d214
 <     # Initialize the model and tokenizer
-<     try:
+348,351c216,217
 <         args.model_type = args.model_type.lower()
 <         model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
 <     except KeyError:
 <         raise KeyError("the model {} you specified is not supported. You are welcome to add it and open a PR :)")
 ---
->     # Tweak generation so that it runs faster on Gaudi
->     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-353,356c210
+>         from optimum.habana.utils import check_optimum_habana_min_version
+>     except ImportError:
+353,356c219,220
 <     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
 <     if tokenizer.pad_token is None:
 <         tokenizer.pad_token = tokenizer.eos_token
 <     model = model_class.from_pretrained(args.model_name_or_path)
 ---
->     adapt_transformers_to_gaudi()
-358,359c212,234
+>         def check_optimum_habana_min_version(*a, **b):
+>             return ()
+358,359c222,223
 <     # Set the model to the right device
 <     model.to(distributed_state.device)
 ---
->     # Set seed before initializing model.
->     from optimum.habana.utils import set_seed
-> 
+>     # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
+>     check_optimum_habana_min_version("1.8.0.dev0")
+361,373c225,244
+<     if args.fp16:
+<         model.half()
+<     max_seq_length = getattr(model.config, "max_position_embeddings", 0)
+<     args.length = adjust_length_to_model(args.length, max_sequence_length=max_seq_length)
+<     logger.info(args)
+< 
+<     prompt_text = args.prompt if args.prompt else input("Model prompt >>> ")
+< 
+<     # Different models need different input formatting and/or extra arguments
+<     requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
+<     if requires_preprocessing:
+<         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
+<         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
+---
 >     set_seed(args.seed)
 > 
 >     # TODO: remove the following hack when Falcon is available in Transformers
@@ -521,29 +543,15 @@
 >     if args.bad_words is not None or args.force_words is not None:
 >         tokenizer_kwargs["add_prefix_space"] = True
 >     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
-361,373c236,239
-<     if args.fp16:
-<         model.half()
-<     max_seq_length = getattr(model.config, "max_position_embeddings", 0)
-<     args.length = adjust_length_to_model(args.length, max_sequence_length=max_seq_length)
-<     logger.info(args)
-< 
-<     prompt_text = args.prompt if args.prompt else input("Model prompt >>> ")
-< 
-<     # Different models need different input formatting and/or extra arguments
-<     requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
-<     if requires_preprocessing:
-<         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
-<         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
+375,376c246,264
+<         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
+<             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
 ---
 >     if use_deepspeed or args.bf16:
 >         model_dtype = torch.bfloat16
 >     else:
 >         model_dtype = torch.float
-375,376c241,254
-<         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
-<             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
----
+> 
 >     model_kwargs = {
 >         "revision": args.model_revision,
 >         "token": args.token,
@@ -558,7 +566,7 @@
 >             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
 >             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
 >                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
-378c256,279
+378c266,289
 <             tokenizer_kwargs = {}
 ---
 >             get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
@@ -585,14 +593,14 @@
 >         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
 >         if load_to_meta:
 >             ds_inference_kwargs["checkpoint"] = checkpoints_json
-380,382c281,282
+380,382c291,292
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
 ---
 >         model = deepspeed.init_inference(model, **ds_inference_kwargs)
 >         model = model.module
-384,386c284,311
+384,386c294,321
 <         prefix = args.prefix if args.prefix else args.padding_text
 <         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
 <     encoded_prompt = encoded_prompt.to(distributed_state.device)
@@ -625,7 +633,7 @@
 >     if tokenizer.pad_token is None:
 >         tokenizer.pad_token = tokenizer.eos_token
 >         model.generation_config.pad_token_id = model.generation_config.eos_token_id
-388,389c313,453
+388,389c323,463
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
@@ -770,7 +778,7 @@
 >                 }
 >                 with (output_dir / "results.json").open("w", encoding="utf-8") as f:
 >                     json.dump(results, f, ensure_ascii=False, indent=4)
-391c455,466
+391c465,476
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -785,7 +793,7 @@
 >         else:
 >             split = "train"
 >         raw_dataset = raw_dataset[split]
-393,399c468,476
+393,399c478,486
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -803,7 +811,7 @@
 >                 logger.info(
 >                     f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >                 )
-401,440c478
+401,440c488
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -846,13 +854,13 @@
 <         )
 ---
 >             column_name = args.column_name
-442,443c480,481
+442,443c490,491
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
 >         # Remove unused columns
 >         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
-445c483,531
+445c493,541
 <     return generated_sequences
 ---
 >         # Set the prompt length to 16
