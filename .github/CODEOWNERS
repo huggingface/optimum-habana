@@ -17,5 +17,5 @@
 /optimum/habana/transformers/models/opt	            @ZhaiFeiyue			
 /optimum/habana/transformers/models/t5	            @bhargaveede		
 /optimum/habana/transformers/models/vit             @ZhaiFeiyue           @jychen-habana		
-/optimum/habana/transformers/models/wav2vec2	    @hlahkar	          @vgoel		
-/optimum/habana/transformers/generation/	    @ssarkar2	          @bhargaveede	       @vgoel	
+/optimum/habana/transformers/models/wav2vec2	    @hlahkar	          @vivekgoe		
+/optimum/habana/transformers/generation/	    @ssarkar2	          @bhargaveede	       @vivekgoe	
