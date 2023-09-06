@@ -1,0 +1,64 @@
+<!---
+Copyright 2022 The Intel authors Team and HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# Super-resolution
+
+The Stable Diffusion upscaler diffusion model was created by the researchers and engineers from CompVis, Stability AI, and LAION. It is used to enhance the resolution of input images by a factor of 4.
+
+See [here](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/upscale) for more information
+
+## How to upscale low resolution images?
+
+To generate RGB and depth images with Stable Diffusion Upscale on Gaudi, you need to instantiate two instances:
+- A pipeline with [`GaudiStableDiffusionUpscalePipeline`]. 
+- A scheduler with [`GaudiDDIMScheduler`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
+
+When initializing the pipeline, you have to specify `use_habana=True` to deploy it on HPUs.
+Furthermore, to get the fastest possible generations you should enable **HPU graphs** with `use_hpu_graphs=True`.
+Finally, you will need to specify a [Gaudi configuration](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config) which can be downloaded from the Hugging Face Hub.
+
+```python
+import requests
+from io import BytesIO
+from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiStableDiffusionUpscalePipeline,
+)
+from optimum.habana.utils import set_seed
+from PIL import Image
+
+set_seed(42)
+
+model_name_upscale = "stabilityai/stable-diffusion-x4-upscaler"
+scheduler = GaudiDDIMScheduler.from_pretrained(model_name_upscale, subfolder="scheduler")
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
+response = requests.get(url)
+low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
+low_res_img = low_res_img.resize((128, 128))
+low_res_img.save("low_res_cat.png")
+prompt = "a white cat"
+
+pipeline = GaudiStableDiffusionUpscalePipeline.from_pretrained(
+    model_name_upscale,
+    scheduler=scheduler,   #TODO shceduler? Karras??
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+)
+upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
+upscaled_image.save("upsampled_cat.png")
+
+```

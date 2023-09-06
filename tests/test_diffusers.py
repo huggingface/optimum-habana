@@ -32,8 +32,13 @@ from optimum.habana.diffusers import (
     GaudiDiffusionPipeline,
     GaudiStableDiffusionLDM3DPipeline,
     GaudiStableDiffusionPipeline,
+    GaudiStableDiffusionUpscalePipeline
 )
 from optimum.habana.utils import set_seed
+from PIL import Image
+import requests
+from io import BytesIO
+
 
 
 THROUGHPUT_BASELINE_HMP = 0.289
@@ -646,3 +651,56 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             self.assertEqual(depth.shape, (512, 512, 1))
             self.assertLess(np.abs(expected_slice_rgb - rgb[-3:, -3:, -1].flatten()).max(), 5e-3)
             self.assertLess(np.abs(expected_slice_depth - depth[-3:, -3:, -1].flatten()).max(), 5e-3)
+
+    # @slow
+    def test_no_generation_regression_sdupscale(self):
+        model_name = "stabilityai/stable-diffusion-x4-upscaler"
+        # fp32
+        with hmp.disable_casts():
+            scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+            pipeline = GaudiStableDiffusionUpscalePipeline.from_pretrained(
+                model_name,
+                scheduler=scheduler,
+                use_habana=True,
+                use_hpu_graphs=True,
+                gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+            )
+            set_seed(27)
+        
+            url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
+            response = requests.get(url)
+            low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
+            low_res_img = low_res_img.resize((128, 128))
+            prompt = "a white cat
+            upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
+
+            expected_slice = np.array([0.7083766, 1.0, 1.0, 0.70610344, 0.9867363, 1.0, 0.7214538, 1.0, 1.0])
+            print(upscaled_image.shape)
+            print(upscaled_image[-3:, -3:, -1].flatten())
+            self.assertEqual(upscaled_image.shape, (512, 512, 3))
+            self.assertLess(np.abs(expected_slice - upscaled_image[-3:, -3:, -1].flatten()).max(), 5e-3)
+
+
+    def test_no_generation_regression_upscale(self):
+        model_name = "stabilityai/stable-diffusion-x4-upscaler"
+        # fp32
+        with hmp.disable_casts():
+            scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+            pipeline = GaudiStableDiffusionUpscalePipeline.from_pretrained(
+                model_name,
+                scheduler=scheduler,
+                use_habana=True,
+                use_hpu_graphs=True,
+                gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+            )
+            set_seed(27)
+        
+            url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
+            response = requests.get(url)
+            low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
+            low_res_img = low_res_img.resize((128, 128))
+            prompt = "a white cat"
+            upscaled_image = pipeline(prompt=prompt, image=low_res_img, output_type="np").images[0]
+            expected_slice = np.array([0.1652787, 0.16161594, 0.15665877, 0.16608998, 0.1594378, 0.14936894, 0.15782538, 0.15342498, 0.14590913])
+            self.assertEqual(upscaled_image.shape, (512, 512, 3))
+            self.assertLess(np.abs(expected_slice - upscaled_image[-3:, -3:, -1].flatten()).max(), 5e-3)
