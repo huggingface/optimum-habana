@@ -38,7 +38,7 @@ from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 
-#Added for upscaling
+# Added for upscaling
 from diffusers.schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from diffusers.utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
 
@@ -48,8 +48,8 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-# from diffusers.models.lora import adjust_lora_scale_text_encoder
 
+# from diffusers.models.lora import adjust_lora_scale_text_encoder
 
 
 logger = logging.get_logger(__name__)
@@ -63,11 +63,13 @@ PipelineImageInput = Union[
     List[torch.FloatTensor],
 ]
 
+
 @dataclass
 class GaudiStableDiffusionPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
     throughput: float
+
 
 def preprocess(image):
     warnings.warn(
@@ -95,8 +97,7 @@ def preprocess(image):
     return image
 
 
-class GaudiStableDiffusionUpscalePipeline(
-    GaudiDiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     """
     Pipeline for text-guided image super-resolution using Stable Diffusion 2.
 
@@ -262,9 +263,8 @@ class GaudiStableDiffusionUpscalePipeline(
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
-            self._lora_scale = lora_scale            
-            #adjust_lora_scale_text_encoder(self.text_encoder, lora_scale) #TODO why this has been removed?
-
+            self._lora_scale = lora_scale
+            # adjust_lora_scale_text_encoder(self.text_encoder, lora_scale) #TODO why this has been removed?
 
         if prompt is not None and isinstance(prompt, str):
             num_prompts = 1
@@ -464,10 +464,10 @@ class GaudiStableDiffusionUpscalePipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
                 if (
-                not isinstance(image, torch.Tensor)
-                and not isinstance(image, PIL.Image.Image)
-                and not isinstance(image, np.ndarray)
-                and not isinstance(image, list)
+                    not isinstance(image, torch.Tensor)
+                    and not isinstance(image, PIL.Image.Image)
+                    and not isinstance(image, np.ndarray)
+                    and not isinstance(image, list)
                 ):
                     raise ValueError(
                         f"`image` has to be of type `torch.Tensor`, `np.ndarray`, `PIL.Image.Image` or `list` but is {type(image)}"
@@ -526,7 +526,6 @@ class GaudiStableDiffusionUpscalePipeline(
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-
 
     def upcast_vae(self):
         dtype = self.vae.dtype
@@ -705,14 +704,13 @@ class GaudiStableDiffusionUpscalePipeline(
         >>> upscaled_image.save("upsampled_cat.png")
         """
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
-
             # 0. Check inputs. Raise error if not correct
             self.check_inputs(
                 prompt, image, noise_level, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
             )
             if image is None:
                 raise ValueError("`image` input cannot be undefined.")
-                
+
             # 1. Define call parameters
             if prompt is not None and isinstance(prompt, str):
                 num_prompts = 1
@@ -870,11 +868,11 @@ class GaudiStableDiffusionUpscalePipeline(
                         latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
                     image = self.vae.decode(latents_batch / self.vae.config.scaling_factor, return_dict=False)[0]
-                    
+
                     # cast back to fp16 if needed
                     if needs_upcasting:
                         self.vae.to(dtype=torch.bfloat16)
-                    
+
                     image, has_nsfw_concept, _ = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
                 else:
@@ -940,7 +938,9 @@ class GaudiStableDiffusionUpscalePipeline(
             )
 
     @torch.no_grad()
-    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs, capture, class_labels):
+    def unet_hpu(
+        self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs, capture, class_labels
+    ):
         if self.use_hpu_graphs:
             return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture, class_labels)
         else:
@@ -950,7 +950,7 @@ class GaudiStableDiffusionUpscalePipeline(
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
                 return_dict=False,
-                class_labels=class_labels
+                class_labels=class_labels,
             )[0]
 
     @torch.no_grad()
@@ -964,7 +964,13 @@ class GaudiStableDiffusionUpscalePipeline(
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()
                 graph.capture_begin()
-                outputs = self.unet(inputs[0], timestep=inputs[1], encoder_hidden_states=inputs[2], return_dict=inputs[3], class_labels=inputs[4])[0]
+                outputs = self.unet(
+                    inputs[0],
+                    timestep=inputs[1],
+                    encoder_hidden_states=inputs[2],
+                    return_dict=inputs[3],
+                    class_labels=inputs[4],
+                )[0]
                 graph.capture_end()
                 graph_inputs = inputs
                 graph_outputs = outputs
