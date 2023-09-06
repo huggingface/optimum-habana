@@ -31,7 +31,9 @@ from transformers.utils import logging
 logger = logging.get_logger(__name__)
 
 
-def gaudi_bloom_build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, dtype: torch.dtype) -> torch.Tensor:
+def gaudi_bloom_build_alibi_tensor(
+    attention_mask: torch.Tensor, num_heads: int, dtype: torch.dtype, training: bool
+) -> torch.Tensor:
     """
     Link to paper: https://arxiv.org/abs/2108.12409 Alibi tensor is not causal as the original paper mentions, it
     relies on a translation invariance of softmax for quick implementation: with l being a tensor, and a fixed value
@@ -43,10 +45,12 @@ def gaudi_bloom_build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int,
     Returns tensor shaped (batch_size * num_heads, 1, max_seq_len)
         attention_mask (`torch.Tensor`):
             Token-wise attention mask, this should be of shape (batch_size, max_seq_len).
-        num_heads (`int`, *required*):
-            number of heads
-        dtype (`torch.dtype`, *optional*, default=`torch.bfloat16`):
-            dtype of the output tensor
+        num_heads (`int`):
+            Number of heads.
+        dtype (`torch.dtype`):
+            Dtype of the output tensor.
+        training (`bool`):
+            Whether the model is being trained or not.
     """
     batch_size, seq_length = attention_mask.shape
     closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
@@ -70,20 +74,23 @@ def gaudi_bloom_build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int,
     # => the query_length dimension will then be broadcasted correctly
     # This is more or less identical to T5's relative position bias:
     # https://github.com/huggingface/transformers/blob/f681437203baa7671de3174b0fa583c349d9d5e1/src/transformers/models/t5/modeling_t5.py#L527
-    # code taken from Megatron transformer.py
-    batch_size = attention_mask.size()[0]
-    max_seq_len = attention_mask.size()[1]
-    alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_seq_len, device=attention_mask.device).unsqueeze(
-        0
-    ).unsqueeze(0).expand(num_heads, -1, -1)
+    if training:
+        arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[:, None, :]
+        alibi = slopes[..., None] * arange_tensor
+        return alibi.reshape(batch_size * num_heads, 1, seq_length).to(dtype)
+    else:
+        # code taken from Megatron transformer.py
+        alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(seq_length, device=attention_mask.device).unsqueeze(
+            0
+        ).unsqueeze(0).expand(num_heads, -1, -1)
 
-    # Select the part of the tensor that corresponds to our tensor parallel index.
-    tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
-    tp_index = int(os.environ.get("RANK", 0))
-    alibi = alibi.reshape((tp_world_size, -1, *alibi.shape[1:]))[tp_index]
+        # Select the part of the tensor that corresponds to our tensor parallel index.
+        tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
+        tp_index = int(os.environ.get("RANK", 0))
+        alibi = alibi.reshape((tp_world_size, -1, *alibi.shape[1:]))[tp_index]
 
-    alibi = alibi.repeat(batch_size, 1, 1)
-    return alibi.to(dtype)
+        alibi = alibi.repeat(batch_size, 1, 1)
+        return alibi.to(dtype)
 
 
 def update(prev, cur, dim, idx):
@@ -176,7 +183,7 @@ def gaudi_bloom_attention_forward(
     # matmul: [batch_size * num_heads, q_length, head_dim]
     context_layer = torch.bmm(attention_probs_reshaped, value_layer)
 
-    # change view [batch_size, num_heads, q_length, head_dim]
+    # change view [batch_size, q_length, num_heads * head_dim]
     context_layer = self._merge_heads(context_layer)
 
     # aggregate results across tp ranks. See here: https://github.com/pytorch/pytorch/issues/76232
@@ -265,16 +272,19 @@ def gaudi_bloom_block_forward(
 
 
 def gaudi_bloom_convert_to_standard_cache(
-    self, past_key_value: Tuple[Tuple[torch.Tensor, torch.Tensor]]
+    self, past_key_value: Tuple[Tuple[torch.Tensor, torch.Tensor]], batch_size: int, training: bool
 ) -> Tuple[Tuple[torch.Tensor, torch.Tensor]]:
     """
     Standardizes the format of the cache so as to match most implementations, i.e. to tuple(tuple([batch_size,
     num_heads, ...]))
     """
     batch_size_times_num_heads, head_dim, seq_length = past_key_value[0][0].shape
-    tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
-    num_heads = self.config.n_head // tp_world_size
-    batch_size = batch_size_times_num_heads // num_heads
+    if training:
+        num_heads = batch_size_times_num_heads // batch_size
+    else:
+        tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
+        num_heads = self.config.n_head // tp_world_size
+        batch_size = batch_size_times_num_heads // num_heads
     # key: [batch_size * num_heads, head_dim, seq_length] -> [batch_size, num_heads, head_dim, seq_length]
     # value: [batch_size * num_heads, seq_length, head_dim] -> [batch_size, num_heads, seq_length, head_dim]
     return tuple(
@@ -381,7 +391,7 @@ def gaudi_bloom_model_forward(
     else:
         attention_mask = attention_mask.to(hidden_states.device)
 
-    alibi = gaudi_bloom_build_alibi_tensor(attention_mask, self.num_heads, hidden_states.dtype)
+    alibi = gaudi_bloom_build_alibi_tensor(attention_mask, self.num_heads, hidden_states.dtype, self.training)
 
     causal_mask = self._prepare_attn_mask(
         attention_mask,
@@ -573,7 +583,7 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
 
         Output shares the same memory storage as `past`.
         """
-        standardized_past = self._convert_to_standard_cache(past)
+        standardized_past = self._convert_to_standard_cache(past, batch_size=len(beam_idx), training=self.training)
 
         # Get a copy of `beam_idx` on all the devices where we need those indices.
         device_to_beam_idx = {

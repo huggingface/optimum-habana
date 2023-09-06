@@ -20,21 +20,26 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 
 import argparse
 import copy
+import json
 import logging
 import os
 import time
+from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 from checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
-    model_is_bloom,
     model_is_optimized,
+    model_on_meta,
     write_checkpoints_json,
 )
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers.utils import check_min_version
 
+
+# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+check_min_version("4.32.0")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -134,7 +139,32 @@ def main():
         nargs="+",
         help="Optional argument list of words that must be generated.",
     )
+    parser.add_argument(
+        "--peft_model",
+        default=None,
+        type=str,
+        help="Optional argument to give a path to a PEFT model.",
+    )
     parser.add_argument("--num_return_sequences", type=int, default=1)
+    parser.add_argument(
+        "--token",
+        default=None,
+        type=str,
+        help="The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+        "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
+    )
+    parser.add_argument(
+        "--model_revision",
+        default="main",
+        type=str,
+        help="The specific model version to use (can be a branch name, tag name or commit id).",
+    )
+    parser.add_argument(
+        "--output_dir",
+        default=None,
+        type=str,
+        help="Output directory to store results in.",
+    )
 
     args = parser.parse_args()
 
@@ -164,7 +194,7 @@ def main():
         if not is_deepspeed_available():
             raise ImportError(
                 "This script requires deepspeed: `pip install"
-                " git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0`."
+                " git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0`."
             )
         import deepspeed
 
@@ -182,32 +212,63 @@ def main():
     # Set seed before initializing model.
     from optimum.habana.utils import set_seed
 
+    try:
+        from optimum.habana.utils import check_optimum_habana_min_version
+    except ImportError:
+
+        def check_optimum_habana_min_version(*a, **b):
+            return ()
+
+    # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
+    check_optimum_habana_min_version("1.8.0.dev0")
+
     set_seed(args.seed)
 
+    # TODO: remove the following hack when Falcon is available in Transformers
+    # Temporary hack for Falcon
+    if args.model_name_or_path == "tiiuae/falcon-7b":
+        args.model_revision = "4e2d06f0a7c6370ebabbc30c6f59377ae8f73d76"
+    elif args.model_name_or_path == "tiiuae/falcon-7b-instruct":
+        args.model_revision = "f8dac3fff96d5debd43edf56fb4e1abcfffbef28"
+    elif args.model_name_or_path == "tiiuae/falcon-40b":
+        args.model_revision = "f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232"
+    elif args.model_name_or_path == "tiiuae/falcon-40b-instruct":
+        args.model_revision = "7475ff8cfc36ed9a962b658ae3c33391566a85a5"
+
+    tokenizer_kwargs = {
+        "revision": args.model_revision,
+        "token": args.token,
+    }
     if args.bad_words is not None or args.force_words is not None:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, add_prefix_space=True)
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+        tokenizer_kwargs["add_prefix_space"] = True
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
 
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
 
-    if use_deepspeed:
-        config = AutoConfig.from_pretrained(args.model_name_or_path)
-        is_optimized = model_is_optimized(config)
-        is_bloom = model_is_bloom(config)
+    model_kwargs = {
+        "revision": args.model_revision,
+        "token": args.token,
+    }
 
-        if is_bloom:
+    if use_deepspeed:
+        config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
+        is_optimized = model_is_optimized(config)
+        load_to_meta = model_on_meta(config)
+
+        if load_to_meta:
             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
-            get_repo_root(args.model_name_or_path, args.local_rank)
+            get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
             # TODO: revisit placement on CPU when auto-injection is possible
             with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
-                model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+                )
         model = model.eval()
 
         # Initialize the model
@@ -215,8 +276,8 @@ def main():
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
-        if is_bloom:
-            # BLOOM is managed differently
+        if load_to_meta:
+            # model loaded to meta is managed differently
             checkpoints_json = "checkpoints.json"
             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
 
@@ -224,14 +285,14 @@ def main():
         torch.distributed.barrier()
 
         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
-        if is_bloom:
+        if load_to_meta:
             ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
         model = model.module
     else:
-        get_repo_root(args.model_name_or_path)
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype)
+        get_repo_root(args.model_name_or_path, token=args.token)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = model.eval().to(args.device)
         is_optimized = model_is_optimized(model.config)
 
@@ -243,6 +304,18 @@ def main():
     if not model.config.is_encoder_decoder:
         tokenizer.padding_side = "left"
     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
+    if model.config.model_type == "llama":
+        # unwind broken decapoda-research config
+        model.generation_config.pad_token_id = 0
+        model.generation_config.bos_token_id = 1
+        model.generation_config.eos_token_id = 2
+        tokenizer.bos_token_id = model.generation_config.bos_token_id
+        tokenizer.eos_token_id = model.generation_config.eos_token_id
+        tokenizer.pad_token_id = model.generation_config.pad_token_id
+        tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
+        tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
+        tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
@@ -258,10 +331,21 @@ def main():
     if args.force_words is not None:
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
 
+    if args.peft_model:
+        import importlib.util
+
+        if importlib.util.find_spec("peft") is None:
+            raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, args.peft_model)
+        model = model.to(model_dtype)
+
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)
     generation_config.max_new_tokens = args.max_new_tokens
     generation_config.use_cache = args.use_kv_cache
+    generation_config.static_shapes = is_optimized
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
     generation_config.bad_words_ids = bad_words_ids
@@ -300,18 +384,6 @@ def main():
             # Tokenization
             input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
 
-            # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
-            input_token_len = input_tokens.input_ids.shape[-1]
-            if is_optimized:
-                input_tokens["input_ids"] = F.pad(
-                    input_tokens.input_ids, (0, args.max_new_tokens), value=model.generation_config.pad_token_id
-                )
-                input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
-                # token_idx is the current index in the generation process, it is incremented each time a new token is generated
-                kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
-            else:
-                kwargs = {}
-
             # Move inputs to target device(s)
             for t in input_tokens:
                 if torch.is_tensor(input_tokens[t]):
@@ -319,7 +391,6 @@ def main():
 
             outputs = model.generate(
                 **input_tokens,
-                **kwargs,
                 generation_config=generation_config,
                 lazy_mode=True,
                 hpu_graphs=args.use_hpu_graphs,
@@ -378,6 +449,18 @@ def main():
                 ):
                     print(f"output {j+1}: {output}")
                 print(separator)
+
+            # Store results if necessary
+            if args.output_dir is not None:
+                output_dir = Path(args.output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                results = {
+                    "throughput": throughput,
+                    "output": output,
+                }
+                with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+                    json.dump(results, f, ensure_ascii=False, indent=4)
     else:
         # Downloading and loading a dataset from the hub.
         from datasets import load_dataset
@@ -430,20 +513,11 @@ def main():
         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size)
         for i, batch in enumerate(dataloader):
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
-            # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
-            if is_optimized:
-                batch["input_ids"] = F.pad(
-                    batch["input_ids"], (0, args.max_new_tokens), value=model.generation_config.pad_token_id
-                )
-                batch["attention_mask"] = F.pad(batch["attention_mask"], (0, args.max_new_tokens), value=0)
-            # prompt = batch.pop(column_name)
+
             # Move inputs to target device(s)
             for t in batch:
                 if torch.is_tensor(batch[t]):
                     batch[t] = batch[t].to(args.device)
-            if is_optimized:
-                # token_idx is the current index in the generation process, it is incremented each time a new token is generated
-                batch["token_idx"] = torch.tensor(prompt_length, device=args.device)
 
             # Generate new sequences
             outputs = model.generate(

@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2
-      EC2_AMI_ID: ami-086275fc6547e877a
+      EC2_AMI_ID: ami-05c603feebb4d931d
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-452c913d
       EC2_SECURITY_GROUP: sg-0894f4f70dd6bd778
@@ -55,7 +55,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
       - name: Run tests
         run: |
             docker run \
@@ -67,7 +67,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
             /bin/bash tests/ci/example_diff_tests.sh
   stable-diffusion:
     name: Test Stable Diffusion
@@ -83,7 +83,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
       - name: Run tests
         run: |
             docker run \
@@ -95,7 +95,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
             /bin/bash tests/ci/slow_tests_diffusers.sh
   deepspeed:
     name: Test DeepSpeed models
@@ -112,7 +112,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
       - name: Run tests
         run: |
             docker run \
@@ -124,7 +124,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
             /bin/bash tests/ci/slow_tests_deepspeed.sh
   multi-card:
     name: Test multi-card models
@@ -141,7 +141,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
       - name: Run tests
         run: |
             docker run \
@@ -153,7 +153,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
             /bin/bash tests/ci/slow_tests_8x.sh
   single-card:
     name: Test single-card models
@@ -171,7 +171,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
       - name: Run tests
         run: |
             docker run \
@@ -183,7 +183,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
             /bin/bash tests/ci/slow_tests_1x.sh
   albert-xxl-single-card:
     name: Test single-card ALBERT XXL
@@ -204,7 +204,7 @@ jobs:
       - name: Pull image
         if: github.event.schedule == '0 21 * * 6'
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
       - name: Run test
         if: github.event.schedule == '0 21 * * 6'
         run: |
@@ -217,11 +217,43 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
             /bin/bash tests/ci/albert_xxl_1x.sh
       - name: Warning
         if: github.event.schedule != '0 21 * * 6'
         run: echo "ALBERT XXL 1x is only tested on Saturdays."
+  text-generation:
+    name: Test text-generation example
+    if: ${{ !cancelled() && (success() || failure()) }}
+    needs:
+      - start-runner
+      - example-diff
+      - deepspeed
+      - multi-card
+      - single-card
+      - albert-xxl-single-card  # run the job when the previous test jobs are done
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    env:
+      AWS_REGION: us-west-2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Pull image
+        run: |
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+      - name: Run tests
+        run: |
+            docker run \
+            -v $PWD:/root/workspace \
+            --workdir=/root/workspace \
+            --runtime=habana \
+            -e HABANA_VISIBLE_DEVICES=all \
+            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            --cap-add=sys_nice \
+            --net=host \
+            --ipc=host \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            make slow_tests_text_generation_example TOKEN=${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
@@ -231,6 +263,7 @@ jobs:
       - multi-card
       - single-card
       - albert-xxl-single-card
+      - text-generation
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-west-2

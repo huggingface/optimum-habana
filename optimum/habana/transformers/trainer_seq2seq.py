@@ -20,10 +20,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 import torch
 from torch.utils.data import Dataset
 from transformers.deepspeed import is_deepspeed_zero3_enabled
-from transformers.generation.configuration_utils import GenerationConfig
 
 from optimum.utils import logging
 
+from .generation import GaudiGenerationConfig
 from .trainer import GaudiTrainer
 
 
@@ -79,20 +79,20 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             self.model.generation_config = gen_config
 
     @staticmethod
-    def load_generation_config(gen_config_arg: Union[str, GenerationConfig]) -> GenerationConfig:
+    def load_generation_config(gen_config_arg: Union[str, GaudiGenerationConfig]) -> GaudiGenerationConfig:
         """
-        Loads a `~generation.GenerationConfig` from the `GaudiSeq2SeqTrainingArguments.generation_config` arguments.
+        Loads a `~generation.GaudiGenerationConfig` from the `GaudiSeq2SeqTrainingArguments.generation_config` arguments.
 
         Args:
-            gen_config_arg (`str` or [`~generation.GenerationConfig`]):
+            gen_config_arg (`str` or [`~generation.GaudiGenerationConfig`]):
                 `GaudiSeq2SeqTrainingArguments.generation_config` argument.
 
         Returns:
-            A `~generation.GenerationConfig`.
+            A `~generation.GaudiGenerationConfig`.
         """
 
         # GenerationConfig provided, nothing to do
-        if isinstance(gen_config_arg, GenerationConfig):
+        if isinstance(gen_config_arg, GaudiGenerationConfig):
             return deepcopy(gen_config_arg)
 
         # str or Path
@@ -111,7 +111,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         else:
             pretrained_model_name = gen_config_arg
 
-        gen_config = GenerationConfig.from_pretrained(pretrained_model_name, config_file_name)
+        gen_config = GaudiGenerationConfig.from_pretrained(pretrained_model_name, config_file_name)
         return gen_config
 
     def evaluate(
@@ -215,6 +215,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         inputs: Dict[str, Union[torch.Tensor, Any]],
         prediction_loss_only: bool,
         ignore_keys: Optional[List[str]] = None,
+        **gen_kwargs,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         """
         Perform an evaluation step on `model` using `inputs`.
@@ -228,6 +229,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
                 argument `labels`. Check your model's documentation for all accepted arguments.
             prediction_loss_only (`bool`):
                 Whether or not to return the loss only.
+            gen_kwargs:
+                Additional `generate` specific kwargs.
         Return:
             Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss, logits and
             labels (each being optional).
@@ -244,11 +247,16 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         # XXX: adapt synced_gpus for fairscale as well
         # Priority (handled in generate):
         # gen_kwargs > model.generation_config > default GenerationConfig()
-        gen_kwargs = self._gen_kwargs.copy()
+
+        if len(gen_kwargs) == 0 and hasattr(self, "_gen_kwargs"):
+            gen_kwargs = self._gen_kwargs.copy()
+
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            gen_kwargs["max_length"] = self.model.config.max_length
+            gen_kwargs["max_length"] = self.model.generation_config.max_length
         gen_kwargs["num_beams"] = (
-            gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.model.config.num_beams
+            gen_kwargs["num_beams"]
+            if gen_kwargs.get("num_beams") is not None
+            else self.model.generation_config.num_beams
         )
         default_synced_gpus = True if is_deepspeed_zero3_enabled() else False
         gen_kwargs["synced_gpus"] = (
@@ -264,11 +272,20 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             else self.args.use_hpu_graphs_for_inference
         )
 
-        # TODO (Joao): the following line is needed to keep a consistent result on SQUAD. Ideally, we should not block
-        # users from preparing a dataset with `decoder_input_ids`.
-        inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
+        # If the `decoder_input_ids` was created from `labels`, evict the former, so that the model can freely generate
+        # (otherwise, it would continue generating from the padded `decoder_input_ids`)
+        if (
+            "labels" in inputs
+            and "decoder_input_ids" in inputs
+            and inputs["labels"].shape == inputs["decoder_input_ids"].shape
+        ):
+            inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
         try:
-            generated_tokens = self.model.generate(**inputs, **gen_kwargs)
+            generated_tokens = self.model.generate(
+                **inputs,
+                generation_config=self.model.generation_config,
+                **gen_kwargs,
+            )
         except RuntimeError as error:
             if "cpu fallback is not supported during hpu graph capturing" in str(error):
                 error.args = (

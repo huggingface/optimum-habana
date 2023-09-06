@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.10.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0
 ```
 
 
@@ -96,6 +96,17 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 > - agree to the terms of use of the model in its model card on the HF Hub
 > - set a read token as explained [here](https://huggingface.co/docs/hub/security-tokens)
 > - login to your account using the HF CLI: run `huggingface-cli login` before launching your script
+>
+> And then you can run it as any other model:
+> ```
+> python run_generation.py \
+> --model_name_or_path bigcode/starcoder \
+> --batch_size 1 \
+> --use_hpu_graphs \
+> --use_kv_cache \
+> --max_new_tokens 100 \
+> --bf16
+> ```
 
 
 ### Use any dataset from the Hugging Face Hub
@@ -118,3 +129,21 @@ python run_generation.py \
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
+
+
+### Use PEFT models for generation
+
+You can also provide the path to a PEFT model to perform generation with the argument `--peft_model`.
+
+For example:
+```bash
+python run_generation.py \
+--model_name_or_path huggyllama/llama-7b \
+--use_hpu_graphs \
+--use_kv_cache \
+--batch_size 1 \
+--bf16 \
+--max_new_tokens 100 \
+--prompt "Here is my prompt" \
+--peft_model trl-lib/llama-7b-se-rm-peft
+```

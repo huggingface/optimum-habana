@@ -1,9 +1,12 @@
 name: Unit and integration tests
 
+
+# WARNING: As this workflow supports the pull_request_target event, please exercise extra care when editing it.
 on:
   workflow_dispatch:
-  pull_request:
+  pull_request_target:
     branches: [ main ]
+    types: [ opened, synchronize, reopened, labeled ]
     paths:
       - "optimum/**.py"
       - "tests/**.py"
@@ -14,12 +17,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  authorize:
+    if: (github.event.action == 'labeled' && github.event.label.name == 'run-test') || github.event_name != 'pull_request_target' || (! github.event.pull_request.head.repo.fork)
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+
   start-runner:
     name: Start self-hosted EC2 runner
+    needs: authorize
     runs-on: ubuntu-20.04
     env:
       AWS_REGION: us-east-1
-      EC2_AMI_ID: ami-0ed6a6bdb94a8de33
+      EC2_AMI_ID: ami-02086055ccb243ea2
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-b7533b96
       EC2_SECURITY_GROUP: sg-059956d687c7ec5c2
@@ -50,16 +60,26 @@ jobs:
             ]
   transformers:
     name: Run tests for optimum.habana.transformers
-    needs: start-runner # required to start the main job when the runner is ready
+    needs:
+      - authorize
+      - start-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
       AWS_REGION: us-east-1
     steps:
-      - name: Checkout
+      - name: Checkout on branch
+        if: github.event_name != 'pull_request_target'
         uses: actions/checkout@v2
+        with:
+          ref: ${{ github.ref }}
+      - name: Checkout on PR merge commit
+        if: github.event_name == 'pull_request_target'
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
       - name: Run tests
         run: |
             docker run \
@@ -71,22 +91,31 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
     name: Run tests for optimum.habana.diffusers
     needs:
+      - authorize
       - start-runner # required to get output from the start-runner job
       - transformers # required to wait for the previous tests to finish
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
       AWS_REGION: us-east-1
     steps:
-      - name: Checkout
+      - name: Checkout on branch
+        if: github.event_name != 'pull_request_target'
         uses: actions/checkout@v2
+        with:
+          ref: ${{ github.ref }}
+      - name: Checkout on PR merge commit
+        if: github.event_name == 'pull_request_target'
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
       - name: Run tests
         run: |
             docker run \
@@ -98,11 +127,12 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.10.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.11.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
             /bin/bash tests/ci/fast_tests_diffusers.sh
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
+      - authorize
       - start-runner # required to get output from the start-runner job
       - transformers # required to wait for the tests to be finished
       - diffusers # required to wait for the tests to be finished
