@@ -85,6 +85,7 @@ class CausalLMBatch(Batch):
         prefix_offsets = []
         read_offsets = []
         requests_idx_mapping = {}
+        input_lengths = []
 
         # Parse batch
         max_truncation = 0
@@ -104,28 +105,25 @@ class CausalLMBatch(Batch):
         tokenized_inputs = tokenizer(
             inputs,
             return_tensors="pt",
-            padding=True,
+            padding="max_length",
             return_token_type_ids=False,
             truncation=True,
             max_length=max_truncation,
         ).to(device)
         for _ in pb.requests:
             input_len = tokenized_inputs["input_ids"].shape[1]
+            input_lengths.append(input_len)
             prefix_offsets.append(input_len - 5)
             read_offsets.append(input_len)
 
-        input_lengths = tokenized_inputs["attention_mask"].sum(1)
-        max_input_length = input_lengths.max()
+        max_input_length = max(input_lengths)
         max_tokens = len(inputs) * max_input_length + max_decode_tokens
 
         input_ids = tokenized_inputs["input_ids"]
+        attention_mask = tokenized_inputs["attention_mask"]
         if is_optimized_for_gaudi:
-            input_ids = torch.nn.functional.pad(input_ids, (0, max_decode_tokens), value=tokenizer.pad_token_id)
-        # Allocate maximum attention_mask
-        attention_mask = input_ids.new_zeros((pb.size, max_input_length + max_decode_tokens))
-        # Copy tokenizer attention_mask into fully allocated attention_mask
-        attention_mask[:, :max_input_length] = tokenized_inputs["attention_mask"]
-
+            input_ids = torch.nn.functional.pad(input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id)
+            attention_mask = torch.nn.functional.pad(attention_mask, (0, padding_right_offset), value=0)
         position_ids = tokenized_inputs["attention_mask"].long().cumsum(-1) - 1
         position_ids.masked_fill_(tokenized_inputs["attention_mask"] == 0, 1)
         all_input_ids = input_ids.T.clone().split(1, dim=1)
@@ -140,14 +138,14 @@ class CausalLMBatch(Batch):
             position_ids=position_ids,
             past_key_values=None,
             all_input_ids=list(all_input_ids),
-            input_lengths=input_lengths.tolist(),
+            input_lengths=input_lengths,
             prefix_offsets=prefix_offsets,
             read_offsets=read_offsets,
             next_token_choosers=next_token_choosers,
             stopping_criterias=stopping_criterias,
             top_n_tokens=top_n_tokens,
             top_n_tokens_tensor=top_n_tokens_tensor,
-            max_input_length=max_input_length.item(),
+            max_input_length=max_input_length,
             padding_right_offset=padding_right_offset,
             max_tokens=max_tokens,
         )
@@ -535,7 +533,7 @@ class CausalLM(Model):
     @tracer.start_as_current_span("generate_token")
     def generate_token(self, batch: CausalLMBatch) -> Tuple[List[Generation], Optional[CausalLMBatch]]:
         if self.is_optimized_for_gaudi:
-            token_idx = torch.tensor(batch.position_ids[0, -1] + 1)
+            token_idx = torch.tensor(batch.attention_mask.shape[-1] - batch.padding_right_offset).to(self.device)
             attention_mask = batch.attention_mask
         else:
             token_idx = None
@@ -594,7 +592,7 @@ class CausalLM(Model):
 
             # Append next token to all tokens
             if self.is_optimized_for_gaudi:
-                all_input_ids[token_idx] = next_token_id
+                all_input_ids[input_length] = next_token_id
             else:
                 all_input_ids = torch.cat([all_input_ids, next_token_id])
             new_input_length = input_length + 1
