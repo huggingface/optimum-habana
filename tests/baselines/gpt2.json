@@ -1,14 +1,14 @@
 {
     "wikitext": {
-        "num_train_epochs": 3,
+        "num_train_epochs": 2,
         "eval_batch_size": 4,
         "distribution": {
             "single_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 4,
-                "perplexity": 22.1704,
-                "train_runtime": 342.8877,
-                "train_samples_per_second": 20.727,
+                "perplexity": 22.2702,
+                "train_runtime": 228.4118,
+                "train_samples_per_second": 21.064,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--use_hpu_graphs_for_inference",
@@ -18,9 +18,9 @@
             "multi_card": {
                 "learning_rate": 4e-4,
                 "train_batch_size": 4,
-                "perplexity": 22.4383,
-                "train_runtime": 74.7413,
-                "train_samples_per_second": 159.159,
+                "perplexity": 22.2137,
+                "train_runtime": 58.8908,
+                "train_samples_per_second": 158.94,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--use_hpu_graphs_for_inference",

@@ -1,15 +1,15 @@
 {
     "common_language": {
         "num_train_epochs": 10,
-        "eval_batch_size": 32,
+        "eval_batch_size": 64,
         "distribution": {
             "multi_card": {
-                "learning_rate": 3e-4,
-                "train_batch_size": 16,
-                "eval_accuracy": 0.8088,
-                "train_runtime": 611.0691,
-                "train_samples_per_second": 392.788,
-                "eval_samples_per_second": 568.0,
+                "learning_rate": 5e-4,
+                "train_batch_size": 32,
+                "eval_accuracy": 0.8047,
+                "train_runtime": 549.2108,
+                "train_samples_per_second": 462.584,
+                "eval_samples_per_second": 294.293,
                 "extra_arguments": [
                     "--audio_column_name audio",
                     "--label_column_name language",
@@ -18,6 +18,7 @@
                     "--attention_mask False",
                     "--warmup_ratio 0.1",
                     "--seed 0",
+                    "--dataloader_num_workers 1",
                     "--use_hpu_graphs_for_inference"
                 ]
             }
