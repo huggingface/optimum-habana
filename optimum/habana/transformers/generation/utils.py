@@ -511,7 +511,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 inputs_tensor, generation_config.pad_token_id, generation_config.eos_token_id
             )
 
-        if generation_config.static_shapes:
+        if self.config.is_encoder_decoder and generation_config.static_shapes:
             # token_idx is the current index in the generation process, it is incremented each time a new token is generated
             model_kwargs["token_idx"] = torch.tensor(1, device=inputs_tensor.device)
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
@@ -556,7 +556,6 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs = self._prepare_encoder_decoder_kwargs_for_generation(
                 inputs_tensor, model_kwargs, model_input_name
             )
-
         # 5. Prepare `input_ids` which will be used for auto-regressive generation
 
         if self.config.is_encoder_decoder:
@@ -623,7 +622,7 @@ class GaudiGenerationMixin(GenerationMixin):
         )
 
         # 9. prepare stopping criteria
-        if generation_mode == GenerationMode.GREEDY_SEARCH:
+        if self.config.is_encoder_decoder and generation_mode == GenerationMode.GREEDY_SEARCH:
             stopping_criteria = _get_stopping_criteria(
                 self, generation_config=generation_config, stopping_criteria=stopping_criteria
             )
