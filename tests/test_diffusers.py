@@ -27,12 +27,17 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from transformers.testing_utils import slow
 
 from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline, GaudiStableDiffusionPipeline
+from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiDiffusionPipeline,
+    GaudiStableDiffusionLDM3DPipeline,
+    GaudiStableDiffusionPipeline,
+)
 from optimum.habana.utils import set_seed
 
 
-THROUGHPUT_BASELINE_HMP = 0.287
-THROUGHPUT_BASELINE_BF16 = 0.302
+THROUGHPUT_BASELINE_HMP = 0.289
+THROUGHPUT_BASELINE_BF16 = 0.294
 THROUGHPUT_BASELINE_AUTOCAST = 0.108
 
 
@@ -609,3 +614,35 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
             self.assertEqual(image.shape, (512, 512, 3))
             self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
+
+    @slow
+    def test_no_generation_regression_ldm3d(self):
+        model_name = "Intel/ldm3d-4c"
+        # fp32
+        with hmp.disable_casts():
+            scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+            pipeline = GaudiStableDiffusionLDM3DPipeline.from_pretrained(
+                model_name,
+                scheduler=scheduler,
+                safety_checker=None,
+                use_habana=True,
+                use_hpu_graphs=True,
+                gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+            )
+            set_seed(27)
+            outputs = pipeline(
+                prompt="An image of a squirrel in Picasso style",
+                output_type="np",
+            )
+
+            expected_slice_rgb = np.array([0.7083766, 1.0, 1.0, 0.70610344, 0.9867363, 1.0, 0.7214538, 1.0, 1.0])
+            expected_slice_depth = np.array(
+                [0.919621, 0.92072034, 0.9184986, 0.91994286, 0.9242079, 0.93387043, 0.92345214, 0.93558526, 0.9223714]
+            )
+            rgb = outputs.rgb[0]
+            depth = outputs.depth[0]
+
+            self.assertEqual(rgb.shape, (512, 512, 3))
+            self.assertEqual(depth.shape, (512, 512, 1))
+            self.assertLess(np.abs(expected_slice_rgb - rgb[-3:, -3:, -1].flatten()).max(), 5e-3)
+            self.assertLess(np.abs(expected_slice_depth - depth[-3:, -3:, -1].flatten()).max(), 5e-3)

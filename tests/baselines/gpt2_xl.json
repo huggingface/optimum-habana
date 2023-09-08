@@ -6,12 +6,13 @@
             "deepspeed": {
                 "learning_rate": 4e-4,
                 "train_batch_size": 16,
-                "perplexity": 13.0631,
-                "train_runtime": 495.3144,
-                "train_samples_per_second": 17.435,
+                "perplexity": 13.0495,
+                "train_runtime": 519.7476,
+                "train_samples_per_second": 16.74,
                 "extra_arguments": [
                     "--dataset_config_name wikitext-2-raw-v1",
                     "--gradient_checkpointing",
+                    "--use_hpu_graphs_for_inference",
                     "--deepspeed tests/configs/deepspeed_zero_2.json"
                 ]
             }

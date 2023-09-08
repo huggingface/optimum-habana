@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import copy
 import math
 import os
@@ -23,26 +24,26 @@ import tempfile
 import time
 import warnings
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
+import huggingface_hub.utils as hf_hub_utils
 import numpy as np
 import torch
-from packaging import version
+from accelerate import skip_first_batches
+from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin
+from huggingface_hub import upload_folder
 from torch.utils.data import DataLoader, Dataset, RandomSampler
-from torch.utils.data.distributed import DistributedSampler
-from tqdm.auto import tqdm
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
-from transformers.deepspeed import is_deepspeed_zero3_enabled
+from transformers.deepspeed import deepspeed_load_checkpoint
 from transformers.integrations import hp_params
-from transformers.modeling_utils import PreTrainedModel, unwrap_model
+from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint, unwrap_model
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
-    DistributedLengthGroupedSampler,
-    DistributedSamplerWithLoop,
     DistributedTensorGatherer,
     IterableDatasetShard,
     LengthGroupedSampler,
@@ -53,7 +54,6 @@ from transformers.trainer_pt_utils import (
     nested_concat,
     nested_detach,
     nested_numpify,
-    nested_truncate,
     reissue_pt_warnings,
 )
 from transformers.trainer_utils import (
@@ -70,18 +70,24 @@ from transformers.trainer_utils import (
     get_last_checkpoint,
     has_length,
 )
-from transformers.training_args import TrainingArguments
+from transformers.training_args import ParallelMode, TrainingArguments
 from transformers.utils import (
+    ADAPTER_SAFE_WEIGHTS_NAME,
+    ADAPTER_WEIGHTS_NAME,
     CONFIG_NAME,
     SAFE_WEIGHTS_NAME,
+    WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
+    PushInProgress,
     is_datasets_available,
+    is_peft_available,
     is_safetensors_available,
 )
 
 from optimum.habana.distributed import all_reduce_gradients
 from optimum.utils import logging
 
+from ..accelerate import GaudiAccelerator
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -101,6 +107,10 @@ if is_datasets_available():
 
 if is_safetensors_available():
     import safetensors.torch
+
+
+if is_peft_available():
+    from peft import PeftModel
 
 
 if TYPE_CHECKING:
@@ -223,6 +233,13 @@ class GaudiTrainer(Trainer):
                     raise error
                 self.hmp = hmp
 
+                warnings.warn(
+                    "Habana Mixed Precision is deprecated and will be removed in SynapseAI v1.12. Please"
+                    " use Torch Autocast instead using `--bf16` or setting `use_torch_autocast=true` in your"
+                    " Gaudi configuration.",
+                    FutureWarning,
+                )
+
                 # Open temporary files to mixed-precision write ops
                 with tempfile.NamedTemporaryFile() as hmp_bf16_file:
                     with tempfile.NamedTemporaryFile() as hmp_fp32_file:
@@ -268,23 +285,15 @@ class GaudiTrainer(Trainer):
             "ignore", message="User provided device_type of 'cuda', but CUDA is not available. Disabling"
         )
 
+    def _move_model_to_device(self, model, device):
+        model = model.to(device)
+        # Moving a model to HPU disconnects the tied weights, so we have to retie them.
+        if self.args.use_habana and hasattr(model, "tie_weights"):
+            model.tie_weights()
+
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
-
-        generator = None
-        if self.args.world_size <= 1:
-            generator = torch.Generator()
-            # for backwards compatibility, we generate a seed here (which is sampled from a generator seeded with
-            # `args.seed`) if data_seed isn't provided.
-            # Further on in this method, we default to `args.seed` instead.
-            if self.args.data_seed is None:
-                seed = int(torch.empty((), dtype=torch.int64).random_().item())
-            else:
-                seed = self.args.data_seed
-            generator.manual_seed(seed)
-
-        seed = self.args.data_seed if self.args.data_seed is not None else self.args.seed
 
         # Build the sampler.
         if self.args.group_by_length:
@@ -297,56 +306,27 @@ class GaudiTrainer(Trainer):
             else:
                 lengths = None
             model_input_name = self.tokenizer.model_input_names[0] if self.tokenizer is not None else None
-            if self.args.world_size <= 1:
-                return LengthGroupedSampler(
-                    self.args.train_batch_size * self.args.gradient_accumulation_steps,
-                    dataset=self.train_dataset,
-                    lengths=lengths,
-                    model_input_name=model_input_name,
-                    generator=generator,
-                )
-            else:
-                return DistributedLengthGroupedSampler(
-                    self.args.train_batch_size * self.args.gradient_accumulation_steps,
-                    dataset=self.train_dataset,
-                    num_replicas=self.args.world_size,
-                    rank=self.args.process_index,
-                    lengths=lengths,
-                    model_input_name=model_input_name,
-                    seed=seed,
-                )
+            return LengthGroupedSampler(
+                self.args.train_batch_size * self.args.gradient_accumulation_steps,
+                dataset=self.train_dataset,
+                lengths=lengths,
+                model_input_name=model_input_name,
+            )
 
         else:
-            if self.args.world_size <= 1:
-                num_samples = len(self.train_dataset)
-                if (
-                    self.args.use_lazy_mode
-                    and not self.args.dataloader_drop_last
-                    and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
-                ):
-                    # Make the total number of samples divisible by the batch size in lazy mode if needed
-                    num_samples += (
-                        self.args.per_device_train_batch_size
-                        - len(self.train_dataset) % self.args.per_device_train_batch_size
-                    )
-                return RandomSampler(self.train_dataset, num_samples=num_samples, generator=generator)
-            else:
-                if self.args.use_lazy_mode and not self.args.dataloader_drop_last:
-                    # Use a loop for HPUs when drop_last is False to have all batches have the same size
-                    return DistributedSamplerWithLoop(
-                        self.train_dataset,
-                        batch_size=self.args.per_device_train_batch_size,
-                        num_replicas=self.args.world_size,
-                        rank=self.args.process_index,
-                        seed=seed,
-                    )
-                else:
-                    return DistributedSampler(
-                        self.train_dataset,
-                        num_replicas=self.args.world_size,
-                        rank=self.args.process_index,
-                        seed=seed,
-                    )
+            num_samples = len(self.train_dataset)
+            if (
+                self.args.use_lazy_mode
+                and not self.args.dataloader_drop_last
+                and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
+                and self.args.parallel_mode != ParallelMode.DISTRIBUTED
+            ):
+                # Make the total number of samples divisible by the batch size in lazy mode if needed
+                num_samples += (
+                    self.args.per_device_train_batch_size
+                    - len(self.train_dataset) % self.args.per_device_train_batch_size
+                )
+            return RandomSampler(self.train_dataset, num_samples=num_samples)
 
     def create_optimizer(self):
         """
@@ -411,14 +391,6 @@ class GaudiTrainer(Trainer):
                 torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
 
     def _wrap_model(self, model, training=True, dataloader=None):
-        if self.args.use_ipex:
-            dtype = torch.bfloat16 if self.use_cpu_amp else torch.float32
-            model = self.ipex_optimize_model(model, training, dtype=dtype)
-
-        # already initialized its own DDP and AMP
-        if self.deepspeed:
-            return self.deepspeed
-
         # train/eval could be run multiple-times - if already wrapped, don't re-wrap it again
         if unwrap_model(model) is not model:
             return model
@@ -428,7 +400,7 @@ class GaudiTrainer(Trainer):
         if not training:
             return model
 
-        if self.args.local_rank != -1 and self.args.distribution_strategy == "ddp":
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "ddp":
             kwargs = {}
 
             kwargs["find_unused_parameters"] = self.args.ddp_find_unused_parameters
@@ -442,67 +414,17 @@ class GaudiTrainer(Trainer):
             if self.args.use_habana:
                 kwargs["gradient_as_bucket_view"] = True
 
-            model = torch.nn.parallel.DistributedDataParallel(
-                model,
-                device_ids=[self.args.local_rank] if self.args._n_gpu != 0 and not self.args.use_habana else None,
-                output_device=self.args.local_rank if self.args._n_gpu != 0 and not self.args.use_habana else None,
-                **kwargs,
-            )
+            if self.args.ddp_broadcast_buffers is not None:
+                kwargs["broadcast_buffers"] = self.args.ddp_broadcast_buffers
+
+            self.accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)
 
         if self.args.use_hpu_graphs_for_training:
             import habana_frameworks.torch as ht
 
             ht.hpu.ModuleCacher()(model=model, inplace=True)
 
-        # torch.compile() needs to be called after wrapping the model with FSDP or DDP
-        # to ensure that it accounts for the graph breaks required by those wrappers
-        if self.args.torch_compile:
-            model = torch.compile(model, backend=self.args.torch_compile_backend, mode=self.args.torch_compile_mode)
-
         return model
-
-    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch, ignore_keys_for_eval):
-        if self.args.adjust_throughput:
-            save_start = time.perf_counter()
-
-        if self.control.should_log:
-            logs: Dict[str, float] = {}
-
-            # all_gather + mean() to get average loss over all processes
-            tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
-
-            # reset tr_loss to zero
-            tr_loss -= tr_loss
-            logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
-            logs["learning_rate"] = self._get_learning_rate()
-
-            self._total_loss_scalar += tr_loss_scalar
-            self._globalstep_last_logged = self.state.global_step
-            self.store_flos()
-
-            self.log(logs)
-
-        metrics = None
-        if self.control.should_evaluate:
-            if isinstance(self.eval_dataset, dict):
-                metrics = {}
-                for eval_dataset_name, eval_dataset in self.eval_dataset.items():
-                    dataset_metrics = self.evaluate(
-                        eval_dataset=eval_dataset,
-                        ignore_keys=ignore_keys_for_eval,
-                        metric_key_prefix=f"eval_{eval_dataset_name}",
-                    )
-                    metrics.update(dataset_metrics)
-            else:
-                metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
-            self._report_to_hp_search(trial, self.state.global_step, metrics)
-
-        if self.control.should_save:
-            self._save_checkpoint(model, trial, metrics=metrics)
-            self.control = self.callback_handler.on_save(self.args, self.state, self.control)
-
-        if self.args.adjust_throughput:
-            self.log_evaluate_save_time += time.perf_counter() - save_start
 
     def train(
         self,
@@ -523,7 +445,7 @@ class GaudiTrainer(Trainer):
             ignore_keys_for_eval (`List[str]`, *optional*)
                 A list of keys in the output of your model (if it is a dictionary) that should be ignored when
                 gathering predictions for evaluation during the training.
-            kwargs:
+            kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments used to hide deprecated arguments
         """
         if resume_from_checkpoint is False:
@@ -570,7 +492,7 @@ class GaudiTrainer(Trainer):
             if resume_from_checkpoint is None:
                 raise ValueError(f"No valid checkpoint found in output directory ({args.output_dir})")
 
-        if resume_from_checkpoint is not None and args.deepspeed is None:
+        if resume_from_checkpoint is not None and not self.is_deepspeed_enabled:
             self._load_from_checkpoint(resume_from_checkpoint)
 
         # If model was re-initialized, put it on the right device and update self.model_wrapped
@@ -583,78 +505,25 @@ class GaudiTrainer(Trainer):
             self._inner_training_loop, self._train_batch_size, args.auto_find_batch_size
         )
 
-        return inner_training_loop(
-            args=args,
-            resume_from_checkpoint=resume_from_checkpoint,
-            trial=trial,
-            ignore_keys_for_eval=ignore_keys_for_eval,
-        )
-
-    def _prepare_input(self, data: Union[torch.Tensor, Any]) -> Union[torch.Tensor, Any]:
-        """
-        Prepares one `data` before feeding it to the model, be it a tensor or a nested list/dictionary of tensors.
-        Compared to Transformers, it is also possible to enable non-blocking data copy.
-        """
-        if isinstance(data, Mapping):
-            return type(data)({k: self._prepare_input(v) for k, v in data.items()})
-        elif isinstance(data, (tuple, list)):
-            return type(data)(self._prepare_input(v) for v in data)
-        elif isinstance(data, torch.Tensor):
-            kwargs = {"device": self.args.device}
-            if self.deepspeed and (torch.is_floating_point(data) or torch.is_complex(data)):
-                # NLP models inputs are int/uint and those get adjusted to the right dtype of the
-                # embedding. Other models such as wav2vec2's inputs are already float and thus
-                # may need special handling to match the dtypes of the model
-                kwargs.update({"dtype": self.args.hf_deepspeed_config.dtype()})
-            if self.args.non_blocking_data_copy:
-                return data.to(**kwargs, non_blocking=True)
-            else:
-                return data.to(**kwargs)
-        return data
-
-    def training_step(self, model: torch.nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
-        """
-        Perform a training step on a batch of inputs.
-
-        Subclass and override to inject custom behavior.
-
-        Args:
-            model (`torch.nn.Module`):
-                The model to train.
-            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
-                The inputs and targets of the model.
-
-                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
-                argument `labels`. Check your model's documentation for all accepted arguments.
-
-        Return:
-            `torch.Tensor`: The tensor with training loss on this batch.
-        """
-        model.train()
-        inputs = self._prepare_inputs(inputs)
-
-        with self.compute_loss_context_manager():
-            loss = self.compute_loss(model, inputs)
-
-        if self.args.n_gpu > 1:
-            loss = loss.mean()  # mean() to average on multi-gpu parallel training
-
-        if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
-            # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
-            loss = loss / self.args.gradient_accumulation_steps
-
-        if self.args.pipelining_fwd_bwd:
-            self.htcore.mark_step()
-
-        if self.do_grad_scaling:
-            self.scaler.scale(loss).backward()
-        elif self.deepspeed:
-            # loss gets scaled under gradient_accumulation_steps in deepspeed
-            loss = self.deepspeed.backward(loss)
+        if args.push_to_hub:
+            try:
+                # Disable progress bars when uploading models during checkpoints to avoid polluting stdout
+                hf_hub_utils.disable_progress_bars()
+                return inner_training_loop(
+                    args=args,
+                    resume_from_checkpoint=resume_from_checkpoint,
+                    trial=trial,
+                    ignore_keys_for_eval=ignore_keys_for_eval,
+                )
+            finally:
+                hf_hub_utils.enable_progress_bars()
         else:
-            loss.backward()
-
-        return loss.detach()
+            return inner_training_loop(
+                args=args,
+                resume_from_checkpoint=resume_from_checkpoint,
+                trial=trial,
+                ignore_keys_for_eval=ignore_keys_for_eval,
+            )
 
     def _inner_training_loop(
         self,
@@ -664,7 +533,9 @@ class GaudiTrainer(Trainer):
         trial=None,
         ignore_keys_for_eval=None,
     ):
+        self.accelerator.free_memory()
         self._train_batch_size = batch_size
+        logger.debug(f"Currently training with a batch size of: {self._train_batch_size}")
         # Data loader and number of training steps
         train_dataloader = self.get_train_dataloader()
 
@@ -672,7 +543,7 @@ class GaudiTrainer(Trainer):
         # number of training epochs: num_train_epochs
         # number of training steps per epoch: num_update_steps_per_epoch
         # total number of training steps to execute: max_steps
-        total_train_batch_size = args.train_batch_size * args.gradient_accumulation_steps * args.world_size
+        total_train_batch_size = self._train_batch_size * args.gradient_accumulation_steps * args.world_size
 
         len_dataloader = None
         if has_length(train_dataloader):
@@ -708,20 +579,35 @@ class GaudiTrainer(Trainer):
         if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:
             debug_overflow = DebugUnderflowOverflow(self.model)  # noqa
 
-        if args.deepspeed:
-            deepspeed_engine, optimizer, lr_scheduler = deepspeed_init(
-                self, num_training_steps=max_steps, resume_from_checkpoint=resume_from_checkpoint
-            )
-            self.model = deepspeed_engine.module
-            self.model_wrapped = deepspeed_engine
-            self.deepspeed = deepspeed_engine
-            self.optimizer = optimizer
-            self.lr_scheduler = lr_scheduler
-        else:
-            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+        # We need to reset the scheduler, as its parameters may be different on subsequent calls
+        if self._created_lr_scheduler:
+            self.lr_scheduler = None
+            self._created_lr_scheduler = False
+
+        if self.is_deepspeed_enabled:
+            self.optimizer, self.lr_scheduler = deepspeed_init(self, num_training_steps=max_steps)
+
+        self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
         self.state = TrainerState()
         self.state.is_hyper_param_search = trial is not None
+
+        # Compute absolute values for logging, eval, and save if given as ratio
+        if args.logging_steps is not None:
+            if args.logging_steps < 1:
+                self.state.logging_steps = math.ceil(max_steps * args.logging_steps)
+            else:
+                self.state.logging_steps = args.logging_steps
+        if args.eval_steps is not None:
+            if args.eval_steps < 1:
+                self.state.eval_steps = math.ceil(max_steps * args.eval_steps)
+            else:
+                self.state.eval_steps = args.eval_steps
+        if args.save_steps is not None:
+            if args.save_steps < 1:
+                self.state.save_steps = math.ceil(max_steps * args.save_steps)
+            else:
+                self.state.save_steps = args.save_steps
 
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
@@ -756,9 +642,33 @@ class GaudiTrainer(Trainer):
 
         model = self._wrap_model(self.model_wrapped)
 
+        # as the model is wrapped, don't use `accelerator.prepare`
+        # this is for unhandled cases such as
+        # Fairscale Sharded DDP, FSDP-XLA, SageMaker MP/DP, DataParallel, IPEX
+        use_accelerator_prepare = True if model is self.model else False
+
+        # prepare using `accelerator` prepare
+        if use_accelerator_prepare:
+            self.model.train()
+            if hasattr(self.lr_scheduler, "step"):
+                model, self.optimizer = self.accelerator.prepare(self.model, self.optimizer)
+            else:
+                # to handle cases wherein we pass "DummyScheduler" such as when it is specified in DeepSpeed config.
+                model, self.optimizer, self.lr_scheduler = self.accelerator.prepare(
+                    self.model, self.optimizer, self.lr_scheduler
+                )
+
         # for the rest of this function `model` is the outside model, whether it was wrapped or not
         if model is not self.model:
             self.model_wrapped = model
+
+        # backward compatibility
+        if self.is_deepspeed_enabled:
+            self.deepspeed = self.model_wrapped
+
+        # deepspeed ckpt loading
+        if resume_from_checkpoint is not None and self.is_deepspeed_enabled:
+            deepspeed_load_checkpoint(self.model_wrapped, resume_from_checkpoint)
 
         # Check if saved optimizer or scheduler states exist
         self._load_optimizer_and_scheduler(resume_from_checkpoint)
@@ -784,7 +694,9 @@ class GaudiTrainer(Trainer):
         logger.info("***** Running training *****")
         logger.info(f"  Num examples = {num_examples:,}")
         logger.info(f"  Num Epochs = {num_train_epochs:,}")
-        logger.info(f"  Instantaneous batch size per device = {args.per_device_train_batch_size:,}")
+        logger.info(f"  Instantaneous batch size per device = {self.args.per_device_train_batch_size:,}")
+        if self.args.per_device_train_batch_size != self._train_batch_size:
+            logger.info(f"  Training with DataParallel so batch size has been adjusted to: {self._train_batch_size:,}")
         logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size:,}")
         logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
         logger.info(f"  Total optimization steps = {max_steps:,}")
@@ -814,17 +726,13 @@ class GaudiTrainer(Trainer):
             logger.info(f"  Continuing training from global step {self.state.global_step}")
             if not args.ignore_data_skip:
                 logger.info(
-                    f"  Will skip the first {epochs_trained} epochs then the first {steps_trained_in_current_epoch} "
-                    "batches in the first epoch. If this takes a lot of time, you can add the `--ignore_data_skip` "
-                    "flag to your launch command, but you will resume the training on data already seen by your model."
+                    f"  Will skip the first {epochs_trained} epochs then the first"
+                    f" {steps_trained_in_current_epoch} batches in the first epoch."
                 )
-                if self.is_local_process_zero() and not args.disable_tqdm:
-                    steps_trained_progress_bar = tqdm(total=steps_trained_in_current_epoch)
-                    steps_trained_progress_bar.set_description("Skipping the first batches")
 
         # In multi-worker training: broadcast model parameters from worker:0 to all the others.
         # This must be done manually unless DistributedDataParallel is used.
-        if self.args.local_rank != -1 and self.args.distribution_strategy == "fast_ddp":
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "fast_ddp":
             logger.debug(
                 f"Broadcasting the model parameters to assure that each of {self.args.world_size} workers start the training from the same point."
             )
@@ -865,18 +773,8 @@ class GaudiTrainer(Trainer):
         # Skip the first epochs_trained epochs to get the random state of the dataloader at the right point.
         if not args.ignore_data_skip:
             for epoch in range(epochs_trained):
-                is_random_sampler = hasattr(train_dataloader, "sampler") and isinstance(
-                    train_dataloader.sampler, RandomSampler
-                )
-                if version.parse(torch.__version__) < version.parse("1.11") or not is_random_sampler:
-                    # We just need to begin an iteration to create the randomization of the sampler.
-                    # That was before PyTorch 1.11 however...
-                    for _ in train_dataloader:
-                        break
-                else:
-                    # Otherwise we need to call the whooooole sampler cause there is some random operation added
-                    # AT THE VERY END!
-                    _ = list(train_dataloader.sampler)
+                for _ in train_dataloader:
+                    break
 
         if self.args.adjust_throughput:
             self.log_evaluate_save_time = 0
@@ -886,12 +784,8 @@ class GaudiTrainer(Trainer):
         hb_profiler = HabanaProfile(warmup=self.args.profiling_warmup_steps, active=self.args.profiling_steps)
         hb_profiler.start()
 
+        total_batched_samples = 0
         for epoch in range(epochs_trained, num_train_epochs):
-            if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
-                train_dataloader.sampler.set_epoch(epoch)
-            elif hasattr(train_dataloader, "dataset") and isinstance(train_dataloader.dataset, IterableDatasetShard):
-                train_dataloader.dataset.set_epoch(epoch)
-
             epoch_iterator = train_dataloader
 
             # Reset the past mems state at the beginning of each epoch if necessary.
@@ -908,8 +802,15 @@ class GaudiTrainer(Trainer):
             if epoch == epochs_trained and resume_from_checkpoint is not None and steps_trained_in_current_epoch == 0:
                 self._load_rng_state(resume_from_checkpoint)
 
-            step = -1
+            rng_to_sync = False
+            steps_skipped = 0
+            if steps_trained_in_current_epoch > 0:
+                epoch_iterator = skip_first_batches(epoch_iterator, steps_trained_in_current_epoch)
+                steps_skipped = steps_trained_in_current_epoch
+                steps_trained_in_current_epoch = 0
+                rng_to_sync = True
 
+            step = -1
             for step, inputs in enumerate(epoch_iterator):
                 if (
                     args.throughput_warmup_steps > 0
@@ -917,6 +818,11 @@ class GaudiTrainer(Trainer):
                     == epoch * steps_in_epoch + step
                 ):
                     start_time_after_warmup = time.time()
+
+                total_batched_samples += 1
+                if rng_to_sync:
+                    self._load_rng_state(resume_from_checkpoint)
+                    rng_to_sync = False
 
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
@@ -933,26 +839,26 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                # Proceed with forward and backward passes.
-                if (
-                    args.distribution_strategy == "ddp"
-                    and ((step + 1) % args.gradient_accumulation_steps != 0)
-                    and args.local_rank != -1
-                    and args._no_sync_in_gradient_accumulation
-                ):
-                    # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
-                    with model.no_sync():
-                        tr_loss_step = self.training_step(model, inputs)
-                else:
+                # TODO: keep syncs for fast DDP?
+                with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
 
-                is_optimization_step = (step + 1) % args.gradient_accumulation_steps == 0 or (
-                    # last step in epoch but step is always smaller than gradient_accumulation_steps
-                    steps_in_epoch <= args.gradient_accumulation_steps
-                    and (step + 1) == steps_in_epoch
+                is_last_step_and_steps_less_than_grad_acc = (
+                    steps_in_epoch <= args.gradient_accumulation_steps and (step + 1) == steps_in_epoch
                 )
 
-                if args.local_rank != -1 and args.distribution_strategy == "fast_ddp" and is_optimization_step:
+                is_optimization_step = (
+                    total_batched_samples % args.gradient_accumulation_steps == 0
+                    or
+                    # last step in epoch but step is always smaller than gradient_accumulation_steps
+                    is_last_step_and_steps_less_than_grad_acc
+                )
+
+                if (
+                    args.parallel_mode == ParallelMode.DISTRIBUTED
+                    and args.distribution_strategy == "fast_ddp"
+                    and is_optimization_step
+                ):
                     all_reduce_gradients(
                         model, use_hpu_graphs=True
                     )  # use HPU graphs for gradient fusion regardless of args.use_hpu_graphs_for_training setting
@@ -967,13 +873,14 @@ class GaudiTrainer(Trainer):
                 if args.use_lazy_mode:
                     self.htcore.mark_step()
 
-                # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
-                if self.deepspeed:
-                    self.deepspeed.step()
-
                 if is_optimization_step:
+                    # the `or` condition of `is_last_step_and_steps_less_than_grad_acc` is not covered
+                    # in accelerate. So, explicitly enable sync gradients to True in that case.
+                    if is_last_step_and_steps_less_than_grad_acc:
+                        self.accelerator.gradient_state._set_sync_gradients(True)
+
                     # Gradient clipping
-                    if args.max_grad_norm is not None and args.max_grad_norm > 0 and not self.deepspeed:
+                    if args.max_grad_norm is not None and args.max_grad_norm > 0:
                         # deepspeed does its own clipping
 
                         if hasattr(self.optimizer, "clip_grad_norm"):
@@ -983,6 +890,7 @@ class GaudiTrainer(Trainer):
                             # Some models (like FullyShardedDDP) have a specific way to do gradient clipping
                             model.clip_grad_norm_(args.max_grad_norm)
                         elif self.gaudi_config.use_fused_clip_norm and args.use_habana:
+                            # TODO: to merge self.accelerator.clip_grad_norm_ when HMP is removed
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
@@ -994,16 +902,14 @@ class GaudiTrainer(Trainer):
                                 with self.hmp.disable_casts():
                                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                             else:
-                                torch.nn.utils.clip_grad_norm_(
+                                self.accelerator.clip_grad_norm_(
                                     model.parameters(),
                                     args.max_grad_norm,
                                 )
 
                     # Optimizer step
                     optimizer_was_run = True
-                    if self.deepspeed:
-                        pass  # called outside the loop
-                    elif (
+                    if (
                         args.use_habana
                         and self.gaudi_config.use_habana_mixed_precision
                         and (not self.gaudi_config.use_fused_adam)
@@ -1013,14 +919,17 @@ class GaudiTrainer(Trainer):
                             self.optimizer.step()
                     else:
                         self.optimizer.step()
+                    optimizer_was_run = not self.accelerator.optimizer_step_was_skipped
 
-                    if optimizer_was_run and not self.deepspeed:
-                        self.lr_scheduler.step()
+                    if optimizer_was_run:
+                        # Delay optimizer scheduling until metrics are generated
+                        if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                            self.lr_scheduler.step()
 
                     self._zero_model_grad(model)
 
                     self.state.global_step += 1
-                    self.state.epoch = epoch + (step + 1) / steps_in_epoch
+                    self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
                     if args.use_lazy_mode:
                         self.htcore.mark_step()
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
@@ -1055,7 +964,7 @@ class GaudiTrainer(Trainer):
         logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
         if args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
             # Wait for everyone to get here so we are sure the model has been saved by process 0.
-            if args.local_rank != -1:
+            if args.parallel_mode == ParallelMode.DISTRIBUTED:
                 torch.distributed.barrier()
 
             self._load_best_model()
@@ -1091,13 +1000,124 @@ class GaudiTrainer(Trainer):
         # Delete the last checkpoint when save_total_limit=1 if it's different from the best checkpoint and process allowed to save.
         if self.args.should_save and self.state.best_model_checkpoint is not None and self.args.save_total_limit == 1:
             for checkpoint in checkpoints_sorted:
-                if checkpoint != self.state.best_model_checkpoint:
+                if not os.path.samefile(checkpoint, self.state.best_model_checkpoint):
                     logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
                     shutil.rmtree(checkpoint)
 
         self.control = self.callback_handler.on_train_end(args, self.state, self.control)
 
+        # Wait for the checkpoint to be uploaded.
+        self._finish_current_push()
+
         return TrainOutput(self.state.global_step, train_loss, metrics)
+
+    def _load_best_model(self):
+        logger.info(f"Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).")
+        best_model_path = os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME)
+        best_safe_model_path = os.path.join(self.state.best_model_checkpoint, SAFE_WEIGHTS_NAME)
+        best_adapter_model_path = os.path.join(self.state.best_model_checkpoint, ADAPTER_WEIGHTS_NAME)
+        best_safe_adapter_model_path = os.path.join(self.state.best_model_checkpoint, ADAPTER_SAFE_WEIGHTS_NAME)
+
+        model = self.model
+        # TODO: check if the code below works
+        # if self.is_deepspeed_enabled:
+        #     deepspeed_load_checkpoint(self.model_wrapped, self.state.best_model_checkpoint)
+        if (
+            os.path.exists(best_model_path)
+            or os.path.exists(best_safe_model_path)
+            or os.path.exists(best_adapter_model_path)
+            or os.path.exists(best_safe_adapter_model_path)
+        ):
+            has_been_loaded = True
+            if is_peft_available() and isinstance(model, PeftModel):
+                # If train a model using PEFT & LoRA, assume that adapter have been saved properly.
+                if hasattr(model, "active_adapter") and hasattr(model, "load_adapter"):
+                    if os.path.exists(best_adapter_model_path) or os.path.exists(best_safe_adapter_model_path):
+                        model.load_adapter(self.state.best_model_checkpoint, model.active_adapter)
+                        # Load_adapter has no return value present, modify it when appropriate.
+                        from torch.nn.modules.module import _IncompatibleKeys
+
+                        load_result = _IncompatibleKeys([], [])
+                    else:
+                        logger.warning(
+                            "The intermediate checkpoints of PEFT may not be saved correctly, "
+                            f"consider using a custom callback to save {ADAPTER_WEIGHTS_NAME} in corresponding saving folders. "
+                            "Check some examples here: https://github.com/huggingface/peft/issues/96"
+                        )
+                        has_been_loaded = False
+                else:
+                    logger.warning("Could not load adapter model, make sure to have `peft>=0.3.0` installed")
+                    has_been_loaded = False
+            else:
+                # We load the model state dict on the CPU to avoid an OOM error.
+                if self.args.save_safetensors and os.path.isfile(best_safe_model_path):
+                    state_dict = safetensors.torch.load_file(best_safe_model_path, device="cpu")
+                else:
+                    state_dict = torch.load(best_model_path, map_location="cpu")
+
+                # If the model is on the GPU, it still works!
+                load_result = model.load_state_dict(state_dict, False)
+
+            if has_been_loaded:
+                self._issue_warnings_after_load(load_result)
+        elif os.path.exists(os.path.join(self.state.best_model_checkpoint, WEIGHTS_INDEX_NAME)):
+            load_result = load_sharded_checkpoint(model, self.state.best_model_checkpoint, strict=False)
+            self._issue_warnings_after_load(load_result)
+        else:
+            logger.warning(
+                f"Could not locate the best model at {best_model_path}, if you are running a distributed training "
+                "on multiple nodes, you should activate `--save_on_each_node`."
+            )
+
+    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch, ignore_keys_for_eval):
+        if self.args.adjust_throughput:
+            save_start = time.perf_counter()
+
+        if self.control.should_log:
+            logs: Dict[str, float] = {}
+
+            # all_gather + mean() to get average loss over all processes
+            tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
+
+            # reset tr_loss to zero
+            tr_loss -= tr_loss
+            logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            logs["learning_rate"] = self._get_learning_rate()
+
+            self._total_loss_scalar += tr_loss_scalar
+            self._globalstep_last_logged = self.state.global_step
+            self.store_flos()
+
+            self.log(logs)
+
+        metrics = None
+        if self.control.should_evaluate:
+            if isinstance(self.eval_dataset, dict):
+                metrics = {}
+                for eval_dataset_name, eval_dataset in self.eval_dataset.items():
+                    dataset_metrics = self.evaluate(
+                        eval_dataset=eval_dataset,
+                        ignore_keys=ignore_keys_for_eval,
+                        metric_key_prefix=f"eval_{eval_dataset_name}",
+                    )
+                    metrics.update(dataset_metrics)
+            else:
+                metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+            self._report_to_hp_search(trial, self.state.global_step, metrics)
+
+            # Run delayed LR scheduler now that metrics are populated
+            if isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                metric_to_check = self.args.metric_for_best_model
+                if not metric_to_check.startswith("eval_"):
+                    metric_to_check = f"eval_{metric_to_check}"
+                self.lr_scheduler.step(metrics[metric_to_check])
+
+        if self.control.should_save:
+            self._save_checkpoint(model, trial, metrics=metrics)
+            self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+
+        if self.args.adjust_throughput:
+            self.log_evaluate_save_time += time.perf_counter() - save_start
 
     def _load_rng_state(self, checkpoint):
         # Load RNG states from `checkpoint`
@@ -1127,11 +1147,11 @@ class GaudiTrainer(Trainer):
         np.random.set_state(checkpoint_rng_state["numpy"])
         torch.random.set_rng_state(checkpoint_rng_state["cpu"])
         if self.args.use_habana:
-            if self.args.local_rank != -1:
-                self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                self.hpu_random.set_rng_state_all(checkpoint_rng_state["hpu"])
             else:
                 try:
-                    self.hpu_random.set_rng_state_all(checkpoint_rng_state["hpu"])
+                    self.hpu_random.set_rng_state(checkpoint_rng_state["hpu"])
                 except Exception as e:
                     logger.info(
                         f"Didn't manage to set back the RNG states of the HPU because of the following error:\n {e}"
@@ -1152,13 +1172,13 @@ class GaudiTrainer(Trainer):
         run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
         self.save_model(output_dir, _internal_call=True)
-        if self.deepspeed:
+        if self.is_deepspeed_enabled:
             # under zero3 model file itself doesn't get saved since it's bogus! Unless deepspeed
             # config `stage3_gather_16bit_weights_on_model_save` is True
-            self.deepspeed.save_checkpoint(output_dir)
+            self.model_wrapped.save_checkpoint(output_dir)
 
         # Save optimizer and scheduler
-        if self.args.should_save and not self.deepspeed:
+        if self.args.should_save and not self.is_deepspeed_enabled:
             # deepspeed.save_checkpoint above saves model/optim/sched
             # This block is exectuted by the main process only
             optim_dict = self.optimizer.state_dict()
@@ -1172,6 +1192,7 @@ class GaudiTrainer(Trainer):
                 if self.do_grad_scaling:
                     scaler_dict = to_device_dtype(scaler_dict, target_device=torch.device("cpu"))
             torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
+
             with warnings.catch_warnings(record=True) as caught_warnings:
                 torch.save(scheduler_dict, os.path.join(output_dir, SCHEDULER_NAME))
             reissue_pt_warnings(caught_warnings)
@@ -1206,7 +1227,7 @@ class GaudiTrainer(Trainer):
         }
 
         if self.args.use_habana:
-            if self.args.local_rank == -1:
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
                 # In non distributed, we save the global HPU RNG state
                 rng_states["hpu"] = self.hpu_random.get_rng_state_all()
             else:
@@ -1229,7 +1250,7 @@ class GaudiTrainer(Trainer):
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
 
         # Synchronize all processes after saving the current checkpoint
-        if self.args.local_rank != -1 and self.args.use_habana:
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.use_habana:
             torch.distributed.barrier()
 
     def _load_optimizer_and_scheduler(self, checkpoint):
@@ -1237,14 +1258,16 @@ class GaudiTrainer(Trainer):
         if checkpoint is None:
             return
 
-        if self.deepspeed:
+        if self.is_deepspeed_enabled:
             # deepspeed loads optimizer/lr_scheduler together with the model in deepspeed_init
             return
 
         if os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) and os.path.isfile(
             os.path.join(checkpoint, SCHEDULER_NAME)
         ):
-            # Load in optimizer and scheduler states
+            # We use the CPU when training on one GPU to avoid OOM for GPU RAM when training big models.
+            # In distributed training however, we load directly on each GPU and risk the GPU OOM as it's more
+            # likely to get OOM on CPU (since we load num_gpu times the optimizer state
             map_location = "cpu" if self.args.use_habana else self.args.device
 
             self.optimizer.load_state_dict(
@@ -1268,6 +1291,164 @@ class GaudiTrainer(Trainer):
                 if self.do_grad_scaling:
                     to_device_dtype(self.scaler.state.values(), target_device=torch.device("hpu"))
 
+    def log(self, logs: Dict[str, float]) -> None:
+        """
+        Log `logs` on the various objects watching training.
+        Subclass and override this method to inject custom behavior.
+        Args:
+            logs (`Dict[str, float]`):
+                The values to log.
+        """
+        if self.state.epoch is not None:
+            logs["epoch"] = round(self.state.epoch, 2)
+
+        mem_stats = get_hpu_memory_stats(self.args.device)
+        logs.update(mem_stats)
+
+        output = {**logs, **{"step": self.state.global_step}}
+        self.state.log_history.append(output)
+        self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
+
+    def _prepare_input(self, data: Union[torch.Tensor, Any]) -> Union[torch.Tensor, Any]:
+        """
+        Prepares one `data` before feeding it to the model, be it a tensor or a nested list/dictionary of tensors.
+        Compared to Transformers, it is also possible to enable non-blocking data copy.
+        """
+        if isinstance(data, Mapping):
+            return type(data)({k: self._prepare_input(v) for k, v in data.items()})
+        elif isinstance(data, (tuple, list)):
+            return type(data)(self._prepare_input(v) for v in data)
+        elif isinstance(data, torch.Tensor):
+            kwargs = {"device": self.args.device}
+            if self.is_deepspeed_enabled and (torch.is_floating_point(data) or torch.is_complex(data)):
+                # NLP models inputs are int/uint and those get adjusted to the right dtype of the
+                # embedding. Other models such as wav2vec2's inputs are already float and thus
+                # may need special handling to match the dtypes of the model
+                kwargs.update({"dtype": self.accelerator.state.deepspeed_plugin.hf_ds_config.dtype()})
+            if self.args.non_blocking_data_copy:
+                return data.to(**kwargs, non_blocking=True)
+            else:
+                return data.to(**kwargs)
+        return data
+
+    def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
+        """
+        A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
+        arguments, depending on the situation. Modified by Habana to enable using `autocast` on Gaudi devices.
+        """
+        if self.use_cpu_amp:
+            ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=torch.bfloat16)
+        elif self.use_hpu_amp:
+            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
+        else:
+            ctx_manager = contextlib.nullcontext()
+
+        return ctx_manager
+
+    def training_step(self, model: torch.nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+        """
+        Perform a training step on a batch of inputs.
+
+        Subclass and override to inject custom behavior.
+
+        Args:
+            model (`torch.nn.Module`):
+                The model to train.
+            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
+                The inputs and targets of the model.
+
+                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
+                argument `labels`. Check your model's documentation for all accepted arguments.
+
+        Return:
+            `torch.Tensor`: The tensor with training loss on this batch.
+        """
+        model.train()
+        inputs = self._prepare_inputs(inputs)
+
+        with self.compute_loss_context_manager():
+            loss = self.compute_loss(model, inputs)
+
+        if self.args.n_gpu > 1:
+            loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
+        if self.args.pipelining_fwd_bwd:
+            self.htcore.mark_step()
+
+        if self.do_grad_scaling:
+            self.scaler.scale(loss).backward()
+        else:
+            self.accelerator.backward(loss)
+
+        return loss.detach() / self.args.gradient_accumulation_steps
+
+    def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
+        """
+        Will save the model, so you can reload it using `from_pretrained()`.
+        Will only save from the main process.
+        """
+        if output_dir is None:
+            output_dir = self.args.output_dir
+
+        if self.is_deepspeed_enabled:
+            # this takes care of everything as long as we aren't under zero3
+            try:
+                state_dict = self.accelerator.get_state_dict(self.deepspeed)
+                if self.args.should_save:
+                    self._save(output_dir, state_dict=state_dict)
+            except ValueError:
+                logger.warning(
+                    " stage3_gather_16bit_weights_on_model_save=false. Saving the full checkpoint instead, use"
+                    " zero_to_fp32.py to recover weights"
+                )
+                self.model_wrapped.save_checkpoint(output_dir)
+        elif self.args.should_save:
+            self._save(output_dir)
+
+        # Push to the Hub when `save_model` is called by the user.
+        if self.args.push_to_hub and not _internal_call:
+            self.push_to_hub(commit_message="Model save")
+
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        # If we are executing this function, we are the process zero, so we don't check for that.
+        output_dir = output_dir if output_dir is not None else self.args.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"Saving model checkpoint to {output_dir}")
+
+        supported_classes = (PreTrainedModel,) if not is_peft_available() else (PreTrainedModel, PeftModel)
+
+        if state_dict is None:
+            state_dict = self.model.state_dict()
+        if state_dict and self.args.use_habana:
+            # state_dict items have to be saved on the CPU
+            state_dict = to_device_dtype(state_dict, target_device=torch.device("cpu"))
+
+        # Save a trained model and configuration using `save_pretrained()`.
+        # They can then be reloaded using `from_pretrained()`
+        if not isinstance(self.model, supported_classes):
+            if isinstance(unwrap_model(self.model), supported_classes):
+                unwrap_model(self.model).save_pretrained(
+                    output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
+                )
+            else:
+                logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
+                if self.args.save_safetensors:
+                    safetensors.torch.save_file(state_dict, os.path.join(output_dir, SAFE_WEIGHTS_NAME))
+                else:
+                    torch.save(state_dict, os.path.join(output_dir, WEIGHTS_NAME))
+        else:
+            self.model.save_pretrained(
+                output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
+            )
+
+        if self.tokenizer is not None:
+            self.tokenizer.save_pretrained(output_dir)
+
+        self.gaudi_config.save_pretrained(output_dir)
+
+        # Good practice: save your training arguments together with the trained model
+        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
+
     def evaluation_loop(
         self,
         dataloader: DataLoader,
@@ -1284,18 +1465,26 @@ class GaudiTrainer(Trainer):
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
 
-        # if eval is called w/o train init deepspeed here
-        if args.deepspeed and not self.deepspeed:
-            # XXX: eval doesn't have `resume_from_checkpoint` arg but we should be able to do eval
-            # from the checkpoint eventually
-            deepspeed_engine, _, _ = deepspeed_init(
-                self, num_training_steps=0, resume_from_checkpoint=None, inference=True
-            )
-            self.model = deepspeed_engine.module
-            self.model_wrapped = deepspeed_engine
-            self.deepspeed = deepspeed_engine
+        # if eval is called w/o train, handle model prep here
+        if self.is_deepspeed_enabled and self.deepspeed is None:
+            _, _ = deepspeed_init(self, num_training_steps=0, inference=True)
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+
+        if len(self.accelerator._models) == 0 and model is self.model:
+            model = (
+                self.accelerator.prepare(model)
+                if self.is_deepspeed_enabled
+                else self.accelerator.prepare_model(model, evaluation_mode=True)
+            )
+
+            # for the rest of this function `model` is the outside model, whether it was wrapped or not
+            if model is not self.model:
+                self.model_wrapped = model
+
+            # backward compatibility
+            if self.is_deepspeed_enabled:
+                self.deepspeed = self.model_wrapped
         model.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
@@ -1351,7 +1540,8 @@ class GaudiTrainer(Trainer):
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+            main_input_name = getattr(self.model, "main_input_name", "input_ids")
+            inputs_decode = self._prepare_input(inputs[main_input_name]) if args.include_inputs_for_metrics else None
 
             # Save the logits dtype since we need to convert them into floats during the process
             # They will be converted back into their original dtype right before computing metrics
@@ -1360,15 +1550,15 @@ class GaudiTrainer(Trainer):
 
             # Update containers on host
             if loss is not None:
-                losses = self._nested_gather(loss.repeat(batch_size))
-                losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+                losses = self.accelerator.gather_for_metrics((loss.repeat(batch_size)))
+                losses_host = losses if losses_host is None else nested_concat(losses_host, losses, padding_index=-100)
             if labels is not None:
-                labels = self._pad_across_processes(labels)
-                labels = self._nested_gather(labels)
+                labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
+                labels = self.accelerator.gather_for_metrics((labels))
                 labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
             if inputs_decode is not None:
-                inputs_decode = self._pad_across_processes(inputs_decode)
-                inputs_decode = self._nested_gather(inputs_decode)
+                inputs_decode = self.accelerator.pad_across_processes(inputs_decode, dim=1, pad_index=-100)
+                inputs_decode = self.accelerator.gather_for_metrics((inputs_decode))
                 inputs_host = (
                     inputs_decode
                     if inputs_host is None
@@ -1377,15 +1567,16 @@ class GaudiTrainer(Trainer):
             if logits is not None:
                 if args.use_habana and logits_dtype != "float32":
                     logits = to_device_dtype(logits, target_dtype=torch.float32)
-                logits = self._pad_across_processes(logits)
-                logits = self._nested_gather(logits)
+                logits = self.accelerator.pad_across_processes(logits, dim=1, pad_index=-100)
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits, labels)
+                logits = self.accelerator.gather_for_metrics((logits))
                 preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
             # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
-            if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+            if args.eval_accumulation_steps is not None and self.accelerator.sync_gradients:
                 if losses_host is not None:
                     losses = nested_numpify(losses_host)
                     all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
@@ -1451,17 +1642,6 @@ class GaudiTrainer(Trainer):
                 num_samples = observed_num_examples
         if num_samples == 0 and observed_num_examples > 0:
             num_samples = observed_num_examples
-
-        # Number of losses has been rounded to a multiple of batch_size and in a distributed training, the number of
-        # samplers has been rounded to a multiple of batch_size, so we truncate.
-        if all_losses is not None:
-            all_losses = all_losses[:num_samples]
-        if all_preds is not None:
-            all_preds = nested_truncate(all_preds, num_samples)
-        if all_labels is not None:
-            all_labels = nested_truncate(all_labels, num_samples)
-        if all_inputs is not None:
-            all_inputs = nested_truncate(all_inputs, num_samples)
 
         # Convert predictions back into their original dtype if necessary
         if all_preds is not None:
@@ -1582,6 +1762,64 @@ class GaudiTrainer(Trainer):
 
         return (loss, logits, labels)
 
+    def _push_from_checkpoint(self, checkpoint_folder):
+        # Only push from one node.
+        if not self.is_world_process_zero() or self.args.hub_strategy == HubStrategy.END:
+            return
+        # If we haven't finished the last push, we don't do this one unless args.hub_always_push=True.
+        if not self.args.hub_always_push and self.push_in_progress is not None and not self.push_in_progress.is_done():
+            return
+
+        output_dir = self.args.output_dir
+        # To avoid a new synchronization of all model weights, we just copy the file from the checkpoint folder
+        modeling_files = [CONFIG_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_NAME, GAUDI_CONFIG_NAME]
+        for modeling_file in modeling_files:
+            if os.path.isfile(os.path.join(checkpoint_folder, modeling_file)):
+                shutil.copy(os.path.join(checkpoint_folder, modeling_file), os.path.join(output_dir, modeling_file))
+        # Saving the tokenizer is fast and we don't know how many files it may have spawned, so we resave it to be sure.
+        if self.tokenizer is not None:
+            self.tokenizer.save_pretrained(output_dir)
+        # Same for the training arguments
+        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
+
+        if self.args.save_strategy == IntervalStrategy.STEPS:
+            commit_message = f"Training in progress, step {self.state.global_step}"
+        else:
+            commit_message = f"Training in progress, epoch {int(self.state.epoch)}"
+
+        model_push_job = upload_folder(
+            repo_id=self.hub_model_id,
+            folder_path=output_dir,
+            commit_message=commit_message,
+            token=self.args.hub_token,
+            run_as_future=True,
+            ignore_patterns=["_*", "**/*"],
+        )
+
+        push_jobs = [model_push_job]
+
+        if self.args.hub_strategy in [HubStrategy.CHECKPOINT, HubStrategy.ALL_CHECKPOINTS]:
+            path_in_repo = (
+                "last-checkpoint" if self.args.hub_strategy == HubStrategy.CHECKPOINT else Path(checkpoint_folder).name
+            )
+            checkpoint_push = upload_folder(
+                repo_id=self.hub_model_id,
+                folder_path=checkpoint_folder,
+                path_in_repo=path_in_repo,
+                commit_message=commit_message + ", checkpoint",
+                token=self.args.hub_token,
+                run_as_future=True,
+            )
+            push_jobs.append(checkpoint_push)
+
+        if self.push_in_progress is None or self.push_in_progress.is_done():
+            self.push_in_progress = PushInProgress(push_jobs)
+        else:
+            self.push_in_progress.jobs.extend(push_jobs)
+
+    #
+    # Deprecated code
+    #
     def prediction_loop(
         self,
         dataloader: DataLoader,
@@ -1601,23 +1839,29 @@ class GaudiTrainer(Trainer):
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
 
-        # if eval is called w/o train init deepspeed here
-        if args.deepspeed and not self.deepspeed:
-            # XXX: eval doesn't have `resume_from_checkpoint` arg but we should be able to do eval
-            # from the checkpoint eventually
-            deepspeed_engine, _, _ = deepspeed_init(
-                self, num_training_steps=0, resume_from_checkpoint=None, inference=True
-            )
-            self.model = deepspeed_engine.module
-            self.model_wrapped = deepspeed_engine
-            self.deepspeed = deepspeed_engine
-            # XXX: we don't need optim/sched for inference, but this needs to be sorted out, since
-            # for example the Z3-optimizer is a must for zero3 to work even for inference - what we
-            # don't need is the deepspeed basic optimizer which is self.optimizer.optimizer
-            deepspeed_engine.optimizer.optimizer = None
-            deepspeed_engine.lr_scheduler = None
+        # if eval is called w/o train, handle model prep here
+        if self.is_deepspeed_enabled and self.deepspeed is None:
+            _, _ = deepspeed_init(self, num_training_steps=0, inference=True)
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+
+        if len(self.accelerator._models) == 0 and model is self.model:
+            model = (
+                self.accelerator.prepare(model)
+                if self.is_deepspeed_enabled
+                else self.accelerator.prepare_model(model, evaluation_mode=True)
+            )
+
+            if self.is_fsdp_enabled:
+                self.model = model
+
+            # for the rest of this function `model` is the outside model, whether it was wrapped or not
+            if model is not self.model:
+                self.model_wrapped = model
+
+            # backward compatibility
+            if self.is_deepspeed_enabled:
+                self.deepspeed = self.model_wrapped
         model.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
@@ -1660,7 +1904,8 @@ class GaudiTrainer(Trainer):
 
         for step, inputs in enumerate(dataloader):
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+            main_input_name = getattr(self.model, "main_input_name", "input_ids")
+            inputs_decode = self._prepare_input(inputs[main_input_name]) if args.include_inputs_for_metrics else None
 
             if loss is not None:
                 losses = loss.repeat(batch_size)
@@ -1732,206 +1977,32 @@ class GaudiTrainer(Trainer):
 
         return EvalLoopOutput(predictions=preds, label_ids=label_ids, metrics=metrics, num_samples=num_examples)
 
-    def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
-        """
-        Will save the model, so you can reload it using `from_pretrained()`.
-        Will only save from the main process.
-        """
-        if output_dir is None:
-            output_dir = self.args.output_dir
+    def create_accelerator_and_postprocess(self):
+        grad_acc_kwargs = {"num_steps": self.args.gradient_accumulation_steps}
+        grad_acc_kwargs["sync_with_dataloader"] = False
+        gradient_accumulation_plugin = GradientAccumulationPlugin(**grad_acc_kwargs)
 
-        if self.deepspeed:
-            # this takes care of everything as long as we aren't under zero3
-            if self.args.should_save:
-                self._save(output_dir)
+        # create accelerator object
+        self.accelerator = GaudiAccelerator(
+            dispatch_batches=self.args.dispatch_batches,
+            deepspeed_plugin=self.args.deepspeed_plugin,
+            gradient_accumulation_plugin=gradient_accumulation_plugin,
+            even_batches=self.args.use_lazy_mode and not self.args.dataloader_drop_last,
+        )
 
-            if is_deepspeed_zero3_enabled():
-                # It's too complicated to try to override different places where the weights dump gets
-                # saved, so since under zero3 the file is bogus, simply delete it. The user should
-                # either user deepspeed checkpoint to resume or to recover full weights use
-                # zero_to_fp32.py stored in the checkpoint.
-                if self.args.should_save:
-                    file = os.path.join(output_dir, WEIGHTS_NAME)
-                    if os.path.isfile(file):
-                        # logger.info(f"deepspeed zero3: removing {file}, see zero_to_fp32.py to recover weights")
-                        os.remove(file)
+        # deepspeed and accelerate flags covering both trainer args and accelerate launcher
+        self.is_deepspeed_enabled = getattr(self.accelerator.state, "deepspeed_plugin", None) is not None
+        self.is_fsdp_enabled = False
 
-                # now save the real model if stage3_gather_16bit_weights_on_model_save=True
-                # if false it will not be saved.
-                # This must be called on all ranks
-                if not self.deepspeed.save_16bit_model(output_dir, WEIGHTS_NAME):
-                    logger.warning(
-                        "deepspeed.save_16bit_model didn't save the model, since"
-                        " stage3_gather_16bit_weights_on_model_save=false. Saving the full checkpoint instead, use"
-                        " zero_to_fp32.py to recover weights"
-                    )
-                    self.deepspeed.save_checkpoint(output_dir)
-        elif self.args.should_save:
-            self._save(output_dir)
+        # post accelerator creation setup
+        if self.is_deepspeed_enabled:
+            if getattr(self.args, "hf_deepspeed_config", None) is None:
+                from .deepspeed import GaudiTrainerDeepSpeedConfig
 
-        # Push to the Hub when `save_model` is called by the user.
-        if self.args.push_to_hub and not _internal_call:
-            self.push_to_hub(commit_message="Model save")
+                ds_plugin = self.accelerator.state.deepspeed_plugin
 
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        # If we are executing this function, we are the process zero, so we don't check for that.
-        output_dir = output_dir if output_dir is not None else self.args.output_dir
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f"Saving model checkpoint to {output_dir}")
-
-        if state_dict is None:
-            state_dict = self.model.state_dict()
-        if state_dict and self.args.use_habana:
-            # state_dict items have to be saved on the CPU
-            state_dict = to_device_dtype(state_dict, target_device=torch.device("cpu"))
-
-        # Save a trained model and configuration using `save_pretrained()`.
-        # They can then be reloaded using `from_pretrained()`
-        if not isinstance(self.model, PreTrainedModel):
-            if isinstance(unwrap_model(self.model), PreTrainedModel):
-                unwrap_model(self.model).save_pretrained(
-                    output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
-                )
-            else:
-                logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
-                if self.args.save_safetensors:
-                    safetensors.torch.save_file(state_dict, os.path.join(output_dir, SAFE_WEIGHTS_NAME))
-                else:
-                    torch.save(state_dict, os.path.join(output_dir, WEIGHTS_NAME))
-        else:
-            self.model.save_pretrained(
-                output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
-            )
-
-        if self.tokenizer is not None:
-            self.tokenizer.save_pretrained(output_dir)
-
-        self.gaudi_config.save_pretrained(output_dir)
-
-        # Good practice: save your training arguments together with the trained model
-        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
-
-    def _push_from_checkpoint(self, checkpoint_folder):
-        # Only push from one node.
-        if not self.is_world_process_zero() or self.args.hub_strategy == HubStrategy.END:
-            return
-        # If we haven't finished the last push, we don't do this one.
-        if self.push_in_progress is not None and not self.push_in_progress.is_done:
-            return
-
-        output_dir = self.args.output_dir
-        # To avoid a new synchronization of all model weights, we just copy the file from the checkpoint folder
-        modeling_files = [CONFIG_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_NAME, GAUDI_CONFIG_NAME]
-        for modeling_file in modeling_files:
-            if os.path.isfile(os.path.join(checkpoint_folder, modeling_file)):
-                shutil.copy(os.path.join(checkpoint_folder, modeling_file), os.path.join(output_dir, modeling_file))
-        # Saving the tokenizer is fast and we don't know how many files it may have spawned, so we resave it to be sure.
-        if self.tokenizer is not None:
-            self.tokenizer.save_pretrained(output_dir)
-        # Same for the training arguments
-        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
-
-        try:
-            if self.args.hub_strategy == HubStrategy.CHECKPOINT:
-                # Temporarily move the checkpoint just saved for the push
-                tmp_checkpoint = os.path.join(output_dir, "last-checkpoint")
-                # We have to remove the "last-checkpoint" dir if it exists, otherwise the checkpoint is moved as a
-                # subfolder.
-                if os.path.isdir(tmp_checkpoint):
-                    shutil.rmtree(tmp_checkpoint)
-                shutil.move(checkpoint_folder, tmp_checkpoint)
-
-            if self.args.save_strategy == IntervalStrategy.STEPS:
-                commit_message = f"Training in progress, step {self.state.global_step}"
-            else:
-                commit_message = f"Training in progress, epoch {int(self.state.epoch)}"
-            _, self.push_in_progress = self.repo.push_to_hub(
-                commit_message=commit_message, blocking=False, auto_lfs_prune=True
-            )
-        finally:
-            if self.args.hub_strategy == HubStrategy.CHECKPOINT:
-                # Move back the checkpoint to its place
-                shutil.move(tmp_checkpoint, checkpoint_folder)
-
-    def _load_best_model(self):
-        logger.info(f"Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).")
-        best_model_path = os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME)
-        best_safe_model_path = os.path.join(self.state.best_model_checkpoint, SAFE_WEIGHTS_NAME)
-        model = self.model
-        if os.path.exists(best_model_path) or os.path.exists(best_safe_model_path):
-            # TODO: the code below does not work with Habana DeepSpeed
-            # if self.deepspeed:
-
-            #     if self.model_wrapped is not None:
-            #         # this removes the pre-hooks from the previous engine
-            #         self.model_wrapped.destroy()
-            #         self.model_wrapped = None
-
-            #     # temp hack until Deepspeed fixes the problem with resume from an existing engine that did some stepping
-            #     deepspeed_engine, optimizer, lr_scheduler = deepspeed_init(
-            #         self,
-            #         num_training_steps=self.args.max_steps,
-            #         resume_from_checkpoint=self.state.best_model_checkpoint,
-            #     )
-            #     self.model = deepspeed_engine.module
-            #     self.model_wrapped = deepspeed_engine
-            #     self.deepspeed = deepspeed_engine
-            #     self.optimizer = optimizer
-            #     self.lr_scheduler = lr_scheduler
-            # else:
-            # We load the model state dict on the CPU to avoid an OOM error.
-            if self.args.save_safetensors and os.path.isfile(best_safe_model_path):
-                state_dict = safetensors.torch.load_file(best_safe_model_path, device="cpu")
-            else:
-                state_dict = torch.load(best_model_path, map_location="cpu")
-
-            # If the model is on the GPU, it still works!
-            load_result = model.load_state_dict(state_dict, strict=False)
-            self._issue_warnings_after_load(load_result)
-        else:
-            logger.warning(
-                f"Could not locate the best model at {best_model_path}, if you are running a distributed training "
-                "on multiple nodes, you should activate `--save_on_each_node`."
-            )
-
-    def log(self, logs: Dict[str, float]) -> None:
-        """
-        Log `logs` on the various objects watching training.
-        Subclass and override this method to inject custom behavior.
-        Args:
-            logs (`Dict[str, float]`):
-                The values to log.
-        """
-        if self.state.epoch is not None:
-            logs["epoch"] = round(self.state.epoch, 2)
-
-        mem_stats = get_hpu_memory_stats()
-        logs.update(mem_stats)
-
-        output = {**logs, **{"step": self.state.global_step}}
-        self.state.log_history.append(output)
-        self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
-
-    def _move_model_to_device(self, model, device):
-        model = model.to(device)
-        # Moving a model to HPU disconnects the tied weights, so we have to retie them.
-        if self.args.use_habana and hasattr(model, "tie_weights"):
-            model.tie_weights()
-
-    def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
-        """
-        A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
-        arguments, depending on the situation. Modified by Habana to enable using `autocast` on Gaudi devices.
-        """
-        if self.use_cpu_amp:
-            ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=torch.bfloat16)
-        elif self.use_hpu_amp:
-            ctx_manager = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True)
-        else:
-            import contextlib
-
-            ctx_manager = contextlib.nullcontext() if sys.version_info >= (3, 7) else contextlib.suppress()
-        return ctx_manager
+                ds_plugin.hf_ds_config = GaudiTrainerDeepSpeedConfig(ds_plugin.hf_ds_config.config)
+                ds_plugin.deepspeed_config = ds_plugin.hf_ds_config.config
 
     def _zero_model_grad(self, model):
         if hasattr(model, "_zero_grad_kwargs"):
@@ -1940,7 +2011,7 @@ class GaudiTrainer(Trainer):
             # Optimization based on setting gradients to None (instead of zeroing them out) may only be used when gradients are not recorded using HPU graphs.
             # HPU graphs rely on fixed tensors - setting gradients to None will enforce their re-allocation during the backward pass each step.
             set_to_none = (
-                self.args.local_rank == -1 or self.args.distribution_strategy == "ddp"
+                self.args.parallel_mode != ParallelMode.DISTRIBUTED or self.args.distribution_strategy == "ddp"
             ) and not self.args.use_hpu_graphs_for_training
 
             try:

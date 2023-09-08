@@ -1,7 +1,7 @@
 # Clone the original TGI repo
 FROM python:3.9 as tgi
 WORKDIR /tmp
-RUN git clone --depth 1 --branch v0.9.2 https://github.com/huggingface/text-generation-inference.git
+RUN git clone --depth 1 --branch v1.0.3 https://github.com/huggingface/text-generation-inference.git
 
 # Rust builder
 FROM lukemathwalker/cargo-chef:latest-rust-1.70 AS chef
@@ -36,7 +36,7 @@ COPY --from=tgi /tmp/text-generation-inference/launcher launcher
 RUN cargo build --release
 
 # Text Generation Inference base image
-FROM vault.habana.ai/gaudi-docker/1.10.0/ubuntu22.04/habanalabs/pytorch-installer-2.0.1:latest as base
+FROM vault.habana.ai/gaudi-docker/1.11.0/ubuntu22.04/habanalabs/pytorch-installer-2.0.1:latest as base
 
 # Text Generation Inference base env
 ENV HUGGINGFACE_HUB_CACHE=/data \

@@ -20,8 +20,20 @@ from pathlib import Path
 
 import torch
 
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
+from optimum.habana.diffusers import GaudiDDIMScheduler
 from optimum.habana.utils import set_seed
+
+
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+
+    def check_optimum_habana_min_version(*a, **b):
+        return ()
+
+
+# Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
+check_optimum_habana_min_version("1.7.2")
 
 
 logger = logging.getLogger(__name__)
@@ -121,8 +133,19 @@ def main():
         ),
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
+    parser.add_argument(
+        "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
+    )
 
     args = parser.parse_args()
+
+    if args.ldm3d:
+        from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
+
+        if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
+            args.model_name_or_path = "Intel/ldm3d-4c"
+    else:
+        from optimum.habana.diffusers import GaudiStableDiffusionPipeline
 
     # Setup logging
     logging.basicConfig(
@@ -174,8 +197,14 @@ def main():
             image_save_dir = Path(args.image_save_dir)
             image_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
-            for i, image in enumerate(outputs.images):
-                image.save(image_save_dir / f"image_{i+1}.png")
+            if args.ldm3d:
+                for i, rgb in enumerate(outputs.rgb):
+                    rgb.save(image_save_dir / f"rgb_{i+1}.png")
+                for i, depth in enumerate(outputs.depth):
+                    depth.save(image_save_dir / f"depth_{i+1}.png")
+            else:
+                for i, image in enumerate(outputs.images):
+                    image.save(image_save_dir / f"image_{i+1}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 

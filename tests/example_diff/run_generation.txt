@@ -5,38 +5,59 @@
 ---
 > Conditional text generation on Habana Gaudi/Gaudi2.
 > """
-23c23,25
+22c22,23
+< import inspect
+---
+> import copy
+> import json
+24c25,27
 < from typing import Tuple
 ---
 > import os
-> import tempfile
 > import time
-25d26
-< import numpy as np
-27,43c28,31
+> from pathlib import Path
+27,50c30,35
+< from accelerate import PartialState
+< from accelerate.utils import set_seed
 < 
 < from transformers import (
+<     AutoTokenizer,
+<     BloomForCausalLM,
+<     BloomTokenizerFast,
 <     CTRLLMHeadModel,
 <     CTRLTokenizer,
 <     GenerationMixin,
 <     GPT2LMHeadModel,
 <     GPT2Tokenizer,
+<     GPTJForCausalLM,
+<     LlamaForCausalLM,
+<     LlamaTokenizer,
 <     OpenAIGPTLMHeadModel,
 <     OpenAIGPTTokenizer,
+<     OPTForCausalLM,
 <     TransfoXLLMHeadModel,
 <     TransfoXLTokenizer,
 <     XLMTokenizer,
 <     XLMWithLMHeadModel,
 <     XLNetLMHeadModel,
 <     XLNetTokenizer,
-< )
+---
+> from checkpoint_utils import (
+>     get_ds_injection_policy,
+>     get_repo_root,
+>     model_is_optimized,
+>     model_on_meta,
+>     write_checkpoints_json,
+52c37,38
 < from transformers.modeling_outputs import CausalLMOutputWithPast
 ---
-> import torch.nn.functional as F
-> from checkpoint_utils import model_is_bloom, write_checkpoints_json
 > from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-> from transformers.generation import GenerationConfig
-53,280d40
+> from transformers.utils import check_min_version
+54a41,43
+> # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+> check_min_version("4.32.0")
+> 
+62,284d50
 < MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 < 
 < MODEL_CLASSES = {
@@ -46,6 +67,10 @@
 <     "xlnet": (XLNetLMHeadModel, XLNetTokenizer),
 <     "transfo-xl": (TransfoXLLMHeadModel, TransfoXLTokenizer),
 <     "xlm": (XLMWithLMHeadModel, XLMTokenizer),
+<     "gptj": (GPTJForCausalLM, AutoTokenizer),
+<     "bloom": (BloomForCausalLM, BloomTokenizerFast),
+<     "llama": (LlamaForCausalLM, LlamaTokenizer),
+<     "opt": (OPTForCausalLM, GPT2Tokenizer),
 < }
 < 
 < # Padding text to help Transformer-XL and XLNet with short prompts as proposed by Aman Rusia
@@ -61,13 +86,6 @@
 < man is chased outside and beaten. Twenty years later, Rasputin sees a vision of
 < the Virgin Mary, prompting him to become a priest. Rasputin quickly becomes famous,
 < with people, even a bishop, begging for his blessing. <eod> </s> <eos>"""
-< 
-< 
-< def set_seed(args):
-<     np.random.seed(args.seed)
-<     torch.manual_seed(args.seed)
-<     if args.n_gpu > 0:
-<         torch.cuda.manual_seed_all(args.seed)
 < 
 < 
 < #
@@ -160,23 +178,26 @@
 <         raise ValueError("Check the model config")
 < 
 <     num_embedding_size_per_head = int(embedding_size / num_head)
-<     num_layer = model_config.n_layer
+<     if hasattr(model_config, "n_layer"):
+<         num_layer = model_config.n_layer
+<     elif hasattr(model_config, "num_hidden_layers"):
+<         num_layer = model_config.num_hidden_layers
+<     else:
+<         raise ValueError("Number of hidden layers couldn't be determined from the model config")
 < 
 <     return num_layer, num_head, num_embedding_size_per_head
 < 
 < 
-< def prepare_jit_inputs(inputs, model, tokenizer):
-<     num_batch = len(inputs)
-<     dummy_input = tokenizer.batch_encode_plus(inputs, return_tensors="pt", padding=True)
+< def generate_past_key_values(model, batch_size, seq_len):
 <     num_block_layers, num_attention_heads, num_embedding_size_per_head = sparse_model_config(model.config)
 <     if model.config.model_type == "bloom":
 <         past_key_values = tuple(
 <             (
-<                 torch.zeros(int(num_attention_heads * num_batch), num_embedding_size_per_head, 1)
-<                 .to(model.config.torch_dtype)
+<                 torch.empty(int(num_attention_heads * batch_size), num_embedding_size_per_head, seq_len)
+<                 .to(model.dtype)
 <                 .to(model.device),
-<                 torch.zeros(int(num_attention_heads * num_batch), 1, num_embedding_size_per_head)
-<                 .to(model.config.torch_dtype)
+<                 torch.empty(int(num_attention_heads * batch_size), seq_len, num_embedding_size_per_head)
+<                 .to(model.dtype)
 <                 .to(model.device),
 <             )
 <             for _ in range(num_block_layers)
@@ -184,37 +205,34 @@
 <     else:
 <         past_key_values = tuple(
 <             (
-<                 torch.zeros(num_batch, num_attention_heads, 1, num_embedding_size_per_head)
-<                 .to(model.config.torch_dtype)
+<                 torch.empty(batch_size, num_attention_heads, seq_len, num_embedding_size_per_head)
+<                 .to(model.dtype)
 <                 .to(model.device),
-<                 torch.zeros(num_batch, num_attention_heads, 1, num_embedding_size_per_head)
-<                 .to(model.config.torch_dtype)
+<                 torch.empty(batch_size, num_attention_heads, seq_len, num_embedding_size_per_head)
+<                 .to(model.dtype)
 <                 .to(model.device),
 <             )
 <             for _ in range(num_block_layers)
 <         )
+<     return past_key_values
 < 
+< 
+< def prepare_jit_inputs(inputs, model, tokenizer):
+<     batch_size = len(inputs)
+<     dummy_input = tokenizer.batch_encode_plus(inputs, return_tensors="pt")
+<     dummy_input = dummy_input.to(model.device)
+<     if model.config.use_cache:
+<         dummy_input["past_key_values"] = generate_past_key_values(model, batch_size, 1)
 <     dummy_input["attention_mask"] = torch.cat(
 <         [
-<             torch.zeros(dummy_input["attention_mask"].shape[0], 1).to(dummy_input["attention_mask"].dtype),
+<             torch.zeros(dummy_input["attention_mask"].shape[0], 1)
+<             .to(dummy_input["attention_mask"].dtype)
+<             .to(model.device),
 <             dummy_input["attention_mask"],
 <         ],
 <         -1,
 <     )
-< 
-<     if model.config.use_cache:
-<         jit_inputs = (
-<             dummy_input["input_ids"].to(model.device),
-<             past_key_values,
-<             dummy_input["attention_mask"].to(model.device),
-<         )
-<     else:
-<         jit_inputs = (
-<             dummy_input["input_ids"].to(model.device),
-<             dummy_input["attention_mask"].to(model.device),
-<         )
-< 
-<     return jit_inputs
+<     return dummy_input
 < 
 < 
 < class _ModelFallbackWrapper(GenerationMixin):
@@ -225,15 +243,13 @@
 <         self._default = default
 < 
 <     def __call__(self, *args, **kwargs):
-<         if kwargs["past_key_values"] is None:
-<             return self._default(*args, **kwargs)
-<         trace_graph_inputs = []
+<         if kwargs["past_key_values"] is None and self._default.config.use_cache:
+<             kwargs["past_key_values"] = generate_past_key_values(self._default, kwargs["input_ids"].shape[0], 0)
 <         kwargs.pop("position_ids", None)
-<         for k, v in kwargs.items():
-<             if v is not None and not isinstance(v, bool):
-<                 trace_graph_inputs.append(v)
-<         trace_graph_inputs = tuple(trace_graph_inputs)
-<         outputs = self._optimized(*trace_graph_inputs)
+<         for k in list(kwargs.keys()):
+<             if kwargs[k] is None or isinstance(kwargs[k], bool):
+<                 kwargs.pop(k)
+<         outputs = self._optimized(**kwargs)
 <         lm_logits = outputs[0]
 <         past_key_values = outputs[1]
 <         fixed_output = CausalLMOutputWithPast(
@@ -265,48 +281,67 @@
 <         """
 <         return self._default._reorder_cache(past_key_values, beam_idx)
 < 
-282a43
+286a53
 >     # Arguments management
-285c46
+289c56
 <         "--model_type",
 ---
 >         "--model_name_or_path",
-289c50
+293c60
 <         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 ---
 >         help="Path to pre-trained model (on the HF Hub or locally).",
-292c53
+296c63,82
 <         "--model_name_or_path",
 ---
->         "--gaudi_config_name_or_path",
-295,307c56
+>         "--bf16",
+>         action="store_true",
+>         help="Whether to perform generation in bf16 precision.",
+>     )
+>     parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
+>     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
+>     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
+>     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
+>     parser.add_argument(
+>         "--use_kv_cache",
+>         action="store_true",
+>         help="Whether to use the key/value cache for decoding. It should speed up generation.",
+>     )
+>     parser.add_argument(
+>         "--use_hpu_graphs",
+>         action="store_true",
+>         help="Whether to use HPU graphs or not. Using HPU graphs should give better latencies.",
+>     )
+>     parser.add_argument(
+>         "--dataset_name",
+299,300c85
 <         required=True,
 <         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
-<     )
+---
+>         help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
+302,306d86
 < 
 <     parser.add_argument("--prompt", type=str, default="")
 <     parser.add_argument("--length", type=int, default=20)
 <     parser.add_argument("--stop_token", type=str, default=None, help="Token at which text generation is stopped")
 < 
-<     parser.add_argument(
+308,311c88,91
 <         "--temperature",
 <         type=float,
 <         default=1.0,
 <         help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
 ---
->         help="Path to Gaudi configuration (on the HF Hub or locally).",
-308a58,61
->     parser.add_argument("--max_new_tokens", type=int, default=100)
->     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
->     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations.")
->     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
-310c63,65
+>         "--column_name",
+>         default=None,
+>         type=str,
+>         help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
+314c94,96
 <         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
 ---
->         "--use_kv_cache",
+>         "--do_sample",
 >         action="store_true",
->         help="Whether to use the key/value cache for decoding. It should speed up generation.",
-312,321c67
+>         help="Whether to use sampling for generation.",
+316,323d97
 <     parser.add_argument("--k", type=int, default=0)
 <     parser.add_argument("--p", type=float, default=0.9)
 < 
@@ -315,53 +350,91 @@
 <     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
 < 
 <     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
-<     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
-<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+325,327c99,102
+<         "--use_cpu",
+<         action="store_true",
+<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
 ---
->     parser.add_argument("--use_hpu_graphs", action="store_true", help="Whether to use HPU graphs or not.")
-323,325c69,72
+>         "--num_beams",
+>         default=1,
+>         type=int,
+>         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
+329d103
+<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+331,333c105,160
 <         "--fp16",
 <         action="store_true",
 <         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
 ---
->         "--dataset_name",
+>         "--seed",
+>         default=27,
+>         type=int,
+>         help="Seed to use for random generation. Useful to reproduce your runs with `--do_sample`.",
+>     )
+>     parser.add_argument(
+>         "--profiling_warmup_steps",
+>         default=0,
+>         type=int,
+>         help="Number of steps to ignore for profling.",
+>     )
+>     parser.add_argument(
+>         "--profiling_steps",
+>         default=0,
+>         type=int,
+>         help="Number of steps to capture for profiling.",
+>     )
+>     parser.add_argument(
+>         "--prompt",
 >         default=None,
 >         type=str,
->         help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
-328c75,78
-<         "--jit", type=bool, default=False, help="Whether or not to use jit trace to accelerate inference"
----
->         "--column_name",
+>         help="Optional argument to give a prompt of your choice as input.",
+>     )
+>     parser.add_argument(
+>         "--bad_words",
 >         default=None,
 >         type=str,
->         help="Optional argument if you want to assess your model on a given dataset of the HF Hub, this will be the name of the column to use as prompts for generation.",
-330,333d79
-<     args = parser.parse_args()
-< 
-<     args.device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-<     args.n_gpu = 0 if args.no_cuda else torch.cuda.device_count()
-335,350c81
-<     logger.warning(f"device: {args.device}, n_gpu: {args.n_gpu}, 16-bits training: {args.fp16}")
-< 
-<     set_seed(args)
-< 
-<     # Initialize the model and tokenizer
-<     try:
-<         args.model_type = args.model_type.lower()
-<         model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-<     except KeyError:
-<         raise KeyError("the model {} you specified is not supported. You are welcome to add it and open a PR :)")
-< 
-<     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
-<     if tokenizer.pad_token is None:
-<         tokenizer.pad_token = tokenizer.eos_token
-<     model = model_class.from_pretrained(args.model_name_or_path)
-<     model.to(args.device)
+>         nargs="+",
+>         help="Optional argument list of words that are not allowed to be generated.",
+>     )
+>     parser.add_argument(
+>         "--force_words",
+>         default=None,
+>         type=str,
+>         nargs="+",
+>         help="Optional argument list of words that must be generated.",
+>     )
+>     parser.add_argument(
+>         "--peft_model",
+>         default=None,
+>         type=str,
+>         help="Optional argument to give a path to a PEFT model.",
+>     )
+>     parser.add_argument("--num_return_sequences", type=int, default=1)
+>     parser.add_argument(
+>         "--token",
+>         default=None,
+>         type=str,
+>         help="The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+>         "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
+>     )
+>     parser.add_argument(
+>         "--model_revision",
+>         default="main",
+>         type=str,
+>         help="The specific model version to use (can be a branch name, tag name or commit id).",
+335c162,168
+<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
 ---
->     args = parser.parse_args()
-352,353c83,110
-<     if args.fp16:
-<         model.half()
+>     parser.add_argument(
+>         "--output_dir",
+>         default=None,
+>         type=str,
+>         help="Output directory to store results in.",
+>     )
+> 
+338,339c171,208
+<     # Initialize the distributed state.
+<     distributed_state = PartialState(cpu=args.use_cpu)
 ---
 >     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
 >     # For multi node, the value of the env variable WORLD_SIZE should be larger than 8
@@ -388,128 +461,359 @@
 > 
 >         if not is_deepspeed_available():
 >             raise ImportError(
->                 "This script requires deepspeed: `pip install" " git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0`."
+>                 "This script requires deepspeed: `pip install"
+>                 " git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0`."
 >             )
 >         import deepspeed
-355,356c112,122
-<     args.length = adjust_length_to_model(args.length, max_sequence_length=model.config.max_position_embeddings)
-<     logger.info(args)
----
+> 
 >         # Initialize process(es) for DeepSpeed
 >         deepspeed.init_distributed(dist_backend="hccl")
 >         logger.info("DeepSpeed is enabled.")
 >     else:
->         if args.gaudi_config_name_or_path is None:
->             gaudi_config = None
->             logger.warning(
->                 "`--gaudi_config_name_or_path` was not specified so not using Habana Mixed Precision for this run."
->             )
->         else:
->             from optimum.habana import GaudiConfig
-358c124
-<     prompt_text = args.prompt if args.prompt else input("Model prompt >>> ")
+>         logger.info("Single-device run.")
+> 
+>     # Tweak generation so that it runs faster on Gaudi
+>     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+341c210
+<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
->             gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name_or_path)
-360,364c126,127
+>     adapt_transformers_to_gaudi()
+343,344c212,213
+<     if args.seed is not None:
+<         set_seed(args.seed)
+---
+>     # Set seed before initializing model.
+>     from optimum.habana.utils import set_seed
+346d214
+<     # Initialize the model and tokenizer
+348,351c216,217
+<         args.model_type = args.model_type.lower()
+<         model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+<     except KeyError:
+<         raise KeyError("the model {} you specified is not supported. You are welcome to add it and open a PR :)")
+---
+>         from optimum.habana.utils import check_optimum_habana_min_version
+>     except ImportError:
+353,356c219,220
+<     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
+<     if tokenizer.pad_token is None:
+<         tokenizer.pad_token = tokenizer.eos_token
+<     model = model_class.from_pretrained(args.model_name_or_path)
+---
+>         def check_optimum_habana_min_version(*a, **b):
+>             return ()
+358,359c222,223
+<     # Set the model to the right device
+<     model.to(distributed_state.device)
+---
+>     # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
+>     check_optimum_habana_min_version("1.8.0.dev0")
+361,373c225,244
+<     if args.fp16:
+<         model.half()
+<     max_seq_length = getattr(model.config, "max_position_embeddings", 0)
+<     args.length = adjust_length_to_model(args.length, max_sequence_length=max_seq_length)
+<     logger.info(args)
+< 
+<     prompt_text = args.prompt if args.prompt else input("Model prompt >>> ")
+< 
 <     # Different models need different input formatting and/or extra arguments
 <     requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
 <     if requires_preprocessing:
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
 ---
->             if gaudi_config.use_habana_mixed_precision:
->                 from habana_frameworks.torch.hpex import hmp
-366,367c129,160
+>     set_seed(args.seed)
+> 
+>     # TODO: remove the following hack when Falcon is available in Transformers
+>     # Temporary hack for Falcon
+>     if args.model_name_or_path == "tiiuae/falcon-7b":
+>         args.model_revision = "4e2d06f0a7c6370ebabbc30c6f59377ae8f73d76"
+>     elif args.model_name_or_path == "tiiuae/falcon-7b-instruct":
+>         args.model_revision = "f8dac3fff96d5debd43edf56fb4e1abcfffbef28"
+>     elif args.model_name_or_path == "tiiuae/falcon-40b":
+>         args.model_revision = "f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232"
+>     elif args.model_name_or_path == "tiiuae/falcon-40b-instruct":
+>         args.model_revision = "7475ff8cfc36ed9a962b658ae3c33391566a85a5"
+> 
+>     tokenizer_kwargs = {
+>         "revision": args.model_revision,
+>         "token": args.token,
+>     }
+>     if args.bad_words is not None or args.force_words is not None:
+>         tokenizer_kwargs["add_prefix_space"] = True
+>     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
+375,376c246,264
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
 ---
->                 # Open temporary files to mixed-precision write ops
->                 with tempfile.NamedTemporaryFile() as hmp_bf16_file:
->                     with tempfile.NamedTemporaryFile() as hmp_fp32_file:
->                         # hmp.convert needs ops to be written in text files
->                         gaudi_config.write_bf16_fp32_ops_to_text_files(
->                             hmp_bf16_file.name,
->                             hmp_fp32_file.name,
->                         )
->                         hmp.convert(
->                             opt_level=gaudi_config.hmp_opt_level,
->                             bf16_file_path=hmp_bf16_file.name,
->                             fp32_file_path=hmp_fp32_file.name,
->                             isVerbose=gaudi_config.hmp_is_verbose,
->                         )
->         logger.info("Single-device run.")
+>     if use_deepspeed or args.bf16:
+>         model_dtype = torch.bfloat16
+>     else:
+>         model_dtype = torch.float
 > 
->     # Tweak generation so that it runs faster on Gaudi
->     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-> 
->     adapt_transformers_to_gaudi()
-> 
->     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+>     model_kwargs = {
+>         "revision": args.model_revision,
+>         "token": args.token,
+>     }
 > 
 >     if use_deepspeed:
->         config = AutoConfig.from_pretrained(args.model_name_or_path)
->         args.dtype = torch.bfloat16
->         is_bloom = model_is_bloom(config)
+>         config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
+>         is_optimized = model_is_optimized(config)
+>         load_to_meta = model_on_meta(config)
 > 
->         if is_bloom:
+>         if load_to_meta:
 >             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
->             with deepspeed.OnDevice(dtype=args.dtype, device="meta"):
->                 model = AutoModelForCausalLM.from_config(config, torch_dtype=args.dtype)
-369,373c162,187
+>             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
+>                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
+378c266,289
 <             tokenizer_kwargs = {}
-< 
+---
+>             get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
+>             # TODO: revisit placement on CPU when auto-injection is possible
+>             with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
+>                 model = AutoModelForCausalLM.from_pretrained(
+>                     args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+>                 )
+>         model = model.eval()
+> 
+>         # Initialize the model
+>         ds_inference_kwargs = {"dtype": model_dtype}
+>         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
+>         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
+> 
+>         if load_to_meta:
+>             # model loaded to meta is managed differently
+>             checkpoints_json = "checkpoints.json"
+>             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
+> 
+>         # Make sure all devices/nodes have access to the model checkpoints
+>         torch.distributed.barrier()
+> 
+>         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
+>         if load_to_meta:
+>             ds_inference_kwargs["checkpoint"] = checkpoints_json
+380,382c291,292
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
 ---
->             with deepspeed.OnDevice(dtype=args.dtype, device=args.device):
->                 model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=args.dtype)
->         model = model.eval()
-> 
->         # Initialize the model
->         ds_inference_kwargs = {"dtype": args.dtype}
->         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
->         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
-> 
->         # BLOOM is managed differently
->         if is_bloom:
->             checkpoints_json = "checkpoints.json"
->             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
-> 
->             # Make sure all devices/nodes have access to the model checkpoints
->             torch.distributed.barrier()
-> 
->             from transformers.models.bloom.modeling_bloom import BloomBlock
-> 
->             ds_inference_kwargs["injection_policy"] = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
->             ds_inference_kwargs["checkpoint"] = checkpoints_json
-> 
 >         model = deepspeed.init_inference(model, **ds_inference_kwargs)
->         if is_bloom:
->             model.module.split_lm_head()
 >         model = model.module
-375,377c189,191
+384,386c294,321
 <         prefix = args.prefix if args.prefix else args.padding_text
 <         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
-<     encoded_prompt = encoded_prompt.to(args.device)
+<     encoded_prompt = encoded_prompt.to(distributed_state.device)
 ---
->         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path)
+>         get_repo_root(args.model_name_or_path, token=args.token)
+>         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
 >         model = model.eval().to(args.device)
->         is_bloom = model_is_bloom(model.config)
-379,382c193,194
-<     if encoded_prompt.size()[-1] == 0:
-<         input_ids = None
-<     else:
-<         input_ids = encoded_prompt
----
+>         is_optimized = model_is_optimized(model.config)
+> 
 >         if args.use_hpu_graphs:
 >             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-384,405c196
+> 
+>             model = wrap_in_hpu_graph(model)
+> 
+>     if not model.config.is_encoder_decoder:
+>         tokenizer.padding_side = "left"
+>     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
+>     if model.config.model_type == "llama":
+>         # unwind broken decapoda-research config
+>         model.generation_config.pad_token_id = 0
+>         model.generation_config.bos_token_id = 1
+>         model.generation_config.eos_token_id = 2
+>         tokenizer.bos_token_id = model.generation_config.bos_token_id
+>         tokenizer.eos_token_id = model.generation_config.eos_token_id
+>         tokenizer.pad_token_id = model.generation_config.pad_token_id
+>         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
+>         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
+>         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+> 
+>     if tokenizer.pad_token is None:
+>         tokenizer.pad_token = tokenizer.eos_token
+>         model.generation_config.pad_token_id = model.generation_config.eos_token_id
+388,389c323,463
+<     if encoded_prompt.size()[-1] == 0:
+<         input_ids = None
+---
+>     if rank in [-1, 0]:
+>         logger.info(f"Args: {args}")
+>         logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: {use_deepspeed or args.bf16}")
+> 
+>     bad_words_ids = None
+>     force_words_ids = None
+>     if args.bad_words is not None:
+>         bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
+>     if args.force_words is not None:
+>         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
+> 
+>     if args.peft_model:
+>         import importlib.util
+> 
+>         if importlib.util.find_spec("peft") is None:
+>             raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+>         from peft import PeftModel
+> 
+>         model = PeftModel.from_pretrained(model, args.peft_model)
+>         model = model.to(model_dtype)
+> 
+>     # Generation configuration
+>     generation_config = copy.deepcopy(model.generation_config)
+>     generation_config.max_new_tokens = args.max_new_tokens
+>     generation_config.use_cache = args.use_kv_cache
+>     generation_config.static_shapes = is_optimized
+>     generation_config.do_sample = args.do_sample
+>     generation_config.num_beams = args.num_beams
+>     generation_config.bad_words_ids = bad_words_ids
+>     generation_config.force_words_ids = force_words_ids
+>     generation_config.num_return_sequences = args.num_return_sequences
+> 
+>     if args.dataset_name is None:
+>         # Benchmark over the prompts below
+>         if args.prompt:
+>             input_sentences = [
+>                 args.prompt,
+>             ]
+>         else:
+>             input_sentences = [
+>                 "DeepSpeed is a machine learning framework",
+>                 "He is working on",
+>                 "He has a",
+>                 "He got all",
+>                 "Everyone is happy and I can",
+>                 "The new movie that got Oscar this year",
+>                 "In the far far distance from our galaxy,",
+>                 "Peace is the only way",
+>             ]
+> 
+>         if args.batch_size > len(input_sentences):
+>             # Dynamically extends to support larger batch sizes
+>             num_sentences_to_add = args.batch_size - len(input_sentences)
+>             for i in range(num_sentences_to_add):
+>                 input_sentences.append(input_sentences[i % len(input_sentences)])
+>         elif args.batch_size < len(input_sentences):
+>             input_sentences = input_sentences[: args.batch_size]
+> 
+>         def generate():
+>             """Generates sequences from the input sentences and returns them."""
+> 
+>             # Tokenization
+>             input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+> 
+>             # Move inputs to target device(s)
+>             for t in input_tokens:
+>                 if torch.is_tensor(input_tokens[t]):
+>                     input_tokens[t] = input_tokens[t].to(args.device)
+> 
+>             outputs = model.generate(
+>                 **input_tokens,
+>                 generation_config=generation_config,
+>                 lazy_mode=True,
+>                 hpu_graphs=args.use_hpu_graphs,
+>                 profiling_steps=args.profiling_steps,
+>                 profiling_warmup_steps=args.profiling_warmup_steps,
+>             ).cpu()
+>             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
+> 
+>         from optimum.habana.utils import HabanaProfile
+> 
+>         # compilation stage disable profiling
+>         HabanaProfile.disable()
+>         # Compilation
+>         if rank in [-1, 0]:
+>             logger.info("Graph compilation...")
+>         t0 = time.perf_counter()
+>         # The first three iterations take longer because of graph compilation
+>         for _ in range(3):
+>             generate()
+>         torch_hpu.synchronize()
+>         compilation_duration = time.perf_counter() - t0
+>         HabanaProfile.enable()
+>         total_new_tokens_generated = 0
+>         if rank in [-1, 0]:
+>             logger.info("Running generate...")
+>         t0 = time.perf_counter()
+>         # Benchmark over n_iterations iterations
+>         for i in range(args.n_iterations):
+>             generated = generate()
+>         duration = time.perf_counter() - t0
+>         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+>         throughput = total_new_tokens_generated / duration
+> 
+>         if rank in [-1, 0]:
+>             from optimum.habana.utils import get_hpu_memory_stats
+> 
+>             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+>             separator = "-" * len(stats)
+>             print()
+>             print("Stats:")
+>             print(separator)
+>             print(stats)
+>             mem = get_hpu_memory_stats()
+>             for k, v in mem.items():
+>                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+>             if args.use_hpu_graphs:
+>                 print(f"Graph compilation duration          = {compilation_duration} seconds")
+>             print(separator)
+>             print()
+>             print("Input/outputs:")
+>             print(separator)
+>             for i, input_sentence in enumerate(zip(input_sentences)):
+>                 print(f"input {i+1}: {input_sentence}")
+>                 for j, output in enumerate(
+>                     zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
+>                 ):
+>                     print(f"output {j+1}: {output}")
+>                 print(separator)
+> 
+>             # Store results if necessary
+>             if args.output_dir is not None:
+>                 output_dir = Path(args.output_dir)
+>                 output_dir.mkdir(parents=True, exist_ok=True)
+> 
+>                 results = {
+>                     "throughput": throughput,
+>                     "output": output,
+>                 }
+>                 with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+>                     json.dump(results, f, ensure_ascii=False, indent=4)
+391c465,476
+<         input_ids = encoded_prompt
+---
+>         # Downloading and loading a dataset from the hub.
+>         from datasets import load_dataset
+>         from torch.utils.data import DataLoader
+> 
+>         raw_dataset = load_dataset(args.dataset_name)
+>         if "test" in raw_dataset:
+>             split = "test"
+>         elif "validation" in raw_dataset:
+>             split = "validation"
+>         else:
+>             split = "train"
+>         raw_dataset = raw_dataset[split]
+393,399c478,486
 <     if args.jit:
-<         jit_input_texts = ["jit"]
+<         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
 <         torch._C._jit_set_texpr_fuser_enabled(False)
 <         model.config.return_dict = False
+<         if hasattr(model, "forward"):
+<             sig = inspect.signature(model.forward)
+---
+>         if args.column_name is None:
+>             # If no column name is given, take the first column that has strings
+>             column_name = [key for key in raw_dataset.features.keys() if raw_dataset.features[key].dtype == "string"][
+>                 0
+>             ]
+>             if rank in [-1, 0]:
+>                 logger.info(
+>                     f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
+>                 )
+401,440c488
+<             sig = inspect.signature(model.__call__)
+<         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
 <         traced_model = torch.jit.freeze(traced_model.eval())
 <         traced_model(*jit_inputs)
@@ -527,177 +831,41 @@
 <         do_sample=True,
 <         num_return_sequences=args.num_return_sequences,
 <     )
----
->             model = wrap_in_hpu_graph(model)
-407,409c198,201
+< 
 <     # Remove the batch dimension when returning multiple sequences
 <     if len(output_sequences.shape) > 2:
 <         output_sequences.squeeze_()
----
->     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
->     if tokenizer.pad_token is None:
->         tokenizer.pad_token = tokenizer.eos_token
->         model.generation_config.pad_token_id = model.generation_config.eos_token_id
-411c203,204
+< 
 <     generated_sequences = []
----
->     if rank in [-1, 0]:
->         logger.info(f"Args: {args}")
-413,415c206,215
+< 
 <     for generated_sequence_idx, generated_sequence in enumerate(output_sequences):
 <         print(f"=== GENERATED SEQUENCE {generated_sequence_idx + 1} ===")
 <         generated_sequence = generated_sequence.tolist()
----
->         use_bf16 = False
->         if use_deepspeed or (gaudi_config is not None and gaudi_config.use_habana_mixed_precision):
->             use_bf16 = True
->         logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: {use_bf16}")
-> 
->     # Generation configuration
->     generation_config = GenerationConfig(
->         max_new_tokens=args.max_new_tokens,
->         use_cache=args.use_kv_cache,
->     )
-417,418c217,320
+< 
 <         # Decode text
 <         text = tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
----
->     if args.dataset_name is None:
->         # Benchmark over the prompts below
->         input_sentences = [
->             "DeepSpeed is a machine learning framework",
->             "He is working on",
->             "He has a",
->             "He got all",
->             "Everyone is happy and I can",
->             "The new movie that got Oscar this year",
->             "In the far far distance from our galaxy,",
->             "Peace is the only way",
->         ]
-> 
->         if args.batch_size > len(input_sentences):
->             # Dynamically extends to support larger batch sizes
->             num_sentences_to_add = args.batch_size - len(input_sentences)
->             for i in range(num_sentences_to_add):
->                 input_sentences.append(input_sentences[i % len(input_sentences)])
->         elif args.batch_size < len(input_sentences):
->             input_sentences = input_sentences[: args.batch_size]
-> 
->         def generate():
->             """Generates sequences from the input sentences and returns them."""
-> 
->             # Tokenization
->             input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
-> 
->             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
->             input_token_len = input_tokens.input_ids.shape[-1]
->             input_tokens["input_ids"] = F.pad(
->                 input_tokens.input_ids, (0, args.max_new_tokens), value=model.config.pad_token_id
->             )
->             input_tokens["attention_mask"] = F.pad(input_tokens.attention_mask, (0, args.max_new_tokens), value=0)
->             if is_bloom:
->                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
->                 kwargs = {"token_idx": torch.tensor(input_token_len, device=args.device)}
->             else:
->                 kwargs = {}
-> 
->             # Move inputs to target device(s)
->             for t in input_tokens:
->                 if torch.is_tensor(input_tokens[t]):
->                     input_tokens[t] = input_tokens[t].to(args.device)
-> 
->             outputs = model.generate(
->                 **input_tokens,
->                 **kwargs,
->                 generation_config=generation_config,
->                 lazy_mode=True,
->                 hpu_graphs=args.use_hpu_graphs,
->             ).cpu()
->             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
-> 
->         # Compilation
->         if rank in [-1, 0]:
->             logger.info("Graph compilation...")
->         t0 = time.perf_counter()
->         # The first three iterations take longer because of graph compilation
->         for _ in range(3):
->             generate()
->         torch_hpu.synchronize()
->         compilation_duration = time.perf_counter() - t0
-> 
->         total_new_tokens_generated = 0
->         if rank in [-1, 0]:
->             logger.info("Running generate...")
->         t0 = time.perf_counter()
->         # Benchmark over n_iterations iterations
->         for i in range(args.n_iterations):
->             generated = generate()
->         duration = time.perf_counter() - t0
->         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
->         throughput = total_new_tokens_generated / duration
-> 
->         if rank in [-1, 0]:
->             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
->             separator = "-" * len(stats)
->             print()
->             print("Stats:")
->             print(separator)
->             print(stats)
->             if args.use_hpu_graphs:
->                 print(f"Graph compilation duration = {compilation_duration} seconds")
->             print(separator)
->             print()
->             print("Input/outputs:")
->             print(separator)
->             for i, (input_sentence, output) in enumerate(zip(input_sentences, generated)):
->                 print(f"input {i+1}: {input_sentence}")
->                 print(f"output {i+1}: {output}")
->                 print(separator)
->     else:
->         # Downloading and loading a dataset from the hub.
->         from datasets import load_dataset
->         from torch.utils.data import DataLoader
-> 
->         raw_dataset = load_dataset(args.dataset_name)
->         if "test" in raw_dataset:
->             split = "test"
->         elif "validation" in raw_dataset:
->             split = "validation"
->         else:
->             split = "train"
->         raw_dataset = raw_dataset[split]
-420,421c322,332
+< 
 <         # Remove all text after the stop token
 <         text = text[: text.find(args.stop_token) if args.stop_token else None]
----
->         if args.column_name is None:
->             # If no column name is given, take the first column that has strings
->             column_name = [key for key in raw_dataset.features.keys() if raw_dataset.features[key].dtype == "string"][
->                 0
->             ]
->             if rank in [-1, 0]:
->                 logger.info(
->                     f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
->                 )
->         else:
->             column_name = args.column_name
-423,426c334,335
+< 
 <         # Add the prompt at the beginning of the sequence. Remove the excess text that was used for pre-processing
 <         total_sequence = (
 <             prompt_text + text[len(tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
 <         )
 ---
->         # Remove unused columns
->         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
-428,429c337,338
+>             column_name = args.column_name
+442,443c490,491
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
->         # Set the prompt length to 16
->         prompt_length = 16
-431c340,387
+>         # Remove unused columns
+>         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
+445c493,541
 <     return generated_sequences
 ---
+>         # Set the prompt length to 16
+>         prompt_length = 16
+> 
 >         def preprocess_function(examples):
 >             # Tokenize the texts
 >             return tokenizer(examples[column_name], padding="max_length", max_length=prompt_length, truncation=True)
@@ -718,24 +886,20 @@
 >         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size)
 >         for i, batch in enumerate(dataloader):
 >             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
->             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
->             batch["input_ids"] = F.pad(batch["input_ids"], (0, args.max_new_tokens), value=model.config.pad_token_id)
->             batch["attention_mask"] = F.pad(batch["attention_mask"], (0, args.max_new_tokens), value=0)
->             # prompt = batch.pop(column_name)
+> 
 >             # Move inputs to target device(s)
 >             for t in batch:
 >                 if torch.is_tensor(batch[t]):
 >                     batch[t] = batch[t].to(args.device)
->             if is_bloom:
->                 # token_idx is the current index in the generation process, it is incremented each time a new token is generated
->                 batch["token_idx"] = torch.tensor(prompt_length, device=args.device)
 > 
 >             # Generate new sequences
 >             outputs = model.generate(
 >                 **batch,
 >                 generation_config=generation_config,
->                 lazy_mode=args.use_hpu_graphs,
+>                 lazy_mode=True,
 >                 hpu_graphs=args.use_hpu_graphs,
+>                 profiling_steps=args.profiling_steps,
+>                 profiling_warmup_steps=args.profiling_warmup_steps,
 >             ).cpu()
 > 
 >             # Print outputs
@@ -745,4 +909,6 @@
 >                 print(separator)
 >                 print(f"Batch n°{i+1}")
 >                 print(f"Input: {prompt[:args.batch_size]}")
->                 print(f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size]}")
+>                 print(
+>                     f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+>                 )

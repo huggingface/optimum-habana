@@ -106,16 +106,18 @@ def auto_diff():
                 # Loop over all the "run_*.py" scripts in the example folder
                 for file in directory.iterdir():
                     if file.is_file() and file.name.startswith("run_"):
-                        final_diff = create_diff_content(
-                            diff(
-                                path_to_transformers / file.name,
-                                file,
-                            ),
-                            keep_all_diffs=True,
-                        )
-                        diff_filename = DIFF_DIRECTORY / f"{file.stem}.txt"
-                        with open(diff_filename, "w") as fp:
-                            fp.write(final_diff)
+                        transformers_file = path_to_transformers / file.name
+                        if transformers_file.is_file():
+                            final_diff = create_diff_content(
+                                diff(
+                                    transformers_file,
+                                    file,
+                                ),
+                                keep_all_diffs=True,
+                            )
+                            diff_filename = DIFF_DIRECTORY / f"{file.stem}.txt"
+                            with open(diff_filename, "w") as fp:
+                                fp.write(final_diff)
 
 
 def parse_args():

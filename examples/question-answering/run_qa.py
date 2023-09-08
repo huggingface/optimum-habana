@@ -21,6 +21,7 @@ Fine-tuning the library models for question answering using a slightly adapted v
 import logging
 import os
 import sys
+import warnings
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -48,12 +49,21 @@ from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
 
 
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.28.0")
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
 
-require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
+    def check_optimum_habana_min_version(*a, **b):
+        return ()
+
 
 logger = logging.getLogger(__name__)
+
+# Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
+check_min_version("4.32.0")
+check_optimum_habana_min_version("1.7.2")
+
+require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 
 
 @dataclass
@@ -79,12 +89,28 @@ class ModelArguments:
         default="main",
         metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
     )
+    token: str = field(
+        default=None,
+        metadata={
+            "help": (
+                "The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+                "generated when running `huggingface-cli login` (stored in `~/.huggingface`)."
+            )
+        },
+    )
     use_auth_token: bool = field(
+        default=None,
+        metadata={
+            "help": "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token`."
+        },
+    )
+    trust_remote_code: bool = field(
         default=False,
         metadata={
             "help": (
-                "Will use the token generated when running `huggingface-cli login` (necessary to use this script "
-                "with private models)."
+                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
+                "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
+                "execute code present on the Hub on your local machine."
             )
         },
     )
@@ -227,6 +253,14 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    if model_args.use_auth_token is not None:
+        warnings.warn(
+            "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
+        )
+        if model_args.token is not None:
+            raise ValueError("`token` and `use_auth_token` are both specified. Please set only the argument `token`.")
+        model_args.token = model_args.use_auth_token
+
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_qa", model_args, data_args)
@@ -260,7 +294,7 @@ def main():
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
-        + f"distributed training: {bool(training_args.local_rank != -1)}, "
+        + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
         + f"mixed-precision training: {mixed_precision}"
     )
     logger.info(f"Training/evaluation parameters {training_args}")
@@ -298,7 +332,7 @@ def main():
             data_args.dataset_name,
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
         )
     else:
         data_files = {}
@@ -317,7 +351,7 @@ def main():
             data_files=data_files,
             field="data",
             cache_dir=model_args.cache_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
         )
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -331,14 +365,16 @@ def main():
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
+        token=model_args.token,
+        trust_remote_code=model_args.trust_remote_code,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         use_fast=True,
         revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
+        token=model_args.token,
+        trust_remote_code=model_args.trust_remote_code,
     )
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
@@ -346,7 +382,8 @@ def main():
         config=config,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
+        token=model_args.token,
+        trust_remote_code=model_args.trust_remote_code,
     )
 
     # Tokenizer check: this script requires a fast tokenizer.
@@ -599,12 +636,12 @@ def main():
         # Format the result to the format the metric expects.
         if data_args.version_2_with_negative:
             formatted_predictions = [
-                {"id": k, "prediction_text": v, "no_answer_probability": 0.0} for k, v in predictions.items()
+                {"id": str(k), "prediction_text": v, "no_answer_probability": 0.0} for k, v in predictions.items()
             ]
         else:
-            formatted_predictions = [{"id": k, "prediction_text": v} for k, v in predictions.items()]
+            formatted_predictions = [{"id": str(k), "prediction_text": v} for k, v in predictions.items()]
 
-        references = [{"id": ex["id"], "answers": ex[answer_column_name]} for ex in examples]
+        references = [{"id": str(ex["id"]), "answers": ex[answer_column_name]} for ex in examples]
         return EvalPrediction(predictions=formatted_predictions, label_ids=references)
 
     metric = evaluate.load("squad_v2" if data_args.version_2_with_negative else "squad")

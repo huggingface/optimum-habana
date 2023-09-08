@@ -1,13 +1,14 @@
+import torch
+
+from loguru import logger
+from transformers.models.auto import modeling_auto
+from transformers import AutoConfig
 from typing import Optional
 
-import torch
-from loguru import logger
 from text_generation_server.models.model import Model
 from text_generation_server.models.causal_lm import CausalLM
 from text_generation_server.models.bloom import BLOOM
 from text_generation_server.models.santacoder import SantaCoder
-from transformers import AutoConfig
-from transformers.models.auto import modeling_auto
 
 
 # Disable gradients
