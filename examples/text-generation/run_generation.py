@@ -66,6 +66,7 @@ def main():
     )
     parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
+    parser.add_argument("--warmup", type=int, default=5, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
     parser.add_argument(
@@ -408,7 +409,7 @@ def main():
             logger.info("Graph compilation...")
         t0 = time.perf_counter()
         # The first three iterations take longer because of graph compilation
-        for _ in range(3):
+        for _ in range(args.warmup):
             generate()
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
@@ -425,20 +426,8 @@ def main():
         throughput = total_new_tokens_generated / duration
 
         if rank in [-1, 0]:
-            from optimum.habana.utils import get_hpu_memory_stats
-
             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
             separator = "-" * len(stats)
-            print()
-            print("Stats:")
-            print(separator)
-            print(stats)
-            mem = get_hpu_memory_stats()
-            for k, v in mem.items():
-                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-            if args.use_hpu_graphs:
-                print(f"Graph compilation duration          = {compilation_duration} seconds")
-            print(separator)
             print()
             print("Input/outputs:")
             print(separator)
@@ -461,6 +450,19 @@ def main():
                 }
                 with (output_dir / "results.json").open("w", encoding="utf-8") as f:
                     json.dump(results, f, ensure_ascii=False, indent=4)
+            from optimum.habana.utils import get_hpu_memory_stats
+
+            print()
+            print("Stats:")
+            print(separator)
+            print(stats)
+            mem = get_hpu_memory_stats()
+            for k, v in mem.items():
+                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+            if args.use_hpu_graphs:
+                print(f"Graph compilation duration          = {compilation_duration} seconds")
+            print(separator)
+            print()
     else:
         # Downloading and loading a dataset from the hub.
         from datasets import load_dataset
