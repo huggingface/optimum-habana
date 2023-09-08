@@ -120,9 +120,9 @@ class CausalLMBatch(Batch):
 
         input_ids = tokenized_inputs["input_ids"]
         if is_optimized_for_gaudi:
-            input_ids = torch.nn.functional.pad(input_ids, (0, max_decode_tokens), value=tokenizer.pad_token_id)
+            input_ids = torch.nn.functional.pad(input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id)
         # Allocate maximum attention_mask
-        attention_mask = input_ids.new_zeros((pb.size, max_input_length + max_decode_tokens))
+        attention_mask = input_ids.new_zeros((pb.size, max_input_length + padding_right_offset))
         # Copy tokenizer attention_mask into fully allocated attention_mask
         attention_mask[:, :max_input_length] = tokenized_inputs["attention_mask"]
 
