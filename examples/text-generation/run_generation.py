@@ -66,7 +66,7 @@ def main():
     )
     parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
-    parser.add_argument("--warmup", type=int, default=5, help="Number of warmup iterations for benchmarking.")
+    parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
     parser.add_argument(
