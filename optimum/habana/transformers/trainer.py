@@ -84,7 +84,6 @@ from transformers.utils import (
     is_safetensors_available,
 )
 
-from optimum.habana.distributed import all_reduce_gradients
 from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
@@ -211,19 +210,8 @@ class GaudiTrainer(Trainer):
                     "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
                 )
 
-            if self.use_hpu_amp:
-                if self.gaudi_config.autocast_bf16_ops is not None and self.gaudi_config.autocast_fp32_ops is not None:
-                    # Open temporary files to write mixed-precision ops
-                    with tempfile.NamedTemporaryFile() as autocast_bf16_file:
-                        with tempfile.NamedTemporaryFile() as autocast_fp32_file:
-                            self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                                autocast_bf16_file.name,
-                                autocast_fp32_file.name,
-                            )
-                            os.environ["LOWER_LIST"] = str(autocast_bf16_file)
-                            os.environ["FP32_LIST"] = str(autocast_fp32_file)
-
-                            import habana_frameworks.torch.core  # noqa
+            if self.use_hpu_amp and "LOWER_LIST" not in os.environ:
+                gaudi_config.declare_autocast_bf16_fp32_ops()
 
             if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
                 try:
@@ -733,6 +721,8 @@ class GaudiTrainer(Trainer):
         # In multi-worker training: broadcast model parameters from worker:0 to all the others.
         # This must be done manually unless DistributedDataParallel is used.
         if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "fast_ddp":
+            from ..distributed import all_reduce_gradients
+
             logger.debug(
                 f"Broadcasting the model parameters to assure that each of {self.args.world_size} workers start the training from the same point."
             )

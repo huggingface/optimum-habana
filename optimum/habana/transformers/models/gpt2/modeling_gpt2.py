@@ -389,12 +389,11 @@ def gaudi_gpt2_forward(
         # Since we are adding it to the raw scores before the softmax, this is
         # effectively the same as removing these entirely.
         attention_mask = attention_mask.to(dtype=self.dtype)  # fp16 compatibility
-        attention_mask = 1.0 - attention_mask
 
         from habana_frameworks.torch.hpex import hmp
 
         with hmp.disable_casts(), torch.autocast(enabled=False, device_type="hpu"):
-            attention_mask = attention_mask * torch.finfo(self.dtype).min
+            attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
 
     # If a 2D or 3D attention mask is provided for the cross-attention
     # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]

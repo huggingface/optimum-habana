@@ -20,8 +20,6 @@ from typing import Any, Dict
 
 import numpy as np
 import torch
-from habana_frameworks.torch.hpu import memory_stats
-from habana_frameworks.torch.hpu import random as hpu_random
 from packaging import version
 from transformers.utils import is_torch_available
 
@@ -136,6 +134,8 @@ def get_hpu_memory_stats(device=None) -> Dict[str, float]:
     Returns:
         Dict[str, float]: memory stats.
     """
+    from habana_frameworks.torch.hpu import memory_stats
+
     mem_stats = memory_stats(device)
 
     mem_dict = {
@@ -156,6 +156,8 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     if is_torch_available():
+        from habana_frameworks.torch.hpu import random as hpu_random
+
         torch.manual_seed(seed)
         hpu_random.manual_seed_all(seed)
 
