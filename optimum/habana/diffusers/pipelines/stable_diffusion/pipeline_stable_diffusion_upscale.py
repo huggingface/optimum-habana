@@ -35,12 +35,7 @@ from diffusers.models.attention_processor import (
 
 # Added for upscaling
 from diffusers.schedulers import DDPMScheduler, KarrasDiffusionSchedulers
-from diffusers.utils import (
-    BaseOutput,
-    deprecate,
-    logging,
-    randn_tensor,
-)
+from diffusers.utils import BaseOutput, deprecate, randn_tensor
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from optimum.utils import logging
@@ -56,12 +51,7 @@ from ..pipeline_utils import GaudiDiffusionPipeline
 logger = logging.get_logger(__name__)
 
 PipelineImageInput = Union[
-    PIL.Image.Image,
-    np.ndarray,
-    torch.FloatTensor,
-    List[PIL.Image.Image],
-    List[np.ndarray],
-    List[torch.FloatTensor],
+    PIL.Image.Image, np.ndarray, torch.FloatTensor, List[PIL.Image.Image], List[np.ndarray], List[torch.FloatTensor]
 ]
 
 
@@ -160,12 +150,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
         watermarker: Optional[Any] = None,
         max_noise_level: int = 350,
     ):
-        super().__init__(
-            use_habana,
-            use_hpu_graphs,
-            gaudi_config,
-            bf16_full_eval,
-        )
+        super().__init__(use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval)
 
         # Workaround for Synapse 1.11 for full bf16
         if bf16_full_eval:
@@ -305,10 +290,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             else:
                 attention_mask = None
 
-            prompt_embeds = self.text_encoder(
-                text_input_ids.to(device),
-                attention_mask=attention_mask,
-            )
+            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
             prompt_embeds = prompt_embeds[0]
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
@@ -345,11 +327,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
+                uncond_tokens, padding="max_length", max_length=max_length, truncation=True, return_tensors="pt"
             )
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
@@ -358,8 +336,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                 attention_mask = None
 
             negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
-                attention_mask=attention_mask,
+                uncond_input.input_ids.to(device), attention_mask=attention_mask
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
@@ -379,8 +356,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
             safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, nsfw_detected, watermark_detected = self.safety_checker(
-                images=image,
-                clip_input=safety_checker_input.pixel_values.to(dtype=dtype),
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype=dtype)
             )
         else:
             nsfw_detected = None
@@ -514,7 +490,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                 shape = (1,) + shape[1:]
                 latents = [
                     torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype)
-                    for i in range(num_images)
+                    for i in range(batch_size)
                 ]
                 latents = torch.cat(latents, dim=0).to(device)
             else:
@@ -533,12 +509,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
         self.vae.to(dtype=torch.float32)
         use_torch_2_0_or_xformers = isinstance(
             self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
-            ),
+            (AttnProcessor2_0, XFormersAttnProcessor, LoRAXFormersAttnProcessor, LoRAAttnProcessor2_0),
         )
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory
@@ -548,10 +519,12 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             self.vae.decoder.mid_block.to(dtype)
 
     @classmethod
-    def _split_inputs_into_batches(cls, batch_size, latents, text_embeddings, uncond_embeddings):
+    def _split_inputs_into_batches(cls, batch_size, latents, text_embeddings, uncond_embeddings, image, noise_level):
         # Use torch.split to generate num_batches batches of size batch_size
         latents_batches = list(torch.split(latents, batch_size))
         text_embeddings_batches = list(torch.split(text_embeddings, batch_size))
+        image_batches = list(torch.split(image, batch_size))
+        noise_level_batches = list(torch.split(noise_level.view(-1, 1), batch_size))
         if uncond_embeddings is not None:
             uncond_embeddings_batches = list(torch.split(uncond_embeddings, batch_size))
 
@@ -564,6 +537,16 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                 torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
             )
             latents_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad image_batches
+            sequence_to_stack = (image_batches[-1],) + tuple(
+                torch.zeros_like(image_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            image_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad noise_level_batches
+            sequence_to_stack = (noise_level_batches[-1],) + tuple(
+                torch.zeros_like(noise_level_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+            )
+            noise_level_batches[-1] = torch.vstack(sequence_to_stack)
             # Pad text_embeddings_batches
             sequence_to_stack = (text_embeddings_batches[-1],) + tuple(
                 torch.zeros_like(text_embeddings_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
@@ -587,8 +570,10 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             ):
                 text_embeddings_batches[i] = torch.cat([uncond_embeddings_batch, text_embeddings_batch])
         text_embeddings_batches = torch.stack(text_embeddings_batches)
+        image_batches = torch.stack(image_batches)
+        noise_level_batches = torch.stack(noise_level_batches).squeeze(-1)
 
-        return latents_batches, text_embeddings_batches, num_dummy_samples
+        return latents_batches, text_embeddings_batches, image_batches, noise_level_batches, num_dummy_samples
 
     @torch.no_grad()
     def __call__(
@@ -760,8 +745,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             noise = randn_tensor(image.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
             image = self.low_res_scheduler.add_noise(image, noise, noise_level)
 
-            batch_multiplier = 2 if do_classifier_free_guidance else 1
-            image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
+            image = torch.cat([image] * num_images_per_prompt)
             noise_level = torch.cat([noise_level] * image.shape[0])
 
             # 6. Prepare latent variables
@@ -793,17 +777,11 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
             # 9. Split into batches (HPU-specific step)
-            latents_batches, text_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
-                batch_size,
-                latents,
-                prompt_embeds,
-                negative_prompt_embeds,
+            latents_batches, text_embeddings_batches, image_batches, noise_level_batches, num_dummy_samples = self._split_inputs_into_batches(
+                batch_size, latents, prompt_embeds, negative_prompt_embeds, image, noise_level
             )
 
-            outputs = {
-                "images": [],
-                "has_nsfw_concept": [],
-            }
+            outputs = {"images": [], "has_nsfw_concept": []}
             t0 = time.time()
             t1 = t0
 
@@ -818,6 +796,10 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
                 text_embeddings_batch = text_embeddings_batches[0]
                 text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
+                image_batch = image_batches[0]
+                image_batches = torch.roll(image_batches, shifts=-1, dims=0)
+                noise_level_batch = noise_level_batches[0]
+                noise_level_batches = torch.roll(noise_level_batches, shifts=-1, dims=0)
 
                 for i in range(num_inference_steps):
                     timestep = timesteps[0]
@@ -830,7 +812,11 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                         torch.cat([latents_batch] * 2) if do_classifier_free_guidance else latents_batch
                     )
                     # latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep) #TODO why this has been removed?
-                    latent_model_input = torch.cat([latent_model_input, image], dim=1)
+                    image_input = torch.cat([image_batch] * 2) if do_classifier_free_guidance else image_batch
+                    noise_level_input = (
+                        torch.cat([noise_level_batch] * 2) if do_classifier_free_guidance else noise_level_batch
+                    )
+                    latent_model_input = torch.cat([latent_model_input, image_input], dim=1)
 
                     # predict the noise residual
                     noise_pred = self.unet_hpu(
@@ -839,7 +825,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                         text_embeddings_batch,
                         cross_attention_kwargs,
                         capture,
-                        class_labels=noise_level,
+                        class_labels=noise_level_input,
                     )
 
                     # perform guidance
