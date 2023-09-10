@@ -1,5 +1,5 @@
 {
-    "librispeech_asr": {
+    "regisss/librispeech_asr_for_optimum_habana_ci": {
         "num_train_epochs": 2,
         "eval_batch_size": 8,
         "distribution": {
