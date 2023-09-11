@@ -426,18 +426,15 @@ def main():
         throughput = total_new_tokens_generated / duration
 
         if rank in [-1, 0]:
-            stats = f"Throughput (including tokenization) = {throughput} tokens/second"
-            separator = "-" * len(stats)
             print()
             print("Input/outputs:")
-            print(separator)
             for i, input_sentence in enumerate(zip(input_sentences)):
                 print(f"input {i+1}: {input_sentence}")
                 for j, output in enumerate(
                     zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
                 ):
                     print(f"output {j+1}: {output}")
-                print(separator)
+                print()
 
             # Store results if necessary
             if args.output_dir is not None:
@@ -452,6 +449,8 @@ def main():
                     json.dump(results, f, ensure_ascii=False, indent=4)
             from optimum.habana.utils import get_hpu_memory_stats
 
+            stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+            separator = "-" * len(stats)
             print()
             print("Stats:")
             print(separator)
