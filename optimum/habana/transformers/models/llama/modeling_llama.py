@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, apply_rotary_pos_emb, logger, repeat_kv
+from transformers.models.llama.modeling_llama import LlamaForCausalLM, apply_rotary_pos_emb, logger
 
 
 try:
