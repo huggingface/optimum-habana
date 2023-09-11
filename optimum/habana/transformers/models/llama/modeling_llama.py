@@ -352,6 +352,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -372,8 +373,16 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             return_dict=return_dict,
             token_idx=token_idx,
         )
-
+        if (trim_logits):
+            print("trim!")
         hidden_states = outputs[0]
+        _, seq_len, _ = hidden_states.shape
+        if seq_len > 1 and trim_logits:
+            if token_idx is not None:
+                hidden_states = hidden_states.index_select(1, token_idx - 1)
+            else:
+                hidden_states = hidden_states[:, -1, :]
+                
         if self.config.pretraining_tp > 1:
             lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
             logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.config.pretraining_tp)]

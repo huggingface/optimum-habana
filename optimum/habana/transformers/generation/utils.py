@@ -382,6 +382,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 inputs_tensor, generation_config.pad_token_id, generation_config.eos_token_id
             )
 
+        model_kwargs["trim_logits"] = generation_config.trim_logits
         if generation_config.static_shapes:
             # token_idx is the current index in the generation process, it is incremented each time a new token is generated
             model_kwargs["token_idx"] = torch.tensor(inputs_tensor.shape[-1], device=inputs_tensor.device)
@@ -1079,6 +1080,8 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
+        
+        has_trim_logits_forwarding = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1097,12 +1100,21 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             # forward pass to get next token
-            outputs = self(
-                **model_inputs,
-                return_dict=True,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-            )
+            if has_trim_logits_forwarding:
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    trim_logits=model_kwargs["trim_logits"]
+                )
+            else:
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                )
 
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
@@ -1391,6 +1403,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         # auto-regressive generation
+        has_trim_logits_forwarding = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1409,12 +1422,21 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             # forward pass to get next token
-            outputs = self(
-                **model_inputs,
-                return_dict=True,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-            )
+            if has_trim_logits_forwarding:
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    trim_logits=model_kwargs["trim_logits"]
+                )
+            else:
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                )
 
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
@@ -1713,6 +1735,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
+        has_trim_logits_forwarding = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -1725,13 +1748,21 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
-
-            outputs = self(
+            if has_trim_logits_forwarding:
+                outputs = self(
                 **model_inputs,
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
+                trim_logits=model_kwargs["trim_logits"]
             )
+            else:
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                )
 
             if synced_gpus and this_peer_finished:
                 cur_len = cur_len + 1
@@ -2357,6 +2388,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
+        has_trim_logits_forwarding = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -2369,13 +2401,21 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
-
-            outputs = self(
-                **model_inputs,
-                return_dict=True,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-            )
+            if has_trim_logits_forwarding:
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    trim_logits=model_kwargs["trim_logits"],
+                )
+            else:
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                )
 
             if synced_gpus and this_peer_finished:
                 cur_len = cur_len + 1
