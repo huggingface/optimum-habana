@@ -33,7 +33,7 @@ def gaudi_t5_layernorm_forward(self, hidden_states):
 
 
 def _gaudi_get_resized_embeddings(
-    self, old_embeddings: torch.nn.Embedding, new_num_tokens: Optional[int] = None
+    self, old_embeddings: torch.nn.Embedding, new_num_tokens: Optional[int] = None, pad_to_multiple_of=None
 ) -> torch.nn.Embedding:
     """
     Copied from: https://github.com/huggingface/transformers/blob/v4.28.1/src/transformers/modeling_utils.py#L1424
