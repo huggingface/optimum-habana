@@ -266,11 +266,6 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         gen_kwargs["lazy_mode"] = (
             gen_kwargs["lazy_mode"] if gen_kwargs.get("lazy_mode") is not None else self.args.use_lazy_mode
         )
-        gen_kwargs["hpu_graphs"] = (
-            gen_kwargs["hpu_graphs"]
-            if gen_kwargs.get("hpu_graphs") is not None
-            else self.args.use_hpu_graphs_for_inference
-        )
 
         # If the `decoder_input_ids` was created from `labels`, evict the former, so that the model can freely generate
         # (otherwise, it would continue generating from the padded `decoder_input_ids`)
