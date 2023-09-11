@@ -373,8 +373,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             return_dict=return_dict,
             token_idx=token_idx,
         )
-        if (trim_logits):
-            print("trim!")
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits:
