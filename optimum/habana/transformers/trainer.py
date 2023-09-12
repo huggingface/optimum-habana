@@ -84,7 +84,6 @@ from transformers.utils import (
     is_safetensors_available,
 )
 
-from optimum.habana.distributed import all_reduce_gradients
 from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
@@ -186,14 +185,6 @@ class GaudiTrainer(Trainer):
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
         if self.args.use_habana:
-            if self.args.use_lazy_mode:
-                try:
-                    import habana_frameworks.torch.core as htcore
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
-                    raise error
-                self.htcore = htcore
-
             if self.args.use_hpu_graphs_for_inference:
                 self.already_wrapped_for_hpu_graphs = False
 
@@ -218,6 +209,9 @@ class GaudiTrainer(Trainer):
                 logger.warning(
                     "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
                 )
+
+            if self.use_hpu_amp and "LOWER_LIST" not in os.environ:
+                gaudi_config.declare_autocast_bf16_fp32_ops()
 
             if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
                 try:
@@ -248,6 +242,14 @@ class GaudiTrainer(Trainer):
                             fp32_file_path=hmp_fp32_file.name,
                             isVerbose=self.gaudi_config.hmp_is_verbose,
                         )
+
+            if self.args.use_lazy_mode:
+                try:
+                    import habana_frameworks.torch.core as htcore
+                except ImportError as error:
+                    error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
+                    raise error
+                self.htcore = htcore
 
             try:
                 from habana_frameworks.torch.hpu import random as hpu_random
@@ -719,6 +721,8 @@ class GaudiTrainer(Trainer):
         # In multi-worker training: broadcast model parameters from worker:0 to all the others.
         # This must be done manually unless DistributedDataParallel is used.
         if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.distribution_strategy == "fast_ddp":
+            from ..distributed import all_reduce_gradients
+
             logger.debug(
                 f"Broadcasting the model parameters to assure that each of {self.args.world_size} workers start the training from the same point."
             )

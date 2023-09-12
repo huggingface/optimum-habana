@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import sys
 import warnings
 from pathlib import Path
 
@@ -59,6 +61,8 @@ class GaudiConfig(BaseConfig):
         self.hmp_is_verbose = kwargs.pop("hmp_is_verbose", False)
         # Torch Autocast
         self.use_torch_autocast = kwargs.pop("use_torch_autocast", False)
+        self.autocast_bf16_ops = kwargs.pop("autocast_bf16_ops", None)
+        self.autocast_fp32_ops = kwargs.pop("autocast_fp32_ops", None)
 
         if self.use_habana_mixed_precision and self.use_torch_autocast:
             raise ValueError(
@@ -82,10 +86,31 @@ class GaudiConfig(BaseConfig):
         self,
         path_to_bf16_file: Path,
         path_to_fp32_file: Path,
+        autocast: bool = False,
     ):
-        for path, ops in zip(
-            [Path(path_to_bf16_file), Path(path_to_fp32_file)], [self.hmp_bf16_ops, self.hmp_fp32_ops]
-        ):
+        bf16_ops = self.autocast_bf16_ops if autocast else self.hmp_bf16_ops
+        fp32_ops = self.autocast_fp32_ops if autocast else self.hmp_fp32_ops
+
+        for path, ops in zip([Path(path_to_bf16_file), Path(path_to_fp32_file)], [bf16_ops, fp32_ops]):
             with path.open("w") as text_file:
                 # writelines does not add new lines after each element so "\n" is inserted
                 text_file.writelines(op + "\n" for op in ops)
+
+    def declare_autocast_bf16_fp32_ops(self):
+        if self.autocast_bf16_ops is not None and self.autocast_fp32_ops is not None:
+            if "habana_frameworks.torch.core" in sys.modules:
+                raise RuntimeError(
+                    "Setting bf16/fp32 ops for Torch Autocast but `habana_frameworks.torch.core` has already been imported. "
+                    "You should instantiate your Gaudi config and your training arguments before importing from `habana_frameworks.torch` or calling a method from `optimum.habana.utils`."
+                )
+            else:
+                autocast_bf16_filename = "/tmp/lower_list.txt"
+                autocast_fp32_filename = "/tmp/fp32_list.txt"
+
+                self.write_bf16_fp32_ops_to_text_files(
+                    autocast_bf16_filename,
+                    autocast_fp32_filename,
+                    autocast=True,
+                )
+                os.environ["LOWER_LIST"] = autocast_bf16_filename
+                os.environ["FP32_LIST"] = autocast_fp32_filename
