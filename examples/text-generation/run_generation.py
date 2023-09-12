@@ -172,6 +172,11 @@ def main():
         type=str,
         help="Output directory to store results in.",
     )
+    parser.add_argument(
+        "--limit_hpu_graphs",
+        action="store_true",
+        help="Skip HPUGraph usage for first token to save memory",
+    )
 
     args = parser.parse_args()
 
@@ -185,6 +190,8 @@ def main():
         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
+    if not args.use_hpu_graphs:
+        args.limit_hpu_graphs = False
     # Device is HPU
     args.device = "hpu"
     import habana_frameworks.torch.hpu as torch_hpu
@@ -360,6 +367,7 @@ def main():
     generation_config.force_words_ids = force_words_ids
     generation_config.num_return_sequences = args.num_return_sequences
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
+    generation_config.limit_hpu_graphs = args.limit_hpu_graphs
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
