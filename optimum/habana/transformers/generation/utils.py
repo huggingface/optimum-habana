@@ -1081,7 +1081,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         
-        has_trim_logits_forwarding = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
+        enable_trim_logits = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1100,7 +1100,7 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             # forward pass to get next token
-            if has_trim_logits_forwarding:
+            if enable_trim_logits:
                 outputs = self(
                     **model_inputs,
                     return_dict=True,
@@ -1403,7 +1403,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         # auto-regressive generation
-        has_trim_logits_forwarding = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
+        enable_trim_logits = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1422,7 +1422,7 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             # forward pass to get next token
-            if has_trim_logits_forwarding:
+            if enable_trim_logits:
                 outputs = self(
                     **model_inputs,
                     return_dict=True,
@@ -1735,7 +1735,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
-        has_trim_logits_forwarding = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
+        enable_trim_logits = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -1748,13 +1748,13 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
-            if has_trim_logits_forwarding:
+            if enable_trim_logits:
                 outputs = self(
                 **model_inputs,
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
-                trim_logits=model_kwargs["trim_logits"]
+                trim_logits=model_kwargs["trim_logits"],
             )
             else:
                 outputs = self(
@@ -2388,7 +2388,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
-        has_trim_logits_forwarding = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
+        enable_trim_logits = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -2401,7 +2401,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
-            if has_trim_logits_forwarding:
+            if enable_trim_logits:
                 outputs = self(
                     **model_inputs,
                     return_dict=True,

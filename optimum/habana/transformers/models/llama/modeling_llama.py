@@ -375,7 +375,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
-        if seq_len > 1 and trim_logits:
+        if seq_len > 1 and trim_logits and not self.training:
             if token_idx is not None:
                 hidden_states = hidden_states.index_select(1, token_idx - 1)
             else:
