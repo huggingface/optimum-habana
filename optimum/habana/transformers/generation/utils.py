@@ -1080,7 +1080,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
-        
+
         enable_trim_logits = "trim_logits" in set(inspect.signature(self.forward).parameters.keys())
         while True:
             if lazy_mode:
@@ -1106,7 +1106,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     return_dict=True,
                     output_attentions=output_attentions,
                     output_hidden_states=output_hidden_states,
-                    trim_logits=model_kwargs["trim_logits"]
+                    trim_logits=model_kwargs["trim_logits"],
                 )
             else:
                 outputs = self(
@@ -1428,7 +1428,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     return_dict=True,
                     output_attentions=output_attentions,
                     output_hidden_states=output_hidden_states,
-                    trim_logits=model_kwargs["trim_logits"]
+                    trim_logits=model_kwargs["trim_logits"],
                 )
             else:
                 outputs = self(
@@ -1750,12 +1750,12 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
             if enable_trim_logits:
                 outputs = self(
-                **model_inputs,
-                return_dict=True,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                trim_logits=model_kwargs["trim_logits"],
-            )
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    trim_logits=model_kwargs["trim_logits"],
+                )
             else:
                 outputs = self(
                     **model_inputs,
