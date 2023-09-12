@@ -48,7 +48,7 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         batch = self.cache.pop(request.batch_id)
         if batch is None:
             raise ValueError(f"Batch ID {request.batch_id} not found in cache.")
-        filtered_batch = batch.filter(request.request_ids)
+        filtered_batch = batch.filter(request.request_ids, self.model.is_optimized_for_gaudi)
         self.cache.set(filtered_batch)
 
         return generate_pb2.FilterBatchResponse(batch=filtered_batch.to_pb())
@@ -93,7 +93,7 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
             raise ValueError("All batches are empty")
 
         if len(batches) > 1:
-            batch = self.model.batch_type.concatenate(batches)
+            batch = self.model.batch_type.concatenate(batches, self.model.is_optimized_for_gaudi)
         else:
             batch = batches[0]
 
