@@ -532,6 +532,8 @@ def main():
             bias="none",
             task_type=TaskType.CAUSAL_LM,
         )
+        if training_args.gradient_checkpointing:
+            model.enable_input_require_grads()
         lora_model = get_peft_model(model, peft_config)
         if training_args.bf16:
             lora_model = lora_model.to(torch.bfloat16)
