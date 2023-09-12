@@ -25,7 +25,7 @@ from typing import Optional, Union
 
 import torch
 from diffusers.pipelines import DiffusionPipeline
-from diffusers.utils import is_compiled_module
+from diffusers.utils.torch_utils import is_compiled_module
 
 from optimum.utils import logging
 
