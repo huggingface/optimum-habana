@@ -14,6 +14,9 @@ class GaudiGenerationConfig(GenerationConfig):
     ignore_eos (`bool`, *optional*):
         Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
         If not specified, it will automatically be set to `True` if lazy mode is on.
+    attn_softmax_bf16 (`bool`, *optional*):
+        Whether to run attention softmax layer in lower precision provided that the model supports it and
+        is also running in lower precision.
     """
 
     def __init__(self, **kwargs):
@@ -21,3 +24,4 @@ class GaudiGenerationConfig(GenerationConfig):
 
         self.static_shapes = kwargs.get("static_shapes", None)
         self.ignore_eos = kwargs.get("ignore_eos", None)
+        self.attn_softmax_bf16 = kwargs.get("attn_softmax_bf16", None)
