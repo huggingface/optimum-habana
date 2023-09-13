@@ -175,7 +175,7 @@ def main():
     parser.add_argument(
         "--limit_hpu_graphs",
         action="store_true",
-        help="Skip HPUGraph usage for first token to save memory",
+        help="Skip HPU Graph usage for first token to save memory",
     )
 
     args = parser.parse_args()
