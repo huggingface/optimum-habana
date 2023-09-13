@@ -91,6 +91,15 @@ class CausalLMBatch(Batch):
         max_truncation = 0
         padding_right_offset = 0
         max_decode_tokens = 0
+
+        # TODO: this should be set to rust side `max_total_tokens`,
+        # (see https://github.com/huggingface/text-generation-inference/blob/main/launcher/src/main.rs#L177)
+        # but TGI does not offer an API to expose this variable to python, as this variable
+        # is handled by the client but it appears the model is initialized by the server.
+        # An alternative could be to initialize the buffers during warmup.
+        # Dummy
+        max_total_tokens = 2048
+
         for i, r in enumerate(pb.requests):
             requests_idx_mapping[r.id] = i
             inputs.append(r.inputs)
@@ -118,6 +127,9 @@ class CausalLMBatch(Batch):
 
         max_input_length = max(input_lengths)
         max_tokens = len(inputs) * max_input_length + max_decode_tokens
+        if is_optimized_for_gaudi:
+            # pad to max_total_tokens in case max_new_token changes per request and triggers new hpu graph generation
+            padding_right_offset = max_total_tokens - max_input_length
 
         input_ids = tokenized_inputs["input_ids"]
         attention_mask = tokenized_inputs["attention_mask"]
@@ -270,10 +282,15 @@ class CausalLMBatch(Batch):
         total_batch_size = 0
         max_input_length = 0
         padding_right_offset = 0
+        max_total_tokens = 0
         for batch in batches:
             total_batch_size += len(batch)
             max_input_length = max(max_input_length, batch.max_input_length)
             padding_right_offset = max(padding_right_offset, batch.padding_right_offset)
+            max_total_tokens = max(max_total_tokens, batch.max_input_length + batch.padding_right_offset)
+
+        if is_optimized_for_gaudi:
+            padding_right_offset = max_total_tokens - max_input_length
 
         # Batch attributes
         requests = []
@@ -635,7 +652,7 @@ class CausalLM(Model):
             next_token_logprob = logprobs[-1, next_token_id]
             next_token_id_squeezed = next_token_id.squeeze()
             next_token_text, prefix_offset, read_offset = self.decode_token(
-                all_input_ids[:, 0], prefix_offset, read_offset
+                all_input_ids[0:new_input_length, 0], prefix_offset, read_offset
             )
 
             # Evaluate stopping criteria
@@ -652,7 +669,9 @@ class CausalLM(Model):
             if i % self.world_size == self.rank:
                 if stop:
                     # Decode generated tokens
-                    output_text = self.decode(all_input_ids[-stopping_criteria.current_tokens :, 0])
+                    output_text = self.decode(
+                        all_input_ids[new_input_length - stopping_criteria.current_tokens : new_input_length, 0]
+                    )
                     # Get seed
                     if isinstance(next_token_chooser.choice, Sampling):
                         seed = next_token_chooser.choice.seed
@@ -667,9 +686,9 @@ class CausalLM(Model):
                 if stopping_criteria.current_tokens == 1 and request.prefill_logprobs:
                     # Remove generated token to only have prefill and add nan for first prompt token
                     prefill_logprobs = [float("nan")] + torch.log_softmax(logits, -1).gather(
-                        1, all_input_ids[1:]
+                        1, all_input_ids[1:new_input_length]
                     ).squeeze(1)[-new_input_length:-1].tolist()
-                    prefill_token_ids = all_input_ids[-new_input_length:-1]
+                    prefill_token_ids = all_input_ids[0 : new_input_length - 1]
                     prefill_texts = self.tokenizer.batch_decode(
                         prefill_token_ids,
                         clean_up_tokenization_spaces=False,
