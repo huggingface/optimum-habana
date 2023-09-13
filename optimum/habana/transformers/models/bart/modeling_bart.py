@@ -219,10 +219,6 @@ def gaudi_BartEncoderLayer_forward(
     hidden_states = residual + hidden_states
     hidden_states = self.final_layer_norm(hidden_states)
 
-    if hidden_states.dtype == torch.float16 and (torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()):
-        clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-        hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
     outputs = (hidden_states,)
 
     if output_attentions:
@@ -472,7 +468,6 @@ def gaudi_BartDecoder_forward(
 
     htcore.mark_step()
     positions = self.embed_positions(input, tensor_past_key_values_length)
-    import habana_frameworks.torch.core as htcore
 
     htcore.mark_step()
     positions = positions.to(inputs_embeds.device)
@@ -762,7 +757,7 @@ def gaudi_BartForConditionalGeneration_prepare_inputs_for_generation(
         if token_idx is not None:
             decoder_input_ids = torch.index_select(decoder_input_ids, 1, token_idx - 1)
         else:
-            decoder_input_ids = decoder_input_ids[:, -1].unsqueeze(-1)
+            decoder_input_ids = decoder_input_ids[:, -1:].unsqueeze(-1)
 
     return {
         "input_ids": None,  # encoder_outputs is defined. input_ids not needed

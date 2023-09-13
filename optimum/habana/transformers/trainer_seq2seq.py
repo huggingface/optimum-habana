@@ -281,7 +281,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         ):
             inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
         try:
-            with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.args.bf16):
+            with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.use_hpu_amp):
                 generated_tokens = self.model.generate(
                     **inputs,
                     generation_config=self.model.generation_config,

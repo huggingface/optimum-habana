@@ -26,6 +26,7 @@ from transformers.generation.beam_constraints import DisjunctiveConstraint, Phra
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.logits_process import LogitsProcessorList
 from transformers.generation.stopping_criteria import (
+    MaxLengthCriteria,
     MaxTimeCriteria,
     StoppingCriteria,
     StoppingCriteriaList,
@@ -87,18 +88,6 @@ class StaticMaxLengthCriteria(StoppingCriteria):
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
         self.cur_step += 1
         return self.cur_step >= self.max_steps
-
-
-def _get_stopping_criteria(
-    self, generation_config: GaudiGenerationConfig, stopping_criteria: Optional[StoppingCriteriaList]
-) -> StoppingCriteriaList:
-    criteria = StoppingCriteriaList()
-    if generation_config.max_length is not None:
-        criteria.append(StaticMaxLengthCriteria(generation_config.max_length))
-    if generation_config.max_time is not None:
-        criteria.append(MaxTimeCriteria(max_time=generation_config.max_time))
-    criteria = self._merge_criteria_processor_list(criteria, stopping_criteria)
-    return criteria
 
 
 class GaudiGenerationMixin(GenerationMixin):
@@ -212,7 +201,7 @@ class GaudiGenerationMixin(GenerationMixin):
         dtype: str = torch.int64,
     ) -> torch.Tensor:
         x = torch.zeros((batch_size, max_steps), device=device, dtype=dtype)
-        return x.index_fill(1, torch.tensor([0]), pad_token_id)  # First the position with pad_token_id
+        return x.index_fill(1, torch.tensor([0]), 1)  # First the position with pad_token_id
 
     def _prepare_past_key_values(
         self,
@@ -289,35 +278,29 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["decoder_attention_mask"] = decoder_attention_mask
         return decoder_input_ids, model_kwargs
 
-    # TODO: remove this method when Transformers v4.31 is released since it solves the issue with Llama
-    def _validate_model_kwargs(self, model_kwargs: Dict[str, Any]):
-        """
-        Copied from Transformers: https://github.com/huggingface/transformers/blob/main/src/transformers/generation/utils.py
-
-        Remove `token_type_ids` from model_kwargs, which is not used for llama model
-        """
-        if self.config.is_encoder_decoder:
-            for key in ["decoder_input_ids"]:
-                model_kwargs.pop(key, None)
-        if self.config.model_type == "llama":
-            for key in ["token_type_ids"]:
-                model_kwargs.pop(key, None)
-
-        unused_model_args = []
-        model_args = set(inspect.signature(self.prepare_inputs_for_generation).parameters)
-        # `kwargs`/`model_kwargs` is often used to handle optional forward pass inputs like `attention_mask`. If
-        # `prepare_inputs_for_generation` doesn't accept them, then a stricter check can be made ;)
-        if "kwargs" in model_args or "model_kwargs" in model_args:
-            model_args |= set(inspect.signature(self.forward).parameters)
-        for key, value in model_kwargs.items():
-            if value is not None and key not in model_args:
-                unused_model_args.append(key)
-
-        if unused_model_args:
-            raise ValueError(
-                f"The following `model_kwargs` are not used by the model: {unused_model_args} (note: typos in the"
-                " generate arguments will also show up in this list)"
-            )
+    def _get_stopping_criteria(
+        self, generation_config: GaudiGenerationConfig, stopping_criteria: Optional[StoppingCriteriaList]
+    ) -> StoppingCriteriaList:
+        criteria = StoppingCriteriaList()
+        if generation_config.max_length is not None:
+            if (
+                generation_config.static_shapes
+                and self.config.is_encoder_decoder
+                and self._get_generation_mode(generation_config) == GenerationMode.GREEDY_SEARCH
+            ):
+                criteria.append(StaticMaxLengthCriteria(generation_config.max_length))
+            else:
+                max_position_embeddings = getattr(self.config, "max_position_embeddings", None)
+                criteria.append(
+                    MaxLengthCriteria(
+                        max_length=generation_config.max_length,
+                        max_position_embeddings=max_position_embeddings,
+                    )
+                )
+        if generation_config.max_time is not None:
+            criteria.append(MaxTimeCriteria(max_time=generation_config.max_time))
+        criteria = self._merge_criteria_processor_list(criteria, stopping_criteria)
+        return criteria
 
     @torch.no_grad()
     def generate(
@@ -511,29 +494,33 @@ class GaudiGenerationMixin(GenerationMixin):
                 inputs_tensor, generation_config.pad_token_id, generation_config.eos_token_id
             )
 
-        if self.config.is_encoder_decoder and generation_config.static_shapes:
-            # token_idx is the current index in the generation process, it is incremented each time a new token is generated
-            model_kwargs["token_idx"] = torch.tensor(1, device=inputs_tensor.device)
+        if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
-            inputs_tensor = torch.nn.functional.pad(
-                inputs_tensor, (0, generation_config.max_length), value=generation_config.pad_token_id
-            )
-            if model_kwargs["attention_mask"] is not None:
-                model_kwargs["attention_mask"] = torch.nn.functional.pad(
-                    model_kwargs["attention_mask"], (0, generation_config.max_length), value=0
+            # In encoder_decoder models, Inputs are already padded
+            if not self.config.is_encoder_decoder:
+                # token_idx is the current index in the generation process, it is incremented each time a new token is generated
+                model_kwargs["token_idx"] = torch.tensor(inputs_tensor.shape[-1], device=inputs_tensor.device)
+                inputs_tensor = torch.nn.functional.pad(
+                    inputs_tensor, (0, generation_config.max_length), value=generation_config.pad_token_id
                 )
-            if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
-                model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
-                    generation_config.max_length,
-                    inputs_tensor.shape[0],
-                    generation_config.pad_token_id,
-                    inputs_tensor.device,
-                )
+                if model_kwargs["attention_mask"] is not None:
+                    model_kwargs["attention_mask"] = torch.nn.functional.pad(
+                        model_kwargs["attention_mask"], (0, generation_config.max_length), value=0
+                    )
+            else:
+                model_kwargs["token_idx"] = torch.tensor(1, device=inputs_tensor.device)
+                if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
+                    model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
+                        generation_config.max_length,
+                        inputs_tensor.shape[0],
+                        generation_config.pad_token_id,
+                        inputs_tensor.device,
+                    )
 
-            if model_kwargs.get("past_key_values", None) is None and generation_config.use_cache:
-                model_kwargs["past_key_values"] = self._prepare_past_key_values(
-                    generation_config.max_length, inputs_tensor.shape[0], inputs_tensor.device
-                )
+            # if model_kwargs.get("past_key_values", None) is None and generation_config.use_cache:
+            #     model_kwargs["past_key_values"] = self._prepare_past_key_values(
+            #         generation_config.max_length, inputs_tensor.shape[0], inputs_tensor.device
+            #     )
 
         # decoder-only models should use left-padding for generation
         if not self.config.is_encoder_decoder:
@@ -566,7 +553,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 decoder_start_token_id=generation_config.decoder_start_token_id,
                 bos_token_id=generation_config.bos_token_id,
                 device=inputs_tensor.device,
-                max_length=generation_config.max_length or generation_config.max_new_tokens,
+                max_length=generation_config.max_length,
             )
         else:
             input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop("input_ids")
@@ -622,15 +609,16 @@ class GaudiGenerationMixin(GenerationMixin):
         )
 
         # 9. prepare stopping criteria
-        if self.config.is_encoder_decoder and generation_mode == GenerationMode.GREEDY_SEARCH:
-            stopping_criteria = _get_stopping_criteria(
-                self, generation_config=generation_config, stopping_criteria=stopping_criteria
-            )
-        else:
-            stopping_criteria = self._get_stopping_criteria(
-                generation_config=generation_config, stopping_criteria=stopping_criteria
-            )
-
+        stopping_criteria = self._get_stopping_criteria(
+            generation_config=generation_config, stopping_criteria=stopping_criteria
+        )
+        if "token_idx" in model_kwargs:
+            if generation_config.max_new_tokens is not None:
+                stopping_criteria.append(StaticMaxLengthCriteria(generation_config.max_new_tokens))
+            else:
+                raise ValueError(
+                    "You need to set `max_new_tokens` in your generation configuration to use static shapes."
+                )
         # In lazy mode, import Habana torch to be able to add mark_step()
         if lazy_mode:
             import habana_frameworks.torch.core as htcore
