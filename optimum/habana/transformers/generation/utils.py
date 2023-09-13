@@ -447,9 +447,7 @@ class GaudiGenerationMixin(GenerationMixin):
         self._validate_generated_length(generation_config, input_ids_length, has_default_max_length)
 
         # determine whether attention softmax needs to execute in lower precision
-        model_kwargs["attn_softmax_bf16"] = (
-            generation_config.attn_softmax_bf16 if hasattr(generation_config, "attn_softmax_bf16") else None
-        )
+        model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
 
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)

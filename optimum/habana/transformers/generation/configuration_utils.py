@@ -21,3 +21,4 @@ class GaudiGenerationConfig(GenerationConfig):
 
         self.static_shapes = kwargs.get("static_shapes", None)
         self.ignore_eos = kwargs.get("ignore_eos", None)
+        self.attn_softmax_bf16 = kwargs.get("attn_softmax_bf16", None)

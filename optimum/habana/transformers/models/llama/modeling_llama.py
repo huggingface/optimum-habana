@@ -218,7 +218,7 @@ def gaudi_llama_model_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
-    attn_softmax_bf16: Optional[bool] = None,
+    attn_softmax_bf16: Optional[bool] = False,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -365,7 +365,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
-        attn_softmax_bf16: Optional[bool] = None,
+        attn_softmax_bf16: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
