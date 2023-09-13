@@ -30,8 +30,8 @@ import torch
 from checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
-    model_is_bloom,
     model_is_optimized,
+    model_on_meta,
     write_checkpoints_json,
 )
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
@@ -66,6 +66,7 @@ def main():
     )
     parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
+    parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
     parser.add_argument(
@@ -212,6 +213,16 @@ def main():
     # Set seed before initializing model.
     from optimum.habana.utils import set_seed
 
+    try:
+        from optimum.habana.utils import check_optimum_habana_min_version
+    except ImportError:
+
+        def check_optimum_habana_min_version(*a, **b):
+            return ()
+
+    # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
+    check_optimum_habana_min_version("1.8.0.dev0")
+
     set_seed(args.seed)
 
     # TODO: remove the following hack when Falcon is available in Transformers
@@ -246,9 +257,9 @@ def main():
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
         is_optimized = model_is_optimized(config)
-        is_bloom = model_is_bloom(config)
+        load_to_meta = model_on_meta(config)
 
-        if is_bloom:
+        if load_to_meta:
             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
@@ -266,8 +277,8 @@ def main():
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
 
-        if is_bloom:
-            # BLOOM is managed differently
+        if load_to_meta:
+            # model loaded to meta is managed differently
             checkpoints_json = "checkpoints.json"
             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
 
@@ -275,7 +286,7 @@ def main():
         torch.distributed.barrier()
 
         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
-        if is_bloom:
+        if load_to_meta:
             ds_inference_kwargs["checkpoint"] = checkpoints_json
 
         model = deepspeed.init_inference(model, **ds_inference_kwargs)
@@ -398,7 +409,7 @@ def main():
             logger.info("Graph compilation...")
         t0 = time.perf_counter()
         # The first three iterations take longer because of graph compilation
-        for _ in range(3):
+        for _ in range(args.warmup):
             generate()
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
@@ -415,6 +426,27 @@ def main():
         throughput = total_new_tokens_generated / duration
 
         if rank in [-1, 0]:
+            print()
+            print("Input/outputs:")
+            for i, input_sentence in enumerate(zip(input_sentences)):
+                print(f"input {i+1}: {input_sentence}")
+                for j, output in enumerate(
+                    zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
+                ):
+                    print(f"output {j+1}: {output}")
+                print()
+
+            # Store results if necessary
+            if args.output_dir is not None:
+                output_dir = Path(args.output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                results = {
+                    "throughput": throughput,
+                    "output": output,
+                }
+                with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+                    json.dump(results, f, ensure_ascii=False, indent=4)
             from optimum.habana.utils import get_hpu_memory_stats
 
             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
@@ -430,27 +462,6 @@ def main():
                 print(f"Graph compilation duration          = {compilation_duration} seconds")
             print(separator)
             print()
-            print("Input/outputs:")
-            print(separator)
-            for i, input_sentence in enumerate(zip(input_sentences)):
-                print(f"input {i+1}: {input_sentence}")
-                for j, output in enumerate(
-                    zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
-                ):
-                    print(f"output {j+1}: {output}")
-                print(separator)
-
-            # Store results if necessary
-            if args.output_dir is not None:
-                output_dir = Path(args.output_dir)
-                output_dir.mkdir(parents=True, exist_ok=True)
-
-                results = {
-                    "throughput": throughput,
-                    "output": output,
-                }
-                with (output_dir / "results.json").open("w", encoding="utf-8") as f:
-                    json.dump(results, f, ensure_ascii=False, indent=4)
     else:
         # Downloading and loading a dataset from the hub.
         from datasets import load_dataset

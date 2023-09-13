@@ -81,7 +81,7 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
-from .t5 import gaudi_t5_layernorm_forward
+from .t5 import _gaudi_get_resized_embeddings, _gaudi_get_resized_lm_head, gaudi_t5_layernorm_forward
 from .vit import gaudi_vit_self_attention_forward
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,

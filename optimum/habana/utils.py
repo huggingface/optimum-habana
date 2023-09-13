@@ -20,8 +20,6 @@ from typing import Any, Dict
 
 import numpy as np
 import torch
-from habana_frameworks.torch.hpu import memory_stats
-from habana_frameworks.torch.hpu import random as hpu_random
 from packaging import version
 from transformers.utils import is_torch_available
 
@@ -136,6 +134,8 @@ def get_hpu_memory_stats(device=None) -> Dict[str, float]:
     Returns:
         Dict[str, float]: memory stats.
     """
+    from habana_frameworks.torch.hpu import memory_stats
+
     mem_stats = memory_stats(device)
 
     mem_dict = {
@@ -156,6 +156,8 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     if is_torch_available():
+        from habana_frameworks.torch.hpu import random as hpu_random
+
         torch.manual_seed(seed)
         hpu_random.manual_seed_all(seed)
 
@@ -290,3 +292,22 @@ class HabanaProfile(object):
                 HabanaProfile.HABANA_PROFILE_ENABLED = True
         else:
             HabanaProfile.HABANA_PROFILE_ENABLED = True
+
+
+def check_optimum_habana_min_version(min_version):
+    """
+    Checks if the installed version of `optimum-habana` is larger than or equal to `min_version`.
+
+    Copied from: https://github.com/huggingface/transformers/blob/c41291965f078070c5c832412f5d4a5f633fcdc4/src/transformers/utils/__init__.py#L212
+    """
+    if version.parse(__version__) < version.parse(min_version):
+        error_message = (
+            f"This example requires `optimum-habana` to have a minimum version of {min_version},"
+            f" but the version found is {__version__}.\n"
+        )
+        if "dev" in min_version:
+            error_message += (
+                "You can install it from source with: "
+                "`pip install git+https://github.com/huggingface/optimum-habana.git`."
+            )
+        raise ImportError(error_message)

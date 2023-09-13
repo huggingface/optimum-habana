@@ -58,6 +58,7 @@ slow_tests_diffusers: test_installs
 
 # Run text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0
 	python -m pytest tests/test_text_generation_example.py -v -s --token $(TOKEN)
 
 # Check if examples are up to date with the Transformers library
@@ -97,6 +98,7 @@ clean:
 	find . -name .lock -type f -delete
 	find . -name .graph_dumps -type d -delete
 	find . -name save-hpu.pdb -type f -delete
+	find . -name checkpoints.json -type f -delete
 	rm -rf regression/
 	rm -rf tmp_trainer/
 	rm -rf test/

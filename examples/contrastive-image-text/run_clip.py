@@ -51,10 +51,19 @@ from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
 
 
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+
+    def check_optimum_habana_min_version(*a, **b):
+        return ()
+
+
 logger = logging.getLogger(__name__)
 
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+# Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 check_min_version("4.32.0")
+check_optimum_habana_min_version("1.7.2")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
 

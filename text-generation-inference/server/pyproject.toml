@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "text-generation-server"
-version = "0.9.2"
+version = "1.0.3"
 description = "Text Generation Inference Python gRPC Server"
 authors = ["Olivier Dehaene <olivier@huggingface.co>"]
 
@@ -8,29 +8,36 @@ authors = ["Olivier Dehaene <olivier@huggingface.co>"]
 text-generation-server = 'text_generation_server.cli:app'
 
 [tool.poetry.dependencies]
-python = "^3.9"
-protobuf = "*"
+python = ">=3.9,<3.13"
+protobuf = "^3.20.3"
 grpcio = "^1.51.1"
 grpcio-status = "*"
 grpcio-reflection = "*"
 grpc-interceptor = "^0.15.0"
 typer = "^0.6.1"
-safetensors = "0.3.1"
+safetensors = "0.3.2"
 loguru = "^0.6.0"
 opentelemetry-api = "^1.15.0"
 opentelemetry-exporter-otlp = "^1.15.0"
 opentelemetry-instrumentation-grpc = "^0.36b0"
 hf-transfer = "^0.1.2"
 sentencepiece = "^0.1.97"
-tokenizers = "0.13.3"
-huggingface-hub = "^0.14.1"
-optimum-habana = "1.6.1"
-optimum = "^1.9.1"
-transformers = "4.28.1"
+tokenizers = "^0.13.3"
+huggingface-hub = "^0.16.4"
+peft = "^0.4.0"
+transformers = "^4.32.1"
+optimum-habana = "1.7.2"
+optimum = "*"
 
 [tool.poetry.group.dev.dependencies]
 grpcio-tools = "*"
 pytest = "^7.3.0"
+
+
+[[tool.poetry.source]]
+name = "pytorch-gpu-src"
+url = "https://download.pytorch.org/whl/cu118"
+priority = "explicit"
 
 [tool.pytest.ini_options]
 markers = ["private: marks tests as requiring an admin hf token (deselect with '-m \"not private\"')"]

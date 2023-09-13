@@ -1,7 +1,7 @@
 # Clone the original TGI repo
 FROM python:3.9 as tgi
 WORKDIR /tmp
-RUN git clone --depth 1 --branch v0.9.2 https://github.com/huggingface/text-generation-inference.git
+RUN git clone --depth 1 --branch v1.0.3 https://github.com/huggingface/text-generation-inference.git
 
 # Rust builder
 FROM lukemathwalker/cargo-chef:latest-rust-1.70 AS chef

@@ -6,9 +6,9 @@
             "single_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 24,
-                "eval_f1": 87.5009,
-                "train_runtime": 553.2218,
-                "train_samples_per_second": 165.375,
+                "eval_f1": 87.3749,
+                "train_runtime": 568.832,
+                "train_samples_per_second": 158.687,
                 "extra_arguments": [
                     "--max_seq_length 384",
                     "--use_hpu_graphs_for_inference"
@@ -17,9 +17,9 @@
             "multi_card": {
                 "learning_rate": 2e-4,
                 "train_batch_size": 24,
-                "eval_f1": 87.2947,
-                "train_runtime": 94.9245,
-                "train_samples_per_second": 1266.718,
+                "eval_f1": 87.6017,
+                "train_runtime": 97.7157,
+                "train_samples_per_second": 1240.638,
                 "extra_arguments": [
                     "--max_seq_length 384",
                     "--use_hpu_graphs_for_inference"
@@ -34,9 +34,9 @@
             "single_card": {
                 "learning_rate": 6e-5,
                 "train_batch_size": 64,
-                "eval_f1": 0.9047,
-                "train_runtime": 38.1209,
-                "train_samples_per_second": 560.166,
+                "eval_f1": 0.8998,
+                "train_runtime": 31.044,
+                "train_samples_per_second": 558.201,
                 "extra_arguments": [
                     "--max_seq_length 128",
                     "--use_hpu_graphs_for_inference"
@@ -45,9 +45,9 @@
             "multi_card": {
                 "learning_rate": 5e-4,
                 "train_batch_size": 64,
-                "eval_f1": 0.8889,
-                "train_runtime": 28.7905,
-                "train_samples_per_second": 3669.87,
+                "eval_f1": 0.8765,
+                "train_runtime": 28.3865,
+                "train_samples_per_second": 3643.715,
                 "extra_arguments": [
                     "--max_seq_length 128",
                     "--use_hpu_graphs_for_inference"

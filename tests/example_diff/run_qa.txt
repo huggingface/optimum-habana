@@ -12,30 +12,46 @@
 <     TrainingArguments,
 45d41
 <     set_seed,
-49a46,49
+49a46
 > from utils_qa import postprocess_qa_predictions
-> 
+50a48,49
 > from optimum.habana import GaudiConfig, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-53c53
-< check_min_version("4.33.0.dev0")
+52,53d50
+< # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+< check_min_version("4.34.0.dev0")
+55c52,58
+< require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 ---
+> try:
+>     from optimum.habana.utils import check_optimum_habana_min_version
+> except ImportError:
+> 
+>     def check_optimum_habana_min_version(*a, **b):
+>         return ()
+> 
+58a62,67
+> # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.32.0")
-152c152
+> check_optimum_habana_min_version("1.7.2")
+> 
+> require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
+> 
+152c161
 <                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
 ---
 >                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on HPU)."
-239c239
+239c248
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-248c248,250
+248c257,259
 <         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
 ---
 >         warnings.warn(
 >             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
 >         )
-274a277,283
+274a286,292
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -43,18 +59,18 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-275a285
+275a294
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-277,278c287,289
+277,278c296,298
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-634a646
+634a655
 >         gaudi_config=gaudi_config,
-703,707d714
+703,707d723
 < 
 < 
 < def _mp_fn(index):

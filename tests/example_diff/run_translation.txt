@@ -8,15 +8,30 @@
 <     Seq2SeqTrainingArguments,
 48d44
 <     set_seed,
-53a50,52
+53a50,51
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
-> 
-56c55
-< check_min_version("4.33.0.dev0")
+55,56d52
+< # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+< check_min_version("4.34.0.dev0")
+58c54,60
+< require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
 ---
+> try:
+>     from optimum.habana.utils import check_optimum_habana_min_version
+> except ImportError:
+> 
+>     def check_optimum_habana_min_version(*a, **b):
+>         return ()
+> 
+61a64,69
+> # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.32.0")
-117a117,125
+> check_optimum_habana_min_version("1.7.2")
+> 
+> require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
+> 
+117a126,134
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -26,21 +41,21 @@
 >             )
 >         },
 >     )
-188c196
+188c205
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-273c281
+273c290
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-282c290,292
+282c299,301
 <         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
 ---
 >         warnings.warn(
 >             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
 >         )
-308a319,325
+308a328,334
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -48,24 +63,24 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-309a327
+309a336
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-311,312c329,331
+311,312c338,340
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-393a413
+393a422
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-590c610
+590c619
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-591a612
+591a621
 >         gaudi_config=gaudi_config,
-684,688d704
+684,688d713
 < 
 < 
 < def _mp_fn(index):

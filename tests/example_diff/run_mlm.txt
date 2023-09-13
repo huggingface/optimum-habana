@@ -15,29 +15,46 @@
 <     TrainingArguments,
 <     is_torch_tpu_available,
 <     set_seed,
-54a49,51
+54a49,50
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-> 
-57c54
-< check_min_version("4.33.0.dev0")
+56,57d51
+< # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+< check_min_version("4.34.0.dev0")
+59c53,59
+< require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
+> try:
+>     from optimum.habana.utils import check_optimum_habana_min_version
+> except ImportError:
+> 
+>     def check_optimum_habana_min_version(*a, **b):
+>         return ()
+> 
+61a62,69
+> 
+> # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.32.0")
-226c223
+> check_optimum_habana_min_version("1.7.2")
+> 
+> require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
+> 
+> 
+226c234
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
 >     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
-250c247
+250c258
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-259c256,258
+259c267,269
 <         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
 ---
 >         warnings.warn(
 >             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
 >         )
-285a285,291
+285a296,302
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -45,24 +62,24 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-286a293
+286a304
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-288,289c295,297
+288,289c306,308
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-291d298
+291d309
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-613c620
+613c631
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-614a622
+614a633
 >         gaudi_config=gaudi_config,
-620,623c628,629
+620,623c639,640
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -70,7 +87,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-637,640c643,649
+637,640c654,660
 <         max_train_samples = (
 <             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 <         )
@@ -83,9 +100,9 @@
 >                 data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-649d657
+649d668
 < 
-652,653c660,665
+652,653c671,676
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 ---
@@ -95,7 +112,7 @@
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 > 
-676,680d687
+676,680d698
 < 
 < 
 < def _mp_fn(index):

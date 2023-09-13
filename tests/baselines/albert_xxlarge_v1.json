@@ -1,13 +1,13 @@
 {
     "squad": {
-        "num_train_epochs": 2,
+        "num_train_epochs": 1,
         "eval_batch_size": 2,
         "distribution": {
             "single_card": {
-                "learning_rate": 5e-6,
+                "learning_rate": 1e-5,
                 "train_batch_size": 12,
-                "eval_f1": 94.838,
-                "train_runtime": 18678.8253,
+                "eval_f1": 94.9313,
+                "train_runtime": 9469.2608,
                 "train_samples_per_second": 9.554,
                 "extra_arguments": [
                     "--max_seq_length 384",
@@ -17,9 +17,9 @@
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 12,
-                "eval_f1": 94.9493,
-                "train_runtime": 2466.4572,
-                "train_samples_per_second": 75.626,
+                "eval_f1": 95.1328,
+                "train_runtime": 1310.9232,
+                "train_samples_per_second": 74.777,
                 "extra_arguments": [
                     "--max_seq_length 384",
                     "--use_hpu_graphs_for_inference"

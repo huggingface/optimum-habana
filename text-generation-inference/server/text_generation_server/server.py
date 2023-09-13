@@ -1,4 +1,5 @@
 import asyncio
+import os
 import torch
 
 from grpc import aio
@@ -11,7 +12,7 @@ from typing import List, Optional
 from text_generation_server.cache import Cache
 from text_generation_server.interceptor import ExceptionInterceptor
 from text_generation_server.models import Model, get_model
-from text_generation_server.pb import generate_pb2, generate_pb2_grpc
+from text_generation_server.pb import generate_pb2_grpc, generate_pb2
 from text_generation_server.tracing import UDSOpenTelemetryAioServerInterceptor
 
 
@@ -47,11 +48,8 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         batch = self.cache.pop(request.batch_id)
         if batch is None:
             raise ValueError(f"Batch ID {request.batch_id} not found in cache.")
-        filtered_batch = batch.filter(request.request_ids)
+        filtered_batch = batch.filter(request.request_ids, self.model.is_optimized_for_gaudi)
         self.cache.set(filtered_batch)
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
         return generate_pb2.FilterBatchResponse(batch=filtered_batch.to_pb())
 
@@ -59,12 +57,11 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         # batch = self.model.batch_type.from_pb(
         #     request.batch, self.model.tokenizer, self.model.dtype, self.model.device
         # )
-        # self.model.warmup(batch, request.max_total_tokens)
+        # max_supported_total_tokens = self.model.warmup(batch)
 
-        # if torch.cuda.is_available():
-        #     torch.cuda.empty_cache()
-
-        # return generate_pb2.WarmupResponse()
+        # return generate_pb2.WarmupResponse(
+        #     max_supported_total_tokens=max_supported_total_tokens
+        # )
         logger.warning("Warmup is not enabled on HPU.")
         return generate_pb2.WarmupResponse()
 
@@ -96,9 +93,7 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
             raise ValueError("All batches are empty")
 
         if len(batches) > 1:
-            batch = self.model.batch_type.concatenate(batches)
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            batch = self.model.batch_type.concatenate(batches, self.model.is_optimized_for_gaudi)
         else:
             batch = batches[0]
 
