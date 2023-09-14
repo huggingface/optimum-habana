@@ -105,7 +105,7 @@ def main():
     parser.add_argument(
         "--trim_logits",
         action="store_true",
-        help="Calculate logits only for the last token to save the memory in first step.",
+        help="Calculate logits only for the last token to save memory in the first step.",
     )
     parser.add_argument(
         "--seed",
@@ -430,6 +430,7 @@ def main():
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
+        
         if rank in [-1, 0]:
             print()
             print("Input/outputs:")
