@@ -12,7 +12,7 @@ concurrency:
 jobs:
   start-runner:
     name: Start self-hosted EC2 runner
-    runs-on: ubuntu-20.04
+    runs-on: self-hosted
     env:
       AWS_REGION: us-west-2
       EC2_AMI_ID: ami-05c603feebb4d931d
@@ -47,7 +47,7 @@ jobs:
   example-diff:
     name: Test examples differences
     needs: start-runner # required to start the main job when the runner is ready
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    runs-on: self-hosted # run the job on the newly created runner
     env:
       AWS_REGION: us-west-2
     steps:
@@ -75,7 +75,7 @@ jobs:
     needs:
       - start-runner
       - example-diff  # run the job when the previous test job is done
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    runs-on: self-hosted # run the job on the newly created runner
     env:
       AWS_REGION: us-west-2
     steps:
@@ -104,7 +104,7 @@ jobs:
       - start-runner
       - example-diff
       - stable-diffusion  # run the job when the previous test job is done
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    runs-on: self-hosted # run the job on the newly created runner
     env:
       AWS_REGION: us-west-2
     steps:
@@ -133,7 +133,7 @@ jobs:
       - start-runner
       - example-diff
       - deepspeed  # run the job when the previous test job is done
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    runs-on: self-hosted # run the job on the newly created runner
     env:
       AWS_REGION: us-west-2
     steps:
@@ -163,7 +163,7 @@ jobs:
       - example-diff
       - deepspeed
       - multi-card  # run the job when the previous test jobs are done
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    runs-on: self-hosted # run the job on the newly created runner
     env:
       AWS_REGION: us-west-2
     steps:
@@ -194,7 +194,7 @@ jobs:
       - deepspeed
       - multi-card
       - single-card  # run the job when the previous test jobs are done
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    runs-on: self-hosted # run the job on the newly created runner
     env:
       AWS_REGION: us-west-2
     steps:
@@ -232,7 +232,7 @@ jobs:
       - multi-card
       - single-card
       - albert-xxl-single-card  # run the job when the previous test jobs are done
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    runs-on: self-hosted # run the job on the newly created runner
     env:
       AWS_REGION: us-west-2
     steps:
@@ -264,7 +264,7 @@ jobs:
       - single-card
       - albert-xxl-single-card
       - text-generation
-    runs-on: ubuntu-20.04
+    runs-on: self-hosted
     env:
       AWS_REGION: us-west-2
     if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
