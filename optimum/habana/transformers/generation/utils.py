@@ -26,6 +26,7 @@ from transformers.generation.beam_constraints import DisjunctiveConstraint, Phra
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.logits_process import LogitsProcessorList
 from transformers.generation.stopping_criteria import (
+    MaxLengthCriteria,
     StoppingCriteria,
     StoppingCriteriaList,
     validate_stopping_criteria,
@@ -500,6 +501,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 raise ValueError(
                     "You need to set `max_new_tokens` in your generation configuration to use static shapes."
                 )
+
+        if generation_config.static_shapes and generation_config.bucketsize > 0:
+            stopping_criteria = StoppingCriteriaList([StaticMaxLengthCriteria(generation_config.max_new_tokens) \
+                                                    if type(crit) == MaxLengthCriteria else crit \
+                                                        for crit in stopping_criteria])
 
         # In lazy mode, import Habana torch to be able to add mark_step()
         if lazy_mode:
