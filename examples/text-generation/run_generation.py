@@ -172,6 +172,26 @@ def main():
         type=str,
         help="Output directory to store results in.",
     )
+    parser.add_argument(
+        "--bucketsize",
+        default=-1,
+        type=int,
+        help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
+            then we use shape = prompt_length + max_new_tokens. If a positive number is passed \
+            we increate the bucket in steps of bucketsize instead of allocating to max (prompt_length + max_new_tokens)",
+    )
+    parser.add_argument(
+        "--dataset_prompt_length",
+        default=16,
+        type=int,
+        help="Chop dataset to this length. If dataset_prompt_length<=0, do not chop (use full prompt). Default=16"
+    )
+    parser.add_argument(
+        "--dataset_max_elems",
+        default=-1,
+        type=int,
+        help="If negative number is passed (default = -1) perform inference on whole dataset, else use only dataset_max_elems elements"
+    )
 
     args = parser.parse_args()
 
@@ -354,6 +374,7 @@ def main():
     generation_config.max_new_tokens = args.max_new_tokens
     generation_config.use_cache = args.use_kv_cache
     generation_config.static_shapes = is_optimized
+    generation_config.bucketsize = args.bucketsize if is_optimized else -1
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
     generation_config.bad_words_ids = bad_words_ids
@@ -482,7 +503,7 @@ def main():
             split = "validation"
         else:
             split = "train"
-        raw_dataset = raw_dataset[split]
+        raw_dataset = raw_dataset[split].shuffle().select(range(args.dataset_max_elems if args.dataset_max_elems > 0 else (raw_dataset[split]).num_rows))
 
         if args.column_name is None:
             # If no column name is given, take the first column that has strings
@@ -500,11 +521,11 @@ def main():
         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
 
         # Set the prompt length to 16
-        prompt_length = 16
+        prompt_length = args.dataset_prompt_length
 
         def preprocess_function(examples):
             # Tokenize the texts
-            return tokenizer(examples[column_name], padding="max_length", max_length=prompt_length, truncation=True)
+            return tokenizer(examples[column_name], padding="max_length", max_length=prompt_length if prompt_length>0 else None, truncation=prompt_length>0)
 
         raw_dataset = raw_dataset.map(
             preprocess_function,

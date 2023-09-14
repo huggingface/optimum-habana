@@ -148,3 +148,15 @@ python run_generation.py \
 --prompt "Here is my prompt" \
 --peft_model trl-lib/llama-7b-se-rm-peft
 ```
+
+### Using growing bucket optimization
+```
+python run_generation.py \
+--model_name_or_path path_to_llama_or_falcon  \
+--use_hpu_graphs \
+--use_kv_cache \
+--bf16 \
+--max_new_tokens 200 \
+--batch_size=2 \
+--bucketsize 50
+```
