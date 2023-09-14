@@ -58,6 +58,8 @@ class GaudiConfigTester(unittest.TestCase):
 
         self.assertTrue(is_list_of_strings(gaudi_config.hmp_bf16_ops))
         self.assertTrue(is_list_of_strings(gaudi_config.hmp_fp32_ops))
+        self.assertIsNone(gaudi_config.autocast_bf16_ops)
+        self.assertIsNone(gaudi_config.autocast_fp32_ops)
 
     def test_write_bf16_fp32_ops_to_text_files(self):
         gaudi_config = GaudiConfig()

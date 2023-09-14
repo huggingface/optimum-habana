@@ -392,7 +392,7 @@ def gaudi_gpt2_forward(
 
         from habana_frameworks.torch.hpex import hmp
 
-        with hmp.disable_casts():
+        with hmp.disable_casts(), torch.autocast(enabled=False, device_type="hpu"):
             attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
 
     # If a 2D or 3D attention mask is provided for the cross-attention

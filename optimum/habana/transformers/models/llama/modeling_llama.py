@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, apply_rotary_pos_emb, logger, repeat_kv
+from transformers.models.llama.modeling_llama import LlamaForCausalLM, apply_rotary_pos_emb, logger
 
 
 try:
@@ -38,6 +38,21 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
         return self.weight * hidden_states.to(input_dtype)
 
 
+def gaudi_llama_repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """
+    Copied from repeat_kv: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+    The only differences are:
+        - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
+    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
+    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    """
+    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    if n_rep == 1 or num_key_value_heads == 1:
+        return hidden_states
+    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+
+
 def gaudi_llama_attention_forward(
     self,
     hidden_states: torch.Tensor,
@@ -47,12 +62,14 @@ def gaudi_llama_attention_forward(
     output_attentions: bool = False,
     use_cache: bool = False,
     token_idx: Optional[torch.Tensor] = None,
+    attn_softmax_bf16: bool = False,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     """
     Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
     The only differences are:
     - add new args token_idx
     - optimize KV cache
+    - add new args attn_softmax_bf16
     """
     bsz, q_len, _ = hidden_states.size()
 
@@ -103,11 +120,11 @@ def gaudi_llama_attention_forward(
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
-    past_key_value = (key_states, value_states) if use_cache else None
+    past_key_value = (key_states.contiguous(), value_states.contiguous()) if use_cache else None
 
     # repeat k/v heads if n_kv_heads < n_heads
-    key_states = repeat_kv(key_states, self.num_key_value_groups)
-    value_states = repeat_kv(value_states, self.num_key_value_groups)
+    key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
+    value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
 
     attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
@@ -124,8 +141,12 @@ def gaudi_llama_attention_forward(
             )
         attn_weights = attn_weights + attention_mask
 
-    # upcast attention to fp32
-    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+    if attn_softmax_bf16:
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+    else:
+        # upcast attention to fp32
+        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+
     attn_output = torch.matmul(attn_weights, value_states)
 
     if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -159,11 +180,13 @@ def gaudi_llama_decoder_layer_forward(
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = False,
     token_idx: Optional[torch.Tensor] = None,
+    attn_softmax_bf16: Optional[bool] = False,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """
     Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
     The only differences are:
     - add new args token_idx
+    - add new args attn_softmax_bf16
     """
     residual = hidden_states
 
@@ -178,6 +201,7 @@ def gaudi_llama_decoder_layer_forward(
         output_attentions=output_attentions,
         use_cache=use_cache,
         token_idx=token_idx,
+        attn_softmax_bf16=attn_softmax_bf16,
     )
     hidden_states = residual + hidden_states
 
@@ -209,11 +233,13 @@ def gaudi_llama_model_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
+    attn_softmax_bf16: Optional[bool] = False,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
     The only differences are:
     - add new args token_idx
+    - add new args attn_softmax_bf16
     """
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
@@ -302,6 +328,7 @@ def gaudi_llama_model_forward(
                 output_attentions=output_attentions,
                 use_cache=use_cache,
                 token_idx=token_idx,
+                attn_softmax_bf16=attn_softmax_bf16,
             )
 
         hidden_states = layer_outputs[0]
@@ -337,6 +364,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - add token_idx into model_inputs
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
+    - add new args attn_softmax_bf16
     """
 
     def forward(
@@ -353,6 +381,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = None,
+        attn_softmax_bf16: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -371,6 +400,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             token_idx=token_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -447,6 +477,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
                 "trim_logits": kwargs.get("trim_logits"),
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
             }
         )
         return model_inputs

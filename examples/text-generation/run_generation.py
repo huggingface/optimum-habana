@@ -166,6 +166,12 @@ def main():
         help="The specific model version to use (can be a branch name, tag name or commit id).",
     )
     parser.add_argument(
+        "--attn_softmax_bf16",
+        action="store_true",
+        help="Whether to run attention softmax layer in lower precision provided that the model supports it and "
+        "is also running in lower precision.",
+    )
+    parser.add_argument(
         "--output_dir",
         default=None,
         type=str,
@@ -253,6 +259,7 @@ def main():
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
+        args.attn_softmax_bf16 = False
 
     model_kwargs = {
         "revision": args.model_revision,
@@ -358,6 +365,7 @@ def main():
     generation_config.force_words_ids = force_words_ids
     generation_config.num_return_sequences = args.num_return_sequences
     generation_config.trim_logits = args.trim_logits
+    generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
 
     if args.dataset_name is None:
         # Benchmark over the prompts below

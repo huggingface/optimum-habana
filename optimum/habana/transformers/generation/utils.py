@@ -445,8 +445,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             generation_config.max_length = generation_config.max_new_tokens + input_ids_length
         self._validate_generated_length(generation_config, input_ids_length, has_default_max_length)
-
+        # determine whether introduce trim_logits feature
         model_kwargs["trim_logits"] = generation_config.trim_logits
+        # determine whether attention softmax needs to execute in lower precision
+        model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
+
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)
 
