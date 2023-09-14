@@ -461,7 +461,6 @@ class GaudiGenerationMixin(GenerationMixin):
         # determine whether limit_hpu_graphs needs to be used
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
-
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)
 
