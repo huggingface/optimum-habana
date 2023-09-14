@@ -131,6 +131,14 @@ class GaudiGenerationMixin(GenerationMixin):
 
         return input_ids, model_kwargs
 
+    def _get_hpu_graphs_kwargs(self, model_kwargs):
+        hpu_graphs_kwargs = {}
+        if model_kwargs["limit_hpu_graphs"]:
+            hpu_graphs_kwargs.update({"bypass_hpu_graphs": False})
+            if "first_token" not in model_kwargs.keys():
+                model_kwargs["first_token"] = True
+                hpu_graphs_kwargs.update({"bypass_hpu_graphs": True})
+
     def _update_model_kwargs_for_generation(
         self,
         outputs: ModelOutput,
@@ -1104,12 +1112,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
-            hpu_graphs_kwargs = {}
-            if model_kwargs["limit_hpu_graphs"]:
-                hpu_graphs_kwargs.update({"bypass_hpu_graphs": False})
-                if "first_token" not in model_kwargs.keys():
-                    model_kwargs["first_token"] = True
-                    hpu_graphs_kwargs.update({"bypass_hpu_graphs": True})
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
             # forward pass to get next token
             outputs = self(
@@ -1424,12 +1427,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
-            hpu_graphs_kwargs = {}
-            if model_kwargs["limit_hpu_graphs"]:
-                hpu_graphs_kwargs.update({"bypass_hpu_graphs": False})
-                if "first_token" not in model_kwargs.keys():
-                    model_kwargs["first_token"] = True
-                    hpu_graphs_kwargs.update({"bypass_hpu_graphs": True})
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
             # forward pass to get next token
             outputs = self(
@@ -1750,12 +1748,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
-            hpu_graphs_kwargs = {}
-            if model_kwargs["limit_hpu_graphs"]:
-                hpu_graphs_kwargs.update({"bypass_hpu_graphs": False})
-                if "first_token" not in model_kwargs.keys():
-                    model_kwargs["first_token"] = True
-                    hpu_graphs_kwargs.update({"bypass_hpu_graphs": True})
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
             outputs = self(
                 **model_inputs,
@@ -2402,12 +2395,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
-            hpu_graphs_kwargs = {}
-            if model_kwargs["limit_hpu_graphs"]:
-                hpu_graphs_kwargs.update({"bypass_hpu_graphs": False})
-                if "first_token" not in model_kwargs.keys():
-                    model_kwargs["first_token"] = True
-                    hpu_graphs_kwargs.update({"bypass_hpu_graphs": True})
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
             outputs = self(
                 **model_inputs,
