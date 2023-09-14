@@ -430,7 +430,7 @@ def main():
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
-        
+
         if rank in [-1, 0]:
             print()
             print("Input/outputs:")

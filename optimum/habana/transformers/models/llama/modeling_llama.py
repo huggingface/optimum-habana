@@ -359,7 +359,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
+        if trim_logits:
+            print("trims")
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
@@ -447,6 +448,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "use_cache": kwargs.get("use_cache"),
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
+                "trim_logits": kwargs.get("trim_logits"),
             }
         )
         return model_inputs
