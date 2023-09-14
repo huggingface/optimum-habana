@@ -112,7 +112,7 @@ def main():
         "--profiling_warmup_steps",
         default=0,
         type=int,
-        help="Number of steps to ignore for profling.",
+        help="Number of steps to ignore for profiling.",
     )
     parser.add_argument(
         "--profiling_steps",
@@ -487,8 +487,7 @@ def main():
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-            if args.use_hpu_graphs:
-                print(f"Graph compilation duration          = {compilation_duration} seconds")
+            print(f"Graph compilation duration          = {compilation_duration} seconds")
             print(separator)
             print()
     else:
@@ -535,20 +534,14 @@ def main():
         # After tokenization, we can remove the column of interest
         raw_dataset = raw_dataset.remove_columns([column_name])
         raw_dataset.set_format(type="torch")
-
-        separator = None
-
-        logger.info("Running generation...")
-
         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size)
-        for i, batch in enumerate(dataloader):
-            prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
 
+        def generate_dataset(batch):
+            prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
             # Move inputs to target device(s)
             for t in batch:
                 if torch.is_tensor(batch[t]):
                     batch[t] = batch[t].to(args.device)
-
             # Generate new sequences
             outputs = model.generate(
                 **batch,
@@ -558,17 +551,60 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
+            return prompt, outputs
 
-            # Print outputs
-            if separator is None:
-                separator = "-" * len(prompt[0])
+        # warmup
+        if prompt_length>0:
+            from optimum.habana.utils import HabanaProfile
+            # compilation stage disable profiling
+            HabanaProfile.disable()
+            # Compilation
             if rank in [-1, 0]:
+                logger.info("Graph compilation...")
+            t0 = time.perf_counter()
+            for i,batch in enumerate(dataloader):
+                generate_dataset(batch)
+                # The first three iterations take longer because of graph compilation
+                if (i+1)==3:
+                    break
+            torch_hpu.synchronize()
+            compilation_duration = time.perf_counter() - t0
+            HabanaProfile.enable()
+
+        total_new_tokens_generated = 0
+        duration = 0
+        separator = "-" * 50
+        logger.info("Running generate dataset...")
+        for i, batch in enumerate(dataloader):
+            t0 = time.perf_counter()
+            prompt, outputs = generate_dataset(batch)
+            duration += time.perf_counter() - t0
+            total_new_tokens_generated += args.batch_size * args.max_new_tokens
+            if rank in [-1,0]:
                 print(separator)
                 print(f"Batch n°{i+1}")
                 print(f"Input: {prompt[:args.batch_size]}")
                 print(
-                    f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
-                )
+                        f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+                    )
+                print(separator)
+
+        throughput = total_new_tokens_generated / duration
+        # Print Stats
+        if rank in [-1, 0]:
+            from optimum.habana.utils import get_hpu_memory_stats
+            stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+            separator = "-" * len(stats)
+            print()
+            print("Stats:")
+            print(separator)
+            print(stats)
+            mem = get_hpu_memory_stats()
+            for k, v in mem.items():
+                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+            if prompt_length>0:
+                print(f"Graph compilation duration          = {compilation_duration} seconds")
+            print(separator)
 
 
 if __name__ == "__main__":
