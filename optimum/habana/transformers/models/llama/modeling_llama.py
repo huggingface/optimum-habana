@@ -380,7 +380,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
-        trim_logits: Optional[bool] = None,
+        trim_logits: Optional[bool] = bool,
         attn_softmax_bf16: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
