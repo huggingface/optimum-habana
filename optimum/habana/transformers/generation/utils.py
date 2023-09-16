@@ -456,7 +456,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             generation_config.max_length = generation_config.max_new_tokens + input_ids_length
         self._validate_generated_length(generation_config, input_ids_length, has_default_max_length)
-
+        # determine whether introduce trim_logits feature
+        model_kwargs["trim_logits"] = generation_config.trim_logits
         # determine whether attention softmax needs to execute in lower precision
         model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
         # determine whether limit_hpu_graphs needs to be used
@@ -1095,6 +1096,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
+
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()

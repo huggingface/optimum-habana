@@ -380,6 +380,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -387,7 +388,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
@@ -402,8 +402,14 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
         )
-
         hidden_states = outputs[0]
+        _, seq_len, _ = hidden_states.shape
+        if seq_len > 1 and trim_logits and not self.training:
+            if token_idx is not None:
+                hidden_states = hidden_states.index_select(1, token_idx - 1)
+            else:
+                hidden_states = hidden_states[:, -1, :]
+
         if self.config.pretraining_tp > 1:
             lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
             logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.config.pretraining_tp)]
@@ -470,6 +476,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "use_cache": kwargs.get("use_cache"),
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
+                "trim_logits": kwargs.get("trim_logits"),
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
             }
         )

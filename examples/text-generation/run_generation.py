@@ -103,6 +103,11 @@ def main():
         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
     )
     parser.add_argument(
+        "--trim_logits",
+        action="store_true",
+        help="Calculate logits only for the last token to save memory in the first step.",
+    )
+    parser.add_argument(
         "--seed",
         default=27,
         type=int,
@@ -366,6 +371,7 @@ def main():
     generation_config.bad_words_ids = bad_words_ids
     generation_config.force_words_ids = force_words_ids
     generation_config.num_return_sequences = args.num_return_sequences
+    generation_config.trim_logits = args.trim_logits
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
 
