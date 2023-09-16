@@ -138,6 +138,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if "first_token" not in model_kwargs.keys():
                 model_kwargs["first_token"] = True
                 hpu_graphs_kwargs.update({"bypass_hpu_graphs": True})
+        return hpu_graphs_kwargs
 
     def _update_model_kwargs_for_generation(
         self,
