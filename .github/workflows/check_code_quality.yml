@@ -3,17 +3,8 @@ name: Check code quality
 on:
   push:
     branches: [ main ]
-    paths:
-      - "optimum/**.py"
-      - "tests/**.py"
-      - "examples/**.py"
-
   pull_request:
     branches: [ main ]
-    paths:
-      - "optimum/**.py"
-      - "tests/**.py"
-      - "examples/**.py"
 
 jobs:
   check:
