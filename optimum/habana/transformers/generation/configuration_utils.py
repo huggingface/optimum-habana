@@ -19,6 +19,8 @@ class GaudiGenerationConfig(GenerationConfig):
     attn_softmax_bf16 (`bool`, *optional*):
         Whether to run attention softmax layer in lower precision provided that the model supports it and
         is also running in lower precision.
+    limit_hpu_graphs (`bool`, *optional*):
+        Skip HPU Graph usage for first token to save memory
     """
 
     def __init__(self, **kwargs):
@@ -27,3 +29,4 @@ class GaudiGenerationConfig(GenerationConfig):
         self.static_shapes = kwargs.get("static_shapes", None)
         self.ignore_eos = kwargs.get("ignore_eos", None)
         self.attn_softmax_bf16 = kwargs.get("attn_softmax_bf16", None)
+        self.limit_hpu_graphs = kwargs.get("limit_hpu_graphs", None)

@@ -131,6 +131,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
         return input_ids, model_kwargs
 
+    def _get_hpu_graphs_kwargs(self, model_kwargs):
+        hpu_graphs_kwargs = {}
+        if model_kwargs["limit_hpu_graphs"]:
+            hpu_graphs_kwargs.update({"bypass_hpu_graphs": False})
+            if "first_token" not in model_kwargs.keys():
+                model_kwargs["first_token"] = True
+                hpu_graphs_kwargs.update({"bypass_hpu_graphs": True})
+        return hpu_graphs_kwargs
+
     def _update_model_kwargs_for_generation(
         self,
         outputs: ModelOutput,
@@ -143,6 +152,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
         Adds support for `token_idx`, which is necessary for using static shapes.
         """
+        # mark to identify starting from second token
+        model_kwargs["first_token"] = False
         # update past_key_values
         model_kwargs["past_key_values"] = self._extract_past_from_model_output(
             outputs, standardize_cache_format=standardize_cache_format
@@ -449,6 +460,8 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["trim_logits"] = generation_config.trim_logits
         # determine whether attention softmax needs to execute in lower precision
         model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
+        # determine whether limit_hpu_graphs needs to be used
+        model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)
@@ -1101,12 +1114,15 @@ class GaudiGenerationMixin(GenerationMixin):
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
+
             # forward pass to get next token
             outputs = self(
                 **model_inputs,
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
+                **hpu_graphs_kwargs,
             )
 
             if synced_gpus and this_peer_finished:
@@ -1413,12 +1429,15 @@ class GaudiGenerationMixin(GenerationMixin):
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
+
             # forward pass to get next token
             outputs = self(
                 **model_inputs,
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
+                **hpu_graphs_kwargs,
             )
 
             if synced_gpus and this_peer_finished:
@@ -1730,11 +1749,15 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
+
             outputs = self(
                 **model_inputs,
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
+                **hpu_graphs_kwargs,
             )
 
             if synced_gpus and this_peer_finished:
@@ -2373,11 +2396,15 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
+
             outputs = self(
                 **model_inputs,
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
+                **hpu_graphs_kwargs,
             )
 
             if synced_gpus and this_peer_finished:
