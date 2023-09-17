@@ -76,6 +76,12 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 
 logger = logging.get_logger(__name__)
 
+def unwrap_ds(model):
+    if hasattr(model, 'module'):
+        return model.module
+    return model
+
+
 
 class StaticMaxLengthCriteria(StoppingCriteria):
     def __init__(self, max_steps: int):
@@ -462,6 +468,16 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
         # determine whether limit_hpu_graphs needs to be used
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
+
+        #prepare for allocate kv cache
+        cal_max_length = input_ids.shape[-1]
+        model_kwargs['reuse_cache'] = generation_config.reuse_cache
+        if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
+            cal_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
+        if not self.config.is_encoder_decoder:
+            if generation_config.use_cache and generation_config.reuse_cache:
+                bs, _ = input_ids.shape
+                unwrap_ds(self).allocate_kv_cache(bs * generation_config.num_beams, cal_max_length)
 
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)
@@ -1835,7 +1851,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
             if model_kwargs["past_key_values"] is not None:
-                model_kwargs["past_key_values"] = self._reorder_cache(model_kwargs["past_key_values"], beam_idx)
+                if model_kwargs["reuse_cache"]:
+                    model_kwargs["past_key_values"] = unwrap_ds(self).reorder_kv_cache(beam_idx)
+                else:
+                    model_kwargs["past_key_values"] = self._reorder_cache(model_kwargs["past_key_values"], beam_idx)
 
             if return_dict_in_generate and output_scores:
                 beam_indices = tuple((beam_indices[beam_idx[i]] + (beam_idx[i],) for i in range(len(beam_indices))))

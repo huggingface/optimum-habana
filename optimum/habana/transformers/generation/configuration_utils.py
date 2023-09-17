@@ -21,6 +21,8 @@ class GaudiGenerationConfig(GenerationConfig):
         is also running in lower precision.
     limit_hpu_graphs (`bool`, *optional*):
         Skip HPU Graph usage for first token to save memory
+    reuse_cache (`bool`, *optional*):
+         Whether to use reuse key/value cache for decoding. It should save memory.
     """
 
     def __init__(self, **kwargs):
@@ -30,3 +32,4 @@ class GaudiGenerationConfig(GenerationConfig):
         self.ignore_eos = kwargs.get("ignore_eos", None)
         self.attn_softmax_bf16 = kwargs.get("attn_softmax_bf16", None)
         self.limit_hpu_graphs = kwargs.get("limit_hpu_graphs", None)
+        self.reuse_cache = kwargs.get("reuse_cache", None)
