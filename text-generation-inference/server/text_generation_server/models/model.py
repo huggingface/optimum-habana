@@ -52,8 +52,11 @@ class Model(ABC):
     def generate_token(self, batch: B) -> Tuple[List[GeneratedText], Optional[B]]:
         raise NotImplementedError
 
-    def warmup(self, batch: B, max_total_tokens: int):
-        self.generate_token(batch)
+    def warmup(self, batch: B) -> Optional[int]:
+        # create graph for 1st token and >2st token
+        _, next_batch = self.generate_token(batch)
+        self.generate_token(next_batch)
+        return None
 
     def decode_token(
         self,

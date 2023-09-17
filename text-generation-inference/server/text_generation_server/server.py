@@ -54,16 +54,21 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         return generate_pb2.FilterBatchResponse(batch=filtered_batch.to_pb())
 
     async def Warmup(self, request, context):
-        # batch = self.model.batch_type.from_pb(
-        #     request.batch, self.model.tokenizer, self.model.dtype, self.model.device
-        # )
-        # max_supported_total_tokens = self.model.warmup(batch)
+        while request.batch.size > 0:
+            batch = self.model.batch_type.from_pb(
+                request.batch,
+                self.model.tokenizer,
+                self.model.dtype,
+                self.model.device,
+                self.model.is_optimized_for_gaudi,
+            )
+            for criteria in batch.stopping_criterias:
+                criteria.ignore_eos_token = True
+            max_supported_total_tokens = self.model.warmup(batch)
+            request.batch.requests.pop()
+            request.batch.size = request.batch.size - 1
 
-        # return generate_pb2.WarmupResponse(
-        #     max_supported_total_tokens=max_supported_total_tokens
-        # )
-        logger.warning("Warmup is not enabled on HPU.")
-        return generate_pb2.WarmupResponse()
+        return generate_pb2.WarmupResponse(max_supported_total_tokens=max_supported_total_tokens)
 
     async def Prefill(self, request, context):
         batch = self.model.batch_type.from_pb(
