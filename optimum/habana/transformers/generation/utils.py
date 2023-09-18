@@ -267,7 +267,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if (
                 generation_config.static_shapes
                 and self.config.is_encoder_decoder
-                and self._get_generation_mode(generation_config, None) == GenerationMode.GREEDY_SEARCH
+                and self.generation_config.generation_mode == GenerationMode.GREEDY_SEARCH
             ):
                 criteria.append(StaticMaxLengthCriteria(generation_config.max_length))
             else:
@@ -584,6 +584,7 @@ class GaudiGenerationMixin(GenerationMixin):
         )
 
         # 9. prepare stopping criteria
+        self.generation_config.generation_mode = generation_mode
         stopping_criteria = self._get_stopping_criteria(
             generation_config=generation_config, stopping_criteria=stopping_criteria
         )
