@@ -51,6 +51,7 @@ from transformers.utils import ModelOutput
 from optimum.utils import logging
 
 from ...utils import HabanaProfile
+from ..deepspeed import unwrap_deepspeed_model
 from .configuration_utils import GaudiGenerationConfig
 
 
@@ -75,12 +76,6 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 
 
 logger = logging.get_logger(__name__)
-
-
-def unwrap_ds(model):
-    if hasattr(model, "module"):
-        return model.module
-    return model
 
 
 class StaticMaxLengthCriteria(StoppingCriteria):
@@ -470,14 +465,14 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
         # prepare for allocate kv cache
-        cal_max_length = input_ids.shape[-1]
         model_kwargs["reuse_cache"] = generation_config.reuse_cache
-        if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
-            cal_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
         if not self.config.is_encoder_decoder:
+            calculated_max_length = input_ids.shape[-1]
+            if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
+                calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
-                unwrap_ds(self).allocate_kv_cache(bs * generation_config.num_beams, cal_max_length)
+                unwrap_deepspeed_model(self).allocate_kv_cache(bs * generation_config.num_beams, calculated_max_length)
 
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)
@@ -1852,7 +1847,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
             if model_kwargs["past_key_values"] is not None:
                 if model_kwargs["reuse_cache"]:
-                    model_kwargs["past_key_values"] = unwrap_ds(self).reorder_kv_cache(beam_idx)
+                    model_kwargs["past_key_values"] = unwrap_deepspeed_model(self).reorder_kv_cache(beam_idx)
                 else:
                     model_kwargs["past_key_values"] = self._reorder_cache(model_kwargs["past_key_values"], beam_idx)
 

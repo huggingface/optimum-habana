@@ -22,7 +22,7 @@ class GaudiGenerationConfig(GenerationConfig):
     limit_hpu_graphs (`bool`, *optional*):
         Skip HPU Graph usage for first token to save memory
     reuse_cache (`bool`, *optional*):
-         Whether to use reuse key/value cache for decoding. It should save memory.
+         Whether to reuse key/value cache for decoding. It should save memory.
     """
 
     def __init__(self, **kwargs):

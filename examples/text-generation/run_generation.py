@@ -185,7 +185,7 @@ def main():
     parser.add_argument(
         "--reuse_cache",
         action="store_true",
-        help="Whether to use reuse key/value cache for decoding. It should save memory.",
+        help="Whether to reuse key/value cache for decoding. It should save memory.",
     )
 
     args = parser.parse_args()

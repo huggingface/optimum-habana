@@ -82,8 +82,8 @@ class GaudiLlamaAttention(LlamaAttention):
         self.past_value = None
 
     def allocate_kv_cache(self, batch_size, seq_len):
-        key_shape = (batch_size, self.num_heads, seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_heads, seq_len, self.head_dim)
+        key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
+        value_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
         if self.past_key is None or self.past_key.shape != key_shape:
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
@@ -114,7 +114,7 @@ class GaudiLlamaAttention(LlamaAttention):
         use_cache: bool = False,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: bool = False,
-        reuse_cache: Optional[bool] = None,
+        reuse_cache: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -122,6 +122,7 @@ class GaudiLlamaAttention(LlamaAttention):
         - add new args token_idx
         - optimize KV cache
         - add new args attn_softmax_bf16
+        - add new args reuse_cache
         """
         bsz, q_len, _ = hidden_states.size()
 
@@ -251,13 +252,14 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         use_cache: Optional[bool] = False,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
-        reuse_cache: Optional[bool] = None,
+        reuse_cache: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
         - add new args token_idx
         - add new args attn_softmax_bf16
+        - add new args reuse_cache
         """
         residual = hidden_states
 
@@ -314,13 +316,14 @@ class GaudiLlamaModel(LlamaModel):
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
-        reuse_cache: Optional[bool] = None,
+        reuse_cache: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
         - add new args token_idx
         - add new args attn_softmax_bf16
+        - add new args reuse_cache
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -452,6 +455,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     - add new args attn_softmax_bf16
+    - add new args reuse_cache
     """
 
     def allocate_kv_cache(self, batch_size, seq_len):
@@ -475,7 +479,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
-        reuse_cache: Optional[bool] = None,
+        reuse_cache: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
