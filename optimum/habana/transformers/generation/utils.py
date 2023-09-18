@@ -76,11 +76,11 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 
 logger = logging.get_logger(__name__)
 
+
 def unwrap_ds(model):
-    if hasattr(model, 'module'):
+    if hasattr(model, "module"):
         return model.module
     return model
-
 
 
 class StaticMaxLengthCriteria(StoppingCriteria):
@@ -469,9 +469,9 @@ class GaudiGenerationMixin(GenerationMixin):
         # determine whether limit_hpu_graphs needs to be used
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
-        #prepare for allocate kv cache
+        # prepare for allocate kv cache
         cal_max_length = input_ids.shape[-1]
-        model_kwargs['reuse_cache'] = generation_config.reuse_cache
+        model_kwargs["reuse_cache"] = generation_config.reuse_cache
         if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
             cal_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
         if not self.config.is_encoder_decoder:

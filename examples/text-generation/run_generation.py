@@ -188,7 +188,6 @@ def main():
         help="Whether to use reuse key/value cache for decoding. It should save memory.",
     )
 
-
     args = parser.parse_args()
 
     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed

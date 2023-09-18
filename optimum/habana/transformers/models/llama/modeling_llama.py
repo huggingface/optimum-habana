@@ -4,8 +4,16 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaModel, LlamaDecoderLayer, LlamaAttention, apply_rotary_pos_emb, logger
 from transformers.models.llama.configuration_llama import LlamaConfig
+from transformers.models.llama.modeling_llama import (
+    LlamaAttention,
+    LlamaDecoderLayer,
+    LlamaForCausalLM,
+    LlamaModel,
+    apply_rotary_pos_emb,
+    logger,
+)
+
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -19,17 +27,19 @@ except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
 
+
 def update(prev, cur, dim, idx):
     orig_cur = cur
     if prev.shape == cur.shape:
         # Initialize
         prev.copy_(cur)
         return orig_cur
-    assert cur.shape[2] == 1, f'Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}'
+    assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
         return prev.index_copy_(dim, idx - 1, cur)
     else:
         return torch.cat((prev, cur), dim=dim)
+
 
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
     """
@@ -63,12 +73,14 @@ def gaudi_llama_repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tens
     hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
+
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
 
         self.past_key = None
         self.past_value = None
+
     def allocate_kv_cache(self, batch_size, seq_len):
         key_shape = (batch_size, self.num_heads, seq_len, self.head_dim)
         value_shape = (batch_size, self.num_heads, seq_len, self.head_dim)
@@ -115,7 +127,9 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
-            query_slices = self.q_proj.weight.split((self.num_heads * self.head_dim) // self.config.pretraining_tp, dim=0)
+            query_slices = self.q_proj.weight.split(
+                (self.num_heads * self.head_dim) // self.config.pretraining_tp, dim=0
+            )
             key_slices = self.k_proj.weight.split(key_value_slicing, dim=0)
             value_slices = self.v_proj.weight.split(key_value_slicing, dim=0)
 
@@ -192,7 +206,9 @@ class GaudiLlamaAttention(LlamaAttention):
             attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
         else:
             # upcast attention to fp32
-            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
+                query_states.dtype
+            )
 
         attn_output = torch.matmul(attn_weights, value_states)
 
@@ -217,12 +233,14 @@ class GaudiLlamaAttention(LlamaAttention):
 
         return attn_output, attn_weights, past_key_value
 
+
 class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
     def allocate_kv_cache(self, batch_size, seq_len):
         self.self_attn.allocate_kv_cache(batch_size, seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.self_attn.reorder_kv_cache(beam_idx)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -274,12 +292,15 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
 
         return outputs
 
+
 class GaudiLlamaModel(LlamaModel):
     def allocate_kv_cache(self, batch_size, seq_len):
         for layer in self.layers:
             layer.allocate_kv_cache(batch_size, seq_len)
+
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.layers)
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -342,7 +363,9 @@ class GaudiLlamaModel(LlamaModel):
             inputs_embeds = self.embed_tokens(input_ids)
         # embed positions
         if attention_mask is None:
-            attention_mask = torch.ones((batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device)
+            attention_mask = torch.ones(
+                (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
+            )
         attention_mask = self._prepare_decoder_attention_mask(
             attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
         )
@@ -430,10 +453,13 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     - add new args attn_softmax_bf16
     """
+
     def allocate_kv_cache(self, batch_size, seq_len):
         self.model.allocate_kv_cache(batch_size, seq_len)
+
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
