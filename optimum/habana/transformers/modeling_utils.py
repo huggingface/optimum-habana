@@ -124,7 +124,6 @@ def adapt_transformers_to_gaudi():
         GaudiGenerationMixin._prepare_decoder_input_ids_for_generation
     )
     transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
-    transformers.generation.GenerationMixin._prepare_past_key_values = GaudiGenerationMixin._prepare_past_key_values
     transformers.generation.GenerationMixin._prepare_decoder_attention_mask = (
         GaudiGenerationMixin._prepare_decoder_attention_mask
     )

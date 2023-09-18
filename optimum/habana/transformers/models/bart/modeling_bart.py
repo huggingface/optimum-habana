@@ -266,7 +266,9 @@ def gaudi_BartDecoderLayer_forward(
 
         # cross_attn cached key/values tuple is at positions 3,4 of present_key_value tuple
         if use_cache:
-            cross_attn_past_key_value = past_key_value[-2:] if past_key_value[-2:] != (None, None) else None
+            cross_attn_past_key_value = (
+                past_key_value[-2:] if (past_key_value is not None and past_key_value[-2:] != (None, None)) else None
+            )
         else:
             cross_attn_past_key_value = past_key_value[-2:] if past_key_value is not None else None
 
