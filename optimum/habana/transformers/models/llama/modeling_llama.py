@@ -113,7 +113,7 @@ class GaudiLlamaAttention(LlamaAttention):
         output_attentions: bool = False,
         use_cache: bool = False,
         token_idx: Optional[torch.Tensor] = None,
-        attn_softmax_bf16: bool = False,
+        attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
