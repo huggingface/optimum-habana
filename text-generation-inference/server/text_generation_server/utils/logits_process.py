@@ -43,8 +43,7 @@ class StaticWarper:
         self.static_next_logprob = None
 
     def __call__(self, scores):
-        # use hpu graph only for > 1st token
-        if self.hpu_graph is None and scores.shape[-2] == 1:
+        if self.hpu_graph is None:
             self.static_scores = scores.clone().contiguous()
             self.static_warped_scores = scores.clone().contiguous()
             self.static_next_logprob = scores.clone().contiguous()
@@ -59,16 +58,10 @@ class StaticWarper:
                 # Compute logprobs
                 self.static_next_logprob.copy_(torch.log_softmax(self.static_warped_scores, -1))
 
-        if scores.shape[-2] == 1:
-            self.static_scores.copy_(scores)
-            self.hpu_graph.replay()
+        self.static_scores.copy_(scores)
+        self.hpu_graph.replay()
 
-            return self.static_warped_scores, self.static_next_logprob
-        else:
-            # 1st token disposal
-            for warper in self.warpers:
-                scores = warper(None, scores)
-            return scores, torch.log_softmax(scores, -1)
+        return self.static_warped_scores, self.static_next_logprob
 
 
 @lru_cache(10)

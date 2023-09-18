@@ -653,7 +653,12 @@ class CausalLM(Model):
             top_token_logprobs,
         ) in enumerate(iterator):
             # Select next token
-            next_token_id, logprobs = next_token_chooser(all_input_ids.view(1, -1), logits[-1:, :])
+            if self.is_optimized_for_gaudi and logits.shape[-2] > 1:
+                next_token_id, logprobs = next_token_chooser(
+                    all_input_ids[0:input_length].view(1, -1), logits[input_length - 1 : input_length, :]
+                )
+            else:
+                next_token_id, logprobs = next_token_chooser(all_input_ids[0:input_length].view(1, -1), logits[-1:, :])
 
             # Append next token to all tokens
             if self.is_optimized_for_gaudi:
