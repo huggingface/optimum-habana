@@ -129,8 +129,6 @@ def gaudi_falcon_attention_forward(
 
     if alibi is None:
         if output_attentions:
-            # F.scaled_dot_product_attention doesn't return the attention weights, so we have
-            # to do it by hand if we want them
             attention_scores = query_layer_ @ key_layer_.transpose(-1, -2)
             attention_scores /= math.sqrt(self.head_dim)
 
@@ -267,7 +265,7 @@ def _expand_mask(mask: torch.Tensor, past_key_values_length: int, tgt_len: int) 
     """
     Copied from transformers.models.falcon.modeling_falcon._expand_mask
     Expands attention_mask from `[batch_size, seq_length]` to `[batch_size, 1, seq_length, seq_length + past_length]`
-    when past_key_values_length is not 0 or to `[batch_size, 1, seq_length, tgt_len] when past_key_values_lenght is 0.`
+    when past_key_values_length is not 0 or to `[batch_size, 1, seq_length, tgt_len] when past_key_values_length is 0.`
     """
     batch_size, total_length = mask.shape
     if tgt_len > 0:

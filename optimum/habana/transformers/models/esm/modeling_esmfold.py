@@ -104,11 +104,11 @@ def gaudi_esmfolding_trunk_forward(self, seq_feats, pair_feats, true_aa, residx,
 def gaudi_esm_for_protein_folding_forward(
     self,
     input_ids: torch.Tensor,
-    attention_mask: torch.Tensor = None,
+    attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.Tensor] = None,
     masking_pattern: Optional[torch.Tensor] = None,
     num_recycles: Optional[int] = None,
-):
+) -> EsmForProteinFoldingOutput:
     r"""
     Returns:
 

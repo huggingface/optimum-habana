@@ -79,7 +79,7 @@ def main():
     args = parse_args()
 
     if args.use_deepspeed:
-        from transformers.deepspeed import is_deepspeed_available
+        from transformers.integrations.deepspeed import is_deepspeed_available
 
         if not is_deepspeed_available():
             raise ImportError(
