@@ -37,8 +37,8 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
-from transformers.deepspeed import deepspeed_load_checkpoint
 from transformers.integrations import hp_params
+from transformers.integrations.deepspeed import deepspeed_load_checkpoint
 from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint, unwrap_model
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -55,6 +55,7 @@ from transformers.trainer_pt_utils import (
     nested_detach,
     nested_numpify,
     reissue_pt_warnings,
+    remove_dummy_checkpoint,
 )
 from transformers.trainer_utils import (
     PREFIX_CHECKPOINT_DIR,
@@ -94,8 +95,8 @@ from ..utils import (
     speed_metrics,
     to_device_dtype,
 )
-from .deepspeed import deepspeed_init
 from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
+from .integrations.deepspeed import deepspeed_init
 from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
 
@@ -123,6 +124,7 @@ logger = logging.get_logger(__name__)
 TRAINING_ARGS_NAME = "training_args.bin"
 TRAINER_STATE_NAME = "trainer_state.json"
 OPTIMIZER_NAME = "optimizer.pt"
+OPTIMIZER_NAME_BIN = "optimizer.bin"
 SCHEDULER_NAME = "scheduler.pt"
 SCALER_NAME = "scaler.pt"
 
@@ -1183,6 +1185,7 @@ class GaudiTrainer(Trainer):
                     scaler_dict = to_device_dtype(scaler_dict, target_device=torch.device("cpu"))
             torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
 
+            # Save SCHEDULER & SCALER
             with warnings.catch_warnings(record=True) as caught_warnings:
                 torch.save(scheduler_dict, os.path.join(output_dir, SCHEDULER_NAME))
             reissue_pt_warnings(caught_warnings)
@@ -1252,9 +1255,11 @@ class GaudiTrainer(Trainer):
             # deepspeed loads optimizer/lr_scheduler together with the model in deepspeed_init
             return
 
-        if os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) and os.path.isfile(
-            os.path.join(checkpoint, SCHEDULER_NAME)
-        ):
+        checkpoint_file_exists = os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) or os.path.isfile(
+            os.path.join(checkpoint, OPTIMIZER_NAME_BIN)
+        )
+
+        if checkpoint_file_exists and os.path.isfile(os.path.join(checkpoint, SCHEDULER_NAME)):
             # We use the CPU when training on one GPU to avoid OOM for GPU RAM when training big models.
             # In distributed training however, we load directly on each GPU and risk the GPU OOM as it's more
             # likely to get OOM on CPU (since we load num_gpu times the optimizer state
@@ -1391,6 +1396,9 @@ class GaudiTrainer(Trainer):
                     " stage3_gather_16bit_weights_on_model_save=false. Saving the full checkpoint instead, use"
                     " zero_to_fp32.py to recover weights"
                 )
+                self._save(output_dir, state_dict={})
+                # remove the dummy state_dict
+                remove_dummy_checkpoint(self.args.should_save, output_dir, [WEIGHTS_NAME, SAFE_WEIGHTS_NAME])
                 self.model_wrapped.save_checkpoint(output_dir)
         elif self.args.should_save:
             self._save(output_dir)
@@ -1566,7 +1574,11 @@ class GaudiTrainer(Trainer):
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
             # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
-            if args.eval_accumulation_steps is not None and self.accelerator.sync_gradients:
+            if (
+                args.eval_accumulation_steps is not None
+                and (step + 1) % args.eval_accumulation_steps == 0
+                and self.accelerator.sync_gradients
+            ):
                 if losses_host is not None:
                     losses = nested_numpify(losses_host)
                     all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
@@ -1987,7 +1999,7 @@ class GaudiTrainer(Trainer):
         # post accelerator creation setup
         if self.is_deepspeed_enabled:
             if getattr(self.args, "hf_deepspeed_config", None) is None:
-                from .deepspeed import GaudiTrainerDeepSpeedConfig
+                from .integrations.deepspeed import GaudiTrainerDeepSpeedConfig
 
                 ds_plugin = self.accelerator.state.deepspeed_plugin
 

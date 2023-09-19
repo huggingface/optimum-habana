@@ -1,7 +1,7 @@
 from typing import Optional
 
 import torch
-from transformers.deepspeed import is_deepspeed_zero3_enabled
+from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 
 
 try:

@@ -198,7 +198,14 @@ def gaudi_unet_2d_condition_model_forward(
     else:
         sample = self.conv_in(sample)
 
+    # 2.5 GLIGEN position net
+    if cross_attention_kwargs is not None and cross_attention_kwargs.get("gligen", None) is not None:
+        cross_attention_kwargs = cross_attention_kwargs.copy()
+        gligen_args = cross_attention_kwargs.pop("gligen")
+        cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
+
     # 3. down
+    lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
     is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
     is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
@@ -221,7 +228,7 @@ def gaudi_unet_2d_condition_model_forward(
                 **additional_residuals,
             )
         else:
-            sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+            sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
 
             if is_adapter and len(down_block_additional_residuals) > 0:
                 sample += down_block_additional_residuals.pop(0)
@@ -249,6 +256,13 @@ def gaudi_unet_2d_condition_model_forward(
             cross_attention_kwargs=cross_attention_kwargs,
             encoder_attention_mask=encoder_attention_mask,
         )
+        # To support T2I-Adapter-XL
+        if (
+            is_adapter
+            and len(down_block_additional_residuals) > 0
+            and sample.shape == down_block_additional_residuals[0].shape
+        ):
+            sample += down_block_additional_residuals.pop(0)
 
     if is_controlnet:
         sample = sample + mid_block_additional_residual
@@ -278,7 +292,11 @@ def gaudi_unet_2d_condition_model_forward(
             )
         else:
             sample = upsample_block(
-                hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
+                hidden_states=sample,
+                temb=emb,
+                res_hidden_states_tuple=res_samples,
+                upsample_size=upsample_size,
+                scale=lora_scale,
             )
 
     # 6. post-process

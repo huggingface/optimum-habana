@@ -26,6 +26,7 @@ from typing import Optional, Union
 import torch
 from diffusers.pipelines import DiffusionPipeline
 from diffusers.utils.torch_utils import is_compiled_module
+from huggingface_hub import create_repo
 
 from optimum.utils import logging
 
@@ -243,8 +244,10 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
         variant: Optional[str] = None,
+        push_to_hub: bool = False,
+        **kwargs,
     ):
         """
         Save the pipeline and Gaudi configurations.
@@ -253,15 +256,30 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
+            safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
             variant (`str`, *optional*):
                 If specified, weights are saved in the format pytorch_model.<variant>.bin.
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         model_index_dict = dict(self.config)
         model_index_dict.pop("_class_name", None)
         model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
+        model_index_dict.pop("_name_or_path", None)
+
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", False)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
@@ -328,6 +346,15 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         self.save_config(save_directory)
         if hasattr(self, "gaudi_config"):
             self.gaudi_config.save_pretrained(save_directory)
+
+        if push_to_hub:
+            self._upload_folder(
+                save_directory,
+                repo_id,
+                token=token,
+                commit_message=commit_message,
+                create_pr=create_pr,
+            )
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
