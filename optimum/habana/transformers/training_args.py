@@ -484,7 +484,7 @@ class GaudiTrainingArguments(TrainingArguments):
             # - must be run before the model is created.
             if not is_accelerate_available():
                 raise ValueError("--deepspeed requires Accelerate to be installed: `pip install accelerate`.")
-            from .deepspeed import GaudiTrainerDeepSpeedConfig
+            from .integrations.deepspeed import GaudiTrainerDeepSpeedConfig
 
             # will be used later by the Trainer
             # note: leave self.deepspeed unmodified in case a user relies on it not to be modified)
@@ -547,10 +547,6 @@ class GaudiTrainingArguments(TrainingArguments):
                 ),
                 FutureWarning,
             )
-
-        # TODO: change to True after further testing with examples (cf. summarization)
-        # Finally set the `TrainingArguments` to be immutable
-        self._frozen = False
 
     def __str__(self):
         self_as_dict = asdict(self)

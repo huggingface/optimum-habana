@@ -44,7 +44,9 @@ class StaticWarper:
 
     def __call__(self, scores):
         if self.hpu_graph is None:
-            self.static_scores = scores
+            self.static_scores = scores.clone().contiguous()
+            self.static_warped_scores = scores.clone().contiguous()
+            self.static_next_logprob = scores.clone().contiguous()
             self.hpu_graph = htcore.hpu.HPUGraph()
 
             with htcore.hpu.graph(self.hpu_graph):
@@ -52,19 +54,14 @@ class StaticWarper:
                 for warper in self.warpers:
                     local_scores = warper(None, local_scores)
 
-                self.static_warped_scores = local_scores
+                self.static_warped_scores.copy_(local_scores)
                 # Compute logprobs
-                self.static_next_logprob = torch.log_softmax(self.static_warped_scores, -1)
+                self.static_next_logprob.copy_(torch.log_softmax(self.static_warped_scores, -1))
 
         self.static_scores.copy_(scores)
         self.hpu_graph.replay()
 
         return self.static_warped_scores, self.static_next_logprob
-
-        # CPU branch
-        for warper in self.warpers:
-            scores = warper(None, scores)
-        return scores, torch.log_softmax(scores, -1)
 
 
 @lru_cache(10)

@@ -17,13 +17,13 @@ Integration with Deepspeed
 """
 
 import torch
-from transformers.deepspeed import (
+from transformers.dependency_versions_check import dep_version_check
+from transformers.integrations.deepspeed import (
     HfDeepSpeedConfig,
     HfTrainerDeepSpeedConfig,
     deepspeed_optim_sched,
     set_hf_deepspeed_config,
 )
-from transformers.dependency_versions_check import dep_version_check
 
 from optimum.utils import logging
 
@@ -33,7 +33,7 @@ logger = logging.get_logger(__name__)
 
 class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
     """
-    Adapted from: https://github.com/huggingface/transformers/blob/e42587f596181396e1c4b63660abf0c736b10dae/src/transformers/deepspeed.py#L69
+    Adapted from: https://github.com/huggingface/transformers/blob/6da93f5580e109fad5f7b523cf2b6e8a5bafb623/src/transformers/integrations/deepspeed.py#L69
 
     The differences are:
     - disable DeepSpeed version check as we run a custom version on HPU
@@ -86,7 +86,7 @@ class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
 
 def deepspeed_init(trainer, num_training_steps, inference=False):
     """
-    Adapted from: https://github.com/huggingface/transformers/blob/e42587f596181396e1c4b63660abf0c736b10dae/src/transformers/deepspeed.py#L316
+    Adapted from: https://github.com/huggingface/transformers/blob/6da93f5580e109fad5f7b523cf2b6e8a5bafb623/src/transformers/integrations/deepspeed.py#L316
 
     The difference is:
     - add a workaround to cast the model to the target dtype
@@ -99,7 +99,7 @@ def deepspeed_init(trainer, num_training_steps, inference=False):
     hf_deepspeed_config = trainer.accelerator.state.deepspeed_plugin.hf_ds_config
 
     # TODO: temporary workaround
-    # To remove when it is solved, see https://github.com/HabanaAI/Model-References/blob/17fbab7ceebca15b1560ffb2c4e15a3888bb5f33/PyTorch/nlp/pretraining/deepspeed-bert/run_pretraining.py#L527
+    # To remove when it is solved, see https://github.com/HabanaAI/Model-References/blob/5df5baa261a677b63a2b20eab59981d05c191df5/PyTorch/nlp/DeepSpeedExamples/deepspeed-bert/run_pretraining.py#L608
     model.to(dtype=hf_deepspeed_config.dtype(), device="hpu")
 
     # resume config update - some bits like `model` and `num_training_steps` only become available during train
@@ -129,3 +129,9 @@ def deepspeed_init(trainer, num_training_steps, inference=False):
     # from pprint import pprint; pprint(config)
 
     return optimizer, lr_scheduler
+
+
+def unwrap_deepspeed_model(model):
+    if hasattr(model, "module"):
+        return model.module
+    return model

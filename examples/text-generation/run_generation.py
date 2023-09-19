@@ -39,7 +39,7 @@ from transformers.utils import check_min_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.32.0")
+check_min_version("4.33.0")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -101,6 +101,11 @@ def main():
         default=1,
         type=int,
         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
+    )
+    parser.add_argument(
+        "--trim_logits",
+        action="store_true",
+        help="Calculate logits only for the last token to save memory in the first step.",
     )
     parser.add_argument(
         "--seed",
@@ -192,6 +197,16 @@ def main():
         type=int,
         help="If negative number is passed (default = -1) perform inference on whole dataset, else use only dataset_max_elems elements"
     )
+    parser.add_argument(
+        "--limit_hpu_graphs",
+        action="store_true",
+        help="Skip HPU Graph usage for first token to save memory",
+    )
+    parser.add_argument(
+        "--reuse_cache",
+        action="store_true",
+        help="Whether to reuse key/value cache for decoding. It should save memory.",
+    )
 
     args = parser.parse_args()
 
@@ -205,6 +220,8 @@ def main():
         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
+    if not args.use_hpu_graphs:
+        args.limit_hpu_graphs = False
     # Device is HPU
     args.device = "hpu"
     import habana_frameworks.torch.hpu as torch_hpu
@@ -216,7 +233,7 @@ def main():
 
     if use_deepspeed:
         # Check if DeepSpeed is installed
-        from transformers.deepspeed import is_deepspeed_available
+        from transformers.integrations.deepspeed import is_deepspeed_available
 
         if not is_deepspeed_available():
             raise ImportError(
@@ -380,7 +397,10 @@ def main():
     generation_config.bad_words_ids = bad_words_ids
     generation_config.force_words_ids = force_words_ids
     generation_config.num_return_sequences = args.num_return_sequences
+    generation_config.trim_logits = args.trim_logits
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
+    generation_config.limit_hpu_graphs = args.limit_hpu_graphs
+    generation_config.reuse_cache = args.reuse_cache
 
     if args.dataset_name is None:
         # Benchmark over the prompts below

@@ -56,7 +56,6 @@ from torch.optim.lr_scheduler import LRScheduler
 
 
 if is_deepspeed_available():
-    import deepspeed
     from accelerate.utils import (
         DeepSpeedEngineWrapper,
         DeepSpeedOptimizerWrapper,
@@ -239,6 +238,9 @@ class GaudiAccelerator(Accelerator):
         if self.rng_types is None:
             self.rng_types = ["generator"]
 
+        # Set a flag tensor for early stopping and other breakpoints
+        self.flag_tensor = None
+
     @property
     def use_fp16(self):
         raise ValueError("fp16 is not supported on Habana Gaudi.")
@@ -274,7 +276,12 @@ class GaudiAccelerator(Accelerator):
                 device_placement = None
         self._models.append(model)
 
-        if self.verify_device_map(model) and self.distributed_type != DistributedType.NO:
+        # TODO: Look at enabling native TP training directly with a proper config
+        if (
+            self.verify_device_map(model)
+            and self.distributed_type != DistributedType.NO
+            and os.environ.get("ACCELERATE_BYPASS_DEVICE_MAP", "false") != "true"
+        ):
             raise ValueError(
                 "You can't train a model that has been loaded with `device_map='auto'` in any distributed mode."
                 " Please rerun your script specifying `--num_processes=1` or by launching with `python {{myscript.py}}`."
@@ -357,6 +364,8 @@ class GaudiAccelerator(Accelerator):
         return model
 
     def _prepare_deepspeed(self, *args):
+        import deepspeed
+
         deepspeed_plugin = self.state.deepspeed_plugin
 
         is_dataloader_present = any(isinstance(obj, torch.utils.data.DataLoader) for obj in args)
@@ -393,12 +402,13 @@ class GaudiAccelerator(Accelerator):
             batch_size_per_device = deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"]
             result = list(args)
 
-        if self.gradient_accumulation_steps != deepspeed_plugin.deepspeed_config["gradient_accumulation_steps"]:
-            logger.info(
-                f"Updating DeepSpeed's gradient accumulation steps to {self.gradient_accumulation_steps} from "
-                f"{deepspeed_plugin.deepspeed_config['gradient_accumulation_steps']}."
-            )
-            deepspeed_plugin.deepspeed_config["gradient_accumulation_steps"] = self.gradient_accumulation_steps
+        # handle `gradient_accumulation_steps` when the value is `auto`
+        deepspeed_plugin.fill_match(
+            "gradient_accumulation_steps",
+            must_match=False,
+            gradient_accumulation_steps=self.gradient_accumulation_steps,
+        )
+
         config_kwargs = {
             "train_micro_batch_size_per_gpu": batch_size_per_device,
             "train_batch_size": batch_size_per_device
@@ -443,9 +453,14 @@ class GaudiAccelerator(Accelerator):
                     "Please remove the scheduler from the config file or "
                     "create `accelerate.utils.DummyScheduler` in the code."
                 )
-            elif "scheduler" not in deepspeed_plugin.deepspeed_config and isinstance(scheduler, (DummyScheduler)):
+            elif (
+                "scheduler" not in deepspeed_plugin.deepspeed_config
+                and isinstance(scheduler, (DummyScheduler))
+                and scheduler.lr_scheduler_callable is None
+            ):
                 raise ValueError(
-                    "You cannot create a `DummyScheduler` without specifying a scheduler in the config file."
+                    "Either specify a scheduler in the config file or "
+                    "pass in the `lr_scheduler_callable` parameter when using `accelerate.utils.DummyScheduler`."
                 )
 
         if optimizer is not None and scheduler is not None:
@@ -475,7 +490,7 @@ class GaudiAccelerator(Accelerator):
                 config_kwargs.update(
                     {"optimizer.params.lr": optimizer.lr, "optimizer.params.weight_decay": optimizer.weight_decay}
                 )
-            if isinstance(scheduler, (DummyScheduler)):
+            if isinstance(scheduler, (DummyScheduler)) and scheduler.lr_scheduler_callable is None:
                 max_lr = (
                     getattr(scheduler.optimizer, "lr", None)
                     if getattr(scheduler.optimizer, "defaults", None) is None
@@ -500,6 +515,8 @@ class GaudiAccelerator(Accelerator):
             if optimizer is not None:
                 if isinstance(optimizer, (DummyOptim)):
                     kwargs["model_parameters"] = optimizer.params
+                    if isinstance(scheduler, (DummyScheduler)) and scheduler.lr_scheduler_callable is not None:
+                        kwargs["lr_scheduler"] = scheduler.lr_scheduler_callable
                 else:
                     if self.deepspeed_config["zero_optimization"].get("offload_optimizer", {}).get(
                         "device", "none"
@@ -510,7 +527,10 @@ class GaudiAccelerator(Accelerator):
                         optimizer = DeepSpeedCPUAdam(optimizer.param_groups, **defaults)
                     kwargs["optimizer"] = optimizer
                     if scheduler is not None:
-                        if type(scheduler).__name__ in deepspeed.runtime.lr_schedules.VALID_LR_SCHEDULES:
+                        if (
+                            isinstance(scheduler, LRScheduler)
+                            or type(scheduler).__name__ in deepspeed.runtime.lr_schedules.VALID_LR_SCHEDULES
+                        ):
                             kwargs["lr_scheduler"] = scheduler
 
             HabanaArgs = make_dataclass("HabanaArgs", [("use_hpu", bool), ("no_cuda", bool)])
