@@ -163,7 +163,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(self, query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None or reuse_cache:
             # reuse k, v, self_attention
@@ -583,8 +583,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         return model_inputs
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and FusedRoPE:
+def apply_customized_rope(self, q, k, cos, sin, position_ids):
+    if not self.training and q.device.type == "hpu" and FusedRoPE:
         return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
