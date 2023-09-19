@@ -15,7 +15,6 @@
 
 import os
 import sys
-import warnings
 from pathlib import Path
 
 from optimum.configuration_utils import BaseConfig
@@ -60,13 +59,13 @@ class GaudiConfig(BaseConfig):
         self.autocast_fp32_ops = kwargs.pop("autocast_fp32_ops", None)
         self.use_dynamic_shapes = kwargs.pop("use_dynamic_shapes", False)
 
-
         # Use Habana's custom AdamW implementation
         self.use_fused_adam = kwargs.pop("use_fused_adam", False)
         # Use Habana's custom fused clip norm implementation
         self.use_fused_clip_norm = kwargs.pop("use_fused_clip_norm", False)
 
         # TODO: to remove in a future version
+
     def write_bf16_fp32_ops_to_text_files(
         self,
         path_to_bf16_file: Path,

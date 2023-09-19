@@ -13,17 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import filecmp
+import tempfile
 import unittest
+from pathlib import Path
 
 from optimum.habana import GaudiConfig
+
+
+BF16_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/bf16_ops.txt")
+FP32_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/fp32_ops.txt")
 
 
 class GaudiConfigTester(unittest.TestCase):
     """
     Unit tests for Gaudi configuration class GaudiConfig.
     """
-    BF16_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/bf16_ops.txt")
-    FP32_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/fp32_ops.txt")
 
     def test_default_parameter_types(self):
         gaudi_config = GaudiConfig()
@@ -54,9 +59,9 @@ class GaudiConfigTester(unittest.TestCase):
                 "truediv",
             ],
             autocast_fp32_ops=[
-            "embedding",
-            "nll_loss",
-            "log_softmax",
+                "embedding",
+                "nll_loss",
+                "log_softmax",
             ],
         )
 

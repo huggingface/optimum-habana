@@ -518,7 +518,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
-
     @slow
     def test_no_throughput_regression_bf16(self):
         prompts = [

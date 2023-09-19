@@ -20,7 +20,6 @@ import os
 import random
 import shutil
 import sys
-import tempfile
 import time
 import warnings
 from collections.abc import Mapping
@@ -900,9 +899,9 @@ class GaudiTrainer(Trainer):
                         else:
                             # Revert to normal clipping otherwise
                             self.accelerator.clip_grad_norm_(
-                                    model.parameters(),
-                                    args.max_grad_norm,
-                                )
+                                model.parameters(),
+                                args.max_grad_norm,
+                            )
 
                     # Optimizer step
                     optimizer_was_run = True

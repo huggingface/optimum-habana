@@ -117,7 +117,6 @@ def gaudi_opt_attention_forward(
         )
         attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
-
     attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
 
     if layer_head_mask is not None:
