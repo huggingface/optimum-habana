@@ -49,7 +49,7 @@ def gaudi_falcon_rotary_embedding_forward(self, query, key, seq_len, position_id
         cos = cos.squeeze(0)[position_ids[-1]].unsqueeze(0)
         sin = sin.squeeze(0)[position_ids[-1]].unsqueeze(0)
 
-    if FusedRoPE:
+    if not self.training and FusedRoPE:
         return FusedRoPE.apply(query, cos, sin, 0), FusedRoPE.apply(key, cos, sin, 0)
     else:
         return (query * cos) + (rotate_half(query) * sin), (key * cos) + (rotate_half(key) * sin)

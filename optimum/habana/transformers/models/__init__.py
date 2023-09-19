@@ -1,4 +1,15 @@
 from .albert import gaudi_albert_forward
+from .bart import (
+    gaudi_BartAttention_forward,
+    gaudi_BartDecoder_forward,
+    gaudi_BartDecoderLayer_forward,
+    gaudi_BartEncoder_forward,
+    gaudi_BartEncoderLayer_forward,
+    gaudi_BartForConditionalGeneration_forward,
+    gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_BartLearnedPositionalEmbedding,
+    gaudi_BartModel_forward,
+)
 from .bloom import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -49,10 +60,10 @@ from .gptj import (
     gaudi_gptj_model_forward,
 )
 from .llama import (
+    GaudiLlamaAttention,
+    GaudiLlamaDecoderLayer,
     GaudiLlamaForCausalLM,
-    gaudi_llama_attention_forward,
-    gaudi_llama_decoder_layer_forward,
-    gaudi_llama_model_forward,
+    GaudiLlamaModel,
     gaudi_llama_rmsnorm_forward,
 )
 from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
