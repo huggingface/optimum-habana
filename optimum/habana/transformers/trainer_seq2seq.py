@@ -281,11 +281,12 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         ):
             inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
         try:
-            generated_tokens = self.model.generate(
-                **inputs,
-                generation_config=self.model.generation_config,
-                **gen_kwargs,
-            )
+            with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.use_hpu_amp):
+                generated_tokens = self.model.generate(
+                    **inputs,
+                    generation_config=self.model.generation_config,
+                    **gen_kwargs,
+                )
         except RuntimeError as error:
             if "cpu fallback is not supported during hpu graph capturing" in str(error):
                 error.args = (
@@ -302,7 +303,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         # Retrieves GenerationConfig from model.generation_config
         gen_config = self.model.generation_config
         # in case the batch is shorter than max length, the output should be padded
-        if generated_tokens.shape[-1] < gen_config.max_length:
+        if gen_config.max_length is not None and generated_tokens.shape[-1] < gen_config.max_length:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_config.max_length)
         elif gen_config.max_new_tokens is not None and generated_tokens.shape[-1] < gen_config.max_new_tokens + 1:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_config.max_new_tokens + 1)
@@ -337,7 +338,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
 
         if has_labels:
             labels = inputs["labels"]
-            if labels.shape[-1] < gen_config.max_length:
+            if gen_config.max_length is not None and labels.shape[-1] < gen_config.max_length:
                 labels = self._pad_tensors_to_max_len(labels, gen_config.max_length)
             elif gen_config.max_new_tokens is not None and labels.shape[-1] < gen_config.max_new_tokens + 1:
                 labels = self._pad_tensors_to_max_len(labels, gen_config.max_new_tokens + 1)
