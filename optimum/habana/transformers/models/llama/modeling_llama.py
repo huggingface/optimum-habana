@@ -1,4 +1,5 @@
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -82,8 +83,10 @@ class GaudiLlamaAttention(LlamaAttention):
         self.past_value = None
 
     def allocate_kv_cache(self, batch_size, seq_len):
-        key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
+        # TODO: update when auto mp params is enabled in DeepSpeed (cf. https://github.com/HabanaAI/DeepSpeed/blob/94309c7b5dfc1a69858f5c9f25737b2f81a332a5/deepspeed/module_inject/replace_module.py#L440)
+        tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
+        key_shape = (batch_size, self.num_key_value_heads // tp_world_size, seq_len, self.head_dim)
+        value_shape = (batch_size, self.num_key_value_heads // tp_world_size, seq_len, self.head_dim)
         if self.past_key is None or self.past_key.shape != key_shape:
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
@@ -178,7 +181,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if use_cache:
             if reuse_cache:
-                past_key_value = (key_states.contiguous().shape, value_states.contiguous().shape)
+                past_key_value = (key_states.shape, value_states.shape)
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
