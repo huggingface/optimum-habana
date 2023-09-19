@@ -355,6 +355,7 @@ def gaudi_gpt2_forward(
     """
     Copied from GPT2Model.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
     The only differences are:
+    - disable autocast for attention_mask
     - add new args token_idx
     """
 

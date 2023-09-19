@@ -22,6 +22,8 @@ class GaudiConfigTester(unittest.TestCase):
     """
     Unit tests for Gaudi configuration class GaudiConfig.
     """
+    BF16_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/bf16_ops.txt")
+    FP32_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/fp32_ops.txt")
 
     def test_default_parameter_types(self):
         gaudi_config = GaudiConfig()

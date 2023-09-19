@@ -116,6 +116,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                         "`torch_dtype=torch.blfloat16` was given. Disabling mixed precision and continuing in bf16 only."
                     )
                     self.gaudi_config.use_torch_autocast = False
+                else:
                     with tempfile.NamedTemporaryFile() as hmp_bf16_file:
                         with tempfile.NamedTemporaryFile() as hmp_fp32_file:
                             self.gaudi_config.write_bf16_fp32_ops_to_text_files(

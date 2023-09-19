@@ -57,7 +57,7 @@ To not take them into account in the computation of the throughput at the end of
 ## Mixed-Precision Training
 
 Mixed-precision training enables to compute some operations using lighter data types to accelerate training.
-Optimum Habana enables mixed precision training in a similar fasion as 🤗 Transofrmers.
+Optimum Habana enables mixed precision training in a similar fasion as 🤗 Transofrmers:
 - argument `--bf16` enables usage of PyTorch autocast
 - argument `--half_precision_backend [hpu_amp, cpu_amp]` is used to specify a device on which mixed precision operations should be performed
 
