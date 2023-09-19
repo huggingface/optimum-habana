@@ -129,3 +129,9 @@ def deepspeed_init(trainer, num_training_steps, inference=False):
     # from pprint import pprint; pprint(config)
 
     return optimizer, lr_scheduler
+
+
+def unwrap_deepspeed_model(model):
+    if hasattr(model, "module"):
+        return model.module
+    return model

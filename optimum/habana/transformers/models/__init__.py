@@ -49,10 +49,10 @@ from .gptj import (
     gaudi_gptj_model_forward,
 )
 from .llama import (
+    GaudiLlamaAttention,
+    GaudiLlamaDecoderLayer,
     GaudiLlamaForCausalLM,
-    gaudi_llama_attention_forward,
-    gaudi_llama_decoder_layer_forward,
-    gaudi_llama_model_forward,
+    GaudiLlamaModel,
     gaudi_llama_rmsnorm_forward,
 )
 from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask

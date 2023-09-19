@@ -182,6 +182,11 @@ def main():
         action="store_true",
         help="Skip HPU Graph usage for first token to save memory",
     )
+    parser.add_argument(
+        "--reuse_cache",
+        action="store_true",
+        help="Whether to reuse key/value cache for decoding. It should save memory.",
+    )
 
     args = parser.parse_args()
 
@@ -374,6 +379,7 @@ def main():
     generation_config.trim_logits = args.trim_logits
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
+    generation_config.reuse_cache = args.reuse_cache
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
