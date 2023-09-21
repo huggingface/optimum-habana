@@ -19,14 +19,15 @@
 
 import copy
 import logging
-import os, math
+import math
+import os
 import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 import datasets
-import torch
 import evaluate
+import torch
 import transformers
 from datasets import load_dataset
 from peft import (
@@ -257,6 +258,7 @@ def create_prompts(examples):
         prompts["target"].append(example["output"])
     return prompts
 
+
 def main():
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
@@ -410,7 +412,7 @@ def main():
                 use_auth_token=True if model_args.use_auth_token else None,
                 **dataset_args,
             )
-    if data_args.dataset_name == 'tatsu-lab/alpaca':
+    if data_args.dataset_name == "tatsu-lab/alpaca":
         # Preprocessing the datasets.
         for key in raw_datasets:
             prompts = create_prompts(raw_datasets[key])
@@ -418,17 +420,21 @@ def main():
             raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
             raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
             raw_datasets[key] = raw_datasets[key].remove_columns(columns_to_be_removed)
-    elif data_args.dataset_name == 'timdettmers/openassistant-guanaco': #from https://github.com/artidoro/qlora/blob/main/qlora.py#L621
-        raw_datasets = raw_datasets.map(lambda x: {
-          'input': '',
-          'output': x['text'],
-        })
+    elif (
+        data_args.dataset_name == "timdettmers/openassistant-guanaco"
+    ):  # from https://github.com/artidoro/qlora/blob/main/qlora.py#L621
+        raw_datasets = raw_datasets.map(
+            lambda x: {
+                "input": "",
+                "output": x["text"],
+            }
+        )
         # Remove unused columns.
         raw_datasets = raw_datasets.remove_columns(
-            [col for col in raw_datasets.column_names['train'] if col not in ['input', 'output']]
+            [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
         )
     else:
-        raise ValueError(f"Unsupported dataset")
+        raise ValueError("Unsupported dataset")
     # Load model
     if model_args.model_name_or_path:
         model_dtype = torch.bfloat16 if training_args.bf16 else None
@@ -461,7 +467,6 @@ def main():
 
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
-    #tokenizer.padding_side = "left"  # Allow batched inference
 
     def tokenize(prompt, add_eos_token=True):
         results = tokenizer(
@@ -487,7 +492,7 @@ def main():
     def preprocess_function(examples):
         keys = list(examples.data.keys())
         if len(keys) != 2:
-            raise ValueError(f"Unsupported dataset format")
+            raise ValueError("Unsupported dataset format")
 
         st = [s + t for s, t in zip(examples[keys[0]], examples[keys[1]])]
 
@@ -512,6 +517,7 @@ def main():
         )
 
     if data_args.dataset_concatenation:
+
         def concatenate_data(dataset, max_seq_length):
             concatenated_dataset = {}
             for column in dataset.features:
@@ -522,16 +528,19 @@ def main():
                 ]
                 concatenated_dataset[column] = reshaped_data
             return datasets.Dataset.from_dict(concatenated_dataset)
-        if data_args.dataset_name == 'tatsu-lab/alpaca':
-            tokenized_datasets_ = tokenized_datasets['train'].remove_columns(["prompt_sources", "prompt_targets"])
+
+        if data_args.dataset_name == "tatsu-lab/alpaca":
+            tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets['test'].remove_columns(["prompt_sources", "prompt_targets"])
-        elif data_args.dataset_name == 'timdettmers/openassistant-guanaco':
-            tokenized_datasets_ = tokenized_datasets['train'].remove_columns(["input", "output"])
+                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(
+                    ["prompt_sources", "prompt_targets"]
+                )
+        elif data_args.dataset_name == "timdettmers/openassistant-guanaco":
+            tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets['test'].remove_columns(["input", "output"])
+                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
         else:
-            raise ValueError(f"Unsupported dataset")
+            raise ValueError("Unsupported dataset")
         tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
         if training_args.do_eval:
             tokenized_datasets["test"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
@@ -541,8 +550,6 @@ def main():
         train_dataset = tokenized_datasets["train"]
         if data_args.max_train_samples is not None:
             train_dataset = train_dataset.select(range(data_args.max_train_samples))
-        #if data_args.group_by_length:
-            #train_dataset = train_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
 
     if training_args.do_eval:
         if "test" not in tokenized_datasets:
@@ -567,6 +574,7 @@ def main():
             labels = labels[:, 1:].reshape(-1)
             preds = preds[:, :-1].reshape(-1)
             return metric.compute(predictions=preds, references=labels)
+
     # Data collator
     # This one will take care of randomly masking the tokens.
     data_collator = DataCollatorForLanguageModeling(tokenizer, pad_to_multiple_of=8, return_tensors="pt", mlm=False)
@@ -618,9 +626,7 @@ def main():
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
 
-        max_eval_samples = (
-            data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        )
+        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 
         try:
@@ -631,6 +637,7 @@ def main():
 
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+
 
 if __name__ == "__main__":
     main()

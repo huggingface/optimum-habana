@@ -321,7 +321,7 @@ python run_clm.py \
 
 ## PEFT
 
-To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with Llamav17B and Falcon40b:
+To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with Llamav1-7B and Falcon-40B:
 
 Single-card finetuning:
 ```bash
@@ -359,7 +359,6 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
     --bf16 True \
-    --output_dir ./model_falcon_40b_1x \
     --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -397,7 +396,6 @@ python ../gaudi_spawn.py \
     --model_name_or_path huggyllama/llama-7b \
     --dataset_name tatsu-lab/alpaca \
     --bf16 True \
-    --output_dir ./model_llama1_7b_ddp \
     --num_train_epochs 3 \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 2 \
