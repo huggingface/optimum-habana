@@ -420,6 +420,7 @@ python ../gaudi_spawn.py \
     --max_seq_length 512 \
     --ddp_bucket_cap_mb 50 \
     --adam_epsilon 1e-08
+    --low_cpu_mem_usage True
 ```
 ```bash
 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
