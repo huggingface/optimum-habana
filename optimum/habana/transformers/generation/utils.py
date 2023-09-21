@@ -488,6 +488,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         is_greedy_and_bucket = generation_config.bucketsize > 0 and self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
+        model_kwargs['bucketsize'] = generation_config.bucketsize if generation_config.static_shapes else -1
         if generation_config.reuse_cache:
             assert generation_config.bucketsize <= 0, "reuse_cache and bucketing flags set together"
 
@@ -705,7 +706,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
-                bucketsize=generation_config.bucketsize if generation_config.static_shapes else -1,
                 **model_kwargs,
             )
 
@@ -1082,7 +1082,6 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = None,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        bucketsize: int = -1,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, torch.LongTensor]:
         r"""
@@ -1236,7 +1235,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
-
+        bucketsize = model_kwargs['bucketsize']
         def incrementor(bucketsize, prompt_len):
             assert bucketsize > 0
             passnum = -1
@@ -1290,12 +1289,28 @@ class GaudiGenerationMixin(GenerationMixin):
                         )
                     else:
                         assert False, "Not tested for cases where attn_mask isnt passed"
+
                     if 'past_key_values' in model_kwargs:
+                        def create_pad_arg(pad_amount, i, j):
+                            if model_kwargs['past_key_values'][0][0].dim() == 3:
+                                assert 'GaudiBloomForCausalLM' in  str(type(self))  # bloom
+                                if j == 0:
+                                    return (0, pad_amount)
+                                elif j == 1:
+                                    return (0, 0, 0, pad_amount)
+                                else:
+                                    assert False
+                            elif model_kwargs['past_key_values'][0][0].dim() == 4:
+                                return (0, 0, 0, pad_amount) # llama, falcon
+                            else:
+                                assert False, 'Unknown case, please handle, or dont use bucketing'
                         new_kv = [None for i in range(len(model_kwargs['past_key_values']))]
                         for i in range(len(model_kwargs['past_key_values'])):
                             tmp_lst = [None for j in range(len(model_kwargs['past_key_values'][i]))]
                             for j in range(len(model_kwargs['past_key_values'][i])):
-                                tmp_lst[j] = torch.nn.functional.pad(model_kwargs['past_key_values'][i][j], (0, 0, 0, pad_amount), value=0)
+                                pad_tuple = create_pad_arg(pad_amount, i, j)
+                                assert model_kwargs['past_key_values'][i][j].shape[-(len(pad_tuple)//2)] % bucketsize == 0
+                                tmp_lst[j] = torch.nn.functional.pad(model_kwargs['past_key_values'][i][j], pad_tuple, value=pad_token_id)
                             new_kv[i] = tuple(tmp_lst)
                         model_kwargs['past_key_values'] = tuple(new_kv)
 
