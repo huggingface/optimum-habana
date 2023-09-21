@@ -16,6 +16,12 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
+try:
+    import habana_frameworks.torch.core as htcore
+except ImportError:
+    print("Import htcore failed")
+    htcore = None
+
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import (
@@ -138,9 +144,16 @@ def gaudi_falcon_attention_forward(
             if FusedSDPA:
                 attn_output = FusedSDPA.apply(query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False)
             else:
+                # Workaround util scaled_dot_product_attention support broadcast.
+                if self.training == True and query_layer_.shape != key_layer_.shape:
+                    key_layer_ = torch.broadcast_to(key_layer_, query_layer_.shape)
+                    value_layer_ = torch.broadcast_to(value_layer_, query_layer_.shape)
                 attn_output = F.scaled_dot_product_attention(
                     query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, is_causal=False
                 )
+            # Performance improvement for HPU
+            if self.training == True and htcore:
+               htcore.mark_step()
             attention_scores = None
 
         attn_output = attn_output.view(batch_size, self.num_heads, query_length, self.head_dim)
@@ -260,6 +273,42 @@ def gaudi_falcon_decoder_layer_forward(
 
     return outputs  # hidden_states, present, attentions
 
+
+def gaudi_falcon_attention_split_heads(self, fused_qkv: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Copied from FalconAttention._split_heads https://github.com/huggingface/transformers/blob/v4.33.2/src/transformers/models/falcon/modeling_falcon.py
+    Changing index operation of qkv[:::] to use torch.index_select to work around gradient accuracy issue and improve performance.
+    """
+    if self.new_decoder_architecture:
+        batch, seq_len, _ = fused_qkv.shape
+        qkv = fused_qkv.view(batch, seq_len, -1, self.num_heads // self.num_kv_heads + 2, self.head_dim)
+        #query = qkv[:, :, :, :-2]
+        #key = qkv[:, :, :, [-2]]
+        #value = qkv[:, :, :, [-1]]
+        d3 = qkv.shape[3]-2
+        query = torch.index_select(qkv, 3, index=torch.arange(d3, device=qkv.device))
+        key = torch.index_select(qkv, 3, index=torch.tensor([d3], device=qkv.device))
+        value = torch.index_select(qkv, 3, index=torch.tensor([d3+1], device=qkv.device))
+
+        key = torch.broadcast_to(key, query.shape)
+        value = torch.broadcast_to(value, query.shape)
+
+        query, key, value = [x.flatten(2, 3) for x in (query, key, value)]
+        return query, key, value
+    elif not self.multi_query:
+        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
+        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads, 3, self.head_dim)
+        #TODO : Need to be fixed to use index_select()
+        return fused_qkv[..., 0, :], fused_qkv[..., 1, :], fused_qkv[..., 2, :]
+    else:
+        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
+        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads + 2, self.head_dim)
+        #return fused_qkv[..., :-2, :], fused_qkv[..., [-2], :], fused_qkv[..., [-1], :]
+        d2 = fused_qkv.shape[2]-2
+        query = torch.index_select(fused_qkv, 2, index=torch.arange(d2, device=fused_qkv.device))
+        key = torch.index_select(fused_qkv, 2, index=torch.tensor([d2], device=fused_qkv.device))
+        value = torch.index_select(fused_qkv, 2, index=torch.tensor([d2+1], device=fused_qkv.device))
+        return query, key, value
 
 def _expand_mask(mask: torch.Tensor, past_key_values_length: int, tgt_len: int) -> torch.BoolTensor:
     """

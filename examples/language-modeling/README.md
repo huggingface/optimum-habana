@@ -321,7 +321,7 @@ python run_clm.py \
 
 ## PEFT
 
-To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with Llama:
+To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with Llamav17B and Falcon40b:
 
 Single-card finetuning:
 ```bash
@@ -329,22 +329,65 @@ python3 run_lora_clm.py \
     --model_name_or_path huggyllama/llama-7b \
     --dataset_name tatsu-lab/alpaca \
     --bf16 True \
-    --output_dir ./model_lora_llama \
     --num_train_epochs 3 \
-    --per_device_train_batch_size 2 \
-    --per_device_eval_batch_size 2 \
-    --gradient_accumulation_steps 4 \
+    --per_device_train_batch_size 16 \
+    --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
-    --save_steps 2000 \
+    --max_steps 2418 \
     --save_total_limit 1 \
     --learning_rate 1e-4 \
+    --warmup_ratio  0.03 \
+    --lr_scheduler_type "constant" \
+    --max_grad_norm  0.3 \
     --logging_steps 1 \
-    --dataset_concatenation \
     --do_train \
     --use_habana \
     --use_lazy_mode \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --lora_target_modules "q_proj" "v_proj" \
+    --dataset_concatenation \
+    --max_seq_length 512 \
+    --low_cpu_mem_usage True \
+    --adam_epsilon 1e-08
+```
+```bash
+LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
+    --model_name_or_path tiiuae/falcon-40b \
+    --dataset_name timdettmers/openassistant-guanaco \
+    --bf16 True \
+    --output_dir ./model_falcon_40b_1x \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 16 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 1566 \
+    --save_total_limit 1 \
+    --learning_rate 3e-4 \
+    --max_grad_norm  0.3 \
+    --warmup_ratio  0.03 \
+    --lr_scheduler_type "constant" \
+    --logging_steps 1 \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --pipelining_fwd_bwd \
+    --throughput_warmup_steps 3 \
+    --lora_rank=64 \
+    --lora_alpha=16 \
+    --lora_dropout=0.1 \
+    --lora_target_modules "query_key_value" "dense" "dense_h_to_4h" "dense_4h_to_h" \
+    --model_revision f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232 \
+    --dataset_concatenation \
+    --max_seq_length 256 \
+    --low_cpu_mem_usage True \
+    --adam_epsilon 1e-08 \
+    --do_eval
 ```
 
 Multi-card finetuning:
@@ -354,24 +397,68 @@ python ../gaudi_spawn.py \
     --model_name_or_path huggyllama/llama-7b \
     --dataset_name tatsu-lab/alpaca \
     --bf16 True \
-    --output_dir ./model_lora_llama \
+    --output_dir ./model_llama1_7b_ddp \
     --num_train_epochs 3 \
-    --per_device_train_batch_size 2 \
-    --per_device_eval_batch_size 2 \
-    --gradient_accumulation_steps 4 \
+    --per_device_train_batch_size 8 \
+    --gradient_accumulation_steps 2 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
-    --save_steps 2000 \
+    --save_steps 303 \
     --save_total_limit 1 \
-    --learning_rate 1e-4 \
+    --learning_rate 3e-4 \
+    --warmup_ratio  0.03 \
+    --lr_scheduler_type "constant" \
+    --max_grad_norm  0.3 \
     --logging_steps 1 \
-    --dataset_concatenation \
     --do_train \
     --use_habana \
     --use_lazy_mode \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --lora_rank=8 \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --lora_target_modules "q_proj" "v_proj" \
+    --dataset_concatenation \
+    --max_seq_length 512 \
+    --ddp_bucket_cap_mb 50 \
+    --adam_epsilon 1e-08
 ```
-
+```bash
+LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_lora_clm.py \
+    --model_name_or_path tiiuae/falcon-40b \
+    --dataset_name timdettmers/openassistant-guanaco \
+    --bf16 True \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 16 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 195 \
+    --save_total_limit 1 \
+    --learning_rate 4e-4 \
+    --max_grad_norm  0.3 \
+    --warmup_ratio  0.03 \
+    --lr_scheduler_type "constant" \
+    --logging_steps 1 \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --pipelining_fwd_bwd \
+    --throughput_warmup_steps 3 \
+    --lora_rank=64 \
+    --lora_alpha=16 \
+    --lora_dropout=0.1 \
+    --lora_target_modules "query_key_value" "dense" "dense_h_to_4h" "dense_4h_to_h" \
+    --model_revision f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232 \
+    --dataset_concatenation \
+    --max_seq_length 256 \
+    --ddp_bucket_cap_mb 50 \
+    --adam_epsilon 1e-08 \
+    --do_eval \
+    --low_cpu_mem_usage True
+```
 
 ## Streaming
 
