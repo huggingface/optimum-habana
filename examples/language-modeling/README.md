@@ -329,6 +329,7 @@ python3 run_lora_clm.py \
     --model_name_or_path huggyllama/llama-7b \
     --dataset_name tatsu-lab/alpaca \
     --bf16 True \
+    --output_dir ./model_lora_llama \
     --num_train_epochs 3 \
     --per_device_train_batch_size 16 \
     --gradient_accumulation_steps 1 \
@@ -359,6 +360,7 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
     --bf16 True \
+    --output_dir ./model_lora_falcon \
     --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -396,6 +398,7 @@ python ../gaudi_spawn.py \
     --model_name_or_path huggyllama/llama-7b \
     --dataset_name tatsu-lab/alpaca \
     --bf16 True \
+    --output_dir ./model_lora_llama_ddp \
     --num_train_epochs 3 \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 2 \
@@ -428,6 +431,7 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --model_name_or_path tiiuae/falcon-40b \
     --dataset_name timdettmers/openassistant-guanaco \
     --bf16 True \
+    --output_dir ./model_lora_falcon_ddp \
     --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
