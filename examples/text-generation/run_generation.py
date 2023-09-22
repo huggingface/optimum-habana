@@ -554,7 +554,23 @@ def main():
         # After tokenization, we can remove the column of interest
         raw_dataset = raw_dataset.remove_columns([column_name])
         raw_dataset.set_format(type="torch")
-        dataloader = DataLoader(raw_dataset, batch_size=args.batch_size)
+
+        if prompt_length <= 0:
+            # Todo please check if this collate function is suitable for your model
+            # This has been tested for OPT, and Bloom
+            assert 'GaudiOPTForCausalLM' in str(type(model)) or 'GaudiBloomForCausalLM' in str(type(model))
+            def collate_fn(data):
+                collect = {k:[dt[k] for dt in data] for k in data[0]}
+                result = {}
+                for k in collect:
+                    tensors = collect[k]
+                    max_shape = max([item.shape[0] for item in tensors])
+                    result[k] = torch.stack([torch.cat((torch.zeros(max_shape - t.shape[0], dtype=t.dtype), t)) for t in tensors], 0)
+                return result
+        else:
+            collate_fn = None
+
+        dataloader = DataLoader(raw_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
 
         def generate_dataset(batch):
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
@@ -595,6 +611,7 @@ def main():
         duration = 0
         separator = "-" * 50
         logger.info("Running generate dataset...")
+        t_start = time.time()
         for i, batch in enumerate(dataloader):
             t0 = time.perf_counter()
             prompt, outputs = generate_dataset(batch)
@@ -608,6 +625,7 @@ def main():
                         f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
                     )
                 print(separator)
+        t_end = time.time()
 
         throughput = total_new_tokens_generated / duration
         # Print Stats
@@ -619,6 +637,7 @@ def main():
             print("Stats:")
             print(separator)
             print(stats)
+            print('Total runtime for dataset:', t_end-t_start)
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
