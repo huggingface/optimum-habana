@@ -202,7 +202,7 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     profiling_record_shapes: Optional[bool] = field(
-        default=False,
+        default=True,
         metadata={"help": ("Record shapes when enabling profiling.")},
     )
     # Overriding the default value of optim because 'adamw_hf' is deprecated
