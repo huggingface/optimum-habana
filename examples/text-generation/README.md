@@ -151,6 +151,9 @@ python run_generation.py \
 ```
 
 ### Using growing bucket optimization
+With `--bucketsize`, instead of padding up the kvcache up to full size before starting, we grow the cache/input in multiples of bucketsize. This helps increase throughput and also reduce number of compilations if teh dataset has varying prompt lengths.
+
+For now, it is available only for greedy generation, and cannot be used with `--reuse_cache`
 ```
 python run_generation.py \
 --model_name_or_path path_to_llama_or_falcon  \

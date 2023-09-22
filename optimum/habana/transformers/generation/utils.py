@@ -1136,8 +1136,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
-            bucketsize (`int`, *optional*, defaults to -1):
-                Bucket width with which input/kvcache tensors grow if needed
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
