@@ -1994,6 +1994,7 @@ class GaudiTrainer(Trainer):
             deepspeed_plugin=self.args.deepspeed_plugin,
             gradient_accumulation_plugin=gradient_accumulation_plugin,
             even_batches=self.args.use_lazy_mode and not self.args.dataloader_drop_last,
+            distribution_strategy=self.args.distribution_strategy,
         )
 
         # deepspeed and accelerate flags covering both trainer args and accelerate launcher
