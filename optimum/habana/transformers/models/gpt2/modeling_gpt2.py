@@ -212,7 +212,7 @@ class GaudiGPT2Attention(torch.nn.Module):
         query = self._split_heads(query, self.num_heads, self.head_dim).contiguous()
         key = self._split_heads(key, self.num_heads, self.head_dim).contiguous()
         value = self._split_heads(value, self.num_heads, self.head_dim).contiguous()
-        
+
         if layer_past is not None:
             past_key, past_value = layer_past
             if token_idx is not None:
