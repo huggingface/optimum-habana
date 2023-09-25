@@ -75,6 +75,8 @@ class GaudiGPT2Attention(torch.nn.Module):
         self.pruned_heads = self.pruned_heads.union(heads)
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None):
+        key = key.contiguous()
+        value = value.contiguous()
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         if self.scale_attn_weights:
@@ -115,6 +117,8 @@ class GaudiGPT2Attention(torch.nn.Module):
         return attn_output, attn_weights
 
     def _upcast_and_reordered_attn(self, query, key, value, attention_mask=None, head_mask=None):
+        key = key.contiguous()
+        value = value.contiguous()
         # Use `torch.baddbmm` (a bit more efficient w/ alpha param for scaling -- from Megatron-LM)
         bsz, num_heads, q_seq_len, dk = query.size()
         _, _, k_seq_len, _ = key.size()
@@ -205,10 +209,10 @@ class GaudiGPT2Attention(torch.nn.Module):
         else:
             query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
 
-        query = self._split_heads(query, self.num_heads, self.head_dim)
-        key = self._split_heads(key, self.num_heads, self.head_dim)
-        value = self._split_heads(value, self.num_heads, self.head_dim)
-
+        query = self._split_heads(query, self.num_heads, self.head_dim).contiguous()
+        key = self._split_heads(key, self.num_heads, self.head_dim).contiguous()
+        value = self._split_heads(value, self.num_heads, self.head_dim).contiguous()
+        
         if layer_past is not None:
             past_key, past_value = layer_past
             if token_idx is not None:
