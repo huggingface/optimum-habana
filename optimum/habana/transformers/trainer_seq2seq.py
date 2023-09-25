@@ -288,6 +288,9 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             and inputs["labels"].shape == inputs["decoder_input_ids"].shape
         ):
             inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
+        import time
+        generate_start = time.perf_counter()
+        self.model.iterations = 0
         try:
             with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.use_hpu_amp):
                 generated_tokens = self.model.generate(
@@ -302,6 +305,14 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
                 )
             raise error
 
+        generate_end = time.perf_counter()
+        generate_time = generate_end - generate_start
+        out_tok = torch.numel(generated_tokens)
+        iterations = self.model.iterations
+        bs = generated_tokens.shape[0]
+        print(iterations)
+        print(out_tok)
+        print( iterations * bs / generate_time)
         # Temporary hack to ensure the generation config is not initialized for each iteration of the evaluation loop
         # TODO: remove this hack when the legacy code that initializes generation_config from a model config is
         # removed in https://github.com/huggingface/transformers/blob/98d88b23f54e5a23e741833f1e973fdf600cc2c5/src/transformers/generation/utils.py#L1183

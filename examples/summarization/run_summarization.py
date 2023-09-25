@@ -25,6 +25,7 @@ import sys
 import warnings
 from dataclasses import dataclass, field
 from typing import Optional
+import torch
 
 import datasets
 import evaluate
@@ -440,7 +441,7 @@ def main():
             data_args.dataset_name,
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
-            token=model_args.token,
+            use_auth_token=True if model_args.use_auth_token else None,
         )
     else:
         data_files = {}
@@ -457,7 +458,7 @@ def main():
             extension,
             data_files=data_files,
             cache_dir=model_args.cache_dir,
-            token=model_args.token,
+            use_auth_token=True if model_args.use_auth_token else None,
         )
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -475,6 +476,16 @@ def main():
         trust_remote_code=model_args.trust_remote_code,
         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
     )
+    is_bart = True if model_args.model_name_or_path in [
+            "facebook/bart-large-mnli",
+            "facebook/bart-large-cnn",
+            "facebook/bart-large",
+            "facebook/bart-base",
+            "facebook/bart-large-xsum",
+        ] else False
+    if is_bart and not (training_args.do_predict or training_args.do_eval):
+        raise ValueError("Training is not yet supported for BART. Eval or predict can be enabled")
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -482,6 +493,7 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
+        torch_dtype=torch.bfloat16 if mixed_precision else torch.float32,
     )
     model = AutoModelForSeq2SeqLM.from_pretrained(
         model_args.model_name_or_path,
@@ -491,6 +503,7 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
+        torch_dtype=torch.bfloat16 if mixed_precision else torch.float32,
     )
 
     is_bart = model.config.model_type == "bart"
@@ -611,8 +624,46 @@ def main():
                 raise ValueError("Found case where either text or summary is missing.")
 
         inputs = [prefix + inp + suffix for inp in inputs]
-        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
+        model_inputs = tokenizer(inputs,  max_length=data_args.max_source_length, padding=padding, truncation=True)
 
+        # Tokenize targets with the `text_target` keyword argument
+        labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)
+
+        # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
+        # padding in the loss.
+        if padding == "max_length" and data_args.ignore_pad_token_for_loss:
+            labels["input_ids"] = [
+                [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
+            ]
+
+        model_inputs["labels"] = labels["input_ids"]
+        return model_inputs
+
+    def preprocess_bucketing_function(examples):
+        # remove pairs where at least one record is None
+
+        inputs, targets = [], []
+        for i in range(len(examples[text_column])):
+            if examples[text_column][i] and examples[summary_column][i]:
+                inputs.append(examples[text_column][i])
+                targets.append(examples[summary_column][i])
+            else:
+                raise ValueError("Found case where either text or summary is missing.")
+
+        inputs = [prefix + inp + suffix for inp in inputs]
+        model_inputs = tokenizer(inputs,   return_tensors="pt", padding=True)
+        new_model_inputs = {
+            'input_ids' :[]
+        }
+        for i in range(len(model_inputs['input_ids'])):
+            cur_len = model_inputs['input_ids'][i].shape[-1]
+            max_length = (cur_len + 128 - 1) // 128 * 128
+            if max_length > data_args.max_source_length:
+                max_length = data_args.max_source_length
+                new_model_inputs['input_ids'].append(model_inputs['input_ids'][i][:max_length])
+            else:
+                new_model_inputs['input_ids'].append(torch.nn.functional.pad(model_inputs['input_ids'][i] , (0, max_length - cur_len), value=0))
+        model_inputs = new_model_inputs
         # Tokenize targets with the `text_target` keyword argument
         labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)
 
@@ -641,6 +692,12 @@ def main():
                 desc="Running tokenizer on train dataset",
             )
 
+    def wrapper_preprocess_function(examples):
+        if model.config.is_encoder_decoder:
+            return preprocess_bucketing_function(examples)
+        else:
+            return preprocess_function(examples)
+
     if training_args.do_eval:
         max_target_length = data_args.val_max_target_length
         eval_dataset = raw_datasets["validation"]
@@ -649,7 +706,7 @@ def main():
             eval_dataset = eval_dataset.select(range(max_eval_samples))
         with training_args.main_process_first(desc="validation dataset map pre-processing"):
             eval_dataset = eval_dataset.map(
-                preprocess_function,
+                wrapper_preprocess_function,
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 remove_columns=column_names,
@@ -665,7 +722,7 @@ def main():
             predict_dataset = predict_dataset.select(range(max_predict_samples))
         with training_args.main_process_first(desc="prediction dataset map pre-processing"):
             predict_dataset = predict_dataset.map(
-                preprocess_function,
+                wrapper_preprocess_function,
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 remove_columns=column_names,
@@ -728,6 +785,17 @@ def main():
     elif training_args.generation_num_beams is not None:
         training_args.generation_config.num_beams = training_args.generation_num_beams
 
+    # training_args.generation_max_length = (
+    #     training_args.generation_max_length
+    #     if training_args.generation_max_length is not None
+    #     else data_args.val_max_target_length
+    # )
+    # training_args.generation_num_beams = (
+    #     data_args.num_beams if data_args.num_beams is not None else training_args.generation_num_beams
+    # )
+    # if is_bart:
+    # if True:
+    #     training_args.generation_max_new_tokens = 128
     # Initialize our Trainer
     trainer = GaudiSeq2SeqTrainer(
         model=model,

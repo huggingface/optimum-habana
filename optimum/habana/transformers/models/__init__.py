@@ -81,7 +81,23 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
-from .t5 import _gaudi_get_resized_embeddings, _gaudi_get_resized_lm_head, gaudi_t5_layernorm_forward
+from .t5 import (
+    GaudiT5DenseActDense,
+    GaudiT5DenseGatedActDense,
+    GaudiT5LayerCrossAttention,
+    GaudiT5LayerFF,
+    GaudiT5LayerSelfAttention,
+    GaudiT5Stack,
+    gaudi_T5ForConditionalGeneration_forward,
+    gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_T5ForConditionalGeneration_reorder_cache,
+    gaudi_T5Attention_forward,
+    gaudi_T5Block_forward,
+    gaudi_t5_layernorm_forward,
+    _gaudi_get_resized_embeddings,
+    _gaudi_get_resized_lm_head
+    
+)
 from .vit import gaudi_vit_self_attention_forward
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,

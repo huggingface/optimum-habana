@@ -17,6 +17,7 @@
 import copy
 import inspect
 import warnings
+import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -75,6 +76,8 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "gpt_bigcode",
     "bart",
     "mpt",
+    "bart",
+    "t5",
 ]
 
 
@@ -89,6 +92,18 @@ class StaticMaxLengthCriteria(StoppingCriteria):
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
         self.cur_step += 1
         return self.cur_step >= self.max_steps
+
+
+def _get_stopping_criteria(
+    self, generation_config: GaudiGenerationConfig, stopping_criteria: Optional[StoppingCriteriaList]
+) -> StoppingCriteriaList:
+    criteria = StoppingCriteriaList()
+    if generation_config.max_length is not None:
+        criteria.append(StaticMaxLengthCriteria(generation_config.max_length))
+    if generation_config.max_time is not None:
+        criteria.append(MaxTimeCriteria(max_time=generation_config.max_time))
+    criteria = self._merge_criteria_processor_list(criteria, stopping_criteria)
+    return criteria
 
 
 class GaudiGenerationMixin(GenerationMixin):
@@ -118,6 +133,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 if (
                     dict_to_expand[key] is not None
                     and key != "token_idx"
+                    and key != "decoder_input_ids"
                     and isinstance(dict_to_expand[key], torch.Tensor)
                 ):
                     dict_to_expand[key] = dict_to_expand[key].repeat_interleave(expand_size, dim=0)
@@ -436,13 +452,15 @@ class GaudiGenerationMixin(GenerationMixin):
         generation_config = copy.deepcopy(generation_config)
         if generation_config.static_shapes is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+            self.generation_config.static_shapes = generation_config.static_shapes
         if generation_config.ignore_eos is None:
-            generation_config.ignore_eos = not lazy_mode if self.config.is_encoder_decoder else lazy_mode
+            generation_config.ignore_eos = not lazy_mode
         generation_config.validate()
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
         self._validate_model_kwargs(model_kwargs.copy())
         # 2. Set generation parameters if not already defined
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
+        # generation_config.max_length = generation_config.max_new_tokens
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
 
         if generation_config.pad_token_id is None and generation_config.eos_token_id is not None:
@@ -478,7 +496,7 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs["use_cache"] = True
         else:
             model_kwargs["use_cache"] = generation_config.use_cache
-
+        model_kwargs["max_output_length"] = generation_config.max_length or generation_config.max_new_tokens
         accepts_attention_mask = "attention_mask" in set(inspect.signature(self.forward).parameters.keys())
         requires_attention_mask = "encoder_outputs" not in model_kwargs
 
@@ -1232,6 +1250,7 @@ class GaudiGenerationMixin(GenerationMixin):
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
             # forward pass to get next token
+            #self.iterations = self.iterations + 1
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1244,6 +1263,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 continue  # don't waste resources running the code we don't need
 
             token_idx = model_kwargs.get("token_idx", None)
+            # generate_start = time.perf_counter()
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
                 if self.config.is_encoder_decoder:
@@ -1260,7 +1280,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     # case3 (default case): token_idx is None
                     next_tokens_scores = logits_processor(input_ids, next_token_logits)
-
+            # generate_end = time.perf_counter()
+            # print("Time", generate_end - generate_start)
             # Store scores, attentions and hidden_states when required
             if return_dict_in_generate:
                 if output_scores:
@@ -1853,13 +1874,91 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # initialise score of first beam with 0 and the rest with -1e9. This makes sure that only tokens
         # of the first beam are considered to avoid sampling the exact same tokens across all beams.
-        beam_scores = torch.zeros((batch_size, num_beams), dtype=torch.float, device=input_ids.device)
+        beam_scores = torch.zeros((batch_size, num_beams), dtype=torch.float32, device=input_ids.device)
         beam_scores[:, 1:] = -1e9
         beam_scores = beam_scores.view((batch_size * num_beams,))
+        this_peer_finished = False  # used by synced_gpus only
+
+        if self.generation_config.static_shapes:
+            beam_trace_scores = torch.zeros((input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.float32)
+            beam_trace_indices = torch.zeros((input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64)
+            beam_trace_tokens = torch.zeros((input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64)
+            beam_trace_idx = torch.tensor(0, device=input_ids.device)
+            num_eos_tokens = torch.zeros((1), device=input_ids.device, dtype=torch.int64)
+            num_beams_tensor = torch.tensor(num_beams, device=input_ids.device, dtype=torch.int64)
+        def finalize_beams(initial_ids, beam_trace, model_config, length_penalty):
+            beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens = beam_trace
+
+            bs = initial_ids.shape[0]
+            num_beams = beam_trace_scores.shape[1] // (2 * bs)
+
+            beam_trace_idx = beam_trace_idx.item()
+            beam_trace_scores = beam_trace_scores[:beam_trace_idx, :]
+            beam_trace_indices = beam_trace_indices[:beam_trace_idx, :]
+            beam_trace_tokens = beam_trace_tokens[:beam_trace_idx, :]
+
+            # (score, parent_beam, token_id, is_finished)
+            root = (float('-inf'), None, None, False)
+
+            def resolve_beam(beam):
+                if beam == root:
+                    return []
+                score, prev, tok, is_finished = beam
+                rest = resolve_beam(prev)
+                rest.append(tok)
+                return rest
+
+            prev_beams = [[root]] * bs
+            best = [root] * bs
+
+            def beam_score(beam):
+                return (beam[3], beam[0])
+
+            for step, (scores, indices, tokens) in enumerate(zip(beam_trace_scores, beam_trace_indices, beam_trace_tokens)):
+                cur_beams = [[] for _ in range(bs)]
+                for idx, (s, i, t) in enumerate(zip(scores, indices, tokens)):
+                    batch = idx // (num_beams * 2)
+                    idx = idx % (num_beams * 2)
+                    b_len = 1 + step
+                    b_score = s.item() / (b_len ** length_penalty)
+                    b_tok = t.item()
+                    is_finished = b_tok == model_config.eos_token_id
+                    if len(cur_beams[batch]) >= num_beams:
+                        continue
+                    beam = (b_score, prev_beams[batch][i], b_tok, is_finished)
+                    if not is_finished:
+                        cur_beams[batch].append(beam)
+                    if is_finished or (step + 1 == beam_trace_idx):
+                        if beam_score(best[batch]) < beam_score(beam):
+                            best[batch] = beam
+                prev_beams = cur_beams
+
+            def expand_if_needed(tensor, new_size, value, dim=-1):
+                orig_len = tensor.shape[dim]
+                padding_len = new_size - orig_len
+                import torch.nn.functional as F
+                if padding_len > 0:
+                    if dim == -1:
+                        return F.pad(tensor, (0, padding_len), value=value)
+                    elif dim == -2:
+                        return F.pad(tensor, (0, 0, 0, padding_len), value=value)
+                    else:
+                        assert False, f'Unsupported dim value: {dim}'
+                return tensor
+
+            result = [torch.cat([initial_ids[i], torch.tensor(resolve_beam(b), dtype=initial_ids.dtype, device=initial_ids.device)]) for i, b in enumerate(best)]
+            max_length = max([t.shape[-1] for t in result])
+            result = [expand_if_needed(res, max_length, model_config.pad_token_id) for res in result]
+            input_ids = torch.stack(result)
+            return input_ids
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
-        this_peer_finished = False  # used by synced_gpus only
+        # self.generation_config.early_stopping = True
+        # self.generation_config.min_length = 16
+        # self.generation_config.early_stopping_interval = 10
         while True:
+            if lazy_mode:
+                self.htcore_generation.mark_step()
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
@@ -1874,6 +1973,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
+            self.iterations = self.iterations + 1
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1896,7 +1996,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_token_logits, dim=-1
             )  # (batch_size * num_beams, vocab_size)
 
-            next_token_scores_processed = logits_processor(input_ids, next_token_scores)
+            next_token_scores_processed = logits_processor(input_ids[:, :token_idx], next_token_scores)
             next_token_scores = next_token_scores_processed + beam_scores[:, None].expand_as(next_token_scores)
 
             # Store scores, attentions and hidden_states when required
@@ -1916,7 +2016,6 @@ class GaudiGenerationMixin(GenerationMixin):
                         if self.config.is_encoder_decoder
                         else (outputs.hidden_states,)
                     )
-
             # reshape for beam search
             vocab_size = next_token_scores.shape[-1]
             next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
@@ -1926,27 +2025,58 @@ class GaudiGenerationMixin(GenerationMixin):
             next_token_scores, next_tokens = torch.topk(
                 next_token_scores, max(2, 1 + n_eos_tokens) * num_beams, dim=1, largest=True, sorted=True
             )
-
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
-            next_tokens = next_tokens % vocab_size
+            if self.generation_config.static_shapes:
 
-            # stateless
-            beam_outputs = beam_scorer.process(
-                input_ids[:, :cur_len],
-                next_token_scores,
-                next_tokens,
-                next_indices,
-                pad_token_id=pad_token_id,
-                eos_token_id=eos_token_id,
-                beam_indices=beam_indices,
-            )
+                beam_scores = next_token_scores.flatten()
+                static_beam_indices =  next_indices.flatten()
 
-            beam_scores = beam_outputs["next_beam_scores"]
-            beam_next_tokens = beam_outputs["next_beam_tokens"]
-            beam_idx = beam_outputs["next_beam_indices"]
+                beam_tokens = next_tokens.remainder(vocab_size).flatten()
+
+                beam_trace_scores.index_copy_(0, beam_trace_idx, beam_scores.unsqueeze(0))
+                beam_trace_indices.index_copy_(0, beam_trace_idx, static_beam_indices.unsqueeze(0))
+                beam_trace_tokens.index_copy_(0, beam_trace_idx, beam_tokens.unsqueeze(0))
+                beam_trace_idx.add_(1)
+
+                if self.generation_config.early_stopping:
+                    num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
+
+                beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float('-inf'), 0.0))
+                beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
+                _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
+                offset = torch.arange(0, torch.numel(beam_scores), beam_scores.shape[-1]).unsqueeze(-1)
+                selected = (selected + offset).flatten()
+                beam_scores = beam_scores.flatten().index_select(0, selected)
+                beam_tokens = beam_tokens.index_select(0, selected)
+                static_beam_indices = static_beam_indices.index_select(0, selected)
+
+                prev_beams = outputs.logits.shape[0] // batch_size
+
+                beam_offsets = torch.arange(0, 1, prev_beams, dtype=torch.int32)
+                beam_offsets = beam_offsets.to(device=outputs.logits.device)
+                static_beam_indices = (static_beam_indices.view(batch_size, -1) + beam_offsets.unsqueeze(-1)).flatten()
+
+                next_tokens = beam_tokens.unsqueeze(-1)
+                beam_next_tokens = next_tokens
+                beam_idx = static_beam_indices
+            else:
+                next_tokens = next_tokens % vocab_size
+                # stateless
+                beam_outputs = beam_scorer.process(
+                    input_ids,
+                    next_token_scores,
+                    next_tokens,
+                    next_indices,
+                    pad_token_id=pad_token_id,
+                    eos_token_id=eos_token_id,
+                    beam_indices=beam_indices,
+                )
+                beam_scores = beam_outputs["next_beam_scores"]
+                beam_next_tokens = beam_outputs["next_beam_tokens"]
+                beam_idx = beam_outputs["next_beam_indices"]
 
             if token_idx is not None:
-                input_ids = input_ids[beam_idx, :]
+                input_ids = torch.index_select(input_ids, 0, beam_idx)
                 input_ids.index_copy_(
                     1, token_idx, beam_next_tokens.unsqueeze(-1) if beam_next_tokens.dim() == 1 else beam_next_tokens
                 )
@@ -1969,23 +2099,53 @@ class GaudiGenerationMixin(GenerationMixin):
             cur_len = cur_len + 1
 
             hb_profer.step()
-            if stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
+            if self.generation_config.static_shapes:
+                is_min_length_reached = self.generation_config.min_length and cur_len > self.generation_config.min_length
+                if self.generation_config.early_stopping and is_min_length_reached and cur_len % self.generation_config.early_stopping_interval == 0 and num_eos_tokens >= num_beams_tensor:
+                    break
+                elif cur_len == self.generation_config.max_length:
+                    break
+            elif stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
                 if not synced_gpus:
                     break
                 else:
                     this_peer_finished = True
         hb_profer.stop()
 
-        sequence_outputs = beam_scorer.finalize(
-            input_ids,
-            beam_scores,
-            next_tokens,
-            next_indices,
-            pad_token_id=pad_token_id,
-            eos_token_id=eos_token_id,
-            max_length=stopping_criteria.max_length,
-            beam_indices=beam_indices,
-        )
+        if self.generation_config.static_shapes:
+            beam_trace =  (beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens)
+            from collections import UserDict
+            def map_tensors(obj, fn):
+                constructor = type(obj)
+                if isinstance(obj, tuple):
+                    return constructor(map_tensors(v, fn) for v in obj)
+                if isinstance(obj, list):
+                    return constructor([map_tensors(v, fn) for v in obj])
+                if isinstance(obj, dict) or isinstance(obj, UserDict):
+                    return constructor({k: map_tensors(v, fn) for k, v in obj.items()})
+                if isinstance(obj, torch.Tensor):
+                    return fn(obj)
+                return obj
+
+
+            def move(obj, device):
+                return map_tensors(obj, lambda t: t.to(device))
+            initial_ids = torch.zeros((batch_size, 1), dtype=torch.int64, device=input_ids.device)
+            sequence_outputs = {}
+            sequence_outputs["sequences"] = finalize_beams(
+            initial_ids.cpu(), move(beam_trace, 'cpu'), self.config, self.generation_config.length_penalty
+            )
+        else:
+            sequence_outputs = beam_scorer.finalize(
+                input_ids,
+                beam_scores,
+                next_tokens,
+                beam_indices,
+                pad_token_id=pad_token_id,
+                eos_token_id=eos_token_id,
+                max_length=stopping_criteria.max_length,
+                beam_indices=beam_indices,
+            )
 
         if return_dict_in_generate:
             if not output_scores:
