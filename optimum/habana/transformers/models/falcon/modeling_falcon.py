@@ -81,13 +81,9 @@ def gaudi_falcon_attention_forward(
 
     batch_size, query_length, _, _ = query_layer.shape
 
-    query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, query_length, self.head_dim)
-    key_layer = key_layer.transpose(1, 2).reshape(
-        batch_size * num_kv_heads,
-        query_length,
-        self.head_dim,
-    )
-    value_layer = value_layer.transpose(1, 2).reshape(batch_size * num_kv_heads, query_length, self.head_dim)
+    query_layer = query_layer.transpose(1, 2).reshape(-1, query_length, self.head_dim)
+    key_layer = key_layer.transpose(1, 2).reshape(-1, query_length, self.head_dim)
+    value_layer = value_layer.transpose(1, 2).reshape(-1, query_length, self.head_dim)
 
     past_kv_length = 0
     seq_len = query_layer.shape[1]
@@ -124,9 +120,9 @@ def gaudi_falcon_attention_forward(
 
     attention_mask_float = (attention_mask * 1.0).masked_fill(attention_mask, float("-1e9")).to(query_layer.dtype)
 
-    query_layer_ = query_layer.reshape(batch_size, self.num_heads, -1, self.head_dim)
-    key_layer_ = key_layer.reshape(batch_size, num_kv_heads, -1, self.head_dim)
-    value_layer_ = value_layer.reshape(batch_size, num_kv_heads, -1, self.head_dim)
+    query_layer_ = query_layer.reshape(batch_size, -1, query_length, self.head_dim)
+    key_layer_ = key_layer.reshape(batch_size, -1, seq_len, self.head_dim)
+    value_layer_ = value_layer.reshape(batch_size, -1, seq_len, self.head_dim)
 
     if alibi is None:
         if output_attentions:
@@ -151,9 +147,9 @@ def gaudi_falcon_attention_forward(
                 htcore.mark_step()
             attention_scores = None
 
-        attn_output = attn_output.view(batch_size, self.num_heads, query_length, self.head_dim)
+        attn_output = attn_output.view(batch_size, -1, query_length, self.head_dim)
         attn_output = attn_output.permute(0, 2, 1, 3)
-        attn_output = attn_output.reshape(batch_size, query_length, self.num_heads * self.head_dim)
+        attn_output = attn_output.reshape(batch_size, query_length, -1)
 
         output_tensor = self.dense(attn_output)
 
@@ -278,7 +274,7 @@ def gaudi_falcon_attention_split_heads(
     """
     if self.new_decoder_architecture:
         batch, seq_len, _ = fused_qkv.shape
-        qkv = fused_qkv.view(batch, seq_len, -1, self.num_heads // self.num_kv_heads + 2, self.head_dim)
+        qkv = fused_qkv.view(batch, seq_len, self.num_kv_heads, -1, self.head_dim)
         # query = qkv[:, :, :, :-2]
         # key = qkv[:, :, :, [-2]]
         # value = qkv[:, :, :, [-1]]
