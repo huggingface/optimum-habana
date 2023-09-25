@@ -31,9 +31,9 @@ except ImportError:
 
 def update(prev, cur, dim, idx):
     orig_cur = cur
-    if prev.shape == cur.shape:
+    if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
-        prev.copy_(cur)
+        prev[:,:,:idx,:].copy_(cur)
         return orig_cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
@@ -90,8 +90,8 @@ class GaudiLlamaAttention(LlamaAttention):
         if self.past_key is None or self.past_key.shape != key_shape:
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
-            self.past_key = torch.empty(key_shape, dtype=dtype, device=device)
-            self.past_value = torch.empty(value_shape, dtype=dtype, device=device)
+            self.past_key = torch.zeros(key_shape, dtype=dtype, device=device)
+            self.past_value = torch.zeros(value_shape, dtype=dtype, device=device)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -181,7 +181,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if use_cache:
             if reuse_cache:
-                past_key_value = (key_states.shape, value_states.shape)
+                past_key_value = (self.past_key.shape, self.past_value.shape)
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
@@ -548,11 +548,16 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
+        reuse_cache = kwargs.get("reuse_cache")
         if past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
                 input_ids = input_ids[:, -1:]
+        elif reuse_cache and token_idx is not None:
+            # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass 
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
@@ -580,7 +585,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "token_idx": token_idx,
                 "trim_logits": kwargs.get("trim_logits"),
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
-                "reuse_cache": kwargs.get("reuse_cache"),
+                "reuse_cache": reuse_cache,
             }
         )
         return model_inputs
