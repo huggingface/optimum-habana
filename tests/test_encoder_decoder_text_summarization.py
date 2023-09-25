@@ -6,21 +6,19 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from .test_examples import TIME_PERF_FACTOR
+from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
 MODELS_TO_TEST = {
     "bf16": [
-        ("facebook/bart-large-cnn", 6.643, 32.399, 2, 1),
+        ("facebook/bart-large-cnn", "Habana/bart", 5.439, 32.399, 2, 1),
     ],
-    # "deepspeed": [
-    #     ("bigscience/bloomz-7b1", 27.34439410425298),
-    # ],
 }
 
 
 def _test_text_summarization(
     model_name: str,
+    gaudi_config: str,
     baseline: float,
     baseline_acc: float,
     batch_size: int,
@@ -48,7 +46,7 @@ def _test_text_summarization(
         "--dataset_config 3.0.0",
         "--use_habana",
         f"--per_device_eval_batch_size {batch_size}",
-        "--gaudi_config_name Habana/bart",
+        f"--gaudi_config_name {gaudi_config}",
         f"--generation_num_beams {num_beams}",
         "--ignore_pad_token_for_loss False",
         "--pad_to_max_length",
@@ -85,12 +83,19 @@ def _test_text_summarization(
 
         # Ensure performance requirements (throughput) are met
         assert results["predict_samples_per_second"] >= (2 - TIME_PERF_FACTOR) * baseline
+        assert results["predict_samples_per_second"] >= ACCURACY_PERF_FACTOR * baseline
 
-        assert results["predict_rougeLsum"] >= (2 - TIME_PERF_FACTOR) * baseline
 
-
-@pytest.mark.parametrize("model_name, baseline, baseline_acc, batch_size, num_beams", MODELS_TO_TEST["bf16"])
+@pytest.mark.parametrize(
+    "model_name, gaudi_config, baseline, baseline_acc, batch_size, num_beams", MODELS_TO_TEST["bf16"]
+)
 def test_text_summarization_bf16(
-    model_name: str, baseline: float, baseline_acc: float, batch_size: int, num_beams: int, token: str
+    model_name: str,
+    gaudi_config: str,
+    baseline: float,
+    baseline_acc: float,
+    batch_size: int,
+    num_beams: int,
+    token: str,
 ):
-    _test_text_summarization(model_name, baseline, baseline_acc, batch_size, num_beams, token)
+    _test_text_summarization(model_name, gaudi_config, baseline, baseline_acc, batch_size, num_beams, token)
