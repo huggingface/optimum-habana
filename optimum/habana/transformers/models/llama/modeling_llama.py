@@ -92,6 +92,9 @@ class GaudiLlamaAttention(LlamaAttention):
             dtype = self.k_proj.weight.dtype
             self.past_key = torch.zeros(key_shape, dtype=dtype, device=device)
             self.past_value = torch.zeros(value_shape, dtype=dtype, device=device)
+        else:
+            self.past_key.fill_(0)
+            self.past_value.fill_(0)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
