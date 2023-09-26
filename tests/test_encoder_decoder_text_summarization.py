@@ -83,7 +83,7 @@ def _test_text_summarization(
 
         # Ensure performance requirements (throughput) are met
         assert results["predict_samples_per_second"] >= (2 - TIME_PERF_FACTOR) * baseline
-        assert results["predict_samples_per_second"] >= ACCURACY_PERF_FACTOR * baseline_acc
+        assert results["predict_rougeLsum"] >= ACCURACY_PERF_FACTOR * baseline_acc
 
 
 @pytest.mark.parametrize(
