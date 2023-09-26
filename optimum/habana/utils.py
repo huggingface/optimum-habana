@@ -235,7 +235,14 @@ class HabanaProfile(object):
 
     HABANA_PROFILE_ENABLED = True
 
-    def __init__(self, warmup: int = 0, active: int = 0, output_dir: str = "./hpu_profile", wait: int = 0):
+    def __init__(
+        self,
+        warmup: int = 0,
+        active: int = 0,
+        record_shapes: bool = True,
+        output_dir: str = "./hpu_profile",
+        wait: int = 0,
+    ):
         if active <= 0 or warmup <= 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
 
             def noop():
@@ -253,7 +260,7 @@ class HabanaProfile(object):
                 schedule=schedule,
                 activities=activities,
                 on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
-                record_shapes=True,
+                record_shapes=record_shapes,
                 with_stack=True,
             )
             self.start = profiler.start
