@@ -184,12 +184,12 @@ def main():
         help="Output directory to store results in.",
     )
     parser.add_argument(
-        "--bucketsize",
+        "--bucket_size",
         default=-1,
         type=int,
         help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
-            then we use shape = prompt_length + max_new_tokens. If a positive number is passed \
-            we increate the bucket in steps of bucketsize instead of allocating to max (prompt_length + max_new_tokens)",
+            then we use `shape = prompt_length + max_new_tokens`. If a positive number is passed \
+            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`)",
     )
     parser.add_argument(
         "--dataset_max_elems",
@@ -393,7 +393,7 @@ def main():
     generation_config.max_new_tokens = args.max_new_tokens
     generation_config.use_cache = args.use_kv_cache
     generation_config.static_shapes = is_optimized
-    generation_config.bucketsize = args.bucketsize if is_optimized else -1
+    generation_config.bucket_size = args.bucket_size if is_optimized else -1
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
     generation_config.bad_words_ids = bad_words_ids
@@ -569,7 +569,7 @@ def main():
         if prompt_length <= 0:
             # Todo please check if this collate function is suitable for your model
             # This has been tested for OPT, and Bloom
-            assert 'GaudiOPTForCausalLM' in str(type(model)) or 'GaudiBloomForCausalLM' in str(type(model))
+            assert model.config.model_type in ["opt", "bloom"]
             def collate_fn(data):
                 collect = {k:[dt[k] for dt in data] for k in data[0]}
                 result = {}

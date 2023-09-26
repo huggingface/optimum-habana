@@ -22,7 +22,11 @@ class GaudiGenerationConfig(GenerationConfig):
     limit_hpu_graphs (`bool`, *optional*):
         Skip HPU Graph usage for first token to save memory
     reuse_cache (`bool`, *optional*):
-         Whether to reuse key/value cache for decoding. It should save memory.
+        Whether to reuse key/value cache for decoding. It should save memory.
+    bucket_size (`bool`, *optional*):
+        If negative (default=-1) pad to max if `static_shapes` is set. Else start with
+        `shape = bucket_size * ceil(prompt_len/bucket_size)` and then grow space by `bucket_size` when needed
+        Only active if `static_shapes` is used. Can't be used with `reuse_cache`
     """
 
     def __init__(self, **kwargs):
@@ -31,6 +35,6 @@ class GaudiGenerationConfig(GenerationConfig):
         self.static_shapes = kwargs.get("static_shapes", None)
         self.ignore_eos = kwargs.get("ignore_eos", None)
         self.attn_softmax_bf16 = kwargs.get("attn_softmax_bf16", None)
-        self.bucketsize = kwargs.get("bucketsize", -1)
         self.limit_hpu_graphs = kwargs.get("limit_hpu_graphs", None)
         self.reuse_cache = kwargs.get("reuse_cache", None)
+        self.bucket_size = kwargs.get("bucket_size", -1)
