@@ -321,9 +321,9 @@ python run_clm.py \
 
 ## PEFT
 
-To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with Llamav1-7B and Falcon-40B:
+To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with Llama1-7B and Falcon-40B:
 
-Single-card finetuning:
+- Single-card finetunin of Llam1-7B:
 ```bash
 python3 run_lora_clm.py \
     --model_name_or_path huggyllama/llama-7b \
@@ -332,7 +332,6 @@ python3 run_lora_clm.py \
     --output_dir ./model_lora_llama \
     --num_train_epochs 3 \
     --per_device_train_batch_size 16 \
-    --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --max_steps 2418 \
@@ -355,6 +354,8 @@ python3 run_lora_clm.py \
     --low_cpu_mem_usage True \
     --adam_epsilon 1e-08
 ```
+
+- Single-card finetuning of Falcon-40B:
 ```bash
 LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --model_name_or_path tiiuae/falcon-40b \
@@ -391,7 +392,7 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --do_eval
 ```
 
-Multi-card finetuning:
+- Multi-card finetuning of Llama-7B:
 ```bash
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
@@ -425,6 +426,7 @@ python ../gaudi_spawn.py \
     --adam_epsilon 1e-08
     --low_cpu_mem_usage True
 ```
+- Multi-card finetuning of Falcon-40B:
 ```bash
 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \

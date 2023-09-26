@@ -16,11 +16,7 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
-try:
-    import habana_frameworks.torch.core as htcore
-except ImportError:
-    print("Import htcore failed")
-    htcore = None
+import habana_frameworks.torch.core as htcore
 
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
