@@ -323,7 +323,7 @@ python run_clm.py \
 
 To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with Llama1-7B and Falcon-40B:
 
-- Single-card finetunin of Llam1-7B:
+- Single-card finetuning of Llama1-7B:
 ```bash
 python3 run_lora_clm.py \
     --model_name_or_path huggyllama/llama-7b \
