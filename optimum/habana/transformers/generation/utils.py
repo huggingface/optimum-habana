@@ -437,7 +437,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.static_shapes is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
         if generation_config.ignore_eos is None:
-            generation_config.ignore_eos = not lazy_mode if self.config.is_encoder_decoder else lazy_mode
+            generation_config.ignore_eos = lazy_mode
         generation_config.validate()
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
         self._validate_model_kwargs(model_kwargs.copy())
@@ -570,15 +570,19 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             generation_config.max_length = generation_config.max_new_tokens + input_ids_length
         self._validate_generated_length(generation_config, input_ids_length, has_default_max_length)
+
         # determine whether introduce trim_logits feature
         model_kwargs["trim_logits"] = generation_config.trim_logits
+
         # determine whether attention softmax needs to execute in lower precision
         model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
+
         # determine whether limit_hpu_graphs needs to be used
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
         # prepare for allocate kv cache
         model_kwargs["reuse_cache"] = generation_config.reuse_cache
+
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[-1]
             if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
@@ -1079,7 +1083,7 @@ class GaudiGenerationMixin(GenerationMixin):
         synced_gpus: bool = False,
         streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
-        ignore_eos: Optional[bool] = None,
+        ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         **model_kwargs,
@@ -1130,7 +1134,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            ignore_eos (`bool`, *optional*):
+            ignore_eos (`bool`, *optional*, defaults to `False`):
                 Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
             profiling_warmup_steps (`int`, *optional*, defaults to 0):
                 Number of steps to ignore for profling.
@@ -1449,7 +1453,7 @@ class GaudiGenerationMixin(GenerationMixin):
         synced_gpus: bool = False,
         streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
-        ignore_eos: Optional[bool] = None,
+        ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         **model_kwargs,
@@ -1503,7 +1507,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
-            ignore_eos (`bool`, *optional*):
+            ignore_eos (`bool`, *optional*, defaults to `False`):
                 Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
             profiling_warmup_steps (`int`, *optional*, defaults to 0):
                 Number of steps to ignore for profling.

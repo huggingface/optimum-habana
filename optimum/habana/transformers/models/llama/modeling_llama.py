@@ -1,4 +1,5 @@
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -30,9 +31,9 @@ except ImportError:
 
 def update(prev, cur, dim, idx):
     orig_cur = cur
-    if prev.shape == cur.shape:
+    if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
-        prev.copy_(cur)
+        prev[:, :, :idx, :].copy_(cur)
         return orig_cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
@@ -82,13 +83,18 @@ class GaudiLlamaAttention(LlamaAttention):
         self.past_value = None
 
     def allocate_kv_cache(self, batch_size, seq_len):
-        key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
+        # TODO: update when auto mp params is enabled in DeepSpeed (cf. https://github.com/HabanaAI/DeepSpeed/blob/94309c7b5dfc1a69858f5c9f25737b2f81a332a5/deepspeed/module_inject/replace_module.py#L440)
+        tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
+        key_shape = (batch_size, self.num_key_value_heads // tp_world_size, seq_len, self.head_dim)
+        value_shape = (batch_size, self.num_key_value_heads // tp_world_size, seq_len, self.head_dim)
         if self.past_key is None or self.past_key.shape != key_shape:
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
-            self.past_key = torch.empty(key_shape, dtype=dtype, device=device)
-            self.past_value = torch.empty(value_shape, dtype=dtype, device=device)
+            self.past_key = torch.zeros(key_shape, dtype=dtype, device=device)
+            self.past_value = torch.zeros(value_shape, dtype=dtype, device=device)
+        else:
+            self.past_key.fill_(0)
+            self.past_value.fill_(0)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -178,7 +184,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if use_cache:
             if reuse_cache:
-                past_key_value = (key_states.contiguous().shape, value_states.contiguous().shape)
+                past_key_value = (self.past_key.shape, self.past_value.shape)
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
@@ -545,11 +551,16 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
+        reuse_cache = kwargs.get("reuse_cache")
         if past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
                 input_ids = input_ids[:, -1:]
+        elif reuse_cache and token_idx is not None:
+            # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
@@ -577,7 +588,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "token_idx": token_idx,
                 "trim_logits": kwargs.get("trim_logits"),
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
-                "reuse_cache": kwargs.get("reuse_cache"),
+                "reuse_cache": reuse_cache,
             }
         )
         return model_inputs
