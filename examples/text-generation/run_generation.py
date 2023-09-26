@@ -65,6 +65,12 @@ def main():
         help="Whether to perform generation in bf16 precision.",
     )
     parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
+    parser.add_argument(
+        "--max_input_tokens",
+        type=int,
+        default=0,
+        help="If > 0 then pad and truncate the input sequences to this specified length of tokens.",
+    )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
@@ -202,6 +208,8 @@ def main():
 
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
+        args.reuse_cache = False
+
     # Device is HPU
     args.device = "hpu"
     import habana_frameworks.torch.hpu as torch_hpu
@@ -411,7 +419,16 @@ def main():
             """Generates sequences from the input sentences and returns them."""
 
             # Tokenization
-            input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+            if args.max_input_tokens > 0:
+                input_tokens = tokenizer.batch_encode_plus(
+                    input_sentences,
+                    return_tensors="pt",
+                    padding="max_length",
+                    max_length=args.max_input_tokens,
+                    truncation=True,
+                )
+            else:
+                input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
 
             # Move inputs to target device(s)
             for t in input_tokens:
@@ -519,8 +536,8 @@ def main():
         # Remove unused columns
         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
 
-        # Set the prompt length to 16
-        prompt_length = 16
+        # Set the prompt length to args.max_input_tokens if > 0 else default to 16
+        prompt_length = args.max_input_tokens if args.max_input_tokens > 0 else 16
 
         def preprocess_function(examples):
             # Tokenize the texts
