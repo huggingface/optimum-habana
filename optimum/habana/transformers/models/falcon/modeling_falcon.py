@@ -17,7 +17,6 @@ except ImportError:
     FusedRoPE = None
 
 import habana_frameworks.torch.core as htcore
-
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import (
