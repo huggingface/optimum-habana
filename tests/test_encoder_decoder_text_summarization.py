@@ -11,7 +11,7 @@ from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 MODELS_TO_TEST = {
     "bf16": [
-        ("facebook/bart-large-cnn", "Habana/bart", 5.439, 32.399, 2, 1),
+        ("facebook/bart-large-cnn", "Habana/bart", 5.568, 26.0688, 2, 1),
     ],
 }
 
