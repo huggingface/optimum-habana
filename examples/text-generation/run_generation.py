@@ -195,7 +195,7 @@ def main():
         "--dataset_max_elems",
         default=-1,
         type=int,
-        help="If negative number is passed (default = -1) perform inference on whole dataset, else use only dataset_max_elems elements"
+        help="If negative number is passed (default = -1) perform inference on whole dataset, else use only dataset_max_elems elements",
     )
     parser.add_argument(
         "--limit_hpu_graphs",
@@ -533,7 +533,11 @@ def main():
             split = "validation"
         else:
             split = "train"
-        raw_dataset = raw_dataset[split].shuffle().select(range(args.dataset_max_elems if args.dataset_max_elems > 0 else (raw_dataset[split]).num_rows))
+        raw_dataset = (
+            raw_dataset[split]
+            .shuffle()
+            .select(range(args.dataset_max_elems if args.dataset_max_elems > 0 else (raw_dataset[split]).num_rows))
+        )
 
         if args.column_name is None:
             # If no column name is given, take the first column that has strings
@@ -555,7 +559,12 @@ def main():
 
         def preprocess_function(examples):
             # Tokenize the texts
-            return tokenizer(examples[column_name], padding="max_length", max_length=prompt_length if prompt_length>0 else None, truncation=prompt_length>0)
+            return tokenizer(
+                examples[column_name],
+                padding="max_length",
+                max_length=prompt_length if prompt_length > 0 else None,
+                truncation=prompt_length > 0,
+            )
 
         raw_dataset = raw_dataset.map(
             preprocess_function,
@@ -570,14 +579,18 @@ def main():
             # Todo please check if this collate function is suitable for your model
             # This has been tested for OPT, and Bloom
             assert model.config.model_type in ["opt", "bloom"]
+
             def collate_fn(data):
-                collect = {k:[dt[k] for dt in data] for k in data[0]}
+                collect = {k: [dt[k] for dt in data] for k in data[0]}
                 result = {}
                 for k in collect:
                     tensors = collect[k]
                     max_shape = max([item.shape[0] for item in tensors])
-                    result[k] = torch.stack([torch.cat((torch.zeros(max_shape - t.shape[0], dtype=t.dtype), t)) for t in tensors], 0)
+                    result[k] = torch.stack(
+                        [torch.cat((torch.zeros(max_shape - t.shape[0], dtype=t.dtype), t)) for t in tensors], 0
+                    )
                 return result
+
         else:
             collate_fn = None
 
@@ -601,18 +614,19 @@ def main():
             return prompt, outputs
 
         # warmup
-        if prompt_length>0:
+        if prompt_length > 0:
             from optimum.habana.utils import HabanaProfile
+
             # compilation stage disable profiling
             HabanaProfile.disable()
             # Compilation
             if rank in [-1, 0]:
                 logger.info("Graph compilation...")
             t0 = time.perf_counter()
-            for i,batch in enumerate(dataloader):
+            for i, batch in enumerate(dataloader):
                 generate_dataset(batch)
                 # The first three iterations take longer because of graph compilation
-                if (i+1)==3:
+                if (i + 1) == 3:
                     break
             torch_hpu.synchronize()
             compilation_duration = time.perf_counter() - t0
@@ -628,13 +642,13 @@ def main():
             prompt, outputs = generate_dataset(batch)
             duration += time.perf_counter() - t0
             total_new_tokens_generated += args.batch_size * args.max_new_tokens
-            if rank in [-1,0]:
+            if rank in [-1, 0]:
                 print(separator)
                 print(f"Batch n°{i+1}")
                 print(f"Input: {prompt[:args.batch_size]}")
                 print(
-                        f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
-                    )
+                    f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+                )
                 print(separator)
         t_end = time.time()
 
@@ -642,17 +656,18 @@ def main():
         # Print Stats
         if rank in [-1, 0]:
             from optimum.habana.utils import get_hpu_memory_stats
+
             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
             separator = "-" * len(stats)
             print()
             print("Stats:")
             print(separator)
             print(stats)
-            print('Total runtime for dataset:', t_end-t_start)
+            print("Total runtime for dataset:", t_end - t_start)
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-            if prompt_length>0:
+            if prompt_length > 0:
                 print(f"Graph compilation duration          = {compilation_duration} seconds")
             print(separator)
 
