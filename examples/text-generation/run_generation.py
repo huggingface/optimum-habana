@@ -193,7 +193,7 @@ def main():
     )
     parser.add_argument(
         "--dataset_max_elems",
-        default=16,
+        default=-1,
         type=int,
         help="If negative number is passed (default = -1) perform inference on whole dataset, else use only dataset_max_elems elements"
     )
