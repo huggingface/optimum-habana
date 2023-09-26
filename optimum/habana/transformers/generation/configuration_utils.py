@@ -27,9 +27,9 @@ class GaudiGenerationConfig(GenerationConfig):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.trim_logits = kwargs.get("trim_logits", False)
-        self.static_shapes = kwargs.get("static_shapes", False)
-        self.ignore_eos = kwargs.get("ignore_eos", False)
-        self.attn_softmax_bf16 = kwargs.get("attn_softmax_bf16", False)
-        self.limit_hpu_graphs = kwargs.get("limit_hpu_graphs", False)
-        self.reuse_cache = kwargs.get("reuse_cache", False)
+        self.trim_logits = kwargs.get("trim_logits", None)
+        self.static_shapes = kwargs.get("static_shapes", None)
+        self.ignore_eos = kwargs.get("ignore_eos", None)
+        self.attn_softmax_bf16 = kwargs.get("attn_softmax_bf16", None)
+        self.limit_hpu_graphs = kwargs.get("limit_hpu_graphs", None)
+        self.reuse_cache = kwargs.get("reuse_cache", None)

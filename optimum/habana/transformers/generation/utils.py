@@ -434,9 +434,9 @@ class GaudiGenerationMixin(GenerationMixin):
             generation_config = self.generation_config
 
         generation_config = copy.deepcopy(generation_config)
-        if not generation_config.static_shapes:
+        if generation_config.static_shapes is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
-        if not generation_config.ignore_eos:
+        if generation_config.ignore_eos is None:
             generation_config.ignore_eos = lazy_mode
         generation_config.validate()
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
