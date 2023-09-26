@@ -392,7 +392,7 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --do_eval
 ```
 
-- Multi-card finetuning of Llama-7B:
+- Multi-card finetuning of Llama1-7B:
 ```bash
 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_lora_clm.py \
