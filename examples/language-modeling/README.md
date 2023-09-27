@@ -333,9 +333,7 @@ python3 run_lora_clm.py \
     --num_train_epochs 3 \
     --per_device_train_batch_size 16 \
     --evaluation_strategy "no" \
-    --save_strategy "steps" \
-    --max_steps 2418 \
-    --save_total_limit 1 \
+    --save_strategy "no" \
     --learning_rate 1e-4 \
     --warmup_ratio  0.03 \
     --lr_scheduler_type "constant" \
@@ -367,9 +365,7 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
     --evaluation_strategy "no" \
-    --save_strategy "steps" \
-    --save_steps 1566 \
-    --save_total_limit 1 \
+    --save_strategy "no" \
     --learning_rate 3e-4 \
     --max_grad_norm  0.3 \
     --warmup_ratio  0.03 \
@@ -404,9 +400,7 @@ python ../gaudi_spawn.py \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 2 \
     --evaluation_strategy "no" \
-    --save_strategy "steps" \
-    --save_steps 303 \
-    --save_total_limit 1 \
+    --save_strategy "no" \
     --learning_rate 3e-4 \
     --warmup_ratio  0.03 \
     --lr_scheduler_type "constant" \
@@ -439,9 +433,7 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
     --evaluation_strategy "no" \
-    --save_strategy "steps" \
-    --save_steps 195 \
-    --save_total_limit 1 \
+    --save_strategy "no" \
     --learning_rate 4e-4 \
     --max_grad_norm  0.3 \
     --warmup_ratio  0.03 \

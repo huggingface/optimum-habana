@@ -118,7 +118,7 @@ class ModelArguments:
         metadata={
             "help": (
                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded."
-                "set True will benefit LLM loading time and RAM consumption."
+                "When set to True, it will benefit LLM loading time and RAM consumption."
             )
         },
     )
