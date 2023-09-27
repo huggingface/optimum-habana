@@ -96,6 +96,7 @@ class GaudiAccelerator(Accelerator):
         step_scheduler_with_optimizer: bool = True,
         kwargs_handlers: list[KwargsHandler] | None = None,
         dynamo_backend: DynamoBackend | str | None = None,
+        distribution_strategy: str = None,
     ):
         if project_config is not None:
             self.project_configuration = project_config
@@ -241,6 +242,8 @@ class GaudiAccelerator(Accelerator):
         # Set a flag tensor for early stopping and other breakpoints
         self.flag_tensor = None
 
+        self._distribution_strategy = distribution_strategy
+
     @property
     def use_fp16(self):
         raise ValueError("fp16 is not supported on Habana Gaudi.")
@@ -354,7 +357,7 @@ class GaudiAccelerator(Accelerator):
         #         )
         #     model.forward = fp8_autocast(enabled=fp8_enabled, fp8_recipe=fp8_recipe)(model.forward)
         if not evaluation_mode:
-            if self.distributed_type == GaudiDistributedType.MULTI_HPU:
+            if self.distributed_type == GaudiDistributedType.MULTI_HPU and self._distribution_strategy != "fast_ddp":
                 if any(p.requires_grad for p in model.parameters()):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
