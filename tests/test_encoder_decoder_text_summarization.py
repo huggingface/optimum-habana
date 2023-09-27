@@ -11,12 +11,14 @@ from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
 if os.environ.get("GAUDI2_CI", "false") == "true":
+    # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
             ("facebook/bart-large-cnn", "Habana/bart", 5.568, 26.0688, 2, 1),
         ],
     }
 else:
+    # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
             ("facebook/bart-large-cnn", "Habana/bart", 2.612, 26.3777, 2, 1),
