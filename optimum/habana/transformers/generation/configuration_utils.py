@@ -26,7 +26,7 @@ class GaudiGenerationConfig(GenerationConfig):
     bucket_size (`int`, *optional*):
         If negative (default=-1) pad to max if `static_shapes` is set. Else start with
         `shape = bucket_size * ceil(prompt_len/bucket_size)` and then grow space by `bucket_size` when needed.
-        Only active if `static_shapes` is used. Can't be used with `reuse_cache`
+        Only active if `static_shapes` is used. Can't be used with `reuse_cache`.
     """
 
     def __init__(self, **kwargs):
