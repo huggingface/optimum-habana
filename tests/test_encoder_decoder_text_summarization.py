@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -9,11 +10,18 @@ import pytest
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
-MODELS_TO_TEST = {
-    "bf16": [
-        ("facebook/bart-large-cnn", "Habana/bart", 5.568, 26.0688, 2, 1),
-    ],
-}
+if os.environ.get("GAUDI2_CI", "false") == "true":
+    MODELS_TO_TEST = {
+        "bf16": [
+            ("facebook/bart-large-cnn", "Habana/bart", 5.568, 26.0688, 2, 1),
+        ],
+    }
+else:
+    MODELS_TO_TEST = {
+        "bf16": [
+            ("facebook/bart-large-cnn", "Habana/bart", 2.612, 26.3777, 2, 1),
+        ],
+    }
 
 
 def _test_text_summarization(
@@ -27,8 +35,15 @@ def _test_text_summarization(
     deepspeed: bool = False,
     world_size: int = 8,
 ):
-    command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
+
+    # Install summarization example requirements
+    cmd_line = f"pip install -r {path_to_example_dir / 'summarization' / 'requirements.txt'}".split()
+    p = subprocess.Popen(cmd_line)
+    return_code = p.wait()
+    assert return_code == 0
+
+    command = ["python3"]
 
     if deepspeed:
         command += [

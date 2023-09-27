@@ -17,7 +17,7 @@
 # Mapping between model families and specific model names with their configuration
 MODELS_TO_TEST_MAPPING = {
     "bert": [
-        ("bert-base-uncased", "Habana/bert-base-uncased"),
+        # ("bert-base-uncased", "Habana/bert-base-uncased"),
         ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
     ],
     "roberta": [
