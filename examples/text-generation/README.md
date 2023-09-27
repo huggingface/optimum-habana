@@ -149,3 +149,20 @@ python run_generation.py \
 --prompt "Here is my prompt" \
 --peft_model trl-lib/llama-7b-se-rm-peft
 ```
+
+### Using growing bucket optimization
+With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
+
+> For now, it is available only for greedy generation, and cannot be used with `--reuse_cache`.
+
+Here is an example:
+```bash
+python run_generation.py \
+--model_name_or_path path_to_model    \
+--use_hpu_graphs \
+--use_kv_cache \
+--bf16 \
+--max_new_tokens 200 \
+--batch_size=2 \
+--bucket_size 50
+```

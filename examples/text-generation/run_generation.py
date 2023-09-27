@@ -123,7 +123,7 @@ def main():
         "--profiling_warmup_steps",
         default=0,
         type=int,
-        help="Number of steps to ignore for profling.",
+        help="Number of steps to ignore for profiling.",
     )
     parser.add_argument(
         "--profiling_steps",
@@ -182,6 +182,20 @@ def main():
         default=None,
         type=str,
         help="Output directory to store results in.",
+    )
+    parser.add_argument(
+        "--bucket_size",
+        default=-1,
+        type=int,
+        help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
+            then we use `shape = prompt_length + max_new_tokens`. If a positive number is passed \
+            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
+    )
+    parser.add_argument(
+        "--dataset_max_samples",
+        default=-1,
+        type=int,
+        help="If a negative number is passed (default = -1) perform inference on the whole dataset, else use only `dataset_max_samples` samples.",
     )
     parser.add_argument(
         "--limit_hpu_graphs",
@@ -379,6 +393,7 @@ def main():
     generation_config.max_new_tokens = args.max_new_tokens
     generation_config.use_cache = args.use_kv_cache
     generation_config.static_shapes = is_optimized
+    generation_config.bucket_size = args.bucket_size if is_optimized else -1
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
     generation_config.bad_words_ids = bad_words_ids
@@ -503,8 +518,7 @@ def main():
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-            if args.use_hpu_graphs:
-                print(f"Graph compilation duration          = {compilation_duration} seconds")
+            print(f"Graph compilation duration          = {compilation_duration} seconds")
             print(separator)
             print()
     else:
@@ -519,7 +533,11 @@ def main():
             split = "validation"
         else:
             split = "train"
-        raw_dataset = raw_dataset[split]
+        raw_dataset = (
+            raw_dataset[split]
+            .shuffle()
+            .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
+        )
 
         if args.column_name is None:
             # If no column name is given, take the first column that has strings
@@ -541,7 +559,12 @@ def main():
 
         def preprocess_function(examples):
             # Tokenize the texts
-            return tokenizer(examples[column_name], padding="max_length", max_length=prompt_length, truncation=True)
+            return tokenizer(
+                examples[column_name],
+                padding="max_length",
+                max_length=prompt_length if prompt_length > 0 else None,
+                truncation=prompt_length > 0,
+            )
 
         raw_dataset = raw_dataset.map(
             preprocess_function,
@@ -552,19 +575,33 @@ def main():
         raw_dataset = raw_dataset.remove_columns([column_name])
         raw_dataset.set_format(type="torch")
 
-        separator = None
+        if prompt_length <= 0:
+            # Todo please check if this collate function is suitable for your model
+            # This has been tested for OPT, and Bloom
+            assert model.config.model_type in ["opt", "bloom"]
 
-        logger.info("Running generation...")
+            def collate_fn(data):
+                collect = {k: [dt[k] for dt in data] for k in data[0]}
+                result = {}
+                for k in collect:
+                    tensors = collect[k]
+                    max_shape = max([item.shape[0] for item in tensors])
+                    result[k] = torch.stack(
+                        [torch.cat((torch.zeros(max_shape - t.shape[0], dtype=t.dtype), t)) for t in tensors], 0
+                    )
+                return result
 
-        dataloader = DataLoader(raw_dataset, batch_size=args.batch_size)
-        for i, batch in enumerate(dataloader):
+        else:
+            collate_fn = None
+
+        dataloader = DataLoader(raw_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
+
+        def generate_dataset(batch):
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
-
             # Move inputs to target device(s)
             for t in batch:
                 if torch.is_tensor(batch[t]):
                     batch[t] = batch[t].to(args.device)
-
             # Generate new sequences
             outputs = model.generate(
                 **batch,
@@ -574,10 +611,37 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
+            return prompt, outputs
 
-            # Print outputs
-            if separator is None:
-                separator = "-" * len(prompt[0])
+        # warmup
+        if prompt_length > 0:
+            from optimum.habana.utils import HabanaProfile
+
+            # compilation stage disable profiling
+            HabanaProfile.disable()
+            # Compilation
+            if rank in [-1, 0]:
+                logger.info("Graph compilation...")
+            t0 = time.perf_counter()
+            for i, batch in enumerate(dataloader):
+                generate_dataset(batch)
+                # The first three iterations take longer because of graph compilation
+                if (i + 1) == 3:
+                    break
+            torch_hpu.synchronize()
+            compilation_duration = time.perf_counter() - t0
+            HabanaProfile.enable()
+
+        total_new_tokens_generated = 0
+        duration = 0
+        separator = "-" * 50
+        logger.info("Running generate dataset...")
+        t_start = time.time()
+        for i, batch in enumerate(dataloader):
+            t0 = time.perf_counter()
+            prompt, outputs = generate_dataset(batch)
+            duration += time.perf_counter() - t0
+            total_new_tokens_generated += args.batch_size * args.max_new_tokens
             if rank in [-1, 0]:
                 print(separator)
                 print(f"Batch n°{i+1}")
@@ -585,6 +649,27 @@ def main():
                 print(
                     f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
                 )
+                print(separator)
+        t_end = time.time()
+
+        throughput = total_new_tokens_generated / duration
+        # Print Stats
+        if rank in [-1, 0]:
+            from optimum.habana.utils import get_hpu_memory_stats
+
+            stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+            separator = "-" * len(stats)
+            print()
+            print("Stats:")
+            print(separator)
+            print(stats)
+            print("Total runtime for dataset:", t_end - t_start)
+            mem = get_hpu_memory_stats()
+            for k, v in mem.items():
+                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+            if prompt_length > 0:
+                print(f"Graph compilation duration          = {compilation_duration} seconds")
+            print(separator)
 
 
 if __name__ == "__main__":
