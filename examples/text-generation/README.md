@@ -83,6 +83,8 @@ Here are a few settings you may be interested in:
 - `--prompt` to benchmark the model on a prompt of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 
+> You can run `python run_generation.py --help` to get the list of all available arguments and their description.
+
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \

@@ -189,13 +189,13 @@ def main():
         type=int,
         help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
             then we use `shape = prompt_length + max_new_tokens`. If a positive number is passed \
-            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`)",
+            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
     )
     parser.add_argument(
-        "--dataset_max_elems",
+        "--dataset_max_samples",
         default=-1,
         type=int,
-        help="If negative number is passed (default = -1) perform inference on whole dataset, else use only dataset_max_elems elements",
+        help="If a negative number is passed (default = -1) perform inference on the whole dataset, else use only `dataset_max_samples` samples.",
     )
     parser.add_argument(
         "--limit_hpu_graphs",
@@ -536,7 +536,7 @@ def main():
         raw_dataset = (
             raw_dataset[split]
             .shuffle()
-            .select(range(args.dataset_max_elems if args.dataset_max_elems > 0 else (raw_dataset[split]).num_rows))
+            .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
         )
 
         if args.column_name is None:
