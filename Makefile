@@ -60,6 +60,7 @@ slow_tests_diffusers: test_installs
 slow_tests_text_generation_example: test_installs
 	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0
 	python -m pytest tests/test_text_generation_example.py -v -s --token $(TOKEN)
+	python -m pytest tests/test_encoder_decoder_text_summarization.py -v -s
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs
