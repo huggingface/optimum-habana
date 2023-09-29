@@ -284,7 +284,8 @@ class ExampleTestMeta(type):
                 ".json"
             )
             with path_to_baseline.open("r") as json_file:
-                baseline = json.load(json_file)[self.TASK_NAME]
+                device = "gaudi2" if os.environ.get("GAUDI2_CI", "false") == "true" else "gaudi"
+                baseline = json.load(json_file)[device][self.TASK_NAME]
 
             distribution = "single_card"
             if multi_card:

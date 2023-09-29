@@ -1,57 +1,117 @@
 {
-    "squad": {
-        "num_train_epochs": 1,
-        "eval_batch_size": 8,
-        "distribution": {
-            "single_card": {
-                "learning_rate": 3e-5,
-                "train_batch_size": 24,
-                "eval_f1": 93.3915,
-                "train_runtime": 1745.7163,
-                "train_samples_per_second": 51.815,
-                "extra_arguments": [
-                    "--max_seq_length 384",
-                    "--use_hpu_graphs_for_inference"
-                ]
-            },
-            "multi_card": {
-                "learning_rate": 7e-5,
-                "train_batch_size": 24,
-                "eval_f1": 93.0821,
-                "train_runtime": 299.7514,
-                "train_samples_per_second": 402.299,
-                "extra_arguments": [
-                    "--max_seq_length 384",
-                    "--use_hpu_graphs_for_inference"
-                ]
+    "gaudi": {
+        "squad": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 8,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 24,
+                    "eval_f1": 93.3915,
+                    "train_runtime": 1745.7163,
+                    "train_samples_per_second": 51.815,
+                    "extra_arguments": [
+                        "--max_seq_length 384",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 7e-5,
+                    "train_batch_size": 24,
+                    "eval_f1": 93.0821,
+                    "train_runtime": 299.7514,
+                    "train_samples_per_second": 402.299,
+                    "extra_arguments": [
+                        "--max_seq_length 384",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                }
+            }
+        },
+        "mrpc": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 8,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 32,
+                    "eval_f1": 0.9103,
+                    "train_runtime": 89.9332,
+                    "train_samples_per_second": 168.943,
+                    "extra_arguments": [
+                        "--max_seq_length 128",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 16,
+                    "eval_f1": 0.8807,
+                    "train_runtime": 60.8673,
+                    "train_samples_per_second": 894.537,
+                    "extra_arguments": [
+                        "--max_seq_length 128",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                }
             }
         }
     },
-    "mrpc": {
-        "num_train_epochs": 3,
-        "eval_batch_size": 8,
-        "distribution": {
-            "single_card": {
-                "learning_rate": 3e-5,
-                "train_batch_size": 32,
-                "eval_f1": 0.9103,
-                "train_runtime": 89.9332,
-                "train_samples_per_second": 168.943,
-                "extra_arguments": [
-                    "--max_seq_length 128",
-                    "--use_hpu_graphs_for_inference"
-                ]
-            },
-            "multi_card": {
-                "learning_rate": 3e-5,
-                "train_batch_size": 16,
-                "eval_f1": 0.8807,
-                "train_runtime": 60.8673,
-                "train_samples_per_second": 894.537,
-                "extra_arguments": [
-                    "--max_seq_length 128",
-                    "--use_hpu_graphs_for_inference"
-                ]
+    "gaudi2": {
+        "squad": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 8,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 24,
+                    "eval_f1": 93.3915,
+                    "train_runtime": 1745.7163,
+                    "train_samples_per_second": 51.815,
+                    "extra_arguments": [
+                        "--max_seq_length 384",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 7e-5,
+                    "train_batch_size": 24,
+                    "eval_f1": 93.0821,
+                    "train_runtime": 299.7514,
+                    "train_samples_per_second": 402.299,
+                    "extra_arguments": [
+                        "--max_seq_length 384",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                }
+            }
+        },
+        "mrpc": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 8,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 32,
+                    "eval_f1": 0.9103,
+                    "train_runtime": 89.9332,
+                    "train_samples_per_second": 168.943,
+                    "extra_arguments": [
+                        "--max_seq_length 128",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 16,
+                    "eval_f1": 0.8807,
+                    "train_runtime": 60.8673,
+                    "train_samples_per_second": 894.537,
+                    "extra_arguments": [
+                        "--max_seq_length 128",
+                        "--use_hpu_graphs_for_inference"
+                    ]
+                }
             }
         }
     }
