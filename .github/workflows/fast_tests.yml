@@ -30,7 +30,7 @@ jobs:
       EC2_AMI_ID: ami-02086055ccb243ea2
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-b7533b96
-      EC2_SECURITY_GROUP: sg-059956d687c7ec5c2
+      EC2_SECURITY_GROUP: sg-08af7938042271373
     outputs:
       label: ${{ steps.start-ec2-runner.outputs.label }}
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
