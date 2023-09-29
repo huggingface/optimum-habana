@@ -270,17 +270,6 @@ def main():
 
     set_seed(args.seed)
 
-    # TODO: remove the following hack when Falcon is available in Transformers
-    # Temporary hack for Falcon
-    if args.model_name_or_path == "tiiuae/falcon-7b":
-        args.model_revision = "4e2d06f0a7c6370ebabbc30c6f59377ae8f73d76"
-    elif args.model_name_or_path == "tiiuae/falcon-7b-instruct":
-        args.model_revision = "f8dac3fff96d5debd43edf56fb4e1abcfffbef28"
-    elif args.model_name_or_path == "tiiuae/falcon-40b":
-        args.model_revision = "f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232"
-    elif args.model_name_or_path == "tiiuae/falcon-40b-instruct":
-        args.model_revision = "7475ff8cfc36ed9a962b658ae3c33391566a85a5"
-
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
