@@ -28,15 +28,60 @@ except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
 
+# could be in some utils
+def incrementor(bucket_size, prompt_len):
+    assert bucket_size > 0
+    passnum = -1
+    while True:
+        passnum += 1
+        if passnum == 0:
+            token_idx = prompt_len
+            allocated_space = int(math.ceil(prompt_len / bucket_size) * bucket_size)
+            need_expansion = not (prompt_len == allocated_space)
+        else:
+            token_idx += 1
+            need_expansion = token_idx >= allocated_space
+            if need_expansion:
+                assert (allocated_space - token_idx) <= bucket_size
+                allocated_space += bucket_size
+        yield {
+            "allocated_space": allocated_space,
+            "passnum": passnum,
+            "token_idx": token_idx,
+            "need_expansion": need_expansion,
+        }
 
-def update(prev, cur, dim, idx):
+#key_states = update(past_key, key_states, 2, token_idx)
+#value_states = update(past_value, value_states, 2, token_idx)
+def update(prev, cur, dim, idx, bucket=-1, need_expansion=False):
+    #print('INUPDATE', idx)
+    if need_expansion:
+        assert bucket > 0
+        if prev.shape[2] % bucket == 0:
+            #import pdb; pdb.set_trace()
+            pad_amount = bucket
+        else:
+            pad_amount = bucket - (prev.shape[2] % bucket)
+        #import pdb; pdb.set_trace()
+        prev = torch.nn.functional.pad(prev, (0, 0, 0, pad_amount), value=0)#.contiguous() # TODO pad with pad_token
     orig_cur = cur
+    #import pdb; pdb.set_trace()
+    #if idx >= cur.shape[2]:
+    #    import pdb; pdb.set_trace()
+    #    print()
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-        # Initialize
-        prev[:, :, :idx, :].copy_(cur)
-        return orig_cur
+        #print('HERE1')
+        #print('cur', cur.shape)
+        #print('prev', prev.shape)
+        #print(idx)
+        #prev[:, :, :idx, :].copy_(cur)
+        #return orig_cur, prev if need_expansion else None
+        # WHY RETURN ORIG_CUR HERE? WHY NOT RETURN PREV?
+        return cur #prev
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
+        #import pdb; pdb.set_trace()
+        #print('HERE2')
         return prev.index_copy_(dim, idx - 1, cur)
     else:
         return torch.cat((prev, cur), dim=dim)
@@ -87,6 +132,7 @@ class GaudiLlamaAttention(LlamaAttention):
         tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
         key_shape = (batch_size, self.num_key_value_heads // tp_world_size, seq_len, self.head_dim)
         value_shape = (batch_size, self.num_key_value_heads // tp_world_size, seq_len, self.head_dim)
+        #import pdb; pdb.set_trace()
         if self.past_key is None or self.past_key.shape != key_shape:
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
@@ -121,6 +167,8 @@ class GaudiLlamaAttention(LlamaAttention):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        need_expansion = False,
+        bucket_size = -1
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -131,6 +179,8 @@ class GaudiLlamaAttention(LlamaAttention):
         - add new args reuse_cache
         """
         bsz, q_len, _ = hidden_states.size()
+        #print("GaudiLlamaAttention token_idx",token_idx)
+        #print('reuse_cache', reuse_cache)
 
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
@@ -159,17 +209,21 @@ class GaudiLlamaAttention(LlamaAttention):
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
+
         kv_seq_len = key_states.shape[-2]
+        #print("GaudiLlamaAttention token_idx 1",token_idx)
         if past_key_value is not None:
             if token_idx is None:
                 kv_seq_len += past_key_value[0].shape[-2]
             else:
                 if reuse_cache:
+                    #import pdb; pdb.set_trace()
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+
 
         if past_key_value is not None or reuse_cache:
             # reuse k, v, self_attention
@@ -179,11 +233,21 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 past_key = past_key_value[0]
                 past_value = past_key_value[1]
-            key_states = update(past_key, key_states, 2, token_idx)
-            value_states = update(past_value, value_states, 2, token_idx)
+            #import pdb; pdb.set_trace()
+            #if not need_expansion:
+            #    import pdb; pdb.set_trace()
+            #print("GaudiLlamaAttention token_idx 2",token_idx)
+            key_states = update(past_key, key_states, 2, token_idx, bucket_size, need_expansion)
+            self.past_key = key_states.contiguous() # TODO: only needed for bucketing + reusecache case
+            kv_seq_len = self.past_key.shape[2] # TODO add if-elses
+            value_states = update(past_value, value_states, 2, token_idx, bucket_size, need_expansion)
+            self.past_value = value_states.contiguous()
+            #import pdb; pdb.set_trace()
+            #print('token_idx after update', token_idx)
 
         if use_cache:
             if reuse_cache:
+                #import pdb; pdb.set_trace()
                 past_key_value = (self.past_key.shape, self.past_value.shape)
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
@@ -194,9 +258,11 @@ class GaudiLlamaAttention(LlamaAttention):
         key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
         value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
 
+        #import pdb; pdb.set_trace()
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+            import pdb; pdb.set_trace()
             raise ValueError(
                 f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
                 f" {attn_weights.size()}"
@@ -204,6 +270,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                import pdb; pdb.set_trace()
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
@@ -259,6 +326,8 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        need_expansion = False,
+        bucket_size=-1
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -282,6 +351,8 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
+            need_expansion=need_expansion,
+            bucket_size=bucket_size
         )
         hidden_states = residual + hidden_states
 
@@ -323,6 +394,8 @@ class GaudiLlamaModel(LlamaModel):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        need_expansion = False,
+        bucket_size=-1
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -375,6 +448,7 @@ class GaudiLlamaModel(LlamaModel):
             attention_mask = torch.ones(
                 (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
             )
+        #import pdb; pdb.set_trace()
         attention_mask = self._prepare_decoder_attention_mask(
             attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
         )
@@ -425,6 +499,8 @@ class GaudiLlamaModel(LlamaModel):
                     token_idx=token_idx,
                     attn_softmax_bf16=attn_softmax_bf16,
                     reuse_cache=reuse_cache,
+                    need_expansion=need_expansion,
+                    bucket_size=bucket_size
                 )
 
             hidden_states = layer_outputs[0]
@@ -470,6 +546,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)
 
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -486,13 +563,18 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        need_expansion = False,
+        bucket_size=-1
     ) -> Union[Tuple, CausalLMOutputWithPast]:
+
+        #print('token_idx', token_idx)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+        print('EXPANSION', need_expansion)
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -506,7 +588,10 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
+            need_expansion = need_expansion,
+            bucket_size=bucket_size
         )
+        #print('reuse_cache', reuse_cache)
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
@@ -558,9 +643,10 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             else:
                 input_ids = input_ids[:, -1:]
         elif reuse_cache and token_idx is not None:
-            # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
-            input_ids = input_ids[:, :token_idx]
-            attention_mask = attention_mask[:, :token_idx]
+            if kwargs['bucket_size'] < 0:
+                # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
+                input_ids = input_ids[:, :token_idx]
+                attention_mask = attention_mask[:, :token_idx]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
@@ -599,3 +685,5 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
         return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+
+
