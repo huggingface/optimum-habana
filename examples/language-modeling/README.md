@@ -380,7 +380,6 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --lora_alpha=16 \
     --lora_dropout=0.1 \
     --lora_target_modules "query_key_value" "dense" "dense_h_to_4h" "dense_4h_to_h" \
-    --model_revision f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232 \
     --dataset_concatenation \
     --max_seq_length 256 \
     --low_cpu_mem_usage True \
@@ -448,7 +447,6 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --lora_alpha=16 \
     --lora_dropout=0.1 \
     --lora_target_modules "query_key_value" "dense" "dense_h_to_4h" "dense_4h_to_h" \
-    --model_revision f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232 \
     --dataset_concatenation \
     --max_seq_length 256 \
     --ddp_bucket_cap_mb 50 \
