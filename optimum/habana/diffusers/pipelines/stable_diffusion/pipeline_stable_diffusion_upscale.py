@@ -689,6 +689,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
 
         >>> upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
         >>> upscaled_image.save("upsampled_cat.png")
+        ```
         """
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             # 0. Check inputs. Raise error if not correct
