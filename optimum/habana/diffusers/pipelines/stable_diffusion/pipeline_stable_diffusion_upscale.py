@@ -35,7 +35,8 @@ from diffusers.models.attention_processor import (
 
 # Added for upscaling
 from diffusers.schedulers import DDPMScheduler, KarrasDiffusionSchedulers
-from diffusers.utils import BaseOutput, deprecate, randn_tensor
+from diffusers.utils import BaseOutput, deprecate
+from diffusers.utils.torch_utils import randn_tensor
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from optimum.utils import logging
