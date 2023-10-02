@@ -134,7 +134,7 @@ See [here](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/
 ## How to upscale low resolution images?
 
 To generate RGB and depth images with Stable Diffusion Upscale on Gaudi, you need to instantiate two instances:
-- A pipeline with [`GaudiStableDiffusionUpscalePipeline`]. 
+- A pipeline with [`GaudiStableDiffusionUpscalePipeline`](../package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiStableDiffusionUpscalePipeline).
 - A scheduler with [`GaudiDDIMScheduler`](../package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
 
 When initializing the pipeline, you have to specify `use_habana=True` to deploy it on HPUs.
