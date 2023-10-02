@@ -1,46 +1,95 @@
 {
-    "regisss/librispeech_asr_for_optimum_habana_ci": {
-        "num_train_epochs": 2,
-        "eval_batch_size": 8,
-        "distribution": {
-            "single_card": {
-                "learning_rate": 3e-4,
-                "train_batch_size": 4,
-                "eval_wer": 0.0402,
-                "train_runtime": 19493.4582,
-                "train_samples_per_second": 4.402,
-                "extra_arguments": [
-                    "--dataset_config_name clean",
-                    "--train_split_name train.100",
-                    "--eval_split_name validation",
-                    "--preprocessing_num_workers 64",
-                    "--warmup_steps 500",
-                    "--text_column_name text",
-                    "--layerdrop 0.0",
-                    "--freeze_feature_encoder",
-                    "--dataloader_num_workers 8",
-                    "--chars_to_ignore , ? . ! - ; : \" “ % ‘ ”"
-                ]
-            },
-            "multi_card": {
-                "learning_rate": 6e-4,
-                "train_batch_size": 8,
-                "eval_wer": 0.046310987703292346,
-                "train_runtime": 980.3808,
-                "train_samples_per_second": 63.225,
-                "eval_samples_per_second": 67.988,
-                "extra_arguments": [
-                    "--dataset_config_name clean",
-                    "--train_split_name train.100",
-                    "--eval_split_name validation",
-                    "--preprocessing_num_workers 64",
-                    "--warmup_steps 500",
-                    "--text_column_name text",
-                    "--layerdrop 0.0",
-                    "--freeze_feature_encoder",
-                    "--dataloader_num_workers 8",
-                    "--chars_to_ignore ',?.!-;:\"“%‘”'"
-                ]
+    "gaudi": {
+        "regisss/librispeech_asr_for_optimum_habana_ci": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 8,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 4,
+                    "eval_wer": 0.0402,
+                    "train_runtime": 19493.4582,
+                    "train_samples_per_second": 4.402,
+                    "extra_arguments": [
+                        "--dataset_config_name clean",
+                        "--train_split_name train.100",
+                        "--eval_split_name validation",
+                        "--preprocessing_num_workers 64",
+                        "--warmup_steps 500",
+                        "--text_column_name text",
+                        "--layerdrop 0.0",
+                        "--freeze_feature_encoder",
+                        "--dataloader_num_workers 8",
+                        "--chars_to_ignore , ? . ! - ; : \" “ % ‘ ”"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 6e-4,
+                    "train_batch_size": 8,
+                    "eval_wer": 0.046310987703292346,
+                    "train_runtime": 980.3808,
+                    "train_samples_per_second": 63.225,
+                    "eval_samples_per_second": 67.988,
+                    "extra_arguments": [
+                        "--dataset_config_name clean",
+                        "--train_split_name train.100",
+                        "--eval_split_name validation",
+                        "--preprocessing_num_workers 64",
+                        "--warmup_steps 500",
+                        "--text_column_name text",
+                        "--layerdrop 0.0",
+                        "--freeze_feature_encoder",
+                        "--dataloader_num_workers 8",
+                        "--chars_to_ignore ',?.!-;:\"“%‘”'"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "regisss/librispeech_asr_for_optimum_habana_ci": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 8,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 4,
+                    "eval_wer": 0.0402,
+                    "train_runtime": 19493.4582,
+                    "train_samples_per_second": 4.402,
+                    "extra_arguments": [
+                        "--dataset_config_name clean",
+                        "--train_split_name train.100",
+                        "--eval_split_name validation",
+                        "--preprocessing_num_workers 64",
+                        "--warmup_steps 500",
+                        "--text_column_name text",
+                        "--layerdrop 0.0",
+                        "--freeze_feature_encoder",
+                        "--dataloader_num_workers 8",
+                        "--chars_to_ignore , ? . ! - ; : \" “ % ‘ ”"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 6e-4,
+                    "train_batch_size": 8,
+                    "eval_wer": 0.046310987703292346,
+                    "train_runtime": 980.3808,
+                    "train_samples_per_second": 63.225,
+                    "eval_samples_per_second": 67.988,
+                    "extra_arguments": [
+                        "--dataset_config_name clean",
+                        "--train_split_name train.100",
+                        "--eval_split_name validation",
+                        "--preprocessing_num_workers 64",
+                        "--warmup_steps 500",
+                        "--text_column_name text",
+                        "--layerdrop 0.0",
+                        "--freeze_feature_encoder",
+                        "--dataloader_num_workers 8",
+                        "--chars_to_ignore ',?.!-;:\"“%‘”'"
+                    ]
+                }
             }
         }
     }

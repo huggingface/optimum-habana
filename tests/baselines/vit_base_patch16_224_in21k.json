@@ -1,38 +1,79 @@
 {
-    "cifar10": {
-        "num_train_epochs": 1,
-        "eval_batch_size": 64,
-        "distribution": {
-            "single_card": {
-                "learning_rate": 5e-5,
-                "train_batch_size": 64,
-                "eval_accuracy": 0.982,
-                "train_runtime": 143.1925,
-                "train_samples_per_second": 338.713,
-                "extra_arguments": [
-                    "--remove_unused_columns False",
-                    "--seed 1337",
-                    "--use_hpu_graphs_for_inference",
-                    "--dataloader_num_workers 1",
-                    "--pipelining_fwd_bwd True",
-                    "--non_blocking_data_copy True"
-                ]
-            },
-            "multi_card": {
-                "learning_rate": 2e-4,
-                "train_batch_size": 64,
-                "eval_accuracy": 0.9812,
-                "train_runtime": 63.4907,
-                "train_samples_per_second": 2480.927,
-                "extra_arguments": [
-                    "--remove_unused_columns False",
-                    "--seed 1337",
-                    "--use_hpu_graphs_for_inference",
-                    "--dataloader_num_workers 1",
-                    "--pipelining_fwd_bwd True",
-                    "--non_blocking_data_copy True",
-                    "--throughput_warmup_steps 8"
-                ]
+    "gaudi": {
+        "cifar10": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 64,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 64,
+                    "eval_accuracy": 0.982,
+                    "train_runtime": 143.1925,
+                    "train_samples_per_second": 338.713,
+                    "extra_arguments": [
+                        "--remove_unused_columns False",
+                        "--seed 1337",
+                        "--use_hpu_graphs_for_inference",
+                        "--dataloader_num_workers 1",
+                        "--pipelining_fwd_bwd True",
+                        "--non_blocking_data_copy True"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 64,
+                    "eval_accuracy": 0.9812,
+                    "train_runtime": 63.4907,
+                    "train_samples_per_second": 2480.927,
+                    "extra_arguments": [
+                        "--remove_unused_columns False",
+                        "--seed 1337",
+                        "--use_hpu_graphs_for_inference",
+                        "--dataloader_num_workers 1",
+                        "--pipelining_fwd_bwd True",
+                        "--non_blocking_data_copy True",
+                        "--throughput_warmup_steps 8"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "cifar10": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 64,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 64,
+                    "eval_accuracy": 0.982,
+                    "train_runtime": 143.1925,
+                    "train_samples_per_second": 338.713,
+                    "extra_arguments": [
+                        "--remove_unused_columns False",
+                        "--seed 1337",
+                        "--use_hpu_graphs_for_inference",
+                        "--dataloader_num_workers 1",
+                        "--pipelining_fwd_bwd True",
+                        "--non_blocking_data_copy True"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 64,
+                    "eval_accuracy": 0.9812,
+                    "train_runtime": 63.4907,
+                    "train_samples_per_second": 2480.927,
+                    "extra_arguments": [
+                        "--remove_unused_columns False",
+                        "--seed 1337",
+                        "--use_hpu_graphs_for_inference",
+                        "--dataloader_num_workers 1",
+                        "--pipelining_fwd_bwd True",
+                        "--non_blocking_data_copy True",
+                        "--throughput_warmup_steps 8"
+                    ]
+                }
             }
         }
     }

@@ -1,31 +1,65 @@
 {
-    "wikitext": {
-        "num_train_epochs": 2,
-        "eval_batch_size": 4,
-        "distribution": {
-            "single_card": {
-                "learning_rate": 5e-5,
-                "train_batch_size": 4,
-                "perplexity": 22.2702,
-                "train_runtime": 228.4118,
-                "train_samples_per_second": 21.064,
-                "extra_arguments": [
-                    "--dataset_config_name wikitext-2-raw-v1",
-                    "--use_hpu_graphs_for_inference",
-                    "--gradient_checkpointing"
-                ]
-            },
-            "multi_card": {
-                "learning_rate": 4e-4,
-                "train_batch_size": 4,
-                "perplexity": 22.2137,
-                "train_runtime": 58.8908,
-                "train_samples_per_second": 158.94,
-                "extra_arguments": [
-                    "--dataset_config_name wikitext-2-raw-v1",
-                    "--use_hpu_graphs_for_inference",
-                    "--gradient_checkpointing"
-                ]
+    "gaudi": {
+        "wikitext": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 4,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 4,
+                    "perplexity": 22.2702,
+                    "train_runtime": 228.4118,
+                    "train_samples_per_second": 21.064,
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference",
+                        "--gradient_checkpointing"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 4e-4,
+                    "train_batch_size": 4,
+                    "perplexity": 22.2137,
+                    "train_runtime": 58.8908,
+                    "train_samples_per_second": 158.94,
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference",
+                        "--gradient_checkpointing"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "wikitext": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 4,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 16,
+                    "perplexity": 22.1547,
+                    "train_runtime": 55.0497,
+                    "train_samples_per_second": 93.031,
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference",
+                        "--gradient_checkpointing"
+                    ]
+                },
+                "multi_card": {
+                    "learning_rate": 8e-4,
+                    "train_batch_size": 16,
+                    "perplexity": 22.7141,
+                    "train_runtime": 33.4872,
+                    "train_samples_per_second": 645.15,
+                    "extra_arguments": [
+                        "--dataset_config_name wikitext-2-raw-v1",
+                        "--use_hpu_graphs_for_inference",
+                        "--gradient_checkpointing"
+                    ]
+                }
             }
         }
     }
