@@ -164,7 +164,7 @@ prompt = "a white cat"
 
 pipeline = GaudiStableDiffusionUpscalePipeline.from_pretrained(
     model_name_upscale,
-    scheduler=scheduler,   #TODO shceduler? Karras??
+    scheduler=scheduler,
     use_habana=True,
     use_hpu_graphs=True,
     gaudi_config="Habana/stable-diffusion",
