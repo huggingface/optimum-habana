@@ -131,4 +131,9 @@ def get_ds_injection_policy(config):
 
             policy = {LlamaDecoderLayer: ("self_attn.o_proj", "mlp.down_proj")}
 
+        if model_type == "falcon":
+            from transformers.models.falcon.modeling_falcon import FalconDecoderLayer
+
+            policy = {FalconDecoderLayer: ("self_attention.dense", "mlp.dense_4h_to_h")}
+
     return policy

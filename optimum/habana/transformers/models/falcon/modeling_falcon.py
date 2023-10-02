@@ -16,6 +16,7 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
+import habana_frameworks.torch.core as htcore
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import (
@@ -74,19 +75,14 @@ def gaudi_falcon_attention_forward(
     - replace F.scaled_dot_product_attention with Habana torch's version
     """
     fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
-    num_kv_heads = self.num_heads if self.new_decoder_architecture else self.num_kv_heads
     # 3 x [batch_size, seq_length, num_heads, head_dim]
     (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
 
     batch_size, query_length, _, _ = query_layer.shape
 
-    query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, query_length, self.head_dim)
-    key_layer = key_layer.transpose(1, 2).reshape(
-        batch_size * num_kv_heads,
-        query_length,
-        self.head_dim,
-    )
-    value_layer = value_layer.transpose(1, 2).reshape(batch_size * num_kv_heads, query_length, self.head_dim)
+    query_layer = query_layer.transpose(1, 2).reshape(-1, query_length, self.head_dim)
+    key_layer = key_layer.transpose(1, 2).reshape(-1, query_length, self.head_dim)
+    value_layer = value_layer.transpose(1, 2).reshape(-1, query_length, self.head_dim)
 
     past_kv_length = 0
     seq_len = query_layer.shape[1]
@@ -123,14 +119,12 @@ def gaudi_falcon_attention_forward(
 
     attention_mask_float = (attention_mask * 1.0).masked_fill(attention_mask, float("-1e9")).to(query_layer.dtype)
 
-    query_layer_ = query_layer.reshape(batch_size, self.num_heads, -1, self.head_dim)
-    key_layer_ = key_layer.reshape(batch_size, num_kv_heads, -1, self.head_dim)
-    value_layer_ = value_layer.reshape(batch_size, num_kv_heads, -1, self.head_dim)
+    query_layer_ = query_layer.reshape(batch_size, -1, query_length, self.head_dim)
+    key_layer_ = key_layer.reshape(batch_size, -1, seq_len, self.head_dim)
+    value_layer_ = value_layer.reshape(batch_size, -1, seq_len, self.head_dim)
 
     if alibi is None:
         if output_attentions:
-            # F.scaled_dot_product_attention doesn't return the attention weights, so we have
-            # to do it by hand if we want them
             attention_scores = query_layer_ @ key_layer_.transpose(-1, -2)
             attention_scores /= math.sqrt(self.head_dim)
 
@@ -140,14 +134,21 @@ def gaudi_falcon_attention_forward(
             if FusedSDPA:
                 attn_output = FusedSDPA.apply(query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False)
             else:
+                # Workaround util scaled_dot_product_attention support broadcast.
+                if self.training is True and query_layer_.shape != key_layer_.shape:
+                    key_layer_ = torch.broadcast_to(key_layer_, query_layer_.shape)
+                    value_layer_ = torch.broadcast_to(value_layer_, query_layer_.shape)
                 attn_output = F.scaled_dot_product_attention(
                     query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, is_causal=False
                 )
+            # Performance improvement for HPU
+            if self.training is True and htcore:
+                htcore.mark_step()
             attention_scores = None
 
-        attn_output = attn_output.view(batch_size, self.num_heads, query_length, self.head_dim)
+        attn_output = attn_output.view(batch_size, -1, query_length, self.head_dim)
         attn_output = attn_output.permute(0, 2, 1, 3)
-        attn_output = attn_output.reshape(batch_size, query_length, self.num_heads * self.head_dim)
+        attn_output = attn_output.reshape(batch_size, query_length, -1)
 
         output_tensor = self.dense(attn_output)
 
@@ -263,11 +264,50 @@ def gaudi_falcon_decoder_layer_forward(
     return outputs  # hidden_states, present, attentions
 
 
+def gaudi_falcon_attention_split_heads(
+    self, fused_qkv: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Copied from FalconAttention._split_heads https://github.com/huggingface/transformers/blob/v4.33.2/src/transformers/models/falcon/modeling_falcon.py
+    Changing index operation of qkv[:::] to use torch.index_select to work around gradient accuracy issue and improve performance.
+    """
+    if self.new_decoder_architecture:
+        batch, seq_len, _ = fused_qkv.shape
+        qkv = fused_qkv.view(batch, seq_len, self.num_kv_heads, -1, self.head_dim)
+        # query = qkv[:, :, :, :-2]
+        # key = qkv[:, :, :, [-2]]
+        # value = qkv[:, :, :, [-1]]
+        d3 = qkv.shape[3] - 2
+        query = torch.index_select(qkv, 3, index=torch.arange(d3, device=qkv.device))
+        key = torch.index_select(qkv, 3, index=torch.tensor([d3], device=qkv.device))
+        value = torch.index_select(qkv, 3, index=torch.tensor([d3 + 1], device=qkv.device))
+
+        key = torch.broadcast_to(key, query.shape)
+        value = torch.broadcast_to(value, query.shape)
+
+        query, key, value = [x.flatten(2, 3) for x in (query, key, value)]
+        return query, key, value
+    elif not self.multi_query:
+        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
+        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads, 3, self.head_dim)
+        # TODO : Need to be fixed to use index_select()
+        return fused_qkv[..., 0, :], fused_qkv[..., 1, :], fused_qkv[..., 2, :]
+    else:
+        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
+        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads + 2, self.head_dim)
+        # return fused_qkv[..., :-2, :], fused_qkv[..., [-2], :], fused_qkv[..., [-1], :]
+        d2 = fused_qkv.shape[2] - 2
+        query = torch.index_select(fused_qkv, 2, index=torch.arange(d2, device=fused_qkv.device))
+        key = torch.index_select(fused_qkv, 2, index=torch.tensor([d2], device=fused_qkv.device))
+        value = torch.index_select(fused_qkv, 2, index=torch.tensor([d2 + 1], device=fused_qkv.device))
+        return query, key, value
+
+
 def _expand_mask(mask: torch.Tensor, past_key_values_length: int, tgt_len: int) -> torch.BoolTensor:
     """
     Copied from transformers.models.falcon.modeling_falcon._expand_mask
     Expands attention_mask from `[batch_size, seq_length]` to `[batch_size, 1, seq_length, seq_length + past_length]`
-    when past_key_values_length is not 0 or to `[batch_size, 1, seq_length, tgt_len] when past_key_values_lenght is 0.`
+    when past_key_values_length is not 0 or to `[batch_size, 1, seq_length, tgt_len] when past_key_values_length is 0.`
     """
     batch_size, total_length = mask.shape
     if tgt_len > 0:

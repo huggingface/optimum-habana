@@ -41,6 +41,7 @@ from optimum.utils import logging
 
 from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
 from ..accelerate.utils import GaudiDistributedType
+from .gaudi_configuration import GaudiConfig
 
 
 if is_torch_available():
@@ -200,6 +201,10 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": ("Number of steps to be captured when enabling profiling.")},
     )
 
+    profiling_record_shapes: Optional[bool] = field(
+        default=True,
+        metadata={"help": ("Record shapes when enabling profiling.")},
+    )
     # Overriding the default value of optim because 'adamw_hf' is deprecated
     optim: Optional[Union[OptimizerNames, str]] = field(
         default="adamw_torch",
@@ -483,7 +488,7 @@ class GaudiTrainingArguments(TrainingArguments):
             # - must be run before the model is created.
             if not is_accelerate_available():
                 raise ValueError("--deepspeed requires Accelerate to be installed: `pip install accelerate`.")
-            from .deepspeed import GaudiTrainerDeepSpeedConfig
+            from .integrations.deepspeed import GaudiTrainerDeepSpeedConfig
 
             # will be used later by the Trainer
             # note: leave self.deepspeed unmodified in case a user relies on it not to be modified)
@@ -547,10 +552,6 @@ class GaudiTrainingArguments(TrainingArguments):
                 FutureWarning,
             )
 
-        # TODO: change to True after further testing with examples (cf. summarization)
-        # Finally set the `TrainingArguments` to be immutable
-        self._frozen = False
-
     def __str__(self):
         self_as_dict = asdict(self)
 
@@ -572,6 +573,16 @@ class GaudiTrainingArguments(TrainingArguments):
     @cached_property
     def _setup_devices(self) -> "torch.device":
         requires_backends(self, ["torch"])
+
+        # Hack to make sure bf16/fp32 ops are specified before calling habana_frameworks.torch.core
+        if self.gaudi_config_name is not None:
+            gaudi_config = GaudiConfig.from_pretrained(self.gaudi_config_name)
+            if (
+                (self.bf16 or gaudi_config.use_torch_autocast)
+                and not self.deepspeed
+                and self.half_precision_backend == "hpu_amp"
+            ):
+                gaudi_config.declare_autocast_bf16_fp32_ops()
 
         logger.info("PyTorch: setting up devices")
         if not is_accelerate_available(min_version="0.21.0"):

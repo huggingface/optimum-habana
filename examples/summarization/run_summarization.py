@@ -64,8 +64,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.32.0")
-check_optimum_habana_min_version("1.7.2")
+check_min_version("4.33.0")
+check_optimum_habana_min_version("1.7.5")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
@@ -492,6 +492,12 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
     )
+
+    is_bart = model.config.model_type == "bart"
+    if is_bart and training_args.do_train:
+        raise ValueError(
+            "Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`."
+        )
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.

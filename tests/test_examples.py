@@ -538,7 +538,7 @@ class MultiCardAudioClassificationExampleTester(
 class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
-    TASK_NAME = "librispeech_asr"
+    TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
 
 
 class MultiCardSummarizationExampleTester(

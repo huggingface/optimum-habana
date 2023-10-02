@@ -20,8 +20,6 @@ from typing import Any, Dict
 
 import numpy as np
 import torch
-from habana_frameworks.torch.hpu import memory_stats
-from habana_frameworks.torch.hpu import random as hpu_random
 from packaging import version
 from transformers.utils import is_torch_available
 
@@ -136,6 +134,8 @@ def get_hpu_memory_stats(device=None) -> Dict[str, float]:
     Returns:
         Dict[str, float]: memory stats.
     """
+    from habana_frameworks.torch.hpu import memory_stats
+
     mem_stats = memory_stats(device)
 
     mem_dict = {
@@ -156,6 +156,8 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     if is_torch_available():
+        from habana_frameworks.torch.hpu import random as hpu_random
+
         torch.manual_seed(seed)
         hpu_random.manual_seed_all(seed)
 
@@ -233,7 +235,14 @@ class HabanaProfile(object):
 
     HABANA_PROFILE_ENABLED = True
 
-    def __init__(self, warmup: int = 0, active: int = 0, output_dir: str = "./hpu_profile", wait: int = 0):
+    def __init__(
+        self,
+        warmup: int = 0,
+        active: int = 0,
+        record_shapes: bool = True,
+        output_dir: str = "./hpu_profile",
+        wait: int = 0,
+    ):
         if active <= 0 or warmup <= 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
 
             def noop():
@@ -251,7 +260,7 @@ class HabanaProfile(object):
                 schedule=schedule,
                 activities=activities,
                 on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
-                record_shapes=True,
+                record_shapes=record_shapes,
                 with_stack=True,
             )
             self.start = profiler.start

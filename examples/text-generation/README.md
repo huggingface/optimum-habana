@@ -74,12 +74,16 @@ python run_generation.py \
 The default behaviour of this script (i.e. if no dataset is specified with `--dataset_name`) is to benchmark the given model with a few pre-defined prompts or with the prompt you gave with `--prompt`.
 Here are a few settings you may be interested in:
 - `--max_new_tokens` to specify the number of tokens to generate
+- `--max_input_tokens` to specify the max input tokens to pad and truncate input sequences
 - `--batch_size` to specify the batch size
 - `--bf16` to run generation in bfloat16 precision (or to be specified in your DeepSpeed configuration if using DeepSpeed)
 - `--use_hpu_graphs` to use [HPU graphs](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_HPU_Graphs.html) to speed up generation
+- `--limit_hpu_graphs` to skip HPU Graph usage for first token to save memory
 - `--use_kv_cache` to use the [key/value cache](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationConfig.use_cache) to speed up generation
 - `--do_sample` or `--num_beams` to generate new tokens doing sampling or beam search (greedy search is the default)
 - `--prompt` to benchmark the model on a prompt of your choice
+- `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
+- `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -146,4 +150,21 @@ python run_generation.py \
 --max_new_tokens 100 \
 --prompt "Here is my prompt" \
 --peft_model trl-lib/llama-7b-se-rm-peft
+```
+
+### Using growing bucket optimization
+With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
+
+> For now, it is available only for greedy generation, and cannot be used with `--reuse_cache`.
+
+Here is an example:
+```bash
+python run_generation.py \
+--model_name_or_path path_to_model    \
+--use_hpu_graphs \
+--use_kv_cache \
+--bf16 \
+--max_new_tokens 200 \
+--batch_size=2 \
+--bucket_size 50
 ```

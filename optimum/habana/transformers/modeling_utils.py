@@ -29,12 +29,26 @@ from .models import (
     GaudiGPTJAttention,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
+    GaudiLlamaAttention,
+    GaudiLlamaDecoderLayer,
     GaudiLlamaForCausalLM,
+    GaudiLlamaModel,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    _gaudi_get_resized_embeddings,
+    _gaudi_get_resized_lm_head,
     gaudi_albert_forward,
+    gaudi_BartAttention_forward,
+    gaudi_BartDecoder_forward,
+    gaudi_BartDecoderLayer_forward,
+    gaudi_BartEncoder_forward,
+    gaudi_BartEncoderLayer_forward,
+    gaudi_BartForConditionalGeneration_forward,
+    gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_BartLearnedPositionalEmbedding,
+    gaudi_BartModel_forward,
     gaudi_bloom_attention_forward,
     gaudi_bloom_block_forward,
     gaudi_bloom_convert_to_bloom_cache,
@@ -48,6 +62,7 @@ from .models import (
     gaudi_esmoutput_forward,
     gaudi_esmselfoutput_forward,
     gaudi_falcon_attention_forward,
+    gaudi_falcon_attention_split_heads,
     gaudi_falcon_decoder_layer_forward,
     gaudi_falcon_rotary_embedding_forward,
     gaudi_get_extended_attention_mask,
@@ -62,9 +77,6 @@ from .models import (
     gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
-    gaudi_llama_attention_forward,
-    gaudi_llama_decoder_layer_forward,
-    gaudi_llama_model_forward,
     gaudi_llama_rmsnorm_forward,
     gaudi_mpt_attention_forward,
     gaudi_mpt_block_forward,
@@ -103,8 +115,19 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
         GaudiGenerationMixin._update_model_kwargs_for_generation
     )
+    transformers.generation.GenerationMixin._get_hpu_graphs_kwargs = GaudiGenerationMixin._get_hpu_graphs_kwargs
     transformers.generation.GenerationMixin._expand_inputs_for_generation = staticmethod(
         GaudiGenerationMixin._expand_inputs_for_generation
+    )
+    transformers.generation.GenerationMixin._prepare_attention_mask_for_generation = (
+        GaudiGenerationMixin._prepare_attention_mask_for_generation
+    )
+    transformers.generation.GenerationMixin._prepare_decoder_input_ids_for_generation = (
+        GaudiGenerationMixin._prepare_decoder_input_ids_for_generation
+    )
+    transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
+    transformers.generation.GenerationMixin._prepare_decoder_attention_mask = (
+        GaudiGenerationMixin._prepare_decoder_attention_mask
     )
     transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
     transformers.generation.GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
@@ -129,6 +152,20 @@ def adapt_transformers_to_gaudi():
         gaudi_bloom_convert_to_bloom_cache
     )
 
+    # Optimization for BART generation on Gaudi
+    transformers.models.bart.modeling_bart.BartLearnedPositionalEmbedding = gaudi_BartLearnedPositionalEmbedding
+    transformers.models.bart.modeling_bart.BartAttention.forward = gaudi_BartAttention_forward
+    transformers.models.bart.modeling_bart.BartEncoderLayer.forward = gaudi_BartEncoderLayer_forward
+    transformers.models.bart.modeling_bart.BartDecoderLayer.forward = gaudi_BartDecoderLayer_forward
+    transformers.models.bart.modeling_bart.BartEncoder.forward = gaudi_BartEncoder_forward
+    transformers.models.bart.modeling_bart.BartDecoder.forward = gaudi_BartDecoder_forward
+    transformers.models.bart.modeling_bart.BartModel.forward = gaudi_BartModel_forward
+    transformers.models.bart.modeling_bart.BartForConditionalGeneration.forward = (
+        gaudi_BartForConditionalGeneration_forward
+    )
+    transformers.models.bart.modeling_bart.BartForConditionalGeneration.prepare_inputs_for_generation = (
+        gaudi_BartForConditionalGeneration_prepare_inputs_for_generation
+    )
     # Optimization for codegen generation on Gaudi
     # The bias in the CodeGenAttention layer is a Boolean
     # Since HCCL cannot handle this dtype, we revert it back to uint8
@@ -191,9 +228,10 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for llama generation on Gaudi
     transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
-    transformers.models.llama.modeling_llama.LlamaModel.forward = gaudi_llama_model_forward
-    transformers.models.llama.modeling_llama.LlamaDecoderLayer.forward = gaudi_llama_decoder_layer_forward
-    transformers.models.llama.modeling_llama.LlamaAttention.forward = gaudi_llama_attention_forward
+    transformers.models.llama.modeling_llama.LlamaModel = GaudiLlamaModel
+    transformers.models.llama.modeling_llama.LlamaAttention = GaudiLlamaAttention
+    transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
+
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
     # Optimization for falcon generation on Gaudi
@@ -202,6 +240,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.falcon.modeling_falcon.FalconDecoderLayer.forward = gaudi_falcon_decoder_layer_forward
     transformers.models.falcon.modeling_falcon.FalconAttention.forward = gaudi_falcon_attention_forward
     transformers.models.falcon.modeling_falcon.FalconRotaryEmbedding.forward = gaudi_falcon_rotary_embedding_forward
+    transformers.models.falcon.modeling_falcon.FalconAttention._split_heads = gaudi_falcon_attention_split_heads
 
     # Optimization for t5 on Gaudi
     transformers.models.t5.modeling_t5.T5LayerNorm.forward = gaudi_t5_layernorm_forward
@@ -211,3 +250,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
     transformers.models.mpt.modeling_mpt.MptAttention.forward = gaudi_mpt_attention_forward
     transformers.models.mpt.modeling_mpt.MptBlock.forward = gaudi_mpt_block_forward
+
+    # TODO: revisit this when switching to Transformers v4.33
+    # see https://github.com/huggingface/transformers/pull/25394
+    # Hack for running T5 with DeepSpeed Zero-3
+    transformers.modeling_utils.PreTrainedModel._get_resized_embeddings = _gaudi_get_resized_embeddings
+    transformers.modeling_utils.PreTrainedModel._get_resized_lm_head = _gaudi_get_resized_lm_head

@@ -4,4 +4,4 @@ sentencepiece != 0.1.92
 protobuf
 evaluate
 scikit-learn
-peft
+peft @ git+https://github.com/huggingface/peft@ba0477f2985b1ba311b83459d29895c809404e99
