@@ -777,7 +777,13 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
             # 9. Split into batches (HPU-specific step)
-            latents_batches, text_embeddings_batches, image_batches, noise_level_batches, num_dummy_samples = self._split_inputs_into_batches(
+            (
+                latents_batches,
+                text_embeddings_batches,
+                image_batches,
+                noise_level_batches,
+                num_dummy_samples,
+            ) = self._split_inputs_into_batches(
                 batch_size, latents, prompt_embeds, negative_prompt_embeds, image, noise_level
             )
 
