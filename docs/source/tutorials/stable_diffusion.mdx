@@ -135,11 +135,11 @@ See [here](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/
 
 To generate RGB and depth images with Stable Diffusion Upscale on Gaudi, you need to instantiate two instances:
 - A pipeline with [`GaudiStableDiffusionUpscalePipeline`]. 
-- A scheduler with [`GaudiDDIMScheduler`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
+- A scheduler with [`GaudiDDIMScheduler`](../package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Gaudi.
 
 When initializing the pipeline, you have to specify `use_habana=True` to deploy it on HPUs.
 Furthermore, to get the fastest possible generations you should enable **HPU graphs** with `use_hpu_graphs=True`.
-Finally, you will need to specify a [Gaudi configuration](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config) which can be downloaded from the Hugging Face Hub.
+Finally, you will need to specify a [Gaudi configuration](../package_reference/gaudi_config) which can be downloaded from the Hugging Face Hub.
 
 ```python
 import requests
