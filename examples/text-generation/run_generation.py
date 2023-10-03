@@ -594,7 +594,6 @@ def main():
                 if torch.is_tensor(batch[t]):
                     batch[t] = batch[t].to(args.device)
             # Generate new sequences
-            print(batch['input_ids'].shape)
             outputs = model.generate(
                 **batch,
                 generation_config=generation_config,
