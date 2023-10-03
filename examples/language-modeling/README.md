@@ -134,7 +134,7 @@ It reaches a perplexity of 10.469.
 
 ```bash
 python ../gaudi_spawn.py \
-    --hostfile path_to_my_hostfile --world_size 16 --use_deepspeed run_clm.py \
+    --hostfile path_to_my_hostfile --use_deepspeed run_clm.py \
     --model_name_or_path EleutherAI/gpt-neox-20b \
     --dataset_name wikitext \
     --dataset_config_name wikitext-2-raw-v1 \
