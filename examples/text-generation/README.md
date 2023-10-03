@@ -95,6 +95,11 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --max_new_tokens 100
 ```
 
+Text generation with LLaMAv2-70B model(using deepspeed) can be done using the following command:
+```bash
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py --model_name_or_path <MODEL_PATH>/Llama-2-70b-hf/ --max_new_tokens 4096  --bf16  --use_hpu_graphs --use_kv_cache --batch_size 56  --attn_softmax_bf16 --limit_hpu_graphs  --n_iterations 5 --reuse_cache --trim_logits
+```
+
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
 > - have a HF account
 > - agree to the terms of use of the model in its model card on the HF Hub
