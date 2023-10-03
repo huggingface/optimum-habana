@@ -98,7 +98,7 @@ class CausalLMBatch(Batch):
         # is handled by the client but it appears the model is initialized by the server.
         # An alternative could be to initialize the buffers during warmup.
         # Dummy
-        max_total_tokens = 2048
+        max_total_tokens = 512
 
         for i, r in enumerate(pb.requests):
             requests_idx_mapping[r.id] = i
