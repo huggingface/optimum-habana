@@ -81,6 +81,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 
 logger = logging.get_logger(__name__)
 
+
 def incrementor(bucket_size, prompt_len):
     assert bucket_size > 0
     passnum = -1
@@ -102,7 +103,6 @@ def incrementor(bucket_size, prompt_len):
             "token_idx": token_idx,
             "need_expansion": need_expansion,
         }
-
 
 
 class StaticMaxLengthCriteria(StoppingCriteria):
@@ -357,10 +357,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         # create_pad_arg handles them on a per-model basis
                         # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
                         # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
-                        assert (
-                            model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
-                            == 0
-                        )
+                        assert model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
                         tmp_lst[j] = torch.nn.functional.pad(
                             model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
                         )
@@ -563,10 +560,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 inputs_tensor, generation_config.pad_token_id, generation_config.eos_token_id
             )
 
-        is_greedyorbeam_and_bucket = (
-            generation_config.bucket_size > 0
-            and (self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH or
-            self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH)
+        is_greedyorbeam_and_bucket = generation_config.bucket_size > 0 and (
+            self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
+            or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
         if generation_config.reuse_cache:
@@ -681,7 +677,7 @@ class GaudiGenerationMixin(GenerationMixin):
         # if generation_config.bucket_size <= 0, padding is handled by the generating fn (like greedy_search)
         if generation_config.static_shapes and generation_config.bucket_size > 0:
             assert (
-                generation_mode == GenerationMode.GREEDY_SEARCH or generation_mode == GenerationMode.BEAM_SEARCH 
+                generation_mode == GenerationMode.GREEDY_SEARCH or generation_mode == GenerationMode.BEAM_SEARCH
             ), "generation_config.bucket_size > 0 supported only for greedy mode"
 
         if streamer is not None and (generation_config.num_beams > 1):
@@ -1350,7 +1346,9 @@ class GaudiGenerationMixin(GenerationMixin):
             if bucket_size > 0:
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
-                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(params, input_ids, model_kwargs, pad_token_id, bucket_size)
+                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size
+                )
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
@@ -2006,7 +2004,9 @@ class GaudiGenerationMixin(GenerationMixin):
             if bucket_size > 0:
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
-                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(params, input_ids, model_kwargs, pad_token_id, bucket_size)
+                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size
+                )
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
