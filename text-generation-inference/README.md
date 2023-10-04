@@ -47,3 +47,6 @@ It has been tested for batches of 1 sample so far.
 New features will be added soon, including:
 - support for DeepSpeed-inference to use sharded models
 - batching strategy to have less model compilations
+- Added an env var MAX_TOTAL_TOKENS for models that require it to be set during benchmark test.
+  It defaults to 0. To change it please add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker.
+  This workaround is needed as max_total_tokens is currently not being passed from rust to python when running launcher app. 
