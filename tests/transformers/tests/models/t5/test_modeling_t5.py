@@ -53,8 +53,6 @@ if is_torch_available():
 
 
 torch_device = "hpu"
-
-
 adapt_transformers_to_gaudi()
 
 
