@@ -99,7 +99,7 @@ class CausalLMBatch(Batch):
         # is handled by the client but it appears the model is initialized by the server.
         # An alternative could be to initialize the buffers during warmup.
         # Dummy
-        max_total_tokens = int(os.getenv("MAX_TOTAL_TOKENS", '0'))
+        max_total_tokens = int(os.getenv("MAX_TOTAL_TOKENS", "0"))
         logger.info("MAX_TOTAL_TOKENS = {}".format(max_total_tokens))
 
         for i, r in enumerate(pb.requests):
