@@ -69,7 +69,9 @@ def main():
         "--max_input_tokens",
         type=int,
         default=0,
-        help="If > 0 then pad and truncate the input sequences to this specified length of tokens.",
+        help="If > 0 then pad and truncate the input sequences to this specified length of tokens. \
+            if == 0, then truncate to 16 (original default) \
+            if < 0, then do not truncate, use full input prompt",
     )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
@@ -543,8 +545,8 @@ def main():
         # Remove unused columns
         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
 
-        # Set the prompt length to args.max_input_tokens if > 0 else default to 16
-        prompt_length = args.max_input_tokens if args.max_input_tokens > 0 else 16
+        # Set the prompt length to args.max_input_tokens if > 0 else (if 0 truncate to 16, otherwise use full length)
+        prompt_length = args.max_input_tokens if args.max_input_tokens > 0 else (-1, 16)[args.max_input_tokens == 0]
 
         def preprocess_function(examples):
             # Tokenize the texts
