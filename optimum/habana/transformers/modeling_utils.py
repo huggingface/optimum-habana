@@ -115,6 +115,7 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
         GaudiGenerationMixin._update_model_kwargs_for_generation
     )
+    transformers.generation.GenerationMixin.update_model_kwargs_for_bucketing = GaudiGenerationMixin.update_model_kwargs_for_bucketing
     transformers.generation.GenerationMixin._get_hpu_graphs_kwargs = GaudiGenerationMixin._get_hpu_graphs_kwargs
     transformers.generation.GenerationMixin._expand_inputs_for_generation = staticmethod(
         GaudiGenerationMixin._expand_inputs_for_generation
