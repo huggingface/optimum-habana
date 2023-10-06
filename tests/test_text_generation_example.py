@@ -31,7 +31,7 @@ MODELS_TO_TEST = {
     "prompt": [
         ("bigscience/bloomz-7b1", False),
         ("meta-llama/llama-2-13b-hf", False),
-        #("meta-llama/llama-2-70b-hf", True),
+        # ("meta-llama/llama-2-70b-hf", True),
     ],
 }
 
