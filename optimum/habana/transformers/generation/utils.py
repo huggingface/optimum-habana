@@ -76,7 +76,6 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "gpt_bigcode",
     "bart",
     "mpt",
-    "bart",
     "t5",
 ]
 
@@ -92,19 +91,6 @@ class StaticMaxLengthCriteria(StoppingCriteria):
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
         self.cur_step += 1
         return self.cur_step >= self.max_steps
-
-
-def _get_stopping_criteria(
-    self, generation_config: GaudiGenerationConfig, stopping_criteria: Optional[StoppingCriteriaList]
-) -> StoppingCriteriaList:
-    criteria = StoppingCriteriaList()
-    if generation_config.max_length is not None:
-        criteria.append(StaticMaxLengthCriteria(generation_config.max_length))
-    if generation_config.max_time is not None:
-        criteria.append(MaxTimeCriteria(max_time=generation_config.max_time))
-    criteria = self._merge_criteria_processor_list(criteria, stopping_criteria)
-    return criteria
-
 
 class GaudiGenerationMixin(GenerationMixin):
     """
@@ -460,7 +446,6 @@ class GaudiGenerationMixin(GenerationMixin):
         self._validate_model_kwargs(model_kwargs.copy())
         # 2. Set generation parameters if not already defined
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
-        # generation_config.max_length = generation_config.max_new_tokens
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
 
         if generation_config.pad_token_id is None and generation_config.eos_token_id is not None:
@@ -1369,7 +1354,6 @@ class GaudiGenerationMixin(GenerationMixin):
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
             # forward pass to get next token
-            # self.iterations = self.iterations + 1
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1382,7 +1366,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 continue  # don't waste resources running the code we don't need
 
             token_idx = model_kwargs.get("token_idx", None)
-            # generate_start = time.perf_counter()
             if token_idx is not None and outputs.logits.shape[-2] > 1:
                 # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
                 if self.config.is_encoder_decoder:
@@ -1399,8 +1382,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     # case3 (default case): token_idx is None
                     next_tokens_scores = logits_processor(input_ids, next_token_logits)
-            # generate_end = time.perf_counter()
-            # print("Time", generate_end - generate_start)
+
             # Store scores, attentions and hidden_states when required
             if return_dict_in_generate:
                 if output_scores:
@@ -2088,9 +2070,6 @@ class GaudiGenerationMixin(GenerationMixin):
 
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
-        # self.generation_config.early_stopping = True
-        # self.generation_config.min_length = 16
-        # self.generation_config.early_stopping_interval = 10
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -2151,6 +2130,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         if self.config.is_encoder_decoder
                         else (outputs.hidden_states,)
                     )
+
             # reshape for beam search
             vocab_size = next_token_scores.shape[-1]
             next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
@@ -2160,6 +2140,7 @@ class GaudiGenerationMixin(GenerationMixin):
             next_token_scores, next_tokens = torch.topk(
                 next_token_scores, max(2, 1 + n_eos_tokens) * num_beams, dim=1, largest=True, sorted=True
             )
+
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             if self.generation_config.static_shapes:
                 beam_scores = next_token_scores.flatten()

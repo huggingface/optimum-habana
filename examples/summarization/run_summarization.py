@@ -441,7 +441,7 @@ def main():
             data_args.dataset_name,
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
         )
     else:
         data_files = {}
@@ -458,7 +458,7 @@ def main():
             extension,
             data_files=data_files,
             cache_dir=model_args.cache_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
         )
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -476,21 +476,6 @@ def main():
         trust_remote_code=model_args.trust_remote_code,
         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
     )
-    is_bart = (
-        True
-        if model_args.model_name_or_path
-        in [
-            "facebook/bart-large-mnli",
-            "facebook/bart-large-cnn",
-            "facebook/bart-large",
-            "facebook/bart-base",
-            "facebook/bart-large-xsum",
-        ]
-        else False
-    )
-    if is_bart and not (training_args.do_predict or training_args.do_eval):
-        raise ValueError("Training is not yet supported for BART. Eval or predict can be enabled")
-
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -790,17 +775,6 @@ def main():
     elif training_args.generation_num_beams is not None:
         training_args.generation_config.num_beams = training_args.generation_num_beams
 
-    # training_args.generation_max_length = (
-    #     training_args.generation_max_length
-    #     if training_args.generation_max_length is not None
-    #     else data_args.val_max_target_length
-    # )
-    # training_args.generation_num_beams = (
-    #     data_args.num_beams if data_args.num_beams is not None else training_args.generation_num_beams
-    # )
-    # if is_bart:
-    # if True:
-    #     training_args.generation_max_new_tokens = 128
     # Initialize our Trainer
     trainer = GaudiSeq2SeqTrainer(
         model=model,
