@@ -19,12 +19,14 @@
 
 import copy
 import logging
+import math
 import os
 import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 import datasets
+import evaluate
 import torch
 import transformers
 from datasets import load_dataset
@@ -37,7 +39,7 @@ from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     AutoTokenizer,
-    DataCollatorForSeq2Seq,
+    DataCollatorForLanguageModeling,
     HfArgumentParser,
 )
 from transformers.modeling_utils import unwrap_model
@@ -109,6 +111,15 @@ class ModelArguments:
         default=False,
         metadata={
             "help": "should enable when using custom model architecture that is not yet part of the Hugging Face transformers package like MPT)."
+        },
+    )
+    low_cpu_mem_usage: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded."
+                "When set to True, it will benefit LLM loading time and RAM consumption."
+            )
         },
     )
 
@@ -401,15 +412,29 @@ def main():
                 use_auth_token=True if model_args.use_auth_token else None,
                 **dataset_args,
             )
-
-    # Preprocessing the datasets.
-    for key in raw_datasets:
-        prompts = create_prompts(raw_datasets[key])
-        columns_to_be_removed = list(raw_datasets[key].features.keys())
-        raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
-        raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
-        raw_datasets[key] = raw_datasets[key].remove_columns(columns_to_be_removed)
-
+    if data_args.dataset_name == "tatsu-lab/alpaca":
+        # Preprocessing the datasets.
+        for key in raw_datasets:
+            prompts = create_prompts(raw_datasets[key])
+            columns_to_be_removed = list(raw_datasets[key].features.keys())
+            raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
+            raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
+            raw_datasets[key] = raw_datasets[key].remove_columns(columns_to_be_removed)
+    elif (
+        data_args.dataset_name == "timdettmers/openassistant-guanaco"
+    ):  # from https://github.com/artidoro/qlora/blob/main/qlora.py#L621
+        raw_datasets = raw_datasets.map(
+            lambda x: {
+                "input": "",
+                "output": x["text"],
+            }
+        )
+        # Remove unused columns.
+        raw_datasets = raw_datasets.remove_columns(
+            [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
+        )
+    else:
+        raise ValueError("Unsupported dataset")
     # Load model
     if model_args.model_name_or_path:
         model_dtype = torch.bfloat16 if training_args.bf16 else None
@@ -422,7 +447,7 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
             trust_remote_code=True if model_args.trust_remote_code else None,
             torch_dtype=model_dtype,
-            low_cpu_mem_usage=True,
+            low_cpu_mem_usage=model_args.low_cpu_mem_usage,
         )
     else:
         raise ValueError("Must provide model_name_or_path to load a pretrained CausalLM model.")
@@ -442,7 +467,6 @@ def main():
 
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
-    tokenizer.padding_side = "left"  # Allow batched inference
 
     def tokenize(prompt, add_eos_token=True):
         results = tokenizer(
@@ -466,12 +490,17 @@ def main():
         return results
 
     def preprocess_function(examples):
-        st = [s + t for s, t in zip(examples["prompt_sources"], examples["prompt_targets"])]
+        keys = list(examples.data.keys())
+        if len(keys) != 2:
+            raise ValueError("Unsupported dataset format")
+
+        st = [s + t for s, t in zip(examples[keys[0]], examples[keys[1]])]
+
         examples_tokenized = tokenize(st)
         input_ids = examples_tokenized["input_ids"]
         labels = examples_tokenized["labels"]
         if not finetune_args.train_on_inputs:
-            sources_tokenized = tokenize(examples["prompt_sources"], add_eos_token=False)
+            sources_tokenized = tokenize(examples[keys[0]], add_eos_token=False)
             for label, source_len in zip(labels, sources_tokenized["input_id_len"]):
                 label[:source_len] = [IGNORE_INDEX] * source_len
         return {
@@ -500,9 +529,21 @@ def main():
                 concatenated_dataset[column] = reshaped_data
             return datasets.Dataset.from_dict(concatenated_dataset)
 
-        tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
+        if data_args.dataset_name == "tatsu-lab/alpaca":
+            tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
+            if training_args.do_eval:
+                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(
+                    ["prompt_sources", "prompt_targets"]
+                )
+        elif data_args.dataset_name == "timdettmers/openassistant-guanaco":
+            tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
+            if training_args.do_eval:
+                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
+        else:
+            raise ValueError("Unsupported dataset")
         tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
-
+        if training_args.do_eval:
+            tokenized_datasets["test"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
     if training_args.do_train:
         if "train" not in tokenized_datasets:
             raise ValueError("--do_train requires a train dataset")
@@ -517,12 +558,29 @@ def main():
         if data_args.max_eval_samples is not None:
             eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
 
+        def preprocess_logits_for_metrics(logits, labels):
+            if isinstance(logits, tuple):
+                # Depending on the model and config, logits may contain extra tensors,
+                # like past_key_values, but logits always come first
+                logits = logits[0]
+            return logits.argmax(dim=-1)
+
+        metric = evaluate.load("accuracy")
+
+        def compute_metrics(eval_preds):
+            preds, labels = eval_preds
+            # preds have the same shape as the labels, after the argmax(-1) has been calculated
+            # by preprocess_logits_for_metrics but we need to shift the labels
+            labels = labels[:, 1:].reshape(-1)
+            preds = preds[:, :-1].reshape(-1)
+            return metric.compute(predictions=preds, references=labels)
+
     # Data collator
     # This one will take care of randomly masking the tokens.
-    data_collator = DataCollatorForSeq2Seq(tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True)
+    data_collator = DataCollatorForLanguageModeling(tokenizer, pad_to_multiple_of=8, return_tensors="pt", mlm=False)
     logger.info("Using data collator of type {}".format(data_collator.__class__.__name__))
 
-    if training_args.do_train:
+    if training_args.do_train or training_args.do_eval:
         # PEFT settings
         peft_config = LoraConfig(
             r=finetune_args.lora_rank,
@@ -538,10 +596,10 @@ def main():
         if training_args.bf16:
             lora_model = lora_model.to(torch.bfloat16)
         lora_model.print_trainable_parameters()
-
         gaudi_config = GaudiConfig()
         gaudi_config.use_fused_adam = True
         gaudi_config.use_fused_clip_norm = True
+
         # Initialize our Trainer
         trainer = GaudiTrainer(
             model=lora_model,
@@ -551,13 +609,34 @@ def main():
             eval_dataset=eval_dataset if training_args.do_eval else None,
             tokenizer=tokenizer,
             data_collator=data_collator,
+            compute_metrics=compute_metrics if training_args.do_eval else None,
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         )
 
+    if training_args.do_train:
         trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+
         with training_args.main_process_first(desc="save model"):
             if is_main_process(training_args.local_rank):
                 unwrapped_model = unwrap_model(lora_model)
                 unwrapped_model.save_pretrained(training_args.output_dir, state_dict=unwrapped_model.state_dict())
+
+        # Evaluation
+    if training_args.do_eval:
+        logger.info("*** Evaluate ***")
+        metrics = trainer.evaluate()
+
+        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+
+        try:
+            perplexity = math.exp(metrics["eval_loss"])
+        except OverflowError:
+            perplexity = float("inf")
+        metrics["perplexity"] = perplexity
+
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
 
 
 if __name__ == "__main__":

@@ -116,6 +116,10 @@ class GaudiStableDiffusionLDM3DPipeline(
             bf16_full_eval,
         )
 
+        # Workaround for Synapse 1.11 for full bf16
+        if bf16_full_eval:
+            unet.conv_in.float()
+
         if safety_checker is None and requires_safety_checker:
             logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"

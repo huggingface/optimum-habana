@@ -65,6 +65,14 @@ def main():
         help="Whether to perform generation in bf16 precision.",
     )
     parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
+    parser.add_argument(
+        "--max_input_tokens",
+        type=int,
+        default=0,
+        help="If > 0 then pad and truncate the input sequences to this specified length of tokens. \
+            if == 0, then truncate to 16 (original default) \
+            if < 0, then do not truncate, use full input prompt",
+    )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
@@ -117,7 +125,7 @@ def main():
         "--profiling_warmup_steps",
         default=0,
         type=int,
-        help="Number of steps to ignore for profling.",
+        help="Number of steps to ignore for profiling.",
     )
     parser.add_argument(
         "--profiling_steps",
@@ -178,6 +186,20 @@ def main():
         help="Output directory to store results in.",
     )
     parser.add_argument(
+        "--bucket_size",
+        default=-1,
+        type=int,
+        help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
+            then we use `shape = prompt_length + max_new_tokens`. If a positive number is passed \
+            we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
+    )
+    parser.add_argument(
+        "--dataset_max_samples",
+        default=-1,
+        type=int,
+        help="If a negative number is passed (default = -1) perform inference on the whole dataset, else use only `dataset_max_samples` samples.",
+    )
+    parser.add_argument(
         "--limit_hpu_graphs",
         action="store_true",
         help="Skip HPU Graph usage for first token to save memory",
@@ -202,6 +224,8 @@ def main():
 
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
+        args.reuse_cache = False
+
     # Device is HPU
     args.device = "hpu"
     import habana_frameworks.torch.hpu as torch_hpu
@@ -247,17 +271,6 @@ def main():
     check_optimum_habana_min_version("1.8.0.dev0")
 
     set_seed(args.seed)
-
-    # TODO: remove the following hack when Falcon is available in Transformers
-    # Temporary hack for Falcon
-    if args.model_name_or_path == "tiiuae/falcon-7b":
-        args.model_revision = "4e2d06f0a7c6370ebabbc30c6f59377ae8f73d76"
-    elif args.model_name_or_path == "tiiuae/falcon-7b-instruct":
-        args.model_revision = "f8dac3fff96d5debd43edf56fb4e1abcfffbef28"
-    elif args.model_name_or_path == "tiiuae/falcon-40b":
-        args.model_revision = "f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232"
-    elif args.model_name_or_path == "tiiuae/falcon-40b-instruct":
-        args.model_revision = "7475ff8cfc36ed9a962b658ae3c33391566a85a5"
 
     tokenizer_kwargs = {
         "revision": args.model_revision,
@@ -371,6 +384,7 @@ def main():
     generation_config.max_new_tokens = args.max_new_tokens
     generation_config.use_cache = args.use_kv_cache
     generation_config.static_shapes = is_optimized
+    generation_config.bucket_size = args.bucket_size if is_optimized else -1
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
     generation_config.bad_words_ids = bad_words_ids
@@ -411,7 +425,16 @@ def main():
             """Generates sequences from the input sentences and returns them."""
 
             # Tokenization
-            input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+            if args.max_input_tokens > 0:
+                input_tokens = tokenizer.batch_encode_plus(
+                    input_sentences,
+                    return_tensors="pt",
+                    padding="max_length",
+                    max_length=args.max_input_tokens,
+                    truncation=True,
+                )
+            else:
+                input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
 
             # Move inputs to target device(s)
             for t in input_tokens:
@@ -486,8 +509,7 @@ def main():
             mem = get_hpu_memory_stats()
             for k, v in mem.items():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-            if args.use_hpu_graphs:
-                print(f"Graph compilation duration          = {compilation_duration} seconds")
+            print(f"Graph compilation duration          = {compilation_duration} seconds")
             print(separator)
             print()
     else:
@@ -502,7 +524,11 @@ def main():
             split = "validation"
         else:
             split = "train"
-        raw_dataset = raw_dataset[split]
+        raw_dataset = (
+            raw_dataset[split]
+            .shuffle()
+            .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
+        )
 
         if args.column_name is None:
             # If no column name is given, take the first column that has strings
@@ -519,12 +545,17 @@ def main():
         # Remove unused columns
         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
 
-        # Set the prompt length to 16
-        prompt_length = 16
+        # Set the prompt length to args.max_input_tokens if > 0 else (if 0 truncate to 16, otherwise use full length)
+        prompt_length = args.max_input_tokens if args.max_input_tokens > 0 else (-1, 16)[args.max_input_tokens == 0]
 
         def preprocess_function(examples):
             # Tokenize the texts
-            return tokenizer(examples[column_name], padding="max_length", max_length=prompt_length, truncation=True)
+            return tokenizer(
+                examples[column_name],
+                padding="max_length",
+                max_length=prompt_length if prompt_length > 0 else None,
+                truncation=prompt_length > 0,
+            )
 
         raw_dataset = raw_dataset.map(
             preprocess_function,
@@ -535,19 +566,33 @@ def main():
         raw_dataset = raw_dataset.remove_columns([column_name])
         raw_dataset.set_format(type="torch")
 
-        separator = None
+        if prompt_length <= 0:
+            # Todo please check if this collate function is suitable for your model
+            # This has been tested for OPT, and Bloom
+            assert model.config.model_type in ["opt", "bloom"]
 
-        logger.info("Running generation...")
+            def collate_fn(data):
+                collect = {k: [dt[k] for dt in data] for k in data[0]}
+                result = {}
+                for k in collect:
+                    tensors = collect[k]
+                    max_shape = max([item.shape[0] for item in tensors])
+                    result[k] = torch.stack(
+                        [torch.cat((torch.zeros(max_shape - t.shape[0], dtype=t.dtype), t)) for t in tensors], 0
+                    )
+                return result
 
-        dataloader = DataLoader(raw_dataset, batch_size=args.batch_size)
-        for i, batch in enumerate(dataloader):
+        else:
+            collate_fn = None
+
+        dataloader = DataLoader(raw_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
+
+        def generate_dataset(batch):
             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
-
             # Move inputs to target device(s)
             for t in batch:
                 if torch.is_tensor(batch[t]):
                     batch[t] = batch[t].to(args.device)
-
             # Generate new sequences
             outputs = model.generate(
                 **batch,
@@ -557,10 +602,37 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
+            return prompt, outputs
 
-            # Print outputs
-            if separator is None:
-                separator = "-" * len(prompt[0])
+        # warmup
+        if prompt_length > 0:
+            from optimum.habana.utils import HabanaProfile
+
+            # compilation stage disable profiling
+            HabanaProfile.disable()
+            # Compilation
+            if rank in [-1, 0]:
+                logger.info("Graph compilation...")
+            t0 = time.perf_counter()
+            for i, batch in enumerate(dataloader):
+                generate_dataset(batch)
+                # The first three iterations take longer because of graph compilation
+                if (i + 1) == 3:
+                    break
+            torch_hpu.synchronize()
+            compilation_duration = time.perf_counter() - t0
+            HabanaProfile.enable()
+
+        total_new_tokens_generated = 0
+        duration = 0
+        separator = "-" * 50
+        logger.info("Running generate dataset...")
+        t_start = time.time()
+        for i, batch in enumerate(dataloader):
+            t0 = time.perf_counter()
+            prompt, outputs = generate_dataset(batch)
+            duration += time.perf_counter() - t0
+            total_new_tokens_generated += args.batch_size * args.max_new_tokens
             if rank in [-1, 0]:
                 print(separator)
                 print(f"Batch n°{i+1}")
@@ -568,6 +640,27 @@ def main():
                 print(
                     f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
                 )
+                print(separator)
+        t_end = time.time()
+
+        throughput = total_new_tokens_generated / duration
+        # Print Stats
+        if rank in [-1, 0]:
+            from optimum.habana.utils import get_hpu_memory_stats
+
+            stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+            separator = "-" * len(stats)
+            print()
+            print("Stats:")
+            print(separator)
+            print(stats)
+            print("Total runtime for dataset:", t_end - t_start)
+            mem = get_hpu_memory_stats()
+            for k, v in mem.items():
+                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+            if prompt_length > 0:
+                print(f"Graph compilation duration          = {compilation_duration} seconds")
+            print(separator)
 
 
 if __name__ == "__main__":
