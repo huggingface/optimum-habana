@@ -92,6 +92,7 @@ class StaticMaxLengthCriteria(StoppingCriteria):
         self.cur_step += 1
         return self.cur_step >= self.max_steps
 
+
 class GaudiGenerationMixin(GenerationMixin):
     """
     This class enables to perform fast generation in lazy mode and with HPU graphs.
