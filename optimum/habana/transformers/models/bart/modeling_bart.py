@@ -30,13 +30,16 @@ from transformers.models.bart.modeling_bart import (
     _expand_mask,
     shift_tokens_right,
 )
-
-from ...utils import (
+from transformers.utils import (
     logging,
 )
 
 
 logger = logging.get_logger(__name__)
+
+
+# Copied from modeling_bart.py: https://raw.githubusercontent.com/huggingface/transformers/648d0deb1dd28a5d9956e63d8cf8c18f96a6a2aa/src/transformers/models/bart/modeling_bart.py
+# The difference is: modified dynamic shapes to static shapes with `mark_step` for performance improvement.
 
 
 class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
