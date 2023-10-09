@@ -518,13 +518,13 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
                 model_kwargs["token_idx"] = torch.tensor(1, device=inputs_tensor.device)
-                if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
-                    model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
-                        generation_config.max_length,
-                        inputs_tensor.shape[0],
-                        generation_config.pad_token_id,
-                        inputs_tensor.device,
-                    )
+                # if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
+                #     model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
+                #         generation_config.max_length,
+                #         inputs_tensor.shape[0],
+                #         generation_config.pad_token_id,
+                #         inputs_tensor.device,
+                #     )
 
         # decoder-only models should use left-padding for generation
         if not self.config.is_encoder_decoder:
