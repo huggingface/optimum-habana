@@ -257,7 +257,6 @@ class GaudiT5LayerSelfAttention(T5LayerSelfAttention):
         token_idx=None,
         max_output_length=0,
     ):
-
         normed_hidden_states = self.layer_norm(hidden_states)
         # print(normed_hidden_states)
         attention_output = self.SelfAttention(
@@ -527,7 +526,6 @@ def gaudi_T5Block_forward(
     token_idx=None,
     max_output_length=0,
 ):
-
     if past_key_value is not None:
         if not self.is_decoder:
             logger.warning("`past_key_values` is passed to the encoder. Please make sure this is intended.")
@@ -763,7 +761,7 @@ def gaudi_T5ForConditionalGeneration_forward(
     if self.config.tie_word_embeddings:
         # Rescale output before projecting on vocab
         # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.model_dim ** -0.5)
+        sequence_output = sequence_output * (self.model_dim**-0.5)
 
     lm_logits = self.lm_head(sequence_output)
 
@@ -807,7 +805,6 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
     max_output_length=0,
     **kwargs,
 ):
-
     # cut decoder_input_ids if past is used
     if past_key_values is not None:
         if token_idx is not None:

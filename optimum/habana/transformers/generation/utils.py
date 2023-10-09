@@ -2048,7 +2048,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     batch = idx // (num_beams * 2)
                     idx = idx % (num_beams * 2)
                     b_len = 1 + step
-                    b_score = s.item() / (b_len ** length_penalty)
+                    b_score = s.item() / (b_len**length_penalty)
                     b_tok = t.item()
                     is_finished = b_tok == model_config.eos_token_id
                     if len(cur_beams[batch]) >= num_beams:
@@ -2162,7 +2162,6 @@ class GaudiGenerationMixin(GenerationMixin):
             )
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             if self.generation_config.static_shapes:
-
                 beam_scores = next_token_scores.flatten()
                 static_beam_indices = next_indices.flatten()
 
