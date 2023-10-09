@@ -21,7 +21,9 @@ import warnings
 import numpy as np
 import pytest
 from transformers import is_torch_available, pipeline
-from transformers.testing_utils import require_torch, slow, torch_device
+from transformers.testing_utils import require_torch, slow
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ..test_modeling_common import floats_tensor, ids_tensor
 from .test_framework_agnostic import GenerationIntegrationTestsMixin
@@ -72,6 +74,9 @@ if is_torch_available():
         TopKLogitsWarper,
         TopPLogitsWarper,
     )
+
+torch_device = "hpu"
+adapt_transformers_to_gaudi()
 
 
 class GenerationTesterMixin:
@@ -694,7 +699,6 @@ class GenerationTesterMixin:
             )
         return output_contrastive, output_generate
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_greedy_generate(self):
         # check `generate()` and `greedy_search()` are equal
         for model_class in self.all_generative_model_classes:
@@ -706,7 +710,6 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(output_greedy.tolist(), output_generate.tolist())
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_greedy_generate_dict_outputs(self):
         for model_class in self.all_generative_model_classes:
             # disable cache
@@ -736,7 +739,6 @@ class GenerationTesterMixin:
             for output in (output_greedy, output_generate):
                 self._check_outputs(output, input_ids, model.config)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_greedy_generate_dict_outputs_use_cache(self):
         for model_class in self.all_generative_model_classes:
             # enable cache
@@ -765,7 +767,6 @@ class GenerationTesterMixin:
             for output in (output_greedy, output_generate):
                 self._check_outputs(output, input_ids, model.config, use_cache=True)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_sample_generate(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -811,7 +812,6 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(output_sample.tolist(), output_generate.tolist())
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_sample_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
             # disable cache
@@ -858,7 +858,6 @@ class GenerationTesterMixin:
             for output in (output_sample, output_generate):
                 self._check_outputs(output, input_ids, model.config, num_return_sequences=2)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_beam_search_generate(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -912,7 +911,6 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(output_generate.tolist(), output_beam_search.tolist())
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_beam_search_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -969,7 +967,6 @@ class GenerationTesterMixin:
             for output in (output_beam_search, output_generate):
                 self._check_outputs(output, input_ids, model.config, num_return_sequences=beam_scorer.num_beams)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_beam_search_generate_dict_outputs_use_cache(self):
         for model_class in self.all_generative_model_classes:
             # enable cache
@@ -1024,7 +1021,7 @@ class GenerationTesterMixin:
                     output, input_ids, model.config, use_cache=True, num_return_sequences=beam_scorer.num_beams
                 )
 
-    @pytest.mark.skip("Skipped for Gaudi")
+    @pytest.mark.skip("Beam search sampling is not supported by optimum-habana yet")
     def test_beam_sample_generate(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -1056,7 +1053,7 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(output_generate.tolist(), output_beam_sample.tolist())
 
-    @pytest.mark.skip("Skipped for Gaudi")
+    @pytest.mark.skip("Beam search sampling is not supported by optimum-habana yet")
     def test_beam_sample_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -1109,7 +1106,6 @@ class GenerationTesterMixin:
             for output in (output_beam_sample, output_generate):
                 self._check_outputs(output, input_ids, model.config, num_return_sequences=beam_scorer.num_beams)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_generate_without_input_ids(self):
         config, _, _, max_length = self._get_input_ids_and_config()
 
@@ -1124,7 +1120,7 @@ class GenerationTesterMixin:
             output_ids_generate = model.generate(do_sample=False, max_length=max_length, remove_invalid_values=True)
             self.assertIsNotNone(output_ids_generate)
 
-    @pytest.mark.skip("Skipped for Gaudi")
+    @pytest.mark.skip("Group beam search is not supported by optimum-habana")
     def test_group_beam_search_generate(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -1181,7 +1177,7 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(output_generate.tolist(), output_group_beam_search.tolist())
 
-    @pytest.mark.skip("Skipped for Gaudi")
+    @pytest.mark.skip("Group beam search is not supported by optimum-habana")
     def test_group_beam_search_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -1245,7 +1241,6 @@ class GenerationTesterMixin:
                     output, input_ids, model.config, num_return_sequences=num_return_sequences * beam_scorer.num_beams
                 )
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_constrained_beam_search_generate(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -1330,7 +1325,6 @@ class GenerationTesterMixin:
             for generation_output in output_generate:
                 self._check_sequence_inside_sequence(force_tokens, generation_output)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_constrained_beam_search_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -1400,7 +1394,6 @@ class GenerationTesterMixin:
             for output in (output_beam_search, output_generate):
                 self._check_outputs(output, input_ids, model.config, num_return_sequences=beam_scorer.num_beams)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_contrastive_generate(self):
         # check `generate()` and `contrastive_search()` are equal
         for model_class in self.all_generative_model_classes:
@@ -1423,7 +1416,6 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(output_contrastive.tolist(), output_generate.tolist())
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_contrastive_generate_dict_outputs_use_cache(self):
         for model_class in self.all_generative_model_classes:
             # won't fix: FSMT and Reformer have a different cache variable type (and format).
@@ -1456,7 +1448,6 @@ class GenerationTesterMixin:
             for output in (output_contrastive, output_generate):
                 self._check_outputs(output, input_ids, model.config, use_cache=True)
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_contrastive_generate_low_memory(self):
         # Check that choosing 'low_memory' does not change the model output
         for model_class in self.all_generative_model_classes:
@@ -1572,7 +1563,6 @@ class GenerationTesterMixin:
                         for output in (output_greedy, output_assisted):
                             self._check_outputs(output, input_ids, model.config, use_cache=True)
 
-    @pytest.mark.skip("Skipped for Gaudi, sample seed")
     def test_assisted_decoding_sample(self):
         # Seeded assisted decoding will not match sample for the same seed, as the forward pass does not return the
         # exact same logits (the forward pass of the main model, now with several tokens at once, has causal masking).
@@ -1768,7 +1758,6 @@ class GenerationTesterMixin:
                         past_kv[i][1].shape, (batch_size, num_attention_heads, seq_length, per_head_embed_dim)
                     )
 
-    @pytest.mark.skip("Skipped for Gaudi")
     def test_generate_from_inputs_embeds_decoder_only(self):
         # When supported, tests that the decoder model can generate from `inputs_embeds` instead of `input_ids`
         # if fails, you should probably update the `prepare_inputs_for_generation` function

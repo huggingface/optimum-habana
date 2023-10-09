@@ -87,8 +87,9 @@ class GaudiGPTJAttention(nn.Module):
         causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
 
         # Keep the attention weights computation in fp32 to avoid overflow issues
-        query = query.to(torch.float32)
-        key = key.to(torch.float32)
+        query = query.to(torch.float32).contiguous()
+        key = key.to(torch.float32).contiguous()
+        value = value.contiguous()
 
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
@@ -148,9 +149,9 @@ class GaudiGPTJAttention(nn.Module):
         key = self.k_proj(hidden_states)
         value = self.v_proj(hidden_states)
 
-        query = self._split_heads(query, self.num_attention_heads, self.head_dim, True)
-        key = self._split_heads(key, self.num_attention_heads, self.head_dim, True)
-        value = self._split_heads(value, self.num_attention_heads, self.head_dim, False)
+        query = self._split_heads(query, self.num_attention_heads, self.head_dim, True).contiguous()
+        key = self._split_heads(key, self.num_attention_heads, self.head_dim, True).contiguous()
+        value = self._split_heads(value, self.num_attention_heads, self.head_dim, False).contiguous()
 
         embed_positions = self._get_embed_positions(position_ids)
 

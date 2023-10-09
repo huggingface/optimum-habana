@@ -59,8 +59,9 @@ def gaudi_gpt_neox_attention_forward(
         seq_len += layer_past[0].shape[-2]
     cos, sin = self.rotary_emb(value, seq_len=seq_len)
     query, key = apply_customized_rope(self, query_rot, key_rot, cos, sin, position_ids)
-    query = torch.cat((query, query_pass), dim=-1)
-    key = torch.cat((key, key_pass), dim=-1)
+    query = torch.cat((query, query_pass), dim=-1).contiguous()
+    key = torch.cat((key, key_pass), dim=-1).contiguous()
+    value = value.contiguous()
 
     # Cache QKV values
     if has_layer_past:
