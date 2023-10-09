@@ -31,6 +31,13 @@ from transformers.models.bart.modeling_bart import (
     shift_tokens_right,
 )
 
+from ...utils import (
+    logging,
+)
+
+
+logger = logging.get_logger(__name__)
+
 
 class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
     """

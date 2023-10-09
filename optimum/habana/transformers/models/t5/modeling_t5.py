@@ -1,43 +1,16 @@
-from typing import Optional
-
 import torch
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 
 
-try:
-    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
-except ImportError:
-    print("Not using HPU fused kernel for RMSNorm")
-    FusedRMSNorm = None
+__package__ = "transformers.models.t5"
 
-
-def gaudi_t5_layernorm_forward(self, hidden_states):
-    """
-    Copied from T5LayerNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/t5/modeling_t5.py
-    The only differences are:
-        - override RMSNorm with Habana fused RMSNorm
-    """
-    if not self.training and hidden_states.device.type == "hpu" and FusedRMSNorm:
-        orig_dtype = hidden_states.dtype
-        hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
-        return hidden_states.to(orig_dtype)
-    else:
-        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        # convert into half-precision if necessary
-        if self.weight.dtype in [torch.float16, torch.bfloat16]:
-            hidden_states = hidden_states.to(self.weight.dtype)
-        return self.weight * hidden_states
-
-
-__package__ = "transformers.models.bart"
-
+import warnings
 from typing import Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
-import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
+from torch.utils.checkpoint import checkpoint
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
@@ -65,6 +38,31 @@ There are following differences:
 wrap `nn.functional.dropout` with `mark_step` for numerical improvement.
 introduce static shapes to improve eval/pred performance on HPU
 """
+
+try:
+    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
+except ImportError:
+    print("Not using HPU fused kernel for RMSNorm")
+    FusedRMSNorm = None
+
+
+def gaudi_t5_layernorm_forward(self, hidden_states):
+    """
+    Copied from T5LayerNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/t5/modeling_t5.py
+    The only differences are:
+        - override RMSNorm with Habana fused RMSNorm
+    """
+    if not self.training and hidden_states.device.type == "hpu" and FusedRMSNorm:
+        orig_dtype = hidden_states.dtype
+        hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
+        return hidden_states.to(orig_dtype)
+    else:
+        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        # convert into half-precision if necessary
+        if self.weight.dtype in [torch.float16, torch.bfloat16]:
+            hidden_states = hidden_states.to(self.weight.dtype)
+        return self.weight * hidden_states
 
 
 def gaudi_T5Attention_forward(
@@ -626,6 +624,15 @@ def gaudi_T5Block_forward(
         outputs = outputs + attention_outputs
 
     return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
+
+
+# Warning message for FutureWarning: head_mask was separated into two input args - head_mask, decoder_head_mask
+__HEAD_MASK_WARNING_MSG = """
+The input argument `head_mask` was split into two arguments `head_mask` and `decoder_head_mask`. Currently,
+`decoder_head_mask` is set to copy `head_mask`, but this feature is deprecated and will be removed in future versions.
+If you do not want to use any `decoder_head_mask` now, please set `decoder_head_mask = torch.ones(num_layers,
+num_heads)`.
+"""
 
 
 def gaudi_T5ForConditionalGeneration_forward(
