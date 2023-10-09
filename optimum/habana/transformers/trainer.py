@@ -1556,6 +1556,7 @@ class GaudiTrainer(Trainer):
                 logits = self.accelerator.pad_across_processes(logits, dim=1, pad_index=-100)
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits, labels)
+                    logits_dtype = get_dtype(logits)
                 logits = self.accelerator.gather_for_metrics((logits))
                 preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
 
