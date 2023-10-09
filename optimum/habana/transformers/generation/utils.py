@@ -18,7 +18,6 @@ import copy
 import inspect
 import math
 import warnings
-import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -1370,7 +1369,7 @@ class GaudiGenerationMixin(GenerationMixin):
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
             # forward pass to get next token
-            #self.iterations = self.iterations + 1
+            # self.iterations = self.iterations + 1
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -2000,12 +1999,19 @@ class GaudiGenerationMixin(GenerationMixin):
         this_peer_finished = False  # used by synced_gpus only
 
         if self.generation_config.static_shapes:
-            beam_trace_scores = torch.zeros((input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.float32)
-            beam_trace_indices = torch.zeros((input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64)
-            beam_trace_tokens = torch.zeros((input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64)
+            beam_trace_scores = torch.zeros(
+                (input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.float32
+            )
+            beam_trace_indices = torch.zeros(
+                (input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
+            )
+            beam_trace_tokens = torch.zeros(
+                (input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
+            )
             beam_trace_idx = torch.tensor(0, device=input_ids.device)
             num_eos_tokens = torch.zeros((1), device=input_ids.device, dtype=torch.int64)
             num_beams_tensor = torch.tensor(num_beams, device=input_ids.device, dtype=torch.int64)
+
         def finalize_beams(initial_ids, beam_trace, model_config, length_penalty):
             beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens = beam_trace
 
@@ -2018,7 +2024,7 @@ class GaudiGenerationMixin(GenerationMixin):
             beam_trace_tokens = beam_trace_tokens[:beam_trace_idx, :]
 
             # (score, parent_beam, token_id, is_finished)
-            root = (float('-inf'), None, None, False)
+            root = (float("-inf"), None, None, False)
 
             def resolve_beam(beam):
                 if beam == root:
@@ -2034,7 +2040,9 @@ class GaudiGenerationMixin(GenerationMixin):
             def beam_score(beam):
                 return (beam[3], beam[0])
 
-            for step, (scores, indices, tokens) in enumerate(zip(beam_trace_scores, beam_trace_indices, beam_trace_tokens)):
+            for step, (scores, indices, tokens) in enumerate(
+                zip(beam_trace_scores, beam_trace_indices, beam_trace_tokens)
+            ):
                 cur_beams = [[] for _ in range(bs)]
                 for idx, (s, i, t) in enumerate(zip(scores, indices, tokens)):
                     batch = idx // (num_beams * 2)
@@ -2057,20 +2065,27 @@ class GaudiGenerationMixin(GenerationMixin):
                 orig_len = tensor.shape[dim]
                 padding_len = new_size - orig_len
                 import torch.nn.functional as F
+
                 if padding_len > 0:
                     if dim == -1:
                         return F.pad(tensor, (0, padding_len), value=value)
                     elif dim == -2:
                         return F.pad(tensor, (0, 0, 0, padding_len), value=value)
                     else:
-                        assert False, f'Unsupported dim value: {dim}'
+                        assert False, f"Unsupported dim value: {dim}"
                 return tensor
 
-            result = [torch.cat([initial_ids[i], torch.tensor(resolve_beam(b), dtype=initial_ids.dtype, device=initial_ids.device)]) for i, b in enumerate(best)]
+            result = [
+                torch.cat(
+                    [initial_ids[i], torch.tensor(resolve_beam(b), dtype=initial_ids.dtype, device=initial_ids.device)]
+                )
+                for i, b in enumerate(best)
+            ]
             max_length = max([t.shape[-1] for t in result])
             result = [expand_if_needed(res, max_length, model_config.pad_token_id) for res in result]
             input_ids = torch.stack(result)
             return input_ids
+
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         # self.generation_config.early_stopping = True
@@ -2149,7 +2164,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if self.generation_config.static_shapes:
 
                 beam_scores = next_token_scores.flatten()
-                static_beam_indices =  next_indices.flatten()
+                static_beam_indices = next_indices.flatten()
 
                 beam_tokens = next_tokens.remainder(vocab_size).flatten()
 
@@ -2161,7 +2176,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 if self.generation_config.early_stopping:
                     num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
 
-                beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float('-inf'), 0.0))
+                beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
                 beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
                 _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
                 offset = torch.arange(0, torch.numel(beam_scores), beam_scores.shape[-1]).unsqueeze(-1)
@@ -2220,8 +2235,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hb_profer.step()
             if self.generation_config.static_shapes:
-                is_min_length_reached = self.generation_config.min_length and cur_len > self.generation_config.min_length
-                if self.generation_config.early_stopping and is_min_length_reached and cur_len % self.generation_config.early_stopping_interval == 0 and num_eos_tokens >= num_beams_tensor:
+                is_min_length_reached = (
+                    self.generation_config.min_length and cur_len > self.generation_config.min_length
+                )
+                if (
+                    self.generation_config.early_stopping
+                    and is_min_length_reached
+                    and cur_len % self.generation_config.early_stopping_interval == 0
+                    and num_eos_tokens >= num_beams_tensor
+                ):
                     break
                 elif cur_len == self.generation_config.max_length:
                     break
@@ -2233,8 +2255,9 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.stop()
 
         if self.generation_config.static_shapes:
-            beam_trace =  (beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens)
+            beam_trace = (beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens)
             from collections import UserDict
+
             def map_tensors(obj, fn):
                 constructor = type(obj)
                 if isinstance(obj, tuple):
@@ -2247,13 +2270,13 @@ class GaudiGenerationMixin(GenerationMixin):
                     return fn(obj)
                 return obj
 
-
             def move(obj, device):
                 return map_tensors(obj, lambda t: t.to(device))
+
             initial_ids = torch.zeros((batch_size, 1), dtype=torch.int64, device=input_ids.device)
             sequence_outputs = {}
             sequence_outputs["sequences"] = finalize_beams(
-            initial_ids.cpu(), move(beam_trace, 'cpu'), self.config, self.generation_config.length_penalty
+                initial_ids.cpu(), move(beam_trace, "cpu"), self.config, self.generation_config.length_penalty
             )
         else:
             sequence_outputs = beam_scorer.finalize(

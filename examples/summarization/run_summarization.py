@@ -25,12 +25,12 @@ import sys
 import warnings
 from dataclasses import dataclass, field
 from typing import Optional
-import torch
 
 import datasets
 import evaluate
 import nltk  # Here to have a nice missing dependency error message early on
 import numpy as np
+import torch
 import transformers
 from datasets import load_dataset
 from filelock import FileLock
@@ -476,13 +476,18 @@ def main():
         trust_remote_code=model_args.trust_remote_code,
         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
     )
-    is_bart = True if model_args.model_name_or_path in [
+    is_bart = (
+        True
+        if model_args.model_name_or_path
+        in [
             "facebook/bart-large-mnli",
             "facebook/bart-large-cnn",
             "facebook/bart-large",
             "facebook/bart-base",
             "facebook/bart-large-xsum",
-        ] else False
+        ]
+        else False
+    )
     if is_bart and not (training_args.do_predict or training_args.do_eval):
         raise ValueError("Training is not yet supported for BART. Eval or predict can be enabled")
 
@@ -624,7 +629,7 @@ def main():
                 raise ValueError("Found case where either text or summary is missing.")
 
         inputs = [prefix + inp + suffix for inp in inputs]
-        model_inputs = tokenizer(inputs,  max_length=data_args.max_source_length, padding=padding, truncation=True)
+        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
 
         # Tokenize targets with the `text_target` keyword argument
         labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)
@@ -651,18 +656,18 @@ def main():
                 raise ValueError("Found case where either text or summary is missing.")
 
         inputs = [prefix + inp + suffix for inp in inputs]
-        model_inputs = tokenizer(inputs,   return_tensors="pt", padding=True)
-        new_model_inputs = {
-            'input_ids' :[]
-        }
-        for i in range(len(model_inputs['input_ids'])):
-            cur_len = model_inputs['input_ids'][i].shape[-1]
+        model_inputs = tokenizer(inputs, return_tensors="pt", padding=True)
+        new_model_inputs = {"input_ids": []}
+        for i in range(len(model_inputs["input_ids"])):
+            cur_len = model_inputs["input_ids"][i].shape[-1]
             max_length = (cur_len + 128 - 1) // 128 * 128
             if max_length > data_args.max_source_length:
                 max_length = data_args.max_source_length
-                new_model_inputs['input_ids'].append(model_inputs['input_ids'][i][:max_length])
+                new_model_inputs["input_ids"].append(model_inputs["input_ids"][i][:max_length])
             else:
-                new_model_inputs['input_ids'].append(torch.nn.functional.pad(model_inputs['input_ids'][i] , (0, max_length - cur_len), value=0))
+                new_model_inputs["input_ids"].append(
+                    torch.nn.functional.pad(model_inputs["input_ids"][i], (0, max_length - cur_len), value=0)
+                )
         model_inputs = new_model_inputs
         # Tokenize targets with the `text_target` keyword argument
         labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)

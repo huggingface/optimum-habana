@@ -30,9 +30,6 @@ from transformers.models.bart.modeling_bart import (
     _expand_mask,
     shift_tokens_right,
 )
-from transformers.utils import (
-    logging,
-)
 
 
 class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
@@ -54,6 +51,7 @@ class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
         positions += past_key_values_length
 
         return super().forward(positions + self.offset)
+
 
 def gaudi_BartAttention_forward(
     self,
@@ -182,6 +180,7 @@ def gaudi_BartAttention_forward(
 
     return attn_output, attn_weights_reshaped, past_key_value
 
+
 def gaudi_BartEncoderLayer_forward(
     self,
     hidden_states: torch.FloatTensor,
@@ -216,6 +215,7 @@ def gaudi_BartEncoderLayer_forward(
         outputs += (attn_weights,)
 
     return outputs
+
 
 def gaudi_BartDecoderLayer_forward(
     self,
@@ -297,6 +297,7 @@ def gaudi_BartDecoderLayer_forward(
 
     return outputs
 
+
 def gaudi_BartEncoder_forward(
     self,
     input_ids: torch.LongTensor = None,
@@ -330,6 +331,7 @@ def gaudi_BartEncoder_forward(
 
     embed_pos = self.embed_positions(input)
     import habana_frameworks.torch.core as htcore
+
     htcore.mark_step()
     embed_pos = embed_pos.to(inputs_embeds.device)
 
@@ -562,6 +564,7 @@ def gaudi_BartDecoder_forward(
         cross_attentions=all_cross_attentions,
     )
 
+
 def gaudi_BartModel_forward(
     self,
     input_ids: torch.LongTensor = None,
@@ -650,6 +653,7 @@ def gaudi_BartModel_forward(
         encoder_attentions=encoder_outputs.attentions,
     )
 
+
 def gaudi_BartForConditionalGeneration_forward(
     self,
     input_ids: torch.LongTensor = None,
@@ -724,6 +728,7 @@ def gaudi_BartForConditionalGeneration_forward(
         encoder_hidden_states=outputs.encoder_hidden_states,
         encoder_attentions=outputs.encoder_attentions,
     )
+
 
 def gaudi_BartForConditionalGeneration_prepare_inputs_for_generation(
     self,

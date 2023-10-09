@@ -28,6 +28,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
     @require_torch
     def test_finetune_t5(self):
         from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
         adapt_transformers_to_gaudi()
         model = T5ForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-t5-v1.1")
         tokenizer = AutoTokenizer.from_pretrained("t5-small")

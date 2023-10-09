@@ -37,14 +37,14 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
-    _gaudi_get_resized_embeddings,
-    _gaudi_get_resized_lm_head,
     GaudiT5DenseActDense,
     GaudiT5DenseGatedActDense,
     GaudiT5LayerCrossAttention,
     GaudiT5LayerFF,
     GaudiT5LayerSelfAttention,
     GaudiT5Stack,
+    _gaudi_get_resized_embeddings,
+    _gaudi_get_resized_lm_head,
     gaudi_albert_forward,
     gaudi_BartAttention_forward,
     gaudi_BartDecoder_forward,
@@ -94,10 +94,10 @@ from .models import (
     gaudi_rot_vec_mul,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
+    gaudi_T5Block_forward,
     gaudi_T5ForConditionalGeneration_forward,
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5ForConditionalGeneration_reorder_cache,
-    gaudi_T5Block_forward,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
 )
@@ -275,7 +275,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.t5.modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
     transformers.models.t5.modeling_t5.T5DenseActDense = GaudiT5DenseActDense
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.forward = gaudi_T5ForConditionalGeneration_forward
-    transformers.models.t5.modeling_t5.T5ForConditionalGeneration.prepare_inputs_for_generation = gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation
-    transformers.models.t5.modeling_t5.T5ForConditionalGeneration._reorder_cache = gaudi_T5ForConditionalGeneration_reorder_cache
+    transformers.models.t5.modeling_t5.T5ForConditionalGeneration.prepare_inputs_for_generation = (
+        gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation
+    )
+    transformers.models.t5.modeling_t5.T5ForConditionalGeneration._reorder_cache = (
+        gaudi_T5ForConditionalGeneration_reorder_cache
+    )
     transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
     transformers.models.t5.modeling_t5.T5Block.forward = gaudi_T5Block_forward

@@ -28,12 +28,21 @@ def gaudi_t5_layernorm_forward(self, hidden_states):
         if self.weight.dtype in [torch.float16, torch.bfloat16]:
             hidden_states = hidden_states.to(self.weight.dtype)
         return self.weight * hidden_states
-__package__ = 'transformers.models.bart'
+
+
+__package__ = "transformers.models.bart"
+
+from typing import Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
+from transformers.modeling_outputs import (
+    BaseModelOutput,
+    BaseModelOutputWithPastAndCrossAttentions,
+    Seq2SeqLMOutput,
+)
 from transformers.models.t5.modeling_t5 import (
     T5DenseActDense,
     T5DenseGatedActDense,
@@ -42,24 +51,21 @@ from transformers.models.t5.modeling_t5 import (
     T5LayerSelfAttention,
     T5Stack,
 )
+
 from ...utils import (
     logging,
 )
-from transformers.modeling_outputs import (
-    BaseModelOutput,
-    BaseModelOutputWithPastAndCrossAttentions,
-    Seq2SeqLMOutput,
-    Seq2SeqModelOutput,
-)
-from typing import Optional, Tuple, Union
+
+
 logger = logging.get_logger(__name__)
 """
 Copied from T5Attention: https://github.com/huggingface/transformers/blob/main/src/transformers/models/t5/modeling_t5.py#L452
-https://github.com/huggingface/transformers/commit/04ab5605fbb4ef207b10bf2772d88c53fc242e83 
-There are following differences: 
+https://github.com/huggingface/transformers/commit/04ab5605fbb4ef207b10bf2772d88c53fc242e83
+There are following differences:
 wrap `nn.functional.dropout` with `mark_step` for numerical improvement.
 introduce static shapes to improve eval/pred performance on HPU
 """
+
 
 def gaudi_T5Attention_forward(
     self,
@@ -253,7 +259,7 @@ class GaudiT5LayerSelfAttention(T5LayerSelfAttention):
         token_idx=None,
         max_output_length=0,
     ):
-        
+
         normed_hidden_states = self.layer_norm(hidden_states)
         # print(normed_hidden_states)
         attention_output = self.SelfAttention(
@@ -271,10 +277,12 @@ class GaudiT5LayerSelfAttention(T5LayerSelfAttention):
         outputs = (hidden_states,) + attention_output[1:]  # add attentions if we output them
         return outputs
 
+
 class GaudiT5LayerCrossAttention(T5LayerCrossAttention):
     def __init__(self, config):
         super().__init__(config)
         self.dropout = GaudiDropout(self.dropout)
+
 
 class GaudiT5Stack(T5Stack):
     def __init__(self, config, embed_tokens=None):
@@ -333,7 +341,9 @@ class GaudiT5Stack(T5Stack):
         if token_idx is not None:
             mask_seq_length = past_key_values[0][0].shape[2] if past_key_values is not None else seq_length
         else:
-            mask_seq_length = past_key_values[0][0].shape[2] + seq_length if past_key_values is not None else seq_length
+            mask_seq_length = (
+                past_key_values[0][0].shape[2] + seq_length if past_key_values is not None else seq_length
+            )
 
         if use_cache is True:
             assert self.is_decoder, f"`use_cache` can only be set to `True` if {self} is used as a decoder"
@@ -371,7 +381,7 @@ class GaudiT5Stack(T5Stack):
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
                 )
                 use_cache = False
-    
+
         # Prepare head mask if needed
         head_mask = self.get_head_mask(head_mask, self.config.num_layers)
         cross_attn_head_mask = self.get_head_mask(cross_attn_head_mask, self.config.num_layers)
@@ -501,6 +511,7 @@ class GaudiT5Stack(T5Stack):
             cross_attentions=all_cross_attentions,
         )
 
+
 def gaudi_T5Block_forward(
     self,
     hidden_states,
@@ -615,6 +626,7 @@ def gaudi_T5Block_forward(
         outputs = outputs + attention_outputs
 
     return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
+
 
 def gaudi_T5ForConditionalGeneration_forward(
     self,
@@ -744,7 +756,7 @@ def gaudi_T5ForConditionalGeneration_forward(
     if self.config.tie_word_embeddings:
         # Rescale output before projecting on vocab
         # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.model_dim**-0.5)
+        sequence_output = sequence_output * (self.model_dim ** -0.5)
 
     lm_logits = self.lm_head(sequence_output)
 
@@ -772,6 +784,7 @@ def gaudi_T5ForConditionalGeneration_forward(
         encoder_attentions=encoder_outputs.attentions,
     )
 
+
 def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
     self,
     input_ids,
@@ -785,7 +798,7 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
     token_idx=None,
     decoder_attention_mask=None,
     max_output_length=0,
-    **kwargs
+    **kwargs,
 ):
 
     # cut decoder_input_ids if past is used
@@ -800,7 +813,7 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
         "past_key_values": past_key_values,
         "encoder_outputs": encoder_outputs,
         "attention_mask": attention_mask,
-        "decoder_attention_mask" : decoder_attention_mask,
+        "decoder_attention_mask": decoder_attention_mask,
         "head_mask": head_mask,
         "decoder_head_mask": decoder_head_mask,
         "cross_attn_head_mask": cross_attn_head_mask,
