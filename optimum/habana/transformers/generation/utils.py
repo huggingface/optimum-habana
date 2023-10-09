@@ -2088,7 +2088,6 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
-            self.iterations = self.iterations + 1
             outputs = self(
                 **model_inputs,
                 return_dict=True,
