@@ -88,7 +88,7 @@ def gaudi_T5Attention_forward(
         if token_idx is None:
             real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length
         else:
-            real_seq_length = max_output_length
+            real_seq_length = past_key_value[0].shape[2]
 
     key_length = real_seq_length if key_value_states is None else key_value_states.shape[1]
 
@@ -793,7 +793,7 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
         if token_idx is not None:
             input_ids = torch.index_select(input_ids, 1, token_idx - 1)
         else:
-            input_ids = input_ids[:, -1].unsqueeze(-1)
+            input_ids = input_ids[:, -1:].unsqueeze(-1)
 
     return {
         "decoder_input_ids": input_ids,
