@@ -43,6 +43,7 @@ def _test_text_generation(
     deepspeed: bool = False,
     world_size: int = 8,
     prompt: bool = False,
+    check_accuracy: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -61,7 +62,7 @@ def _test_text_generation(
         "--use_kv_cache",
     ]
 
-    if prompt or not deepspeed:
+    if (prompt or not deepspeed) and not check_accuracy:
         command.append("--bf16")
 
     if prompt:
@@ -75,8 +76,12 @@ def _test_text_generation(
             f"--max_new_tokens {baseline.get('max_new_tokens')}",
             f"--model_name_or_path {baseline.get('model_name_or_path')}",
             f"--prompt '{baseline.get('prompt')}'",
-            "--bucket_size 50",
         ]
+        # Bigger bucket_size with FP32 to avoid OOM
+        if check_accuracy:
+            command += ["--bucket_size 250"]
+        else:
+            command += ["--bucket_size 50"]
     else:
         command += ["--max_new_tokens 100", f"--model_name_or_path {model_name}"]
 
@@ -104,10 +109,14 @@ def _test_text_generation(
         with open(Path(tmp_dir) / "results.json") as fp:
             results = json.load(fp)
 
-        # Ensure performance requirements (throughput) are met
-        assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline.get("distribution").get(distribution).get(
-            "throughput"
-        )
+        # Ensure accuracy requirements are met
+        if check_accuracy:
+            assert results["output"][0] == baseline.get("expected_output")
+        else:
+            # Ensure performance requirements (throughput) are met
+            assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline.get("distribution").get(
+                distribution
+            ).get("throughput")
 
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["bf16"])
@@ -122,4 +131,7 @@ def test_text_generation_deepspeed(model_name: str, baseline: float, token: str)
 
 @pytest.mark.parametrize("model_name, deepspeed", MODELS_TO_TEST["prompt"])
 def test_text_generation_prompt(model_name: str, deepspeed: bool):
+    # check performance only in bf16
     _test_text_generation(model_name, deepspeed=deepspeed, prompt=True)
+    # check accuracy of generated output only in fp32
+    _test_text_generation(model_name, deepspeed=deepspeed, prompt=True, check_accuracy=True)
