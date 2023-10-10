@@ -1,5 +1,4 @@
 import math
-import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -82,7 +81,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.past_key = None
         self.past_value = None
 
-    def allocate_kv_cache(self, batch_size, seq_len):        
+    def allocate_kv_cache(self, batch_size, seq_len):
         key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
         value_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
         if self.past_key is None or self.past_key.shape != key_shape:
