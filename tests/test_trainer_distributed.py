@@ -106,7 +106,8 @@ if __name__ == "__main__":
     parser = HfArgumentParser((GaudiTrainingArguments,))
     training_args = parser.parse_args_into_dataclasses()[0]
 
-    gaudi_config = GaudiConfig.from_pretrained(Path("tests", "configs", "gaudi_config_trainer_test.json"))
+    gaudi_config_file = Path(__file__).parent.resolve() / Path("configs/gaudi_config_trainer_test.json")
+    gaudi_config = GaudiConfig.from_pretrained(gaudi_config_file)
 
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_hpu: {training_args.world_size},"
