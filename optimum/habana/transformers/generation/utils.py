@@ -303,7 +303,10 @@ class GaudiGenerationMixin(GenerationMixin):
             if (
                 generation_config.static_shapes
                 and self.config.is_encoder_decoder
-                and self.generation_config.generation_mode == GenerationMode.GREEDY_SEARCH
+                and (
+                    self.generation_config.generation_mode == GenerationMode.GREEDY_SEARCH
+                    or self.generation_config.generation_mode == GenerationMode.BEAM_SEARCH
+                )
             ):
                 criteria.append(StaticMaxLengthCriteria(generation_config.max_length))
             else:
@@ -2115,7 +2118,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.stop()
 
         sequence_outputs = beam_scorer.finalize(
-            input_ids,
+            input_ids[:, :cur_len],
             beam_scores,
             next_tokens,
             next_indices,
