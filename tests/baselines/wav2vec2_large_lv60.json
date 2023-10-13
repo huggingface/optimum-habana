@@ -4,11 +4,11 @@
         "eval_batch_size": 8,
         "distribution": {
             "single_card": {
-                "learning_rate": 3e-4,
-                "train_batch_size": 4,
-                "eval_wer": 0.0402,
-                "train_runtime": 19493.4582,
-                "train_samples_per_second": 4.402,
+                "learning_rate": 4e-4,
+                "train_batch_size": 8,
+                "eval_wer": 0.069,
+                "train_runtime": 7796.0621,
+                "train_samples_per_second": 7.379,
                 "extra_arguments": [
                     "--dataset_config_name clean",
                     "--train_split_name train.100",
