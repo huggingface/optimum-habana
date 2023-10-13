@@ -37,6 +37,10 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    _gaudi_get_resized_embeddings,
+    _gaudi_get_resized_lm_head,
+    _gaudi_wav2vec2_compute_mask_indices,
+    _gaudi_wav2vec2_mask_hidden_states,
     gaudi_albert_forward,
     gaudi_BartAttention_forward,
     gaudi_BartDecoder_forward,
@@ -86,10 +90,8 @@ from .models import (
     gaudi_rot_vec_mul,
     gaudi_t5_layernorm_forward,
     gaudi_vit_self_attention_forward,
-    gaudi_wav2vec2_forward,
-    _gaudi_wav2vec2_mask_hidden_states,
-    _gaudi_wav2vec2_compute_mask_indices,
     gaudi_wav2vec2_encoder_forward,
+    gaudi_wav2vec2_forward,
 )
 
 
@@ -108,7 +110,9 @@ def adapt_transformers_to_gaudi():
     # Optimization tweak for Wav2Vec2
     transformers.models.wav2vec2.modeling_wav2vec2._compute_mask_indices = _gaudi_wav2vec2_compute_mask_indices
     # transformers.models.wav2vec2.modeling_wav2vec2._sample_negative_indices = _gaudi_wav2vec2_sample_negative_indices
-    transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Model._mask_hidden_states = _gaudi_wav2vec2_mask_hidden_states
+    transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Model._mask_hidden_states = (
+        _gaudi_wav2vec2_mask_hidden_states
+    )
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Model.forward = gaudi_wav2vec2_forward
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Encoder.forward = gaudi_wav2vec2_encoder_forward
 

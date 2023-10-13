@@ -17,11 +17,12 @@
 from typing import Optional, Tuple, Union
 
 import torch
-from transformers.modeling_outputs import Wav2Vec2BaseModelOutput
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import (
     BaseModelOutput,
+    Wav2Vec2BaseModelOutput,
 )
+
 
 def _gaudi_wav2vec2_compute_mask_indices(
     shape: Tuple[int, int],
@@ -46,7 +47,7 @@ def _gaudi_wav2vec2_compute_mask_indices(
         )
 
     # epsilon is used for probabilistic rounding
-    epsilon = torch.rand([], device='hpu')
+    epsilon = torch.rand([], device="hpu")
 
     def compute_num_masked_span(input_length):
         """Given input length, compute how many spans should be masked"""
@@ -179,7 +180,8 @@ def _gaudi_wav2vec2_mask_hidden_states(
 ):
     """
     Copied from Transformers: https://github.com/huggingface/transformers/blob/bd469c40659ce76c81f69c7726759d249b4aef49/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L1227
-    The olny difference is that `mask_time_indices` is not moved to the current device and converted into boolean because this is laready done in _compute_mask_indices.
+    Differences are that (1) `mask_time_indices` is not moved to the current device and converted into boolean because this is already done in _compute_mask_indices.
+    (2) index_put operation on hidden_states is replaced by combination of simpler ops (more suitable for HPU graphs)
     """
 
     # `config.apply_spec_augment` can set masking to False
@@ -200,9 +202,13 @@ def _gaudi_wav2vec2_mask_hidden_states(
             attention_mask=attention_mask,
             min_masks=self.config.mask_time_min_masks,
         )
-        #hidden_states[mask_time_indices] = self.masked_spec_embed.to(hidden_states.dtype)
+        # replacement of index_put with combination of simpler ops. Assumption made about sizes of hidden_states (3d),
+        # mask_time_indices (2d), self.masked_spec_embed (1d), for any other combination better to go back to original code using index_put.
+        # hidden_states[mask_time_indices] = self.masked_spec_embed.to(hidden_states.dtype)
         inverse_mask_time_indices = torch.bitwise_not(mask_time_indices)
-        hidden_states = hidden_states * inverse_mask_time_indices.unsqueeze(2) + self.masked_spec_embed.to(hidden_states.dtype).expand(hidden_states.size()) * mask_time_indices.unsqueeze(2)
+        hidden_states = hidden_states * inverse_mask_time_indices.unsqueeze(2) + self.masked_spec_embed.to(
+            hidden_states.dtype
+        ).expand(hidden_states.size()) * mask_time_indices.unsqueeze(2)
 
     if self.config.mask_feature_prob > 0 and self.training:
         # generate indices & apply SpecAugment along feature axis
@@ -275,78 +281,83 @@ def gaudi_wav2vec2_forward(
         attentions=encoder_outputs.attentions,
     )
 
+
 def gaudi_wav2vec2_encoder_forward(
-        self,
-        hidden_states: torch.tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = False,
-        output_hidden_states: bool = False,
-        return_dict: bool = True,
-    ):
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attentions = () if output_attentions else None
+    self,
+    hidden_states: torch.tensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    output_attentions: bool = False,
+    output_hidden_states: bool = False,
+    return_dict: bool = True,
+):
+    """
+    Copied from Transformers: https://github.com/huggingface/transformers/blob/7790943c91411f4234d11dfbf4c2f21ce7caf088/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L755
+    The only difference is that torch.rand device is set to 'hpu' (required to capture operation as part of HPU graph)
+    """
+    all_hidden_states = () if output_hidden_states else None
+    all_self_attentions = () if output_attentions else None
 
-        if attention_mask is not None:
-            # make sure padded tokens output 0
-            expand_attention_mask = attention_mask.unsqueeze(-1).repeat(1, 1, hidden_states.shape[2])
-            hidden_states[~expand_attention_mask] = 0
+    if attention_mask is not None:
+        # make sure padded tokens output 0
+        expand_attention_mask = attention_mask.unsqueeze(-1).repeat(1, 1, hidden_states.shape[2])
+        hidden_states[~expand_attention_mask] = 0
 
-            # extend attention_mask
-            attention_mask = 1.0 - attention_mask[:, None, None, :].to(dtype=hidden_states.dtype)
-            attention_mask = attention_mask * torch.finfo(hidden_states.dtype).min
-            attention_mask = attention_mask.expand(
-                attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1]
-            )
+        # extend attention_mask
+        attention_mask = 1.0 - attention_mask[:, None, None, :].to(dtype=hidden_states.dtype)
+        attention_mask = attention_mask * torch.finfo(hidden_states.dtype).min
+        attention_mask = attention_mask.expand(
+            attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1]
+        )
 
-        position_embeddings = self.pos_conv_embed(hidden_states)
-        hidden_states = hidden_states + position_embeddings
-        hidden_states = self.layer_norm(hidden_states)
-        hidden_states = self.dropout(hidden_states)
+    position_embeddings = self.pos_conv_embed(hidden_states)
+    hidden_states = hidden_states + position_embeddings
+    hidden_states = self.layer_norm(hidden_states)
+    hidden_states = self.dropout(hidden_states)
 
-        deepspeed_zero3_is_enabled = is_deepspeed_zero3_enabled()
+    deepspeed_zero3_is_enabled = is_deepspeed_zero3_enabled()
 
-        for layer in self.layers:
-            if output_hidden_states:
-                all_hidden_states = all_hidden_states + (hidden_states,)
-
-            # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
-            dropout_probability = torch.rand([])
-
-            skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
-            if not skip_the_layer or deepspeed_zero3_is_enabled:
-                # under deepspeed zero3 all gpus must run in sync
-                if self.gradient_checkpointing and self.training:
-                    # create gradient checkpointing function
-                    def create_custom_forward(module):
-                        def custom_forward(*inputs):
-                            return module(*inputs, output_attentions)
-
-                        return custom_forward
-
-                    layer_outputs = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(layer),
-                        hidden_states,
-                        attention_mask,
-                    )
-                else:
-                    layer_outputs = layer(
-                        hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
-                    )
-                hidden_states = layer_outputs[0]
-
-            if skip_the_layer:
-                layer_outputs = (None, None)
-
-            if output_attentions:
-                all_self_attentions = all_self_attentions + (layer_outputs[1],)
-
+    for layer in self.layers:
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        if not return_dict:
-            return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
-        return BaseModelOutput(
-            last_hidden_state=hidden_states,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attentions,
-        )
+        # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
+        dropout_probability = torch.rand([], device="hpu")
+
+        skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
+        if not skip_the_layer or deepspeed_zero3_is_enabled:
+            # under deepspeed zero3 all gpus must run in sync
+            if self.gradient_checkpointing and self.training:
+                # create gradient checkpointing function
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs, output_attentions)
+
+                    return custom_forward
+
+                layer_outputs = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(layer),
+                    hidden_states,
+                    attention_mask,
+                )
+            else:
+                layer_outputs = layer(
+                    hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
+                )
+            hidden_states = layer_outputs[0]
+
+        if skip_the_layer:
+            layer_outputs = (None, None)
+
+        if output_attentions:
+            all_self_attentions = all_self_attentions + (layer_outputs[1],)
+
+    if output_hidden_states:
+        all_hidden_states = all_hidden_states + (hidden_states,)
+
+    if not return_dict:
+        return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+    return BaseModelOutput(
+        last_hidden_state=hidden_states,
+        hidden_states=all_hidden_states,
+        attentions=all_self_attentions,
+    )
