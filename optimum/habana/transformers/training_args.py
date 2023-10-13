@@ -437,6 +437,19 @@ class GaudiTrainingArguments(TrainingArguments):
             if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
                 raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
 
+        if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
+            self.torch_compile = True
+        if self.torch_compile and self.torch_compile_backend is None:
+            self.torch_compile_backend = "inductor"
+
+        # accelerate integration for torch compile
+        if self.torch_compile:
+            # set env vars for accelerate
+            prefix = "ACCELERATE_DYNAMO_"
+            os.environ[prefix + "BACKEND"] = self.torch_compile_backend
+            if self.torch_compile_mode is not None:
+                os.environ[prefix + "MODE"] = self.torch_compile_mode
+
         # if training args is specified, it will override the one specified in the accelerate config
         mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
         if self.bf16:

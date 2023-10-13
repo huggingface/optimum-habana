@@ -52,6 +52,7 @@ from accelerate.utils import (
     parse_choice_from_env,
 )
 from accelerate.utils.operations import _gpu_gather
+from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
 
@@ -362,7 +363,7 @@ class GaudiAccelerator(Accelerator):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
         # torch.compile should be called last.
-        if self.state.dynamo_plugin.backend != DynamoBackend.NO:
+        if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
             model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
         return model
 
