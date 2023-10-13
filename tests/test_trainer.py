@@ -268,7 +268,9 @@ if is_torch_available():
 
     def get_gaudi_config(gaudi_config_name_or_path: Optional[Union[str, Path]] = None) -> GaudiConfig:
         if gaudi_config_name_or_path is None:
-            gaudi_config_name_or_path = os.path.join("tests", "configs", "gaudi_config_trainer_test.json")
+            gaudi_config_name_or_path = Path(__file__).parent.resolve() / Path(
+                "configs/gaudi_config_trainer_test.json"
+            )
         return GaudiConfig.from_pretrained(gaudi_config_name_or_path)
 
     def get_regression_trainer(a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, **kwargs):
