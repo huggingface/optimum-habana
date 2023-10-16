@@ -14,7 +14,7 @@ def gaudi_t5_layernorm_forward(self, hidden_states):
     The only differences are:
         - override RMSNorm with Habana fused RMSNorm
     """
-    if not self.training and hidden_states.device.type == "hpu" and FusedRMSNorm:
+    if hidden_states.device.type == "hpu" and FusedRMSNorm:
         orig_dtype = hidden_states.dtype
         hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
         return hidden_states.to(orig_dtype)

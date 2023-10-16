@@ -71,6 +71,8 @@ env_variable_2_name=value
 
 You can find an example for AWS instances [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/.deepspeed_env).
 
+> Note that one should set `HCCL_OVER_OFI=1` and `LD_LIBRARY_PATH=/root/hccl_ofi_wrapper:/opt/amazon/openmpi/lib:/opt/amazon/efa/lib` only on AWS DL1 instances. *These should not be used otherwise*.
+
 
 ## Recommendations
 
