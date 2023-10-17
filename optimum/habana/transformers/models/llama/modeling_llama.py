@@ -1,5 +1,4 @@
 import math
-import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -93,7 +92,7 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
     The only differences are:
         - override RMSNorm with Habana fused RMSNorm
     """
-    if not self.training and hidden_states.device.type == "hpu" and FusedRMSNorm:
+    if hidden_states.device.type == "hpu" and FusedRMSNorm:
         orig_dtype = hidden_states.dtype
         hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
         return hidden_states.to(orig_dtype)
@@ -128,11 +127,8 @@ class GaudiLlamaAttention(LlamaAttention):
         self.past_value = None
 
     def allocate_kv_cache(self, batch_size, seq_len):
-        # TODO: update when auto mp params is enabled in DeepSpeed (cf. https://github.com/HabanaAI/DeepSpeed/blob/94309c7b5dfc1a69858f5c9f25737b2f81a332a5/deepspeed/module_inject/replace_module.py#L440)
-        tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
-        key_shape = (batch_size, self.num_key_value_heads // tp_world_size, seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_key_value_heads // tp_world_size, seq_len, self.head_dim)
-        #import pdb; pdb.set_trace()
+        key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
+        value_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
         if self.past_key is None or self.past_key.shape != key_shape:
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype

@@ -1,3 +1,4 @@
+import os
 from text_generation_server.utils.tokens import batch_top_tokens
 import torch
 
@@ -98,7 +99,8 @@ class CausalLMBatch(Batch):
         # is handled by the client but it appears the model is initialized by the server.
         # An alternative could be to initialize the buffers during warmup.
         # Dummy
-        max_total_tokens = 2048
+        max_total_tokens = int(os.getenv("MAX_TOTAL_TOKENS", "0"))
+        logger.info("MAX_TOTAL_TOKENS = {}".format(max_total_tokens))
 
         for i, r in enumerate(pb.requests):
             requests_idx_mapping[r.id] = i
@@ -126,8 +128,10 @@ class CausalLMBatch(Batch):
             read_offsets.append(input_len)
 
         max_input_length = max(input_lengths)
+        if max_total_tokens == 0:
+            max_total_tokens = max_input_length
         max_tokens = len(inputs) * max_input_length + max_decode_tokens
-        if is_optimized_for_gaudi:
+        if is_optimized_for_gaudi and max_total_tokens > max_input_length:
             # pad to max_total_tokens in case max_new_token changes per request and triggers new hpu graph generation
             padding_right_offset = max_total_tokens - max_input_length
 
@@ -293,7 +297,7 @@ class CausalLMBatch(Batch):
             padding_right_offset = max(padding_right_offset, batch.padding_right_offset)
             max_total_tokens = max(max_total_tokens, batch.max_input_length + batch.padding_right_offset)
 
-        if is_optimized_for_gaudi:
+        if is_optimized_for_gaudi and max_total_tokens > max_input_length:
             padding_right_offset = max_total_tokens - max_input_length
 
         # Batch attributes

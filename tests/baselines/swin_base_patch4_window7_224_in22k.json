@@ -7,8 +7,8 @@
                 "learning_rate": 3e-5,
                 "train_batch_size": 64,
                 "eval_accuracy": 0.9839,
-                "train_runtime": 270.1182,
-                "train_samples_per_second": 187.851,
+                "train_runtime": 266.9035,
+                "train_samples_per_second": 187.514,
                 "extra_arguments": [
                     "--remove_unused_columns False",
                     "--seed 1337",
@@ -23,8 +23,8 @@
                 "learning_rate": 2e-4,
                 "train_batch_size": 64,
                 "eval_accuracy": 0.9833,
-                "train_runtime": 111.6482,
-                "train_samples_per_second": 1532.483,
+                "train_runtime": 113.666,
+                "train_samples_per_second": 1568.283,
                 "extra_arguments": [
                     "--remove_unused_columns False",
                     "--seed 1337",

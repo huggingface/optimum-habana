@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0
 ```
 
 
@@ -93,6 +93,21 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --use_hpu_graphs \
 --use_kv_cache \
 --max_new_tokens 100
+```
+
+You can also run Llama2-70B on Gaudi2 with all optimizations enabled using the following command:
+```bash
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
+--max_new_tokens 4096 \
+--bf16 \
+--use_hpu_graphs \
+--use_kv_cache \
+--batch_size 52 \
+--attn_softmax_bf16 \
+--limit_hpu_graphs \
+--reuse_cache \
+--trim_logits
 ```
 
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
