@@ -27,7 +27,7 @@ except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
 
-# could be in some utils
+# TODO could be in some utils
 def incrementor(bucket_size, prompt_len):
     assert bucket_size > 0
     passnum = -1
@@ -53,25 +53,13 @@ def incrementor(bucket_size, prompt_len):
 #key_states = update(past_key, key_states, 2, token_idx)
 #value_states = update(past_value, value_states, 2, token_idx)
 def update(prev, cur, dim, idx, bucket=-1, need_expansion=False):
-    #print('INUPDATE', idx)
     if need_expansion:
         assert bucket > 0
-        if prev.shape[2] % bucket == 0:
-            #import pdb; pdb.set_trace()
-            pad_amount = bucket
-        else:
-            pad_amount = bucket - (prev.shape[2] % bucket)
-        #import pdb; pdb.set_trace()
+        pad_amount = bucket - (0 if prev.shape[2] % bucket == 0 else (prev.shape[2] % bucket))
         prev = torch.nn.functional.pad(prev, (0, 0, 0, pad_amount), value=0)#.contiguous() # TODO pad with pad_token
     orig_cur = cur
-    #import pdb; pdb.set_trace()
-    #if idx >= cur.shape[2]:
-    #    import pdb; pdb.set_trace()
-    #    print()
+
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-        #print('HERE1')
-        #print('cur', cur.shape)
-        #print('prev', prev.shape)
         #print(idx)
         #prev[:, :, :idx, :].copy_(cur)
         #return orig_cur, prev if need_expansion else None
@@ -79,8 +67,6 @@ def update(prev, cur, dim, idx, bucket=-1, need_expansion=False):
         return cur #prev
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
-        #import pdb; pdb.set_trace()
-        #print('HERE2')
         return prev.index_copy_(dim, idx - 1, cur)
     else:
         return torch.cat((prev, cur), dim=dim)
@@ -175,8 +161,6 @@ class GaudiLlamaAttention(LlamaAttention):
         - add new args reuse_cache
         """
         bsz, q_len, _ = hidden_states.size()
-        #print("GaudiLlamaAttention token_idx",token_idx)
-        #print('reuse_cache', reuse_cache)
 
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
@@ -207,19 +191,16 @@ class GaudiLlamaAttention(LlamaAttention):
 
 
         kv_seq_len = key_states.shape[-2]
-        #print("GaudiLlamaAttention token_idx 1",token_idx)
         if past_key_value is not None:
             if token_idx is None:
                 kv_seq_len += past_key_value[0].shape[-2]
             else:
                 if reuse_cache:
-                    #import pdb; pdb.set_trace()
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
-
 
         if past_key_value is not None or reuse_cache:
             # reuse k, v, self_attention
@@ -229,21 +210,14 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 past_key = past_key_value[0]
                 past_value = past_key_value[1]
-            #import pdb; pdb.set_trace()
-            #if not need_expansion:
-            #    import pdb; pdb.set_trace()
-            #print("GaudiLlamaAttention token_idx 2",token_idx)
             key_states = update(past_key, key_states, 2, token_idx, bucket_size, need_expansion)
             self.past_key = key_states.contiguous() # TODO: only needed for bucketing + reusecache case
             kv_seq_len = self.past_key.shape[2] # TODO add if-elses
             value_states = update(past_value, value_states, 2, token_idx, bucket_size, need_expansion)
             self.past_value = value_states.contiguous()
-            #import pdb; pdb.set_trace()
-            #print('token_idx after update', token_idx)
 
         if use_cache:
             if reuse_cache:
-                #import pdb; pdb.set_trace()
                 past_key_value = (self.past_key.shape, self.past_value.shape)
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
@@ -254,11 +228,9 @@ class GaudiLlamaAttention(LlamaAttention):
         key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
         value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
 
-        #import pdb; pdb.set_trace()
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-            import pdb; pdb.set_trace()
             raise ValueError(
                 f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
                 f" {attn_weights.size()}"
@@ -570,7 +542,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        print('EXPANSION', need_expansion)
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -587,7 +558,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             need_expansion = need_expansion,
             bucket_size=bucket_size
         )
-        #print('reuse_cache', reuse_cache)
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
@@ -681,5 +651,3 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
         return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
-
-

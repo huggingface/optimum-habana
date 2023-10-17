@@ -81,6 +81,27 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 
 logger = logging.get_logger(__name__)
 
+def incrementor(bucket_size, prompt_len):
+    assert bucket_size > 0
+    passnum = -1
+    while True:
+        passnum += 1
+        if passnum == 0:
+            token_idx = prompt_len
+            allocated_space = int(math.ceil(prompt_len / bucket_size) * bucket_size)
+            need_expansion = not (prompt_len == allocated_space)
+        else:
+            token_idx += 1
+            need_expansion = token_idx >= allocated_space
+            if need_expansion:
+                assert (allocated_space - token_idx) <= bucket_size
+                allocated_space += bucket_size
+        yield {
+            "allocated_space": allocated_space,
+            "passnum": passnum,
+            "token_idx": token_idx,
+            "need_expansion": need_expansion,
+        }
 
 class StaticMaxLengthCriteria(StoppingCriteria):
     def __init__(self, max_steps: int):
@@ -493,8 +514,6 @@ class GaudiGenerationMixin(GenerationMixin):
             and self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
-        #if generation_config.reuse_cache:
-        #    assert generation_config.bucket_size <= 0, "reuse_cache and bucketing flags set together"
 
         if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
@@ -593,15 +612,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
-                if is_greedy_and_bucket: # ok for llama. some models like opt doesnt have allocate_kv_cache yet
-                    calculated_max_length = input_ids.shape[-1]
-                    unwrap_deepspeed_model(self).allocate_kv_cache(
-                        bs * generation_config.num_beams, calculated_max_length
+                #llama has allocate_kv_cache. some models like opt doesnt have allocate_kv_cache yet
+                unwrap_deepspeed_model(self).allocate_kv_cache(
+                        bs * generation_config.num_beams, input_ids.shape[-1] if is_greedy_and_bucket else calculated_max_length
                     )
-                else:
-                    unwrap_deepspeed_model(self).allocate_kv_cache(
-                            bs * generation_config.num_beams, calculated_max_length
-                        )
 
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)
@@ -1256,38 +1270,13 @@ class GaudiGenerationMixin(GenerationMixin):
         this_peer_finished = False  # used by synced_gpus only
         bucket_size = model_kwargs["bucket_size"]
 
-        def incrementor(bucket_size, prompt_len):
-            assert bucket_size > 0
-            passnum = -1
-            while True:
-                passnum += 1
-                if passnum == 0:
-                    token_idx = prompt_len
-                    allocated_space = int(math.ceil(prompt_len / bucket_size) * bucket_size)
-                    need_expansion = not (prompt_len == allocated_space)
-                else:
-                    token_idx += 1
-                    need_expansion = token_idx >= allocated_space
-                    if need_expansion:
-                        assert (allocated_space - token_idx) <= bucket_size
-                        allocated_space += bucket_size
-                yield {
-                    "allocated_space": allocated_space,
-                    "passnum": passnum,
-                    "token_idx": token_idx,
-                    "need_expansion": need_expansion,
-                }
-
         prompt_len = input_ids.shape[-1]
         if bucket_size >= 0:
             inc = iter(incrementor(bucket_size, prompt_len))
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
-        import time
-        cnt = -1
-        tag = ''
+
         while True:
-            cnt += 1
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1305,7 +1294,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
 
-                #import pdb; pdb.set_trace()
                 if params["need_expansion"]:
                     # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
                     pad_amount = params["allocated_space"] - input_ids.shape[-1]
@@ -1335,8 +1323,6 @@ class GaudiGenerationMixin(GenerationMixin):
                                 else:
                                     assert False, "Unknown case, please handle, or dont use bucketing"
 
-
-                            #tkv0 = time.time()
                             new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
                             for i in range(len(model_kwargs["past_key_values"])):
                                 tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
@@ -1355,28 +1341,18 @@ class GaudiGenerationMixin(GenerationMixin):
                                     )
                                 new_kv[i] = tuple(tmp_lst)
                             model_kwargs["past_key_values"] = tuple(new_kv)
-                            #tkv1 = time.time()
-                            #print('KVCOPY', cnt, tkv1-tkv0)
-                        tag = 'KVCOPY'
-                else:
-                    tag = ''
 
                 if "token_idx" not in model_kwargs:
                     model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
-            else:
-                tag = ''
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
-            
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
             hpu_graphs_kwargs['need_expansion'] = params["need_expansion"] if bucket_size > 0 else False
             hpu_graphs_kwargs['bucket_size'] = bucket_size
 
             # forward pass to get next token
-            t0 = time.time()
-            #import pdb; pdb.set_trace()
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1384,8 +1360,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_hidden_states=output_hidden_states,
                 **hpu_graphs_kwargs,
             )
-            t1 = time.time()
-            print('FWDTIME'+tag, cnt, t1-t0)
 
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
@@ -1465,7 +1439,6 @@ class GaudiGenerationMixin(GenerationMixin):
             if this_peer_finished and not synced_gpus:
                 break
 
-        print('*'*50)
         hb_profer.stop()
         if streamer is not None:
             streamer.end()
