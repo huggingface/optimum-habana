@@ -170,7 +170,7 @@ python run_generation.py \
 ### Using growing bucket optimization
 With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
 
-> For now, it is available only for greedy and beam generation, and cannot be used with `--reuse_cache`.
+> For now, it is available only for greedy and beam search generation, and cannot be used with `--reuse_cache`.
 
 Here is an example:
 ```bash

@@ -563,7 +563,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 inputs_tensor, generation_config.pad_token_id, generation_config.eos_token_id
             )
 
-        is_greedyorbeam_and_bucket = generation_config.bucket_size > 0 and (
+        is_greedy_or_beam_and_bucket = generation_config.bucket_size > 0 and (
             self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
             or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
         )
@@ -577,7 +577,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if not self.config.is_encoder_decoder:
                 # only pad if bucket_size < -1. If we are bucketing (bucket_size > 0), then that is taken care in greedy_search()
-                if not is_greedyorbeam_and_bucket:
+                if not is_greedy_or_beam_and_bucket:
                     # token_idx is the current index in the generation process, it is incremented each time a new token is generated
                     model_kwargs["token_idx"] = torch.tensor(inputs_tensor.shape[-1], device=inputs_tensor.device)
                     inputs_tensor = torch.nn.functional.pad(
@@ -668,7 +668,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
-                if not is_greedyorbeam_and_bucket:
+                if not is_greedy_or_beam_and_bucket:
                     unwrap_deepspeed_model(self).allocate_kv_cache(
                         bs * generation_config.num_beams, calculated_max_length
                     )
