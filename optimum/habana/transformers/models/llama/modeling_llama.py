@@ -51,11 +51,7 @@ def update(prev, cur, dim, idx, bucket=-1, need_expansion=False):
         #    prev[:, :, :idx, :].copy_(cur)
         #return orig_cur
         return cur
-    try:
-        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-    except:
-        import pdb; pdb.set_trace()
-        print()
+    assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
         return prev.index_copy_(dim, idx - 1, cur)
     else:
