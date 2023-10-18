@@ -16,7 +16,6 @@ from transformers.models.llama.modeling_llama import (
 
 from ...generation.utils import incrementor
 
-
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 except ImportError:
@@ -29,26 +28,25 @@ except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
 
-#key_states = update(past_key, key_states, 2, token_idx)
-#value_states = update(past_value, value_states, 2, token_idx)
+
 def update(prev, cur, dim, idx, bucket_size=-1, need_expansion=False):
     if need_expansion and cur.shape[2] == 1:
         # we have cur.shape[2] > 1 for prefill (first) step
         # no need ot expand for first/prefill
         # because we can just start with cur as the kv cache
         assert bucket_size > 0
-        #import pdb; pdb.set_trace()
         pad_amount = bucket_size - prev.shape[2] % bucket_size
-        prev = torch.nn.functional.pad(prev, (0, 0, 0, pad_amount), value=0)#.contiguous() # TODO pad with pad_token
+        prev = torch.nn.functional.pad(prev, (0, 0, 0, pad_amount), value=0)
     orig_cur = cur
 
-    prefill = cur.shape[2] > 1 and (cur.shape[2] <= (prev.shape[2] + (0 if bucket_size <=0 else (bucket_size - prev.shape[2] % bucket_size))))
+    prefill = cur.shape[2] > 1 and (
+        cur.shape[2] <= (prev.shape[2] + (0 if bucket_size <= 0 else (bucket_size - prev.shape[2] % bucket_size)))
+    )
     if prefill:
         # this condition is true only in prefill/first stage, after that cur.shape[2]==1
         if bucket_size < 0:
             prev[:, :, :idx, :].copy_(cur)
         return orig_cur
-        #return cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
         return prev.index_copy_(dim, idx - 1, cur)
@@ -133,8 +131,8 @@ class GaudiLlamaAttention(LlamaAttention):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
-        need_expansion = False,
-        bucket_size = -1
+        need_expansion=False,
+        bucket_size=-1,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -172,7 +170,6 @@ class GaudiLlamaAttention(LlamaAttention):
         # TODO: update when auto mp params is enabled in DeepSpeed (cf. https://github.com/HabanaAI/DeepSpeed/blob/94309c7b5dfc1a69858f5c9f25737b2f81a332a5/deepspeed/module_inject/replace_module.py#L440)
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -280,8 +277,8 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
-        need_expansion = False,
-        bucket_size=-1
+        need_expansion=False,
+        bucket_size=-1,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -306,7 +303,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
             need_expansion=need_expansion,
-            bucket_size=bucket_size
+            bucket_size=bucket_size,
         )
         hidden_states = residual + hidden_states
 
@@ -348,8 +345,8 @@ class GaudiLlamaModel(LlamaModel):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
-        need_expansion = False,
-        bucket_size=-1
+        need_expansion=False,
+        bucket_size=-1,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -402,7 +399,6 @@ class GaudiLlamaModel(LlamaModel):
             attention_mask = torch.ones(
                 (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
             )
-        #import pdb; pdb.set_trace()
         attention_mask = self._prepare_decoder_attention_mask(
             attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
         )
@@ -454,7 +450,7 @@ class GaudiLlamaModel(LlamaModel):
                     attn_softmax_bf16=attn_softmax_bf16,
                     reuse_cache=reuse_cache,
                     need_expansion=need_expansion,
-                    bucket_size=bucket_size
+                    bucket_size=bucket_size,
                 )
 
             hidden_states = layer_outputs[0]
@@ -500,7 +496,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)
 
-
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -517,11 +512,10 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
-        need_expansion = False,
-        bucket_size=-1
+        need_expansion=False,
+        bucket_size=-1,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-
-        #print('token_idx', token_idx)
+        # print('token_idx', token_idx)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -541,8 +535,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
-            need_expansion = need_expansion,
-            bucket_size=bucket_size
+            need_expansion=need_expansion,
+            bucket_size=bucket_size,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -595,7 +589,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             else:
                 input_ids = input_ids[:, -1:]
         elif reuse_cache and token_idx is not None:
-            if kwargs['bucket_size'] < 0:
+            if kwargs["bucket_size"] < 0:
                 # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
                 input_ids = input_ids[:, :token_idx]
                 attention_mask = attention_mask[:, :token_idx]

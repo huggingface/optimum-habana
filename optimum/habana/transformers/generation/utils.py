@@ -81,6 +81,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 
 logger = logging.get_logger(__name__)
 
+
 def incrementor(bucket_size, prompt_len):
     assert bucket_size > 0
     passnum = -1
@@ -102,6 +103,7 @@ def incrementor(bucket_size, prompt_len):
             "token_idx": token_idx,
             "need_expansion": need_expansion,
         }
+
 
 class StaticMaxLengthCriteria(StoppingCriteria):
     def __init__(self, max_steps: int):
@@ -612,10 +614,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
-                #llama has allocate_kv_cache. some models like opt doesnt have allocate_kv_cache yet
+                # llama has allocate_kv_cache. some models like opt doesnt have allocate_kv_cache yet
                 unwrap_deepspeed_model(self).allocate_kv_cache(
-                        bs * generation_config.num_beams, input_ids.shape[-1] if is_greedy_and_bucket else calculated_max_length
-                    )
+                    bs * generation_config.num_beams,
+                    input_ids.shape[-1] if is_greedy_and_bucket else calculated_max_length,
+                )
 
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)
@@ -1305,7 +1308,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     else:
                         assert False, "Not tested for cases where attn_mask isnt passed"
 
-
                     if not model_kwargs["reuse_cache"]:  # with reuse cache we will update inside the model
                         if "past_key_values" in model_kwargs:
 
@@ -1333,7 +1335,8 @@ class GaudiGenerationMixin(GenerationMixin):
                                     # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
                                     # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
                                     assert (
-                                        model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
+                                        model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)]
+                                        % bucket_size
                                         == 0
                                     )
                                     tmp_lst[j] = torch.nn.functional.pad(
@@ -1349,8 +1352,10 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
-            hpu_graphs_kwargs['need_expansion'] = params["need_expansion"] if bucket_size > 0 and model_kwargs["reuse_cache"] else False
-            hpu_graphs_kwargs['bucket_size'] = bucket_size
+            hpu_graphs_kwargs["need_expansion"] = (
+                params["need_expansion"] if bucket_size > 0 and model_kwargs["reuse_cache"] else False
+            )
+            hpu_graphs_kwargs["bucket_size"] = bucket_size
 
             # forward pass to get next token
             outputs = self(
