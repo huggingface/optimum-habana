@@ -45,6 +45,7 @@ from transformers import (
     MBartTokenizerFast,
     default_data_collator,
 )
+from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
@@ -501,7 +502,14 @@ def main():
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
-    embedding_size = model.get_input_embeddings().weight.shape[0]
+    embeddings = model.get_input_embeddings()
+    if is_deepspeed_zero3_enabled():
+        import deepspeed
+
+        with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
+            embedding_size = embeddings.weight.shape[0]
+    else:
+        embedding_size = embeddings.weight.shape[0]
     if len(tokenizer) > embedding_size:
         model.resize_token_embeddings(len(tokenizer))
 

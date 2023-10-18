@@ -37,8 +37,6 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
-    _gaudi_get_resized_embeddings,
-    _gaudi_get_resized_lm_head,
     gaudi_albert_forward,
     gaudi_BartAttention_forward,
     gaudi_BartDecoder_forward,
@@ -250,9 +248,3 @@ def adapt_transformers_to_gaudi():
     transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
     transformers.models.mpt.modeling_mpt.MptAttention.forward = gaudi_mpt_attention_forward
     transformers.models.mpt.modeling_mpt.MptBlock.forward = gaudi_mpt_block_forward
-
-    # TODO: revisit this when switching to Transformers v4.33
-    # see https://github.com/huggingface/transformers/pull/25394
-    # Hack for running T5 with DeepSpeed Zero-3
-    transformers.modeling_utils.PreTrainedModel._get_resized_embeddings = _gaudi_get_resized_embeddings
-    transformers.modeling_utils.PreTrainedModel._get_resized_lm_head = _gaudi_get_resized_lm_head
