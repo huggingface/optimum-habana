@@ -119,7 +119,7 @@ class GaudiAccelerator(Accelerator):
         #dynamo_plugin = TorchDynamoPlugin() if dynamo_backend is None else TorchDynamoPlugin(backend=dynamo_backend)
         dynamo_plugin.backend = dynamo_backend
         dynamo_mode = os.getenv('HPU_ACCELERATE_DYNAMO_MODE')
-
+        dynamo_plugin.mode = dynamo_mode
         if deepspeed_plugin is None:  # init from env variables
             deepspeed_plugin = (
                 DeepSpeedPlugin() if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true" else None
@@ -367,7 +367,6 @@ class GaudiAccelerator(Accelerator):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
         # torch.compile should be called last.
-        import pdb;pdb.set_trace()
         if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
             model = torch.compile(model, backend=self.state.dynamo_plugin.backend, mode=self.state.dynamo_plugin.mode)
         return model
