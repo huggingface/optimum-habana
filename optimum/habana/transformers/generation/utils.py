@@ -1349,7 +1349,7 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
-            hpu_graphs_kwargs['need_expansion'] = params["need_expansion"] if bucket_size > 0 else False
+            hpu_graphs_kwargs['need_expansion'] = params["need_expansion"] if bucket_size > 0 and model_kwargs["reuse_cache"] else False
             hpu_graphs_kwargs['bucket_size'] = bucket_size
 
             # forward pass to get next token

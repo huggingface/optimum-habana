@@ -197,10 +197,13 @@ class GaudiLlamaAttention(LlamaAttention):
                 past_key = past_key_value[0]
                 past_value = past_key_value[1]
             key_states = update(past_key, key_states, 2, token_idx, bucket_size, need_expansion)
-            self.past_key = key_states.contiguous() # TODO: only needed for bucketing + reusecache case
-            kv_seq_len = self.past_key.shape[2] # TODO add if-elses
+            if bucket_size > 0 and reuse_cache:
+                self.past_key = key_states.contiguous()
+                kv_seq_len = self.past_key.shape[2]
             value_states = update(past_value, value_states, 2, token_idx, bucket_size, need_expansion)
-            self.past_value = value_states.contiguous()
+            if bucket_size > 0 and reuse_cache:
+                self.past_value = value_states.contiguous()
+                # TODO can this update be doen inside update. also taking care of "contiguous"?
 
         if use_cache:
             if reuse_cache:
@@ -224,7 +227,6 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                import pdb; pdb.set_trace()
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
