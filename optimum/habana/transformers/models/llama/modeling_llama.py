@@ -14,11 +14,16 @@ from transformers.models.llama.modeling_llama import (
     logger,
 )
 
+from ....utils import get_device_name
 
-try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-except ImportError:
-    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+
+if get_device_name() == "gaudi2":
+    try:
+        from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+    except ImportError:
+        print("Not using HPU fused kernel for apply_rotary_pos_emb")
+        FusedRoPE = None
+else:
     FusedRoPE = None
 
 try:

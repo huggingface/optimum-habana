@@ -3,6 +3,8 @@ from typing import Optional, Tuple, Union
 
 import torch
 
+from ....utils import get_device_name
+
 
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
@@ -10,10 +12,13 @@ except ImportError:
     print("Not using HPU fused kernel for scaled_dot_product_attention")
     FusedSDPA = None
 
-try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV1 as FusedRoPE
-except ImportError:
-    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+if get_device_name() == "gaudi2":
+    try:
+        from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV1 as FusedRoPE
+    except ImportError:
+        print("Not using HPU fused kernel for apply_rotary_pos_emb")
+        FusedRoPE = None
+else:
     FusedRoPE = None
 
 import habana_frameworks.torch.core as htcore
