@@ -5,11 +5,17 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXForCausalLM, apply_rotary_pos_emb, logger
 
+from ....utils import get_device_name
 
-try:
-    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-except ImportError:
-    print("Not using HPU fused kernel for apply_rotary_pos_emb")
+
+# TODO: remove this workaround when FusedRoPE properly works on Gaudi
+if get_device_name() == "gaudi2":
+    try:
+        from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+    except ImportError:
+        print("Not using HPU fused kernel for apply_rotary_pos_emb")
+        FusedRoPE = None
+else:
     FusedRoPE = None
 
 
@@ -58,7 +64,7 @@ def gaudi_gpt_neox_attention_forward(
     if has_layer_past:
         seq_len += layer_past[0].shape[-2]
     cos, sin = self.rotary_emb(value, seq_len=seq_len)
-    query, key = apply_customized_rope(self, query_rot, key_rot, cos, sin, position_ids)
+    query, key = apply_customized_rope(query_rot, key_rot, cos, sin, position_ids)
     query = torch.cat((query, query_pass), dim=-1).contiguous()
     key = torch.cat((key, key_pass), dim=-1).contiguous()
     value = value.contiguous()
@@ -401,8 +407,8 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         return model_inputs
 
 
-def apply_customized_rope(self, q, k, cos, sin, position_ids):
-    if not self.training and q.device.type == "hpu" and FusedRoPE:
+def apply_customized_rope(q, k, cos, sin, position_ids):
+    if q.device.type == "hpu" and FusedRoPE:
         return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
