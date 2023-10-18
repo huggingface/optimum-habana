@@ -138,6 +138,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
     def _get_hpu_graphs_kwargs(self, model_kwargs):
         hpu_graphs_kwargs = {}
+        if "limit_hpu_graphs" not in model_kwargs:
+            model_kwargs["limit_hpu_graphs"] = self.generation_config.limit_hpu_graphs
         if model_kwargs["limit_hpu_graphs"]:
             hpu_graphs_kwargs.update({"bypass_hpu_graphs": False})
             if "first_token" not in model_kwargs.keys():
@@ -1199,6 +1201,8 @@ class GaudiGenerationMixin(GenerationMixin):
         >>> tokenizer.batch_decode(outputs, skip_special_tokens=True)
         ["It might be possible to get a better understanding of the nature of the problem, but it's not"]
         ```"""
+        if "bucket_size" not in model_kwargs:
+            model_kwargs["bucket_size"] = self.generation_config.bucket_size
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
@@ -2077,6 +2081,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
             if model_kwargs["past_key_values"] is not None:
+                if "reuse_cache" not in model_kwargs:
+                    model_kwargs["reuse_cache"] = self.generation_config.reuse_cache
                 if model_kwargs["reuse_cache"]:
                     model_kwargs["past_key_values"] = unwrap_deepspeed_model(self).reorder_kv_cache(beam_idx)
                 else:
