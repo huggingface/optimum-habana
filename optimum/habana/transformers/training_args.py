@@ -439,6 +439,11 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
             self.torch_compile = True
+            assert int(torch.__version__.split('.')[
+                   0]) >= 2, "Graph mode is available only in PyTorch 2.x."
+            assert not os.getenv("PT_HPU_LAZY_MODE", "1") != "0", "Dynamo and lazy are mutually exclusive."
+            # Note: PT_HPU_LAZY_MODE=0 needs to be set before library is loaded,
+            #       setting it here would be too late - hence assertion.
         if self.torch_compile and self.torch_compile_backend is None:
             self.torch_compile_backend = "inductor"
 
@@ -623,7 +628,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
-            else:
+            elif not self.torch_compile:
                 os.environ["PT_HPU_LAZY_MODE"] = "2"
                 logger.info("Enabled eager mode because use_lazy_mode=False.")
 
