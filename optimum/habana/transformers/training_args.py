@@ -445,7 +445,7 @@ class GaudiTrainingArguments(TrainingArguments):
         # accelerate integration for torch compile
         if self.torch_compile:
             # set env vars for accelerate
-            prefix = "ACCELERATE_DYNAMO_"
+            prefix = "HPU_ACCELERATE_DYNAMO_"
             os.environ[prefix + "BACKEND"] = self.torch_compile_backend
             if self.torch_compile_mode is not None:
                 os.environ[prefix + "MODE"] = self.torch_compile_mode

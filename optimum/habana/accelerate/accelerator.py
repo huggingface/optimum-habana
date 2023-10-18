@@ -113,8 +113,12 @@ class GaudiAccelerator(Accelerator):
                 )
             elif mixed_precision == "fp16":
                 raise ValueError("fp16 is not supported on Habana Gaudi.")
-
-        dynamo_plugin = TorchDynamoPlugin() if dynamo_backend is None else TorchDynamoPlugin(backend=dynamo_backend)
+        #import pdb;pdb.set_trace()
+        dynamo_backend = os.getenv('HPU_ACCELERATE_DYNAMO_BACKEND')
+        dynamo_plugin = TorchDynamoPlugin()
+        #dynamo_plugin = TorchDynamoPlugin() if dynamo_backend is None else TorchDynamoPlugin(backend=dynamo_backend)
+        dynamo_plugin.backend = dynamo_backend
+        dynamo_mode = os.getenv('HPU_ACCELERATE_DYNAMO_MODE')
 
         if deepspeed_plugin is None:  # init from env variables
             deepspeed_plugin = (
@@ -363,8 +367,9 @@ class GaudiAccelerator(Accelerator):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
         # torch.compile should be called last.
+        import pdb;pdb.set_trace()
         if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
-            model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
+            model = torch.compile(model, backend=self.state.dynamo_plugin.backend, mode=self.state.dynamo_plugin.mode)
         return model
 
     def _prepare_deepspeed(self, *args):
