@@ -14,6 +14,8 @@ from transformers.models.llama.modeling_llama import (
     logger,
 )
 
+from ...generation.utils import incrementor
+
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -26,29 +28,6 @@ try:
 except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
-
-# TODO could be in some utils
-def incrementor(bucket_size, prompt_len):
-    assert bucket_size > 0
-    passnum = -1
-    while True:
-        passnum += 1
-        if passnum == 0:
-            token_idx = prompt_len
-            allocated_space = int(math.ceil(prompt_len / bucket_size) * bucket_size)
-            need_expansion = not (prompt_len == allocated_space)
-        else:
-            token_idx += 1
-            need_expansion = token_idx >= allocated_space
-            if need_expansion:
-                assert (allocated_space - token_idx) <= bucket_size
-                allocated_space += bucket_size
-        yield {
-            "allocated_space": allocated_space,
-            "passnum": passnum,
-            "token_idx": token_idx,
-            "need_expansion": need_expansion,
-        }
 
 #key_states = update(past_key, key_states, 2, token_idx)
 #value_states = update(past_value, value_states, 2, token_idx)
