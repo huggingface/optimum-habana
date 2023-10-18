@@ -12,6 +12,7 @@ except ImportError:
     print("Not using HPU fused kernel for scaled_dot_product_attention")
     FusedSDPA = None
 
+# TODO: remove this workaround when FusedRoPE properly works on Gaudi
 if get_device_name() == "gaudi2":
     try:
         from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV1 as FusedRoPE

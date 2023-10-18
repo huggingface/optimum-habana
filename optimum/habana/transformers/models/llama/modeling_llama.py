@@ -17,6 +17,7 @@ from transformers.models.llama.modeling_llama import (
 from ....utils import get_device_name
 
 
+# TODO: remove this workaround when FusedRoPE properly works on Gaudi
 if get_device_name() == "gaudi2":
     try:
         from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
