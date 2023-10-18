@@ -268,11 +268,7 @@ def gaudi_gpt2_block_forward(
     residual = hidden_states
 
     # TODO: remove this workaround when SynapseAI 1.13 is released
-    if (
-        self.ln_1.training == False
-        and get_device_name() == "gaudi2"
-        and hidden_states.shape[:-1] == torch.Size([1, 1])
-    ):
+    if not self.ln_1.training and get_device_name() == "gaudi2" and hidden_states.shape[:-1] == torch.Size([1, 1]):
         # Change to 1,2,1600 and back to 1,1,1600
         hidden_states = hidden_states.repeat([1, 2, 1])  # this changes the shape 1x2x1600
         hidden_states = self.ln_1(hidden_states)
@@ -319,11 +315,7 @@ def gaudi_gpt2_block_forward(
     residual = hidden_states
 
     # TODO: remove this workaround when SynapseAI 1.13 is released
-    if (
-        self.ln_2.training == False
-        and get_device_name() == "gaudi2"
-        and hidden_states.shape[:-1] == torch.Size([1, 1])
-    ):
+    if not self.ln_2.training and get_device_name() == "gaudi2" and hidden_states.shape[:-1] == torch.Size([1, 1]):
         # Change to 1,2,1600 and back to 1,1,1600
         hidden_states = hidden_states.repeat([1, 2, 1])  # this changes the shape 1x2x1600
         hidden_states = self.ln_2(hidden_states)
@@ -530,11 +522,7 @@ def gaudi_gpt2_forward(
                     hidden_states = hidden_states.to("cuda:" + str(k + 1))
 
     # TODO: remove this workaround when SynapseAI 1.13 is released
-    if (
-        self.ln_f.training == False
-        and get_device_name() == "gaudi2"
-        and hidden_states.shape[:-1] == torch.Size([1, 1])
-    ):
+    if not self.ln_f.training and get_device_name() == "gaudi2" and hidden_states.shape[:-1] == torch.Size([1, 1]):
         # Change to 1,2,1600 and back to 1,1,1600
         hidden_states = hidden_states.repeat([1, 2, 1])  # this changes the shape 1x2x1600
         hidden_states = self.ln_f(hidden_states)
