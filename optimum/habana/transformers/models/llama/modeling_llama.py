@@ -31,26 +31,24 @@ except ImportError:
 
 #key_states = update(past_key, key_states, 2, token_idx)
 #value_states = update(past_value, value_states, 2, token_idx)
-def update(prev, cur, dim, idx, bucket=-1, need_expansion=False):
+def update(prev, cur, dim, idx, bucket_size=-1, need_expansion=False):
     if need_expansion and cur.shape[2] == 1:
         # we have cur.shape[2] > 1 for prefill (first) step
         # no need ot expand for first/prefill
         # because we can just start with cur as the kv cache
-        assert bucket > 0
+        assert bucket_size > 0
         #import pdb; pdb.set_trace()
-        pad_amount = bucket - prev.shape[2] % bucket
+        pad_amount = bucket_size - prev.shape[2] % bucket_size
         prev = torch.nn.functional.pad(prev, (0, 0, 0, pad_amount), value=0)#.contiguous() # TODO pad with pad_token
-    #orig_cur = cur
+    orig_cur = cur
 
-    prefill = cur.shape[2] > 1 and (cur.shape[2] <= (prev.shape[2] + (0 if bucket <=0 else (bucket - prev.shape[2] % bucket))))
+    prefill = cur.shape[2] > 1 and (cur.shape[2] <= (prev.shape[2] + (0 if bucket_size <=0 else (bucket_size - prev.shape[2] % bucket_size))))
     if prefill:
         # this condition is true only in prefill/first stage, after that cur.shape[2]==1
-        #if bucket > 0:
-        #    prev = cur
-        #else:
-        #    prev[:, :, :idx, :].copy_(cur)
-        #return orig_cur
-        return cur
+        if bucket_size < 0:
+            prev[:, :, :idx, :].copy_(cur)
+        return orig_cur
+        #return cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
         return prev.index_copy_(dim, idx - 1, cur)
