@@ -362,9 +362,9 @@ class GaudiAccelerator(Accelerator):
                 if any(p.requires_grad for p in model.parameters()):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
-        # torch.compile should be called last.
+        # torch.compile should be called last and only if the model isn't already compiled.
         if self.state.dynamo_plugin.backend != GaudiDynamoBackend.NO and not is_compiled_module(model):
-            model = torch.compile(model, backend=self.state.dynamo_plugin.backend, mode=self.state.dynamo_plugin.mode)
+            model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
         return model
 
     def _prepare_deepspeed(self, *args):
