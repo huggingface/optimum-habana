@@ -466,7 +466,8 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
-            return tokenizer.batch_decode(outputs, skip_special_tokens=True), input_tokens['input_ids'].shape[-1]
+            return tokenizer.batch_decode(outputs, skip_special_tokens=True), input_tokens["input_ids"].shape[-1]
+
         from optimum.habana.utils import HabanaProfile
 
         # compilation stage disable profiling
@@ -649,7 +650,9 @@ def main():
             t0 = time.perf_counter()
             prompt, outputs, inp_len = generate_dataset(batch)
             duration += time.perf_counter() - t0
-            total_new_tokens_generated += ((args.max_length - inp_len) if args.max_new_tokens is None else args.max_new_tokens)
+            total_new_tokens_generated += (
+                (args.max_length - inp_len) if args.max_new_tokens is None else args.max_new_tokens
+            )
             if rank in [-1, 0]:
                 print(separator)
                 print(f"Batch n°{i+1}")
