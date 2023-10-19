@@ -64,7 +64,8 @@ def main():
         action="store_true",
         help="Whether to perform generation in bf16 precision.",
     )
-    parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
+    parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate. Mutually exclusive with max_length. Set to negative to disable")
+    parser.add_argument("--max_length", type=int, default=-1, help="Max number of tokens (prompt + generation). Mutually exclusive with max_new_tokens. Set to negative to disable")
     parser.add_argument(
         "--max_input_tokens",
         type=int,
@@ -381,7 +382,14 @@ def main():
 
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)
-    generation_config.max_new_tokens = args.max_new_tokens
+    if args.max_new_tokens < 0 and args.max_length < 0:
+        raise ValueError("Both max_new_tokens, max_length are negative. Exactly one is expected to be positive")
+    if args.max_new_tokens > 0 and args.max_length > 0:
+        raise ValueError("Both max_new_tokens, max_length are positive. Exactly one is expected to be positive")
+    if args.max_new_tokens > 0:
+        generation_config.max_new_tokens = args.max_new_tokens
+    else:
+        generation_config.max_length = args.max_length
     generation_config.use_cache = args.use_kv_cache
     generation_config.static_shapes = is_optimized
     generation_config.bucket_size = args.bucket_size if is_optimized else -1
@@ -475,6 +483,8 @@ def main():
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
+        if args.max_new_tokens < 0:
+            throughput = "Please use max_new_tokens instead of max_length to get throughput"
 
         if rank in [-1, 0]:
             print()
@@ -499,6 +509,7 @@ def main():
                 with (output_dir / "results.json").open("w", encoding="utf-8") as f:
                     json.dump(results, f, ensure_ascii=False, indent=4)
             from optimum.habana.utils import get_hpu_memory_stats
+            #import pdb; pdb.set_trace()
 
             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
             separator = "-" * len(stats)
