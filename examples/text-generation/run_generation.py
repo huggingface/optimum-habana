@@ -64,17 +64,16 @@ def main():
         action="store_true",
         help="Whether to perform generation in bf16 precision.",
     )
-    parser.add_argument(
+    length_group = parser.add_mutually_exclusive_group(required=False)
+    length_group.add_argument(
         "--max_new_tokens",
         type=int,
-        default=100,
-        help="Number of tokens to generate. Mutually exclusive with max_length. Set to negative to disable",
+        help="Number of tokens to generate.",
     )
-    parser.add_argument(
+    length_group.add_argument(
         "--max_length",
         type=int,
-        default=-1,
-        help="Max number of tokens (prompt + generation). Mutually exclusive with max_new_tokens. Set to negative to disable",
+        help="Max number of tokens (prompt + generation).",
     )
     parser.add_argument(
         "--max_input_tokens",
@@ -222,6 +221,8 @@ def main():
     )
 
     args = parser.parse_args()
+    if args.max_length is None and args.max_new_tokens is None:
+        args.max_new_tokens = 100
 
     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
     # For multi node, the value of the env variable WORLD_SIZE should be larger than 8
@@ -392,13 +393,11 @@ def main():
 
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)
-    if args.max_new_tokens < 0 and args.max_length < 0:
-        raise ValueError("Both max_new_tokens, max_length are negative. Exactly one is expected to be positive")
-    if args.max_new_tokens > 0 and args.max_length > 0:
-        raise ValueError("Both max_new_tokens, max_length are positive. Exactly one is expected to be positive")
-    if args.max_new_tokens > 0:
+    if args.max_new_tokens is not None:
+        assert args.max_new_tokens > 0, "max_length is not set, expect a positive number for max_new_tokens"
         generation_config.max_new_tokens = args.max_new_tokens
     else:
+        assert args.max_length > 0, "max_new_tokens is not set, expect a positive number for max_length"
         generation_config.max_length = args.max_length
     generation_config.use_cache = args.use_kv_cache
     generation_config.static_shapes = is_optimized
