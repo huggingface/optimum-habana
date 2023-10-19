@@ -204,7 +204,7 @@ class GaudiLlamaAttention(LlamaAttention):
             value_states = update(past_value, value_states, 2, token_idx, bucket_size, need_expansion)
             if bucket_size > 0 and reuse_cache:
                 self.past_value = value_states.contiguous()
-                # TODO can this update be doen inside update. also taking care of "contiguous"?
+                # TODO can this update be done inside update. also taking care of "contiguous"?
 
         if use_cache:
             if reuse_cache:
@@ -521,7 +521,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         need_expansion=False,
         bucket_size=-1,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-        # print('token_idx', token_idx)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
