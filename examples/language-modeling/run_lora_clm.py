@@ -64,7 +64,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.7.5")
+check_optimum_habana_min_version("1.8.0")
 
 
 @dataclass

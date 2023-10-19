@@ -57,8 +57,6 @@ from .models import (
     gaudi_conv1d_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
-    gaudi_esmoutput_forward,
-    gaudi_esmselfoutput_forward,
     gaudi_falcon_attention_forward,
     gaudi_falcon_attention_split_heads,
     gaudi_falcon_decoder_layer_forward,
@@ -191,8 +189,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.esm.modeling_esmfold.EsmForProteinFolding.forward = gaudi_esm_for_protein_folding_forward
     transformers.models.esm.openfold_utils.rigid_utils.rot_matmul = gaudi_rot_matmul
     transformers.models.esm.openfold_utils.rigid_utils.rot_vec_mul = gaudi_rot_vec_mul
-    transformers.models.esm.modeling_esm.EsmSelfOutput.forward = gaudi_esmselfoutput_forward
-    transformers.models.esm.modeling_esm.EsmOutput.forward = gaudi_esmoutput_forward
 
     # Optimization for OPT generation on Gaudi
     transformers.models.opt.modeling_opt.OPTAttention.forward = gaudi_opt_attention_forward
