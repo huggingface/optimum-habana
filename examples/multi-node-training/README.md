@@ -31,6 +31,8 @@ Check out the [documentation](https://huggingface.co/docs/optimum/habana/usage_g
 
 A `Dockerfile` is provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/Dockerfile) to easily start a multi-node run.
 It is based on an image compatible with Ubuntu 20.04 but you can easily adapt it to another OS.
+> For GaudiNIC, please refer `Dockerfile` is provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/GaudiNIC/Dockerfile)
+
 To build the Docker image, run:
 ```bash
 docker build -t gaudi_multi_node PATH
@@ -44,8 +46,26 @@ docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_va
 
 > For AWS DL1 instances, `--privileged` must be passed to the `docker run` command so that EFA interfaces are visible.
 
-Finally, you will have to copy the public key of the leader node in the `~/.ssh/authorized_keys` file of all other nodes to enable password-less SSH.
 
+You will have to copy id_rsa.pub contents from every node's docker to every other node's docker's ~/.ssh/authorized_keys (all public keys need to be in all hosts' authorized_keys) to enable password-less SSH.
+
+  a. Copy id_rsa.pub to ~/.ssh/authorized_keys.
+   ```bash
+   cat id_rsa.pub > authorized_keys
+   vi authorized_keys
+   ```
+   b. Copy the contents from inside to other systems.
+
+   c. Paste all hosts' public keys in all hosts' “authorized_keys” file.
+
+
+Finally, on each system, add all hosts (including itself) to known_hosts. The IP addresses used below are just for illustration:
+   ```bash
+   ssh-keyscan -p 3022 -H 10.10.100.101 >> ~/.ssh/known_hosts
+   ssh-keyscan -p 3022 -H 10.10.100.102 >> ~/.ssh/known_hosts
+   ssh-keyscan -p 3022 -H 10.10.100.103 >> ~/.ssh/known_hosts
+   ssh-keyscan -p 3022 -H 10.10.100.104 >> ~/.ssh/known_hosts
+   ```
 
 ## Hostfile
 
