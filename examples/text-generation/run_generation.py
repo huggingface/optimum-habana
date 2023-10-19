@@ -138,7 +138,7 @@ def main():
         default=None,
         type=str,
         nargs="*",
-        help="Optional argument to give a prompt of your choice as input. Can be a single string (eg: --prompt \"Hello world\"), or a list of space-separated strings (eg: --prompt \"Hello world\" \"How are you?\")",
+        help='Optional argument to give a prompt of your choice as input. Can be a single string (eg: --prompt "Hello world"), or a list of space-separated strings (eg: --prompt "Hello world" "How are you?")',
     )
     parser.add_argument(
         "--bad_words",
