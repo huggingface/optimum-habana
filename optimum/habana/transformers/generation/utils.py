@@ -499,7 +499,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             # In encoder_decoder models, Inputs are already padded
-            if (generation_config.max_new_tokens is None or generation_config.max_new_tokens < 0):
+            if generation_config.max_new_tokens is None or generation_config.max_new_tokens < 0:
                 assert generation_config.max_length > 0
                 generation_config.max_new_tokens = generation_config.max_length - inputs_tensor.shape[-1]
 
