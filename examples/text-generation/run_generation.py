@@ -466,8 +466,7 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
-            return tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
+            return tokenizer.batch_decode(outputs, skip_special_tokens=True), input_tokens['input_ids'].shape[-1]
         from optimum.habana.utils import HabanaProfile
 
         # compilation stage disable profiling
@@ -488,12 +487,11 @@ def main():
         t0 = time.perf_counter()
         # Benchmark over n_iterations iterations
         for i in range(args.n_iterations):
-            generated = generate()
+            generated, inp_shape = generate()
+        max_new_tokens = args.max_length - inp_shape if args.max_new_tokens is None else args.max_new_tokens
         duration = time.perf_counter() - t0
-        total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+        total_new_tokens_generated = args.n_iterations * args.batch_size * max_new_tokens
         throughput = total_new_tokens_generated / duration
-        if args.max_new_tokens < 0:
-            throughput = "Please use max_new_tokens instead of max_length to get throughput"
 
         if rank in [-1, 0]:
             print()
@@ -621,7 +619,7 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
-            return prompt, outputs
+            return prompt, outputs, batch["input_ids"].shape[-1]
 
         # warmup
         if prompt_length > 0:
@@ -649,9 +647,9 @@ def main():
         t_start = time.time()
         for i, batch in enumerate(dataloader):
             t0 = time.perf_counter()
-            prompt, outputs = generate_dataset(batch)
+            prompt, outputs, inp_len = generate_dataset(batch)
             duration += time.perf_counter() - t0
-            total_new_tokens_generated += args.batch_size * args.max_new_tokens
+            total_new_tokens_generated += ((args.max_length - inp_len) if args.max_new_tokens is None else args.max_new_tokens)
             if rank in [-1, 0]:
                 print(separator)
                 print(f"Batch n°{i+1}")
@@ -663,8 +661,6 @@ def main():
         t_end = time.time()
 
         throughput = total_new_tokens_generated / duration
-        if args.max_new_tokens < 0:
-            throughput = "Please use max_new_tokens instead of max_length to get throughput"
         # Print Stats
         if rank in [-1, 0]:
             from optimum.habana.utils import get_hpu_memory_stats
