@@ -29,9 +29,12 @@ where `--argX` is an argument of the script to run.
 
 Check out the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) to know how to set up your Gaudi instances for multi-node runs on premises or on AWS.
 
-A `Dockerfile` is provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/Dockerfile) to easily start a multi-node run.
-It is based on an image compatible with Ubuntu 20.04 but you can easily adapt it to another OS.
-> For GaudiNIC, please refer `Dockerfile` is provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/GaudiNIC/Dockerfile)
+A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/EFA/Dockerfile) to easily start a multi-node run on AWS.
+
+A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main.examples/multi-node-training/GaudiNIC/Dockerfile) is for GaudiNIC.
+
+
+The Dockerfile is based on an image compatible with Ubuntu 20.04 but you can easily adapt it to another OS.
 
 To build the Docker image, run:
 ```bash
@@ -89,7 +92,7 @@ env_variable_2_name=value
 ...
 ```
 
-You can find an example for AWS instances [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/.deepspeed_env).
+You can find an example for AWS instances [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/EFA/.deepspeed_env).
 
 > Note that one should set `HCCL_OVER_OFI=1` and `LD_LIBRARY_PATH=/root/hccl_ofi_wrapper:/opt/amazon/openmpi/lib:/opt/amazon/efa/lib` only on AWS DL1 instances. *These should not be used otherwise*.
 
