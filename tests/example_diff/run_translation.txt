@@ -31,10 +31,6 @@
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
 > 
-113c121
-<                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
----
->                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
 117a126,134
 >     use_cache: bool = field(
 >         default=True,
@@ -45,10 +41,6 @@
 >             )
 >         },
 >     )
-176c193
-<                 "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`. "
----
->                 "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`."
 188c205
 <                 "efficient on GPU but very bad for TPU."
 ---
@@ -82,10 +74,6 @@
 >         + f"mixed-precision training: {mixed_precision}"
 393a422
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-471c500
-<             "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for "
----
->             "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for"
 590c619
 <     trainer = Seq2SeqTrainer(
 ---

@@ -40,9 +40,11 @@
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 > 
-123c134
+122,123c133,134
+<                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
 <                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
 ---
+>                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
 >                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
 136a148,156
 >     use_cache: bool = field(
@@ -54,24 +56,12 @@
 >             )
 >         },
 >     )
-208c228
-<                 "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`. "
----
->                 "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`."
 220c240
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-267c287
-<         default=None, metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
----
->         default="", metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
 268a289
 >     source_suffix: Optional[str] = field(default="", metadata={"help": "A suffix to add after every source text."})
-274c295
-<                 "The token to force as the first generated token after the decoder_start_token_id. "
----
->                 "The token to force as the first generated token after the decoder_start_token_id."
 324c345
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
@@ -121,10 +111,6 @@
 >         embedding_size = embeddings.weight.shape[0]
 499a546
 >     suffix = data_args.source_suffix if data_args.source_suffix is not None else ""
-559c606
-<             "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for "
----
->             "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for"
 570a618,619
 >             else:
 >                 raise ValueError("Found case where either text or summary is missing.")

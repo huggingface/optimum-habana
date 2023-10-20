@@ -40,14 +40,10 @@
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 > 
 > 
-131c139
-<                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
+141c149
+<                 "set True will benefit LLM loading time and RAM consumption."
 ---
->                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
-140c148
-<                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded. "
----
->                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded."
+>                 "Setting it to True will benefit LLM loading time and RAM consumption."
 226c234
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
@@ -81,14 +77,6 @@
 >         + f"mixed-precision training: {mixed_precision}"
 291d309
 <     # Set the verbosity to info of the Transformers logger (on main process only):
-420c438
-<             "You are instantiating a new tokenizer from scratch. This is not supported by this script. "
----
->             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
-465c483
-<                 f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the "
----
->                 f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
 613c631
 <     trainer = Trainer(
 ---

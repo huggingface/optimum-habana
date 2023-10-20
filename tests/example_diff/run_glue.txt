@@ -32,10 +32,6 @@
 68,69d77
 < logger = logging.getLogger(__name__)
 < 
-212c220
-<                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
----
->                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
 228c236
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
@@ -63,10 +59,6 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-459c478
-<             f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the "
----
->             f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
 540c559
 <     trainer = Trainer(
 ---
