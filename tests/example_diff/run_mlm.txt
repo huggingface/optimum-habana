@@ -20,7 +20,7 @@
 > from optimum.habana.utils import set_seed
 56,57d51
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.34.0.dev0")
+< check_min_version("4.35.0.dev0")
 59c53,59
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
@@ -34,12 +34,20 @@
 61a62,69
 > 
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.33.0")
-> check_optimum_habana_min_version("1.7.5")
+> check_min_version("4.34.0")
+> check_optimum_habana_min_version("1.8.0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 > 
 > 
+131c139
+<                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
+---
+>                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
+140c148
+<                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded. "
+---
+>                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded."
 226c234
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
@@ -73,6 +81,14 @@
 >         + f"mixed-precision training: {mixed_precision}"
 291d309
 <     # Set the verbosity to info of the Transformers logger (on main process only):
+420c438
+<             "You are instantiating a new tokenizer from scratch. This is not supported by this script. "
+---
+>             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
+465c483
+<                 f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the "
+---
+>                 f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
 613c631
 <     trainer = Trainer(
 ---

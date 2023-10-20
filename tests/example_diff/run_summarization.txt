@@ -15,13 +15,15 @@
 <     set_seed,
 ---
 >     default_data_collator,
-53a52,53
+49a48
+> from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
+53a53,54
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
-55,56d54
+55,56d55
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.34.0.dev0")
-58c56,62
+< check_min_version("4.35.0.dev0")
+58c57,63
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 ---
 > try:
@@ -31,14 +33,18 @@
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 > 
-61a66,71
+61a67,72
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.33.0")
-> check_optimum_habana_min_version("1.7.5")
+> check_min_version("4.34.0")
+> check_optimum_habana_min_version("1.8.0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 > 
-136a147,155
+123c134
+<                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
+---
+>                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
+136a148,156
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -48,23 +54,35 @@
 >             )
 >         },
 >     )
-220c239
+208c228
+<                 "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`. "
+---
+>                 "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`."
+220c240
 <                 "efficient on GPU but very bad for TPU."
 ---
 >                 "efficient on GPU but very bad for HPU in lazy mode."
-268a288
+267c287
+<         default=None, metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
+---
+>         default="", metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
+268a289
 >     source_suffix: Optional[str] = field(default="", metadata={"help": "A suffix to add after every source text."})
-324c344
+274c295
+<                 "The token to force as the first generated token after the decoder_start_token_id. "
+---
+>                 "The token to force as the first generated token after the decoder_start_token_id."
+324c345
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-333c353,355
+333c354,356
 <         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
 ---
 >         warnings.warn(
 >             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
 >         )
-359a382,388
+359a383,389
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -72,27 +90,49 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-360a390
+360a391
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-362,363c392,394
+362,363c393,395
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-444a476
+444a477
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-499a532
+463a497,502
+>     is_bart = model.config.model_type == "bart"
+>     if is_bart and training_args.do_train:
+>         raise ValueError(
+>             "Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`."
+>         )
+> 
+466c505,512
+<     embedding_size = model.get_input_embeddings().weight.shape[0]
+---
+>     embeddings = model.get_input_embeddings()
+>     if is_deepspeed_zero3_enabled():
+>         import deepspeed
+> 
+>         with deepspeed.zero.GatheredParameters(embeddings.weight, modifier_rank=None):
+>             embedding_size = embeddings.weight.shape[0]
+>     else:
+>         embedding_size = embeddings.weight.shape[0]
+499a546
 >     suffix = data_args.source_suffix if data_args.source_suffix is not None else ""
-570a604,605
+559c606
+<             "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for "
+---
+>             "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for"
+570a618,619
 >             else:
 >                 raise ValueError("Found case where either text or summary is missing.")
-572c607
+572c621
 <         inputs = [prefix + inp for inp in inputs]
 ---
 >         inputs = [prefix + inp + suffix for inp in inputs]
-637,642c672,680
+637,642c686,694
 <     data_collator = DataCollatorForSeq2Seq(
 <         tokenizer,
 <         model=model,
@@ -109,7 +149,7 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-677,684c715,723
+677,684c729,737
 <     training_args.generation_max_length = (
 <         training_args.generation_max_length
 <         if training_args.generation_max_length is not None
@@ -128,13 +168,13 @@
 >         training_args.generation_config.num_beams = data_args.num_beams
 >     elif training_args.generation_num_beams is not None:
 >         training_args.generation_config.num_beams = training_args.generation_num_beams
-687c726
+687c740
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-688a728
+688a742
 >         gaudi_config=gaudi_config,
-777,781d816
+777,781d830
 < 
 < 
 < def _mp_fn(index):

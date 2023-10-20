@@ -25,7 +25,7 @@
 > from optimum.habana.utils import set_seed
 58,59d53
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.34.0.dev0")
+< check_min_version("4.35.0.dev0")
 61c55,61
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
@@ -38,8 +38,8 @@
 > 
 64a65,70
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.33.0")
-> check_optimum_habana_min_version("1.7.5")
+> check_min_version("4.34.0")
+> check_optimum_habana_min_version("1.8.0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 > 
@@ -48,6 +48,10 @@
 ---
 >                 "The model checkpoint for weights initialization. Don't set it if you want to train a model from"
 >                 " scratch."
+135c142
+<                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
+---
+>                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
 149a157,165
 >     use_cache: bool = field(
 >         default=True,
@@ -58,6 +62,10 @@
 >             )
 >         },
 >     )
+154c170
+<                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded. "
+---
+>                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded."
 202c218,219
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
@@ -92,13 +100,36 @@
 >         + f"mixed-precision training: {mixed_precision}"
 400a429
 >         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
-587c616
+427c456
+<             "You are instantiating a new tokenizer from scratch. This is not supported by this script. "
+---
+>             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
+500c529
+<         if block_size > config.max_position_embeddings:
+---
+>         if block_size > 1024:
+502,503c531,533
+<                 f"The tokenizer picked seems to have a very large `model_max_length` ({tokenizer.model_max_length}). "
+<                 f"Using block_size={min(1024, config.max_position_embeddings)} instead. You can change that default value by passing --block_size xxx."
+---
+>                 "The chosen tokenizer supports a `model_max_length` that is longer than the default `block_size` value"
+>                 " of 1024. If you would like to use a longer `block_size` up to `tokenizer.model_max_length` you can"
+>                 " override this default with `--block_size xxx`."
+505c535
+<             block_size = min(1024, config.max_position_embeddings)
+---
+>             block_size = 1024
+509c539
+<                 f"The block_size passed ({data_args.block_size}) is larger than the maximum length for the model "
+---
+>                 f"The block_size passed ({data_args.block_size}) is larger than the maximum length for the model"
+586c616
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-588a618
+587a618
 >         gaudi_config=gaudi_config,
-595,598c625,626
+594,597c625,626
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -106,7 +137,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-613,616c641,647
+612,615c641,647
 <         max_train_samples = (
 <             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 <         )
@@ -119,9 +150,9 @@
 >                 data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-625d655
+624d655
 < 
-628,629c658,663
+627,628c658,663
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 ---
@@ -131,7 +162,7 @@
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 > 
-652,656d685
+651,655d685
 < 
 < 
 < def _mp_fn(index):

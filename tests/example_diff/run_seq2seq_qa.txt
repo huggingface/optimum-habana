@@ -11,7 +11,7 @@
 > from optimum.habana.utils import set_seed
 49,50d47
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.34.0.dev0")
+< check_min_version("4.35.0.dev0")
 52c49,55
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 ---
@@ -24,11 +24,19 @@
 > 
 55a59,64
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.33.0")
-> check_optimum_habana_min_version("1.7.5")
+> check_min_version("4.34.0")
+> check_optimum_habana_min_version("1.8.0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 > 
+104c113
+<                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
+---
+>                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
+174c183
+<                 "than this will be truncated, sequences shorter will be padded. Will default to `max_answer_length`. "
+---
+>                 "than this will be truncated, sequences shorter will be padded. Will default to `max_answer_length`."
 185c194
 <                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
 ---
@@ -60,6 +68,14 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
+468c488
+<             "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for "
+---
+>             "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for"
+474c494
+<             f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the "
+---
+>             f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
 671a692
 >         gaudi_config=gaudi_config,
 745,749d765
