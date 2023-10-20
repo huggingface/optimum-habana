@@ -32,12 +32,10 @@
 > 
 141d147
 < 
-251,252c257,258
+251c257
 <                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
-<                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
 ---
 >                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
->                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
 390c396
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---

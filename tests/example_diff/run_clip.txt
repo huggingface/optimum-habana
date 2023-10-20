@@ -61,10 +61,6 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-361c383
-<             "You are instantiating a new tokenizer from scratch. This is not supported by this script. "
----
->             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
 432d453
 <     image_transformations = torch.jit.script(image_transformations)
 479,480c500,508

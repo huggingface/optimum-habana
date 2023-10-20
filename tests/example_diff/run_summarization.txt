@@ -40,12 +40,10 @@
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 > 
-122,123c133,134
+122c133
 <                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
-<                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
 ---
 >                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
->                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
 136a148,156
 >     use_cache: bool = field(
 >         default=True,
