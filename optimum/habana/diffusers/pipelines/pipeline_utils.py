@@ -137,12 +137,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                         error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
                         raise error
 
-                    warnings.warn(
-                        "Habana Mixed Precision is deprecated and will be removed in SynapseAI v1.12. Please"
-                        " use Torch Autocast instead setting `use_torch_autocast=true` in your Gaudi configuration.",
-                        FutureWarning,
-                    )
-
                     # Open temporary files to write mixed-precision ops
                     with tempfile.NamedTemporaryFile() as hmp_bf16_file:
                         with tempfile.NamedTemporaryFile() as hmp_fp32_file:

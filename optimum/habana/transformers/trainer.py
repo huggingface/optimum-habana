@@ -223,13 +223,6 @@ class GaudiTrainer(Trainer):
                     raise error
                 self.hmp = hmp
 
-                warnings.warn(
-                    "Habana Mixed Precision is deprecated and will be removed in SynapseAI v1.12. Please"
-                    " use Torch Autocast instead using `--bf16` or setting `use_torch_autocast=true` in your"
-                    " Gaudi configuration.",
-                    FutureWarning,
-                )
-
                 # Open temporary files to mixed-precision write ops
                 with tempfile.NamedTemporaryFile() as hmp_bf16_file:
                     with tempfile.NamedTemporaryFile() as hmp_fp32_file:
