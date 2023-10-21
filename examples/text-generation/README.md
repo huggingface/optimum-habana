@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0
 ```
 
 
@@ -74,6 +74,7 @@ python run_generation.py \
 The default behaviour of this script (i.e. if no dataset is specified with `--dataset_name`) is to benchmark the given model with a few pre-defined prompts or with the prompt you gave with `--prompt`.
 Here are a few settings you may be interested in:
 - `--max_new_tokens` to specify the number of tokens to generate
+- `--max_input_tokens` to specify the max input tokens to pad and truncate input sequences
 - `--batch_size` to specify the batch size
 - `--bf16` to run generation in bfloat16 precision (or to be specified in your DeepSpeed configuration if using DeepSpeed)
 - `--use_hpu_graphs` to use [HPU graphs](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_HPU_Graphs.html) to speed up generation
@@ -82,6 +83,7 @@ Here are a few settings you may be interested in:
 - `--do_sample` or `--num_beams` to generate new tokens doing sampling or beam search (greedy search is the default)
 - `--prompt` to benchmark the model on a prompt of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
+- `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -91,6 +93,21 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --use_hpu_graphs \
 --use_kv_cache \
 --max_new_tokens 100
+```
+
+You can also run Llama2-70B on Gaudi2 with all optimizations enabled using the following command:
+```bash
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
+--max_new_tokens 4096 \
+--bf16 \
+--use_hpu_graphs \
+--use_kv_cache \
+--batch_size 52 \
+--attn_softmax_bf16 \
+--limit_hpu_graphs \
+--reuse_cache \
+--trim_logits
 ```
 
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:

@@ -69,7 +69,9 @@ def main():
         "--max_input_tokens",
         type=int,
         default=0,
-        help="If > 0 then pad and truncate the input sequences to this specified length of tokens.",
+        help="If > 0 then pad and truncate the input sequences to this specified length of tokens. \
+            if == 0, then truncate to 16 (original default) \
+            if < 0, then do not truncate, use full input prompt",
     )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
@@ -240,7 +242,7 @@ def main():
         if not is_deepspeed_available():
             raise ImportError(
                 "This script requires deepspeed: `pip install"
-                " git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0`."
+                " git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0`."
             )
         import deepspeed
 
@@ -269,17 +271,6 @@ def main():
     check_optimum_habana_min_version("1.8.0.dev0")
 
     set_seed(args.seed)
-
-    # TODO: remove the following hack when Falcon is available in Transformers
-    # Temporary hack for Falcon
-    if args.model_name_or_path == "tiiuae/falcon-7b":
-        args.model_revision = "4e2d06f0a7c6370ebabbc30c6f59377ae8f73d76"
-    elif args.model_name_or_path == "tiiuae/falcon-7b-instruct":
-        args.model_revision = "f8dac3fff96d5debd43edf56fb4e1abcfffbef28"
-    elif args.model_name_or_path == "tiiuae/falcon-40b":
-        args.model_revision = "f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232"
-    elif args.model_name_or_path == "tiiuae/falcon-40b-instruct":
-        args.model_revision = "7475ff8cfc36ed9a962b658ae3c33391566a85a5"
 
     tokenizer_kwargs = {
         "revision": args.model_revision,
@@ -554,8 +545,8 @@ def main():
         # Remove unused columns
         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
 
-        # Set the prompt length to args.max_input_tokens if > 0 else default to 16
-        prompt_length = args.max_input_tokens if args.max_input_tokens > 0 else 16
+        # Set the prompt length to args.max_input_tokens if > 0 else (if 0 truncate to 16, otherwise use full length)
+        prompt_length = args.max_input_tokens if args.max_input_tokens > 0 else (-1, 16)[args.max_input_tokens == 0]
 
         def preprocess_function(examples):
             # Tokenize the texts

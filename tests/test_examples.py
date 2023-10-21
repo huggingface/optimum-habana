@@ -533,7 +533,7 @@ class MultiCardAudioClassificationExampleTester(
 
 
 # class SpeechRecognitionExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc"):
-#     TASK_NAME = "librispeech_asr"
+#     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
 
 
 class MultiCardSpeechRecognitionExampleTester(

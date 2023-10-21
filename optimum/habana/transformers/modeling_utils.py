@@ -37,8 +37,6 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
-    _gaudi_get_resized_embeddings,
-    _gaudi_get_resized_lm_head,
     gaudi_albert_forward,
     gaudi_BartAttention_forward,
     gaudi_BartDecoder_forward,
@@ -62,6 +60,7 @@ from .models import (
     gaudi_esmoutput_forward,
     gaudi_esmselfoutput_forward,
     gaudi_falcon_attention_forward,
+    gaudi_falcon_attention_split_heads,
     gaudi_falcon_decoder_layer_forward,
     gaudi_falcon_rotary_embedding_forward,
     gaudi_get_extended_attention_mask,
@@ -239,6 +238,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.falcon.modeling_falcon.FalconDecoderLayer.forward = gaudi_falcon_decoder_layer_forward
     transformers.models.falcon.modeling_falcon.FalconAttention.forward = gaudi_falcon_attention_forward
     transformers.models.falcon.modeling_falcon.FalconRotaryEmbedding.forward = gaudi_falcon_rotary_embedding_forward
+    transformers.models.falcon.modeling_falcon.FalconAttention._split_heads = gaudi_falcon_attention_split_heads
 
     # Optimization for t5 on Gaudi
     transformers.models.t5.modeling_t5.T5LayerNorm.forward = gaudi_t5_layernorm_forward
@@ -248,9 +248,3 @@ def adapt_transformers_to_gaudi():
     transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
     transformers.models.mpt.modeling_mpt.MptAttention.forward = gaudi_mpt_attention_forward
     transformers.models.mpt.modeling_mpt.MptBlock.forward = gaudi_mpt_block_forward
-
-    # TODO: revisit this when switching to Transformers v4.33
-    # see https://github.com/huggingface/transformers/pull/25394
-    # Hack for running T5 with DeepSpeed Zero-3
-    transformers.modeling_utils.PreTrainedModel._get_resized_embeddings = _gaudi_get_resized_embeddings
-    transformers.modeling_utils.PreTrainedModel._get_resized_lm_head = _gaudi_get_resized_lm_head
