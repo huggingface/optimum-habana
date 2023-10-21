@@ -20,7 +20,6 @@ import inspect
 import os
 import sys
 import tempfile
-import warnings
 from typing import Optional, Union
 
 import torch
