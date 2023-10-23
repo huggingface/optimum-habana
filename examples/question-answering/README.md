@@ -56,6 +56,7 @@ python run_qa.py \
   --throughput_warmup_steps 3
 ```
 
+
 ### Multi-card Training
 
 Here is how you would fine-tune the BERT large model (with whole word masking) on the SQuAD dataset using the `run_qa` script, with 8 HPUs:

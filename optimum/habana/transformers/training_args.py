@@ -625,7 +625,6 @@ class GaudiTrainingArguments(TrainingArguments):
             from .modeling_utils import adapt_transformers_to_gaudi
 
             adapt_transformers_to_gaudi()
-            version = get_habana_frameworks_version()
             if self.use_lazy_mode:
                 assert (os.getenv('PT_HPU_LAZY_MODE') == '1' or os.getenv('PT_HPU_LAZY_MODE') == None), \
                     "Argument --use_lazy_mode used, but PT_HPU_LAZY_MODE={os.getenv('PT_HPU_LAZY_MODE')}. For lazy mode, set PT_HPU_LAZY_MODE to 1"

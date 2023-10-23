@@ -232,9 +232,7 @@ def main():
 
     # Get world size, rank and local rank
     from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
- 
     world_size, rank, args.local_rank = initialize_distributed_hpu()
-    print("libin debug world_size, rank, args.local_rank " , world_size, rank, args.local_rank)
     if use_deepspeed:
         # Check if DeepSpeed is installed
         from transformers.integrations.deepspeed import is_deepspeed_available
@@ -245,7 +243,6 @@ def main():
                 " git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0`."
             )
         import deepspeed
-        logger.info("libin debug deepspeed.init_distributed")
         # Initialize process(es) for DeepSpeed
         deepspeed.init_distributed(dist_backend="hccl")
         logger.info("DeepSpeed is enabled.")
@@ -294,19 +291,16 @@ def main():
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
         is_optimized = model_is_optimized(config)
-        load_to_meta = False #model_on_meta(config)
+        load_to_meta = model_on_meta(config)
 
         if load_to_meta:
             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
-                print("libin debug meta args.model_name_or_path, torch_dtype, model_kwargs ",  config ,  model_dtype)
-
                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
         else:
             get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
             # TODO: revisit placement on CPU when auto-injection is possible
             with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
-                print("libin debug args.model_name_or_path, torch_dtype, model_kwargs ",  args.model_name_or_path, model_dtype, model_kwargs)
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
                 )
