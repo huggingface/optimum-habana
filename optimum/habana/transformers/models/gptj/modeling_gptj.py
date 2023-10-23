@@ -84,7 +84,6 @@ class GaudiGPTJAttention(nn.Module):
         query_length, key_length = query.size(-2), key.size(-2)
         causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
 
-        # Keep the attention weights computation in fp32 to avoid overflow issues
         query = query.contiguous()
         key = key.contiguous()
         value = value.contiguous()
@@ -94,7 +93,7 @@ class GaudiGPTJAttention(nn.Module):
         mask_value = torch.finfo(attn_weights.dtype).min
         # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
         # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-        mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype, device="hpu")
+        mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype, device=attn_weights.device)
         attn_weights = torch.where(causal_mask, attn_weights, mask_value)
 
         attn_weights = attn_weights / self.scale_attn
@@ -137,6 +136,7 @@ class GaudiGPTJAttention(nn.Module):
         - add new args token_idx
         - remove is_torch_fx_proxy
         - optimize KV cache
+        - pass sin and cos from upper level as they are identical for each attn block
         """
         query = self.q_proj(hidden_states)
         key = self.k_proj(hidden_states)
@@ -214,6 +214,7 @@ def gaudi_gptj_block_forward(
     Copied from GPTJBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/modeling_gptj.py
     The only differences are:
     - add new args token_idx
+    - pass sin and cos from upper level as they are identical for each attn block
     """
     residual = hidden_states
     hidden_states = self.ln_1(hidden_states)
@@ -264,6 +265,7 @@ def gaudi_gptj_model_forward(
     Copied from GPTJModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/modeling_gptj.py
     The only differences are:
     - add new args token_idx
+    - pass sin and cos from upper level as they are identical for each attn block
     """
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
