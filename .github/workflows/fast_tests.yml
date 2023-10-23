@@ -1,45 +1,26 @@
 name: Unit and integration tests
 
 
-# WARNING: As this workflow supports the pull_request_target event, please exercise extra care when editing it.
 on:
   workflow_dispatch:
-  pull_request_target:
+  pull_request:
     branches: [ main ]
-    types: [ opened, synchronize, reopened, labeled ]
   push:
     branches: [ main ]
-    
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  authorize:
-    if: (github.event.action == 'labeled' && github.event.label.name == 'run-test') || github.event_name != 'pull_request_target' || (! github.event.pull_request.head.repo.fork)
-    runs-on: ubuntu-latest
-    steps:
-      - run: true
-      
   transformers:
     name: Run tests for optimum.habana.transformers
-    needs:
-      - authorize
     runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
     env:
       AWS_REGION: us-east-1
     steps:
-      - name: Checkout on branch
-        if: github.event_name != 'pull_request_target'
+      - name: Checkout
         uses: actions/checkout@v2
-        with:
-          ref: ${{ github.ref }}
-      - name: Checkout on PR merge commit
-        if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@v2
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
@@ -59,22 +40,13 @@ jobs:
   diffusers:
     name: Run tests for optimum.habana.diffusers
     needs:
-      - authorize
       - transformers # required to wait for the previous tests to finish
     runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
     env:
       AWS_REGION: us-east-1
     steps:
-      - name: Checkout on branch
-        if: github.event_name != 'pull_request_target'
+      - name: Checkout
         uses: actions/checkout@v2
-        with:
-          ref: ${{ github.ref }}
-      - name: Checkout on PR merge commit
-        if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@v2
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
