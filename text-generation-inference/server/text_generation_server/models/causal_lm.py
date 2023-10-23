@@ -11,6 +11,8 @@ from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+import habana_frameworks.torch.core as htcore
+
 from text_generation_server.models import Model
 from text_generation_server.models.types import (
     Batch,
@@ -568,6 +570,10 @@ class CausalLM(Model):
             device=device,
         )
 
+    def mark_step(self):
+        if self.is_optimized_for_gaudi:
+            htcore.mark_step()
+
     @property
     def batch_type(self) -> Type[CausalLMBatch]:
         return CausalLMBatch
@@ -601,6 +607,8 @@ class CausalLM(Model):
 
     @tracer.start_as_current_span("generate_token")
     def generate_token(self, batch: CausalLMBatch) -> Tuple[List[Generation], Optional[CausalLMBatch]]:
+        self.mark_step()
+
         if self.is_optimized_for_gaudi:
             token_idx = torch.tensor(batch.attention_mask.shape[-1] - batch.padding_right_offset).to(self.device)
             attention_mask = batch.attention_mask
@@ -616,6 +624,12 @@ class CausalLM(Model):
             token_idx,
             batch.past_key_values,
         )
+        if logits.shape[-2] > 1:
+            if self.is_optimized_for_gaudi:
+                logits = logits.index_select(-2, token_idx - 1)
+            else:
+                idx = logits.shape[-2] - batch.padding_right_offset
+                logits = logits[:, idx - 1 : idx]
 
         # Results
         generations: List[Generation] = []
@@ -626,6 +640,7 @@ class CausalLM(Model):
             batch.top_n_tokens_tensor,
             torch.softmax(logits[:, -1], -1),
         )
+        self.mark_step()
 
         # Zipped iterator
         iterator = zip(
@@ -657,16 +672,11 @@ class CausalLM(Model):
             top_token_logprobs,
         ) in enumerate(iterator):
             # Select next token
-            if self.is_optimized_for_gaudi and logits.shape[-2] > 1:
-                next_token_id, logprobs = next_token_chooser(
-                    all_input_ids[0:input_length].view(1, -1), logits[input_length - 1 : input_length, :]
-                )
-            else:
-                next_token_id, logprobs = next_token_chooser(all_input_ids[0:input_length].view(1, -1), logits[-1:, :])
+            next_token_id, logprobs = next_token_chooser(all_input_ids.view(1, -1), logits)
 
             # Append next token to all tokens
             if self.is_optimized_for_gaudi:
-                all_input_ids[input_length] = next_token_id
+                all_input_ids.index_copy_(0, token_idx, next_token_id)
             else:
                 all_input_ids = torch.cat([all_input_ids, next_token_id])
             new_input_length = input_length + 1
@@ -675,7 +685,7 @@ class CausalLM(Model):
             next_token_logprob = logprobs[-1, next_token_id]
             next_token_id_squeezed = next_token_id.squeeze()
             next_token_text, prefix_offset, read_offset = self.decode_token(
-                all_input_ids[0:new_input_length, 0], prefix_offset, read_offset
+                all_input_ids.squeeze(-1), prefix_offset, read_offset
             )
 
             # Evaluate stopping criteria
@@ -757,16 +767,21 @@ class CausalLM(Model):
             batch.prefix_offsets[i] = prefix_offset
             batch.read_offsets[i] = read_offset
             batch.max_input_length = max(batch.max_input_length, new_input_length)
+            self.mark_step()
 
         # We finished all generations in the batch; there is no next batch
         if stopped:
             return generations, None
 
         # Slice unused values from prefill
-        batch.input_ids = batch.input_ids[:, :1]
+        if batch.input_ids.size(-1) > 1:
+            batch.input_ids = batch.input_ids[:, :1].clone()
 
         # Update attention_mask as we added a new token to input_ids
-        batch.attention_mask[:, -batch.padding_right_offset] = 1
+        if self.is_optimized_for_gaudi:
+            batch.attention_mask.index_fill_(1, token_idx, 1)
+        else:
+            batch.attention_mask[:, -batch.padding_right_offset] = 1
         # Decrease right offset
         batch.padding_right_offset -= 1
 
@@ -776,4 +791,5 @@ class CausalLM(Model):
         # Update past key values
         batch.past_key_values = list(past)
 
+        self.mark_step()
         return generations, batch
