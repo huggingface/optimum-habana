@@ -470,9 +470,9 @@ def gaudi_bloom_model_forward(
 class GaudiBloomForCausalLM(BloomForCausalLM):
     inference_tp_size = None
 
-    def set_tp_for_inteference(tp_for_inference):
+    def set_tp_for_inference(tp_for_inference: int):
         world = int(os.environ.get("WORLD_SIZE", 1))
-        assert tp_for_inference == 1 or tp_for_inference == world,"only setting 1 (no tp) or world size is supported"
+        assert tp_for_inference == 1 or tp_for_inference == world, "only setting 1 (no tp) or world size is supported"
         GaudiBloomForCausalLM.inference_tp_size = tp_for_inference
 
     def prepare_inputs_for_generation(
