@@ -232,7 +232,9 @@ def main():
 
     # Get world size, rank and local rank
     from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+
     world_size, rank, args.local_rank = initialize_distributed_hpu()
+
     if use_deepspeed:
         # Check if DeepSpeed is installed
         from transformers.integrations.deepspeed import is_deepspeed_available
@@ -243,6 +245,7 @@ def main():
                 " git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0`."
             )
         import deepspeed
+
         # Initialize process(es) for DeepSpeed
         deepspeed.init_distributed(dist_backend="hccl")
         logger.info("DeepSpeed is enabled.")
