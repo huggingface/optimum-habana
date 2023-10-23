@@ -42,7 +42,7 @@ from optimum.utils import logging
 from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
 from ..accelerate.utils import GaudiDistributedType
 from .gaudi_configuration import GaudiConfig
-
+from optimum.habana.utils import get_habana_frameworks_version
 
 if is_torch_available():
     import torch
@@ -278,8 +278,7 @@ class GaudiTrainingArguments(TrainingArguments):
             raise ValueError(
                 "`--use_lazy_mode`, `--use_hpu_graphs_for_inference`, `--use_hpu_graphs_for_training` and `--gaudi_config_name` cannot be used without `--use_habana`."
             )
-
-        if use_hpu_graphs and not self.use_lazy_mode:
+        if use_hpu_graphs and (not self.use_lazy_mode and not self.torch_compile_backend):
             raise ValueError(
                 "`--use_hpu_graphs_for_inference` and `--use_hpu_graphs_for_training` cannot be used in eager mode. Please set `--use_lazy_mode` to True."
             )
@@ -438,6 +437,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
 
         if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
+            assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
             self.torch_compile = True
             assert int(torch.__version__.split('.')[
                    0]) >= 2, "Graph mode is available only in PyTorch 2.x."
@@ -625,8 +625,10 @@ class GaudiTrainingArguments(TrainingArguments):
             from .modeling_utils import adapt_transformers_to_gaudi
 
             adapt_transformers_to_gaudi()
-
+            version = get_habana_frameworks_version()
             if self.use_lazy_mode:
+                assert (os.getenv('PT_HPU_LAZY_MODE') == '1' or os.getenv('PT_HPU_LAZY_MODE') == None), \
+                    "Argument --use_lazy_mode used, but PT_HPU_LAZY_MODE={os.getenv('PT_HPU_LAZY_MODE')}. For lazy mode, set PT_HPU_LAZY_MODE to 1"
                 logger.info("Enabled lazy mode.")
             elif not self.torch_compile:
                 os.environ["PT_HPU_LAZY_MODE"] = "2"

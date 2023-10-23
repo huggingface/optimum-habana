@@ -32,7 +32,7 @@ For the following cases, an example of a Gaudi configuration file is given
 [here](https://github.com/huggingface/optimum-habana#how-to-use-it).
 
 
-### Single-card Training with lazy mode
+### Single-card Training
 
 This example code fine-tunes BERT on the SQuAD1.1 dataset.
 
@@ -55,32 +55,6 @@ python run_qa.py \
   --use_hpu_graphs_for_inference \
   --throughput_warmup_steps 3
 ```
-
-### Single-card Training with torch.compile
-
-This example code fine-tunes BERT on the SQuAD1.1 dataset.
-
-```bash
-PT_HPU_LAZY_MODE=0 python run_qa.py \
-  --model_name_or_path bert-large-uncased-whole-word-masking \
-  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
-  --dataset_name squad \
-  --do_train \
-  --do_eval \
-  --per_device_train_batch_size 24 \
-  --per_device_eval_batch_size 8 \
-  --learning_rate 3e-5 \
-  --num_train_epochs 2 \
-  --max_seq_length 384 \
-  --doc_stride 128 \
-  --output_dir /tmp/squad/ \
-  --use_habana \
-  --torch_compile_backend aot_hpu_training_backend \
-  --use_hpu_graphs_for_inference \
-  --throughput_warmup_steps 3
-```
-
-
 
 ### Multi-card Training
 
