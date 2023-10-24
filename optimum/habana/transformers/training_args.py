@@ -626,11 +626,10 @@ class GaudiTrainingArguments(TrainingArguments):
 
             adapt_transformers_to_gaudi()
             if self.use_lazy_mode:
-                assert (os.getenv('PT_HPU_LAZY_MODE') == '1' or os.getenv('PT_HPU_LAZY_MODE') == None), \
-                    "Argument --use_lazy_mode used, but PT_HPU_LAZY_MODE={os.getenv('PT_HPU_LAZY_MODE')}. For lazy mode, set PT_HPU_LAZY_MODE to 1"
                 logger.info("Enabled lazy mode.")
             elif not self.torch_compile:
-                os.environ["PT_HPU_LAZY_MODE"] = "2"
+                if os.getenv('PT_HPU_LAZY_MODE', '1') != '0':
+                    os.environ["PT_HPU_LAZY_MODE"] = "2"
                 logger.info("Enabled eager mode because use_lazy_mode=False.")
 
             if self.deepspeed:
