@@ -16,12 +16,18 @@ if os.environ.get("GAUDI2_CI", "false") == "true":
         "bf16": [
             ("facebook/bart-large-cnn", "Habana/bart", 5.568, 26.0688, 2, 1),
         ],
+        "bf16": [
+            ("t5-3b", "Habana/t5", 3.107, 21.9303, 2, 1),
+        ],
     }
 else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("facebook/bart-large-cnn", "Habana/bart", 2.612, 26.3777, 2, 1),
+            ("facebook/bart-large-cnn", "Habana/bart", 5.568, 26.0688, 2, 1),
+        ],
+        "bf16": [
+            ("t5-3b", "Habana/t5", 1.125, 21.6139, 2, 1),
         ],
     }
 

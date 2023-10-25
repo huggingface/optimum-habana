@@ -92,7 +92,7 @@ def gaudi_T5Attention_forward(
         if token_idx is None:
             real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length
         else:
-            real_seq_length = past_key_value[0].shape[2]
+            real_seq_length = max_output_length
 
     key_length = real_seq_length if key_value_states is None else key_value_states.shape[1]
 
@@ -336,7 +336,7 @@ class GaudiT5Stack(T5Stack):
 
         # required mask seq length can be calculated via length of past
         if token_idx is not None:
-            mask_seq_length = past_key_values[0][0].shape[2] if past_key_values is not None else seq_length
+            mask_seq_length = max_output_length if past_key_values is not None else seq_length
         else:
             mask_seq_length = (
                 past_key_values[0][0].shape[2] + seq_length if past_key_values is not None else seq_length

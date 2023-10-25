@@ -188,6 +188,15 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["attention_mask"] = attention_mask
         else:
             # update decoder attention mask
+            if "attention_mask" in model_kwargs:
+                attention_mask = model_kwargs["attention_mask"]
+                if token_idx is not None:
+                    attention_mask.index_fill_(1, token_idx, 1)
+                else:
+                    attention_mask = torch.cat(
+                        [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
+                    )
+                model_kwargs["attention_mask"] = attention_mask
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
                 if token_idx is not None:
@@ -482,6 +491,7 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs["use_cache"] = True
         else:
             model_kwargs["use_cache"] = generation_config.use_cache
+        self.generation_config.max_length = generation_config.max_length
         model_kwargs["max_output_length"] = generation_config.max_length or generation_config.max_new_tokens
         accepts_attention_mask = "attention_mask" in set(inspect.signature(self.forward).parameters.keys())
         requires_attention_mask = "encoder_outputs" not in model_kwargs
@@ -518,13 +528,13 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
                 model_kwargs["token_idx"] = torch.tensor(1, device=inputs_tensor.device)
-                # if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
-                #     model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
-                #         generation_config.max_length,
-                #         inputs_tensor.shape[0],
-                #         generation_config.pad_token_id,
-                #         inputs_tensor.device,
-                #     )
+                if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
+                    model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
+                        generation_config.max_length,
+                        inputs_tensor.shape[0],
+                        generation_config.pad_token_id,
+                        inputs_tensor.device,
+                    )
 
         # decoder-only models should use left-padding for generation
         if not self.config.is_encoder_decoder:
