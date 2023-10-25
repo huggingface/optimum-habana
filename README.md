@@ -42,7 +42,7 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 
 > To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0
 >```
 
 Optimum Habana is a fast-moving project, and you may want to install it from source:

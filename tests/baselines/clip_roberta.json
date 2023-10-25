@@ -6,8 +6,8 @@
             "multi_card": {
                 "learning_rate": 5e-5,
                 "train_batch_size": 64,
-                "train_runtime": 313.414,
-                "train_samples_per_second": 2288.31,
+                "train_runtime": 305.4766,
+                "train_samples_per_second": 2547.772,
                 "extra_arguments": [
                     "--data_dir $PWD/",
                     "--dataset_config_name 2017",

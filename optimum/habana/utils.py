@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.11.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.12.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -318,3 +318,21 @@ def check_optimum_habana_min_version(min_version):
                 "`pip install git+https://github.com/huggingface/optimum-habana.git`."
             )
         raise ImportError(error_message)
+
+
+def get_device_name():
+    """
+    Returns the name of the current device: Gaudi or Gaudi2.
+
+    Inspired from: https://github.com/HabanaAI/Model-References/blob/a87c21f14f13b70ffc77617b9e80d1ec989a3442/PyTorch/computer_vision/classification/torchvision/utils.py#L274
+    """
+    import habana_frameworks.torch.utils.experimental as htexp
+
+    device_type = htexp._get_device_type()
+
+    if device_type == htexp.synDeviceType.synDeviceGaudi:
+        return "gaudi"
+    elif device_type == htexp.synDeviceType.synDeviceGaudi2:
+        return "gaudi2"
+    else:
+        raise ValueError(f"Unsupported device: the device type is {device_type}.")

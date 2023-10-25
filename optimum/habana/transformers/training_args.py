@@ -60,7 +60,6 @@ UNSUPPORTED_ARGUMENTS = [
     "fp16_opt_level",
     "fsdp",
     "mp_parameters",
-    "sharded_ddp",
     "tf32",
     "tpu_metrics_debug",
     "tpu_num_cores",
@@ -304,8 +303,6 @@ class GaudiTrainingArguments(TrainingArguments):
             raise ValueError("TPUs are not supported by optimum-habana.")
         if self.mp_parameters:
             raise ValueError("--mp_parameters is not supported by optimum-habana.")
-        if self.sharded_ddp:
-            raise ValueError("--sharded_ddp is not supported by optimum-habana.")
         if self.tf32:
             raise ValueError("--tf32 is not supported by optimum-habana.")
 
