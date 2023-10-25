@@ -628,6 +628,8 @@ class GaudiTrainingArguments(TrainingArguments):
 
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
+            # TODO: remove the block below when upgrade to SynapseAI 1.13 is done
+            # as eager mode will not be available anymore
             elif not self.torch_compile:
                 if os.getenv("PT_HPU_LAZY_MODE", "1") != "0":
                     os.environ["PT_HPU_LAZY_MODE"] = "2"
