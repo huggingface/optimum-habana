@@ -50,16 +50,14 @@ docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_va
 > For AWS DL1 instances, `--privileged` must be passed to the `docker run` command so that EFA interfaces are visible.
 
 
-You will have to copy id_rsa.pub contents from every node's docker to every other node's docker's ~/.ssh/authorized_keys (all public keys need to be in all hosts' authorized_keys) to enable password-less SSH.
+You will need to copy leader node docker's id_rsa.pub key to every other node docker's ~/.ssh/authorized_keys to enable password-less SSH.
 
-  a. Copy id_rsa.pub to ~/.ssh/authorized_keys.
+  a. Copy id_rsa.pub to ~/.ssh/authorized_keys on each node
    ```bash
    cat id_rsa.pub > authorized_keys
    vi authorized_keys
    ```
-   b. Copy the contents from inside to other systems.
-
-   c. Paste all hosts' public keys in all hosts' “authorized_keys” file.
+   b. Copy leader node's id_rsa.pub key contents to other systems' authorized_keys
 
 
 Finally, on each system, add all hosts (including itself) to known_hosts. The IP addresses used below are just for illustration:
