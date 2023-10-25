@@ -354,7 +354,7 @@ def gaudi_gptj_model_forward(
     presents = () if use_cache else None
     all_self_attentions = () if output_attentions else None
     all_hidden_states = () if output_hidden_states else None
-    
+
     # replace original `_get_embed_positions` method and sin cos calculation in the attn block here to improve perf
     rotary_dim = self.config.rotary_dim
     embed_dim = self.config.hidden_size
@@ -369,7 +369,7 @@ def gaudi_gptj_model_forward(
     sin, cos = torch.split(sincos, sincos.shape[-1] // 2, dim=-1)
     sin = sin.contiguous()
     cos = cos.contiguous()
-    
+
     for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
         # Model parallel
         if self.model_parallel:
