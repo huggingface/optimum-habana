@@ -622,6 +622,8 @@ class GaudiTrainer(Trainer):
                 import transformers.models.t5.modeling_t5 as modeling_t5
 
                 modeling_t5.checkpoint = torch.utils.checkpoint.checkpoint
+        else:
+            self.model.gradient_checkpointing_disable()
 
         model = self._wrap_model(self.model_wrapped)
 
