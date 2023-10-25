@@ -41,8 +41,9 @@ from optimum.utils import logging
 
 from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
 from ..accelerate.utils import GaudiDistributedType
+from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
-from optimum.habana.utils import get_habana_frameworks_version
+
 
 if is_torch_available():
     import torch
@@ -439,8 +440,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
             assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
             self.torch_compile = True
-            assert int(torch.__version__.split('.')[
-                   0]) >= 2, "Graph mode is available only in PyTorch 2.x."
+            assert int(torch.__version__.split(".")[0]) >= 2, "Graph mode is available only in PyTorch 2.x."
             assert not os.getenv("PT_HPU_LAZY_MODE", "1") != "0", "Dynamo and lazy are mutually exclusive."
             # Note: PT_HPU_LAZY_MODE=0 needs to be set before library is loaded,
             #       setting it here would be too late - hence assertion.
@@ -625,10 +625,11 @@ class GaudiTrainingArguments(TrainingArguments):
             from .modeling_utils import adapt_transformers_to_gaudi
 
             adapt_transformers_to_gaudi()
+
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
             elif not self.torch_compile:
-                if os.getenv('PT_HPU_LAZY_MODE', '1') != '0':
+                if os.getenv("PT_HPU_LAZY_MODE", "1") != "0":
                     os.environ["PT_HPU_LAZY_MODE"] = "2"
                 logger.info("Enabled eager mode because use_lazy_mode=False.")
 
