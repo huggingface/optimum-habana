@@ -440,7 +440,6 @@ class GaudiTrainingArguments(TrainingArguments):
         if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
             assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
             self.torch_compile = True
-            assert int(torch.__version__.split(".")[0]) >= 2, "Graph mode is available only in PyTorch 2.x."
             assert not os.getenv("PT_HPU_LAZY_MODE", "1") != "0", "Dynamo and lazy are mutually exclusive."
             # Note: PT_HPU_LAZY_MODE=0 needs to be set before library is loaded,
             #       setting it here would be too late - hence assertion.
