@@ -550,7 +550,7 @@ class CausalLM(Model):
             self.is_optimized_for_gaudi = False
 
         model = model.eval().to(device)
-        model = wrap_in_hpu_graph(model)
+        model = wrap_in_hpu_graph(model, disable_tensor_cache=True)
 
         if tokenizer.pad_token_id is None:
             if model.config.pad_token_id is not None:
