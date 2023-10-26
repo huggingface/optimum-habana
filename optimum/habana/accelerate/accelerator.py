@@ -35,7 +35,6 @@ from accelerate.utils import (
     DeepSpeedPlugin,
     DistributedDataParallelKwargs,
     DistributedType,
-    DynamoBackend,
     FP8RecipeKwargs,
     FullyShardedDataParallelPlugin,
     GradientAccumulationPlugin,
@@ -47,11 +46,11 @@ from accelerate.utils import (
     PrecisionType,
     ProjectConfiguration,
     RNGType,
-    TorchDynamoPlugin,
     is_deepspeed_available,
     parse_choice_from_env,
 )
 from accelerate.utils.operations import _gpu_gather
+from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
 
@@ -65,7 +64,7 @@ if is_deepspeed_available():
     )
 
 from .state import GaudiAcceleratorState, GaudiPartialState
-from .utils import GaudiDistributedType
+from .utils import GaudiDistributedType, GaudiDynamoBackend, GaudiTorchDynamoPlugin
 
 
 logger = get_logger(__name__)
@@ -95,7 +94,7 @@ class GaudiAccelerator(Accelerator):
         even_batches: bool = True,
         step_scheduler_with_optimizer: bool = True,
         kwargs_handlers: list[KwargsHandler] | None = None,
-        dynamo_backend: DynamoBackend | str | None = None,
+        dynamo_backend: GaudiDynamoBackend | str | None = None,
         distribution_strategy: str = None,
     ):
         if project_config is not None:
@@ -113,7 +112,9 @@ class GaudiAccelerator(Accelerator):
             elif mixed_precision == "fp16":
                 raise ValueError("fp16 is not supported on Habana Gaudi.")
 
-        dynamo_plugin = TorchDynamoPlugin() if dynamo_backend is None else TorchDynamoPlugin(backend=dynamo_backend)
+        dynamo_plugin = (
+            GaudiTorchDynamoPlugin() if dynamo_backend is None else GaudiTorchDynamoPlugin(backend=dynamo_backend)
+        )
 
         if deepspeed_plugin is None:  # init from env variables
             deepspeed_plugin = (
@@ -361,8 +362,8 @@ class GaudiAccelerator(Accelerator):
                 if any(p.requires_grad for p in model.parameters()):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
-        # torch.compile should be called last.
-        if self.state.dynamo_plugin.backend != DynamoBackend.NO:
+        # torch.compile should be called last and only if the model isn't already compiled.
+        if self.state.dynamo_plugin.backend != GaudiDynamoBackend.NO and not is_compiled_module(model):
             model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
         return model
 

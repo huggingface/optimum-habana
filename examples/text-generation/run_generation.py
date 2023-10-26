@@ -137,7 +137,8 @@ def main():
         "--prompt",
         default=None,
         type=str,
-        help="Optional argument to give a prompt of your choice as input.",
+        nargs="*",
+        help='Optional argument to give a prompt of your choice as input. Can be a single string (eg: --prompt "Hello world"), or a list of space-separated strings (eg: --prompt "Hello world" "How are you?")',
     )
     parser.add_argument(
         "--bad_words",
@@ -398,9 +399,7 @@ def main():
     if args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:
-            input_sentences = [
-                args.prompt,
-            ]
+            input_sentences = args.prompt
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",
