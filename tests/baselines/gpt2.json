@@ -39,9 +39,9 @@
                 "single_card": {
                     "learning_rate": 2e-4,
                     "train_batch_size": 16,
-                    "perplexity": 22.1547,
-                    "train_runtime": 55.0497,
-                    "train_samples_per_second": 93.031,
+                    "perplexity": 22.1399,
+                    "train_runtime": 53.971,
+                    "train_samples_per_second": 95.93,
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference",
@@ -51,9 +51,9 @@
                 "multi_card": {
                     "learning_rate": 8e-4,
                     "train_batch_size": 16,
-                    "perplexity": 22.7141,
-                    "train_runtime": 33.4872,
-                    "train_samples_per_second": 645.15,
+                    "perplexity": 22.6773,
+                    "train_runtime": 36.4236,
+                    "train_samples_per_second": 690.461,
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference",

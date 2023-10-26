@@ -33,7 +33,7 @@
             "distribution": {
                 "multi_card": {
                     "learning_rate": 5e-4,
-                    "train_batch_size": 32,
+                    "train_batch_size": 64,
                     "eval_accuracy": 0.8047,
                     "train_runtime": 549.2108,
                     "train_samples_per_second": 462.584,
