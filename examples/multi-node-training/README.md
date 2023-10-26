@@ -59,7 +59,7 @@ You will need to copy the leader node Docker's `id_rsa.pub` key to every other n
    b. Copy the leader node's `id_rsa.pub` key contents to other systems' `authorized_keys`.
 
 
-Finally, on each system, add all hosts (including itself) to `known_hosts``. The IP addresses used below are just for illustration:
+Finally, on each system, add all hosts (including itself) to `known_hosts`. The IP addresses used below are just for illustration:
    ```bash
    ssh-keyscan -p 3022 -H 10.10.100.101 >> ~/.ssh/known_hosts
    ssh-keyscan -p 3022 -H 10.10.100.102 >> ~/.ssh/known_hosts
