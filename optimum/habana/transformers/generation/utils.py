@@ -583,10 +583,11 @@ class GaudiGenerationMixin(GenerationMixin):
                     inputs_tensor = torch.nn.functional.pad(
                         inputs_tensor, (0, generation_config.max_new_tokens), value=generation_config.pad_token_id
                     )
-                    if model_kwargs["attention_mask"] is not None:
-                        model_kwargs["attention_mask"] = torch.nn.functional.pad(
-                            model_kwargs["attention_mask"], (0, generation_config.max_new_tokens), value=0
-                        )
+                    for other_inputs in ["attention_mask", "token_type_ids"]:
+                        if model_kwargs[other_inputs] is not None:
+                            model_kwargs[other_inputs] = torch.nn.functional.pad(
+                                model_kwargs[other_inputs], (0, generation_config.max_new_tokens), value=0
+                            )
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
                 model_kwargs["token_idx"] = torch.tensor(1, device=inputs_tensor.device)
