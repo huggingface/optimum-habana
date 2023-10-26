@@ -29,9 +29,9 @@ where `--argX` is an argument of the script to run.
 
 Check out the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/multi_node_training) to know how to set up your Gaudi instances for multi-node runs on premises or on AWS.
 
-A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/EFA/Dockerfile) to easily start a multi-node run on AWS.
-
-A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main.examples/multi-node-training/GaudiNIC/Dockerfile) is for GaudiNIC.
+We provide two `Dockerfile` to easily start your multi-node runs:
+- A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/EFA/Dockerfile) for multi-node runs on AWS.
+- A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main.examples/multi-node-training/GaudiNIC/Dockerfile) for multi-node runs using GaudiNIC.
 
 
 The Dockerfile is based on an image compatible with Ubuntu 20.04 but you can easily adapt it to another OS.
@@ -49,18 +49,17 @@ docker run -it --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_va
 
 > For AWS DL1 instances, `--privileged` must be passed to the `docker run` command so that EFA interfaces are visible.
 
+You will need to copy the leader node Docker's `id_rsa.pub` key to every other node Docker's `~/.ssh/authorized_keys` to enable password-less SSH:
 
-You will need to copy leader node docker's id_rsa.pub key to every other node docker's ~/.ssh/authorized_keys to enable password-less SSH.
-
-  a. Copy id_rsa.pub to ~/.ssh/authorized_keys on each node
+  a. Copy `id_rsa.pub` to `~/.ssh/authorized_keys` on each node
    ```bash
    cat id_rsa.pub > authorized_keys
    vi authorized_keys
    ```
-   b. Copy leader node's id_rsa.pub key contents to other systems' authorized_keys
+   b. Copy the leader node's `id_rsa.pub` key contents to other systems' `authorized_keys`.
 
 
-Finally, on each system, add all hosts (including itself) to known_hosts. The IP addresses used below are just for illustration:
+Finally, on each system, add all hosts (including itself) to `known_hosts``. The IP addresses used below are just for illustration:
    ```bash
    ssh-keyscan -p 3022 -H 10.10.100.101 >> ~/.ssh/known_hosts
    ssh-keyscan -p 3022 -H 10.10.100.102 >> ~/.ssh/known_hosts
