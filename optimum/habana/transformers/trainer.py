@@ -623,7 +623,9 @@ class GaudiTrainer(Trainer):
 
                 modeling_t5.checkpoint = torch.utils.checkpoint.checkpoint
         else:
-            self.model.gradient_checkpointing_disable()
+            # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
+            if hasattr(self.model, "gradient_checkpointing_disable"):
+                self.model.gradient_checkpointing_disable()
 
         model = self._wrap_model(self.model_wrapped)
 
