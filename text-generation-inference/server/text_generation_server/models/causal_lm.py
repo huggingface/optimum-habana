@@ -4,7 +4,7 @@ import torch
 
 from dataclasses import dataclass
 from opentelemetry import trace
-from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase, AutoConfig
 from typing import Optional, Tuple, List, Type, Dict
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
@@ -526,6 +526,7 @@ class CausalLM(Model):
         dtype: Optional[torch.dtype] = None,
     ):
         device = torch.device("hpu")
+
         dtype = torch.bfloat16 if dtype is None else dtype
 
         adapt_transformers_to_gaudi()
@@ -536,19 +537,73 @@ class CausalLM(Model):
             padding_side="left",
             truncation_side="left",
         )
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            revision=revision,
-            torch_dtype=dtype,
-        )
+
+        model_kwargs = {
+            "revision": revision,
+            #"token": args.token,
+        }
+
+        world_size = int(os.getenv("WORLD_SIZE", '1'))
+        if world_size > 1:
+            import habana_frameworks.torch.hpu as torch_hpu
+
+            # Get world size, rank and local rank
+            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+            world_size, rank, local_rank = initialize_distributed_hpu()
+            import deepspeed
+
+            # Initialize process(es) for DeepSpeed
+            deepspeed.init_distributed(dist_backend="hccl")
+            logger.info("DeepSpeed is enabled. world_size {} rank {} local_rank {}".format(world_size, rank, local_rank))
+            config = AutoConfig.from_pretrained(model_id, **model_kwargs)
+            is_optimized = True #model_is_optimized(config)
+            load_to_meta = False #model_on_meta(config)
+
+            if False: #True: #load_to_meta:
+                # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
+                with deepspeed.OnDevice(dtype=dtype, device="meta"):
+                    model = AutoModelForCausalLM.from_config(config, torch_dtype=dtype)
+            else:
+                #get_repo_root(model_id, local_rank=os.getenv('LOCAL_RANK'))
+                # TODO: revisit placement on CPU when auto-injection is possible
+                with deepspeed.OnDevice(dtype=dtype, device="cpu"):
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_id, torch_dtype=dtype, **model_kwargs
+                    )
+            model = model.eval()
+
+            # Initialize the model
+            ds_inference_kwargs = {"dtype": dtype}
+            ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
+            ds_inference_kwargs["enable_cuda_graph"] = False # args.use_hpu_graphs
+
+            if load_to_meta:
+                # model loaded to meta is managed differently
+                checkpoints_json = "checkpoints.json"
+                #write_checkpoints_json(model_id, local_rank, checkpoints_json )
+
+            # Make sure all devices/nodes have access to the model checkpoints
+            torch.distributed.barrier()
+
+            #ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
+            #if load_to_meta:
+                #ds_inference_kwargs["checkpoint"] = checkpoints_json
+            model = deepspeed.init_inference(model, **ds_inference_kwargs)
+            model = model.module
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                revision=revision,
+                torch_dtype=dtype,
+            )
 
         if model.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES:
             self.is_optimized_for_gaudi = True
         else:
             self.is_optimized_for_gaudi = False
-
-        model = model.eval().to(device)
-        model = wrap_in_hpu_graph(model)
+        if world_size == 1:
+            model = model.eval().to(device)
+            model = wrap_in_hpu_graph(model)
 
         if tokenizer.pad_token_id is None:
             if model.config.pad_token_id is not None:

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 import torch
 
 from grpc import aio
@@ -111,18 +112,49 @@ def serve(
     revision: Optional[str],
     dtype: Optional[str],
     uds_path: Path,
+    sharded: bool,
 ):
+     # Remove default handler
+    logger.remove()
+    logger.add(
+        sys.stdout,
+        format="{message}",
+        filter="text_generation_server",
+        level="INFO",
+        serialize=False,
+        backtrace=True,
+        diagnose=False,
+    )
+
     async def serve_inner(
         model_id: str,
         revision: Optional[str],
         dtype: Optional[str] = None,
+        sharded: bool = False,
     ):
         unix_socket_template = "unix://{}-{}"
-        local_url = unix_socket_template.format(uds_path, 0)
-        server_urls = [local_url]
+        logger.info("Server:server_inner: sharded ={}".format(sharded))
 
+        if sharded:
+            rank = int(os.environ["RANK"])
+            logger.info("Server:server_inner: rank ={}".format(rank))
+            server_urls = [
+                unix_socket_template.format(uds_path, rank)
+                for rank in range(int(os.environ["WORLD_SIZE"]))
+            ]
+            local_url = server_urls[int(os.environ["RANK"])]
+        else:
+            local_url = unix_socket_template.format(uds_path, 0)
+            server_urls = [local_url]
+
+
+        logger.info("Server:server_inner: data type = {}, local_url = {}".format(dtype, local_url))
+        if dtype == "bfloat16" or None:
+            data_type = torch.bfloat16
+        else:
+            data_type = torch.float
         try:
-            model = get_model(model_id, revision, dtype)
+            model = get_model(model_id, revision=revision, dtype=data_type)
         except Exception:
             logger.exception("Error when initializing model")
             raise
@@ -145,6 +177,7 @@ def serve(
 
         await server.start()
 
+
         logger.info("Server started at {}".format(local_url))
 
         try:
@@ -152,5 +185,5 @@ def serve(
         except KeyboardInterrupt:
             logger.info("Signal received. Shutting down")
             await server.stop(0)
-
-    asyncio.run(serve_inner(model_id, revision, dtype))
+    logger.info("Starting Server : model_id= {}, revision = {}  dtype = {}  sharded = {} ".format(model_id, revision, dtype, sharded))
+    asyncio.run(serve_inner(model_id, revision, dtype, sharded))

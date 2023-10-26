@@ -1,8 +1,9 @@
 # Clone the original TGI repo
 FROM python:3.9 as tgi
 WORKDIR /tmp
-RUN git clone --depth 1 --branch v1.0.3 https://github.com/huggingface/text-generation-inference.git
-
+#RUN git clone --depth 1 --branch v1.0.3 https://github.com/huggingface/text-generation-inference.git
+ADD . /tmp/
+COPY launcher/src/main.rs text-generation-inference/launcher/src/main.rs
 # Rust builder
 FROM lukemathwalker/cargo-chef:latest-rust-1.70 AS chef
 WORKDIR /usr/src
@@ -54,6 +55,7 @@ COPY --from=tgi /tmp/text-generation-inference/server server
 COPY --from=tgi /tmp/text-generation-inference/server/Makefile server/Makefile
 # Copy files modified for running on Gaudi
 COPY server/text_generation_server/cli.py server/text_generation_server/cli.py
+COPY server/text_generation_server/tgi_service.py server/text_generation_server/tgi_service.py
 COPY server/text_generation_server/server.py server/text_generation_server/server.py
 COPY server/text_generation_server/models/__init__.py server/text_generation_server/models/__init__.py
 COPY server/text_generation_server/models/bloom.py server/text_generation_server/models/bloom.py
@@ -70,7 +72,13 @@ COPY server/pyproject.toml server/pyproject.toml
 RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
-    pip install . --no-cache-dir
+    pip install . --no-cache-dir \
+    pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0
+
+#ADD . /tmp/
+#RUN cd /tmp/DeepSpeed && \
+    #pip install -e .
+
 
 # Install benchmarker
 COPY --from=builder /usr/src/target/release/text-generation-benchmark /usr/local/bin/text-generation-benchmark
@@ -79,6 +87,7 @@ COPY --from=builder /usr/src/target/release/text-generation-router /usr/local/bi
 # Install launcher
 COPY --from=builder /usr/src/target/release/text-generation-launcher /usr/local/bin/text-generation-launcher
 
+ENV LOG_LEVEL=TRACE
 # Final image
 FROM base
 
