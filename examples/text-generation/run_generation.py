@@ -567,8 +567,8 @@ def main():
 
         if prompt_length <= 0:
             # Todo please check if this collate function is suitable for your model
-            # This has been tested for OPT, and Bloom
-            assert model.config.model_type in ["opt", "bloom"]
+            # This has been tested for OPT, llama, and Bloom
+            assert model.config.model_type in ["opt", "bloom", "llama"]
 
             def collate_fn(data):
                 collect = {k: [dt[k] for dt in data] for k in data[0]}
