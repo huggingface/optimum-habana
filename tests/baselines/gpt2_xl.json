@@ -27,9 +27,9 @@
                 "deepspeed": {
                     "learning_rate": 4e-4,
                     "train_batch_size": 16,
-                    "perplexity": 13.1006,
-                    "train_runtime": 148.4335,
-                    "train_samples_per_second": 66.013,
+                    "perplexity": 13.1587,
+                    "train_runtime": 214.8391,
+                    "train_samples_per_second": 75.183,
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--gradient_checkpointing",
