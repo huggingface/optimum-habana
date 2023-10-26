@@ -584,7 +584,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         inputs_tensor, (0, generation_config.max_new_tokens), value=generation_config.pad_token_id
                     )
                     for other_inputs in ["attention_mask", "token_type_ids"]:
-                        if model_kwargs[other_inputs] is not None:
+                        if model_kwargs.get(other_inputs) is not None:
                             model_kwargs[other_inputs] = torch.nn.functional.pad(
                                 model_kwargs[other_inputs], (0, generation_config.max_new_tokens), value=0
                             )
