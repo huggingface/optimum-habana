@@ -226,13 +226,6 @@ class GaudiTrainer(Trainer):
                     raise error
                 self.hmp = hmp
 
-                warnings.warn(
-                    "Habana Mixed Precision is deprecated and will be removed in SynapseAI v1.12. Please"
-                    " use Torch Autocast instead using `--bf16` or setting `use_torch_autocast=true` in your"
-                    " Gaudi configuration.",
-                    FutureWarning,
-                )
-
                 # Open temporary files to mixed-precision write ops
                 with tempfile.NamedTemporaryFile() as hmp_bf16_file:
                     with tempfile.NamedTemporaryFile() as hmp_fp32_file:
@@ -640,6 +633,10 @@ class GaudiTrainer(Trainer):
                 import transformers.models.t5.modeling_t5 as modeling_t5
 
                 modeling_t5.checkpoint = torch.utils.checkpoint.checkpoint
+        else:
+            # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
+            if hasattr(self.model, "gradient_checkpointing_disable"):
+                self.model.gradient_checkpointing_disable()
 
         model = self._wrap_model(self.model_wrapped)
 
