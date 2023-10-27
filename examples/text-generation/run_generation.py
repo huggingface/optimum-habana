@@ -27,6 +27,9 @@ import time
 from pathlib import Path
 
 import torch
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers.utils import check_min_version
+
 from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
@@ -34,8 +37,6 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from transformers.utils import check_min_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
