@@ -544,6 +544,8 @@ class CausalLM(Model):
         }
 
         world_size = int(os.getenv("WORLD_SIZE", '1'))
+        rank = int(os.getenv("RANK"), 0)
+
         if world_size > 1:
             import habana_frameworks.torch.hpu as torch_hpu
 
@@ -585,7 +587,6 @@ class CausalLM(Model):
             # Make sure all devices/nodes have access to the model checkpoints
             torch.distributed.barrier()
 
-            #ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
             #if load_to_meta:
                 #ds_inference_kwargs["checkpoint"] = checkpoints_json
             model = deepspeed.init_inference(model, **ds_inference_kwargs)
@@ -596,14 +597,14 @@ class CausalLM(Model):
                 revision=revision,
                 torch_dtype=dtype,
             )
+            model = model.eval().to(device)
+            model = wrap_in_hpu_graph(model)
+
 
         if model.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES:
             self.is_optimized_for_gaudi = True
         else:
             self.is_optimized_for_gaudi = False
-        if world_size == 1:
-            model = model.eval().to(device)
-            model = wrap_in_hpu_graph(model)
 
         if tokenizer.pad_token_id is None:
             if model.config.pad_token_id is not None:
@@ -621,6 +622,7 @@ class CausalLM(Model):
             requires_padding=True,
             dtype=dtype,
             device=device,
+            rank=rank,
         )
 
     @property
