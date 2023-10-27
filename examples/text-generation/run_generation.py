@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 import torch
-from checkpoint_utils import (
+from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
     model_is_optimized,
