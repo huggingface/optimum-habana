@@ -542,18 +542,18 @@ def main():
         if data_args.dataset_name == "tatsu-lab/alpaca":
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(
+                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(
                     ["prompt_sources", "prompt_targets"]
                 )
         elif data_args.dataset_name == "timdettmers/openassistant-guanaco":
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
+                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(["input", "output"])
         else:
             raise ValueError("Unsupported dataset")
         tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
         if training_args.do_eval:
-            tokenized_datasets["test"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
+            tokenized_datasets["validation"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
     if training_args.do_train:
         if "train" not in tokenized_datasets:
             raise ValueError("--do_train requires a train dataset")
@@ -562,9 +562,9 @@ def main():
             train_dataset = train_dataset.select(range(data_args.max_train_samples))
 
     if training_args.do_eval:
-        if "test" not in tokenized_datasets:
-            raise ValueError("--do_eval requires a test dataset")
-        eval_dataset = tokenized_datasets["test"]
+        if "validation" not in tokenized_datasets:
+            raise ValueError("--do_eval requires a validation dataset")
+        eval_dataset = tokenized_datasets["validation"]
         if data_args.max_eval_samples is not None:
             eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
 
