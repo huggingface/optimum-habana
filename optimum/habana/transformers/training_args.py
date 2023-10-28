@@ -93,6 +93,10 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use HPU graphs for performing inference. It will speed up latency but may not be compatible with some operations.
         use_hpu_graphs_for_training (`bool`, *optional*, defaults to `False`):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
+        disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
+            Whether to disable tensor cache when using hpu graphs.
+        max_hpu_graphs (`int`, *optional*, defaults to None):
+            Maximum number of hpu graphs to use.
         distribution_strategy (`str`, *optional*, defaults to `ddp`):
             Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
@@ -145,6 +149,20 @@ class GaudiTrainingArguments(TrainingArguments):
         default=False,
         metadata={
             "help": "Whether to use HPU graphs for performing training. It will speed up training but may not be compatible with some operations."
+        },
+    )
+
+    disable_tensor_cache_hpu_graphs: Optional[bool] field(
+        default=False,
+        metadata={
+            "help": "Whether to use a tensor cache for hpu graphs."
+        },
+    )
+
+    max_hpu_graphs: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Maximum number of HPU graphs to use."
         },
     )
 
@@ -267,8 +285,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.use_hpu_graphs:
             warnings.warn(
                 (
-                    "`--use_hpu_graphs` is deprecated and will be removed in a future version of 🤗 Optimum Habana. Use "
-                    "`--use_hpu_graphs_for_inference` instead."
+                    "`--use_hpu_graphs` is deprecated and will be removed in a future version of 🤗 Optimum Habana. Use `--use_hpu_graphs_for_training` or `--use_hpu_graphs_for_inference` instead."
                 ),
                 FutureWarning,
             )
@@ -287,6 +304,16 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.distribution_strategy not in SUPPORTED_DISTRIBUTION_STRATEGIES:
             raise ValueError(
                 f"`--distribution_strategy` is {self.distribution_strategy} which is an invalid or unsupported value. Possible choices are: {', '.join(SUPPORTED_DISTRIBUTION_STRATEGIES)}."
+            )
+
+        if disable_tensor_cache_hpu_graphs and not use_hpu_graphs:
+            raise ValueError(
+                f"must be using hpu graphs to set disable_tensor_cache_hpu_graphs."
+            )
+
+        if max_hpu_graphs is not None and not use_hpu_graphs:
+            raise ValueError(
+                f"must be using hpu graphs to set max_hpu_graphs."
             )
 
         # Raise errors for arguments that are not supported by optimum-habana
