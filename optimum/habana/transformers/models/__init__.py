@@ -67,6 +67,12 @@ from .llama import (
     GaudiLlamaModel,
     gaudi_llama_rmsnorm_forward,
 )
+from .mistral import (
+    GaudiMistralForCausalLM,
+    gaudi_mistral_attn_forward,
+    gaudi_mistral_decoder_layer_forward,
+    gaudi_mistral_model_forward,
+)
 from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
 from .mpt import (
     GaudiMptForCausalLM,
