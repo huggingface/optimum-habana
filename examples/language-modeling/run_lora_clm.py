@@ -548,7 +548,7 @@ def main():
         elif data_args.dataset_name == "timdettmers/openassistant-guanaco":
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(["input", "output"])
+                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
         else:
             raise ValueError("Unsupported dataset")
         tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
