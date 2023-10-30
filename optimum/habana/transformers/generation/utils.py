@@ -2142,7 +2142,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_token_logits, dim=-1
             )  # (batch_size * num_beams, vocab_size)
 
-            next_token_scores_processed = logits_processor(input_ids[:, :token_idx], next_token_scores)
+            if token_idx is not None:
+                next_token_scores_processed = logits_processor(input_ids[:, :token_idx], next_token_scores)
+            else:
+                next_token_scores_processed = logits_processor(input_ids, next_token_scores)
             next_token_scores = next_token_scores_processed + beam_scores[:, None].expand_as(next_token_scores)
 
             # Store scores, attentions and hidden_states when required
