@@ -54,15 +54,14 @@ class GaudiPartialState(PartialState):
                             " git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0`."
                         )
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
-                    if not torch.distributed.is_initialized():
-                        import deepspeed
+                    import deepspeed
 
-                        if world_size > 1:
-                            os.environ["HLS_MODULE_ID"] = str(local_rank)
-                            os.environ["ID"] = str(rank)
+                    if world_size > 1:
+                        os.environ["HLS_MODULE_ID"] = str(local_rank)
+                        os.environ["ID"] = str(rank)
 
-                        deepspeed.init_distributed(dist_backend=self.backend, **kwargs)
-                        logger.info("DeepSpeed is enabled.")
+                    deepspeed.init_distributed(dist_backend=self.backend, **kwargs)
+                    logger.info("DeepSpeed is enabled.")
                     self._mixed_precision = "no"  # deepspeed handles mixed_precision using deepspeed_config
                 else:
                     self.distributed_type = GaudiDistributedType.MULTI_HPU
