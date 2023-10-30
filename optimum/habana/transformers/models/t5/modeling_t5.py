@@ -17,7 +17,7 @@ from transformers.models.t5.modeling_t5 import (
     T5Stack,
 )
 
-from ...utils import (
+from transformers.utils import (
     logging,
 )
 
