@@ -188,7 +188,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
     ignore_eos: Optional[bool] = field(
         default=True,
-        metadata={"help": ("Whether to disable stopping with eos token.")},
+        metadata={"help": ("Whether to disable stopping with eos token when calling `generate`.")},
     )
 
     non_blocking_data_copy: Optional[bool] = field(
