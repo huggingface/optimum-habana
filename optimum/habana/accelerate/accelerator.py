@@ -46,6 +46,7 @@ from accelerate.utils import (
     PrecisionType,
     ProjectConfiguration,
     RNGType,
+    check_os_kernel,
     is_deepspeed_available,
     parse_choice_from_env,
 )
@@ -98,6 +99,7 @@ class GaudiAccelerator(Accelerator):
         dynamo_backend: GaudiDynamoBackend | str | None = None,
         distribution_strategy: str = None,
     ):
+        self.trackers = []
         if project_config is not None:
             self.project_configuration = project_config
         else:
@@ -245,6 +247,8 @@ class GaudiAccelerator(Accelerator):
         self.flag_tensor = None
 
         self._distribution_strategy = distribution_strategy
+
+        check_os_kernel()
 
     @property
     def use_fp16(self):
