@@ -659,7 +659,9 @@ def main():
                 new_model_inputs["input_ids"].append(model_inputs["input_ids"][i][:max_length])
             else:
                 new_model_inputs["input_ids"].append(
-                    torch.nn.functional.pad(model_inputs["input_ids"][i], (0, max_length - cur_len), value=0)
+                    torch.nn.functional.pad(
+                        model_inputs["input_ids"][i], (0, max_length - cur_len), value=tokenizer.pad_token_id
+                    )
                 )
         model_inputs = new_model_inputs
         # Tokenize targets with the `text_target` keyword argument

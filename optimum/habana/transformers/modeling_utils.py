@@ -37,10 +37,6 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
-    GaudiT5DenseActDense,
-    GaudiT5DenseGatedActDense,
-    GaudiT5LayerCrossAttention,
-    GaudiT5LayerFF,
     GaudiT5LayerSelfAttention,
     GaudiT5Stack,
     _gaudi_get_resized_embeddings,
@@ -269,11 +265,7 @@ def adapt_transformers_to_gaudi():
     transformers.modeling_utils.PreTrainedModel._get_resized_lm_head = _gaudi_get_resized_lm_head
     # Dropout kernel improvement for Flan-T5
     transformers.models.t5.modeling_t5.T5Stack = GaudiT5Stack
-    transformers.models.t5.modeling_t5.T5DenseGatedActDense = GaudiT5DenseGatedActDense
-    transformers.models.t5.modeling_t5.T5LayerFF = GaudiT5LayerFF
     transformers.models.t5.modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
-    transformers.models.t5.modeling_t5.T5LayerCrossAttention = GaudiT5LayerCrossAttention
-    transformers.models.t5.modeling_t5.T5DenseActDense = GaudiT5DenseActDense
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.forward = gaudi_T5ForConditionalGeneration_forward
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.prepare_inputs_for_generation = (
         gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation

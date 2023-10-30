@@ -83,10 +83,6 @@ from .opt import (
     gaudi_opt_model_forward,
 )
 from .t5 import (
-    GaudiT5DenseActDense,
-    GaudiT5DenseGatedActDense,
-    GaudiT5LayerCrossAttention,
-    GaudiT5LayerFF,
     GaudiT5LayerSelfAttention,
     GaudiT5Stack,
     _gaudi_get_resized_embeddings,

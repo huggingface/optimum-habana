@@ -1,26 +1,18 @@
-import torch
-from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
-
-
-__package__ = "transformers.models.t5"
-
 import warnings
 from typing import Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
+import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
 from torch.utils.checkpoint import checkpoint
+from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
     Seq2SeqLMOutput,
 )
 from transformers.models.t5.modeling_t5 import (
-    T5DenseActDense,
-    T5DenseGatedActDense,
-    T5LayerCrossAttention,
-    T5LayerFF,
     T5LayerSelfAttention,
     T5Stack,
 )
@@ -31,13 +23,6 @@ from ...utils import (
 
 
 logger = logging.get_logger(__name__)
-"""
-Copied from T5Attention: https://github.com/huggingface/transformers/blob/main/src/transformers/models/t5/modeling_t5.py#L452
-https://github.com/huggingface/transformers/commit/04ab5605fbb4ef207b10bf2772d88c53fc242e83
-There are following differences:
-wrap `nn.functional.dropout` with `mark_step` for numerical improvement.
-introduce static shapes to improve eval/pred performance on HPU
-"""
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
@@ -59,9 +44,11 @@ def gaudi_t5_layernorm_forward(self, hidden_states):
     else:
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+
         # convert into half-precision if necessary
         if self.weight.dtype in [torch.float16, torch.bfloat16]:
             hidden_states = hidden_states.to(self.weight.dtype)
+
         return self.weight * hidden_states
 
 
@@ -83,12 +70,14 @@ def gaudi_T5Attention_forward(
     # Mask is (batch_size, key_length) (non-causal) or (batch_size, key_length, key_length)
     # past_key_value[0] is (batch_size, n_heads, q_len - 1, dim_per_head)
     batch_size, seq_length = hidden_states.shape[:2]
+
     real_seq_length = seq_length
 
     if past_key_value is not None:
-        assert (
-            len(past_key_value) == 2
-        ), f"past_key_value should have 2 past states: keys and values. Got { len(past_key_value)} past states"
+        if len(past_key_value) != 2:
+            raise ValueError(
+                f"past_key_value should have 2 past states: keys and values. Got { len(past_key_value)} past states"
+            )
         if token_idx is None:
             real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length
         else:
@@ -205,45 +194,9 @@ def gaudi_T5Attention_forward(
     return outputs
 
 
-class GaudiDropout(torch.nn.Module):
-    def __init__(self, dropout):
-        super().__init__()
-        self.dropout = dropout
-
-    def forward(self, x):
-        """
-        Avoids dropout kernel fusion with others to stablize training numerical stability.
-        """
-        if self.dropout.training:
-            htcore.mark_step()
-        out = self.dropout(x)
-        if self.dropout.training:
-            htcore.mark_step()
-        return out
-
-
-class GaudiT5DenseActDense(T5DenseActDense):
-    def __init__(self, config):
-        super().__init__(config)
-        self.dropout = GaudiDropout(self.dropout)
-
-
-class GaudiT5DenseGatedActDense(T5DenseGatedActDense):
-    def __init__(self, config):
-        super().__init__(config)
-        self.dropout = GaudiDropout(self.dropout)
-
-
-class GaudiT5LayerFF(T5LayerFF):
-    def __init__(self, config):
-        super().__init__(config)
-        self.dropout = GaudiDropout(self.dropout)
-
-
 class GaudiT5LayerSelfAttention(T5LayerSelfAttention):
     def __init__(self, config, has_relative_attention_bias=False):
         super().__init__(config, has_relative_attention_bias)
-        self.dropout = GaudiDropout(self.dropout)
 
     def forward(
         self,
@@ -258,7 +211,6 @@ class GaudiT5LayerSelfAttention(T5LayerSelfAttention):
         max_output_length=0,
     ):
         normed_hidden_states = self.layer_norm(hidden_states)
-        # print(normed_hidden_states)
         attention_output = self.SelfAttention(
             normed_hidden_states,
             mask=attention_mask,
@@ -275,16 +227,99 @@ class GaudiT5LayerSelfAttention(T5LayerSelfAttention):
         return outputs
 
 
-class GaudiT5LayerCrossAttention(T5LayerCrossAttention):
-    def __init__(self, config):
-        super().__init__(config)
-        self.dropout = GaudiDropout(self.dropout)
+def gaudi_T5Block_forward(
+    self,
+    hidden_states,
+    attention_mask=None,
+    position_bias=None,
+    encoder_hidden_states=None,
+    encoder_attention_mask=None,
+    encoder_decoder_position_bias=None,
+    layer_head_mask=None,
+    cross_attn_layer_head_mask=None,
+    past_key_value=None,
+    use_cache=False,
+    output_attentions=False,
+    return_dict=True,
+    token_idx=None,
+    max_output_length=0,
+):
+    if past_key_value is not None:
+        if not self.is_decoder:
+            logger.warning("`past_key_values` is passed to the encoder. Please make sure this is intended.")
+        expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
+
+        if len(past_key_value) != expected_num_past_key_values:
+            raise ValueError(
+                f"There should be {expected_num_past_key_values} past states. "
+                f"{'2 (past / key) for cross attention. ' if expected_num_past_key_values == 4 else ''}"
+                f"Got {len(past_key_value)} past key / value states"
+            )
+
+        self_attn_past_key_value = past_key_value[:2]
+        cross_attn_past_key_value = past_key_value[2:]
+    else:
+        self_attn_past_key_value, cross_attn_past_key_value = None, None
+
+    self_attention_outputs = self.layer[0](
+        hidden_states,
+        attention_mask=attention_mask,
+        position_bias=position_bias,
+        layer_head_mask=layer_head_mask,
+        past_key_value=self_attn_past_key_value,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        token_idx=token_idx,
+        max_output_length=max_output_length,
+    )
+    hidden_states, present_key_value_state = self_attention_outputs[:2]
+    attention_outputs = self_attention_outputs[2:]  # Keep self-attention outputs and relative position weights
+
+    do_cross_attention = self.is_decoder and encoder_hidden_states is not None
+    if do_cross_attention:
+        # the actual query length is unknown for cross attention
+        # if using past key value states. Need to inject it here
+        if present_key_value_state is not None:
+            query_length = present_key_value_state[0].shape[2]
+        else:
+            query_length = None
+
+        cross_attention_outputs = self.layer[1](
+            hidden_states,
+            key_value_states=encoder_hidden_states,
+            attention_mask=encoder_attention_mask,
+            position_bias=encoder_decoder_position_bias,
+            layer_head_mask=cross_attn_layer_head_mask,
+            past_key_value=cross_attn_past_key_value,
+            query_length=query_length,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+        )
+        hidden_states = cross_attention_outputs[0]
+
+        # Combine self attn and cross attn key value states
+        if present_key_value_state is not None:
+            present_key_value_state = present_key_value_state + cross_attention_outputs[1]
+
+        # Keep cross-attention outputs and relative position weights
+        attention_outputs = attention_outputs + cross_attention_outputs[2:]
+
+    # Apply Feed Forward layer
+    hidden_states = self.layer[-1](hidden_states)
+
+    outputs = (hidden_states,)
+
+    if use_cache:
+        outputs = outputs + (present_key_value_state,) + attention_outputs
+    else:
+        outputs = outputs + attention_outputs
+
+    return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
 
 
 class GaudiT5Stack(T5Stack):
     def __init__(self, config, embed_tokens=None):
         super().__init__(config, embed_tokens)
-        self.dropout = GaudiDropout(self.dropout)
 
     def forward(
         self,
@@ -303,10 +338,6 @@ class GaudiT5Stack(T5Stack):
         token_idx=None,
         max_output_length=0,
     ):
-        # Model parallel
-        if self.model_parallel:
-            torch.cuda.set_device(self.first_device)
-            self.embed_tokens = self.embed_tokens.to(self.first_device)
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -329,7 +360,8 @@ class GaudiT5Stack(T5Stack):
             raise ValueError(f"You have to specify either {err_msg_prefix}input_ids or {err_msg_prefix}inputs_embeds")
 
         if inputs_embeds is None:
-            assert self.embed_tokens is not None, "You have to initialize the model with valid token embeddings"
+            if self.embed_tokens is None:
+                raise ValueError("You have to initialize the model with valid token embeddings")
             inputs_embeds = self.embed_tokens(input_ids)
 
         batch_size, seq_length = input_shape
@@ -343,7 +375,8 @@ class GaudiT5Stack(T5Stack):
             )
 
         if use_cache is True:
-            assert self.is_decoder, f"`use_cache` can only be set to `True` if {self} is used as a decoder"
+            if not self.is_decoder:
+                raise ValueError(f"`use_cache` can only be set to `True` if {self} is used as a decoder")
 
         if attention_mask is None:
             attention_mask = torch.ones(batch_size, mask_seq_length, device=inputs_embeds.device)
@@ -394,24 +427,7 @@ class GaudiT5Stack(T5Stack):
         for i, (layer_module, past_key_value) in enumerate(zip(self.block, past_key_values)):
             layer_head_mask = head_mask[i]
             cross_attn_layer_head_mask = cross_attn_head_mask[i]
-            # Model parallel
-            if self.model_parallel:
-                torch.cuda.set_device(hidden_states.device)
-                # Ensure that attention_mask is always on the same device as hidden_states
-                if attention_mask is not None:
-                    attention_mask = attention_mask.to(hidden_states.device)
-                if position_bias is not None:
-                    position_bias = position_bias.to(hidden_states.device)
-                if encoder_hidden_states is not None:
-                    encoder_hidden_states = encoder_hidden_states.to(hidden_states.device)
-                if encoder_extended_attention_mask is not None:
-                    encoder_extended_attention_mask = encoder_extended_attention_mask.to(hidden_states.device)
-                if encoder_decoder_position_bias is not None:
-                    encoder_decoder_position_bias = encoder_decoder_position_bias.to(hidden_states.device)
-                if layer_head_mask is not None:
-                    layer_head_mask = layer_head_mask.to(hidden_states.device)
-                if cross_attn_layer_head_mask is not None:
-                    cross_attn_layer_head_mask = cross_attn_layer_head_mask.to(hidden_states.device)
+
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -436,7 +452,6 @@ class GaudiT5Stack(T5Stack):
                     None,  # past_key_value is always None with gradient checkpointing
                 )
             else:
-                # print(hidden_states)
                 layer_outputs = layer_module(
                     hidden_states,
                     attention_mask=extended_attention_mask,
@@ -475,12 +490,6 @@ class GaudiT5Stack(T5Stack):
                 if self.is_decoder:
                     all_cross_attentions = all_cross_attentions + (layer_outputs[5],)
 
-            # Model Parallel: If it's the last layer for that device, put things on the next device
-            if self.model_parallel:
-                for k, v in self.device_map.items():
-                    if i == v[-1] and "cuda:" + str(k) != self.last_device:
-                        hidden_states = hidden_states.to("cuda:" + str(k + 1))
-
         hidden_states = self.final_layer_norm(hidden_states)
         hidden_states = self.dropout(hidden_states)
 
@@ -507,121 +516,6 @@ class GaudiT5Stack(T5Stack):
             attentions=all_attentions,
             cross_attentions=all_cross_attentions,
         )
-
-
-def gaudi_T5Block_forward(
-    self,
-    hidden_states,
-    attention_mask=None,
-    position_bias=None,
-    encoder_hidden_states=None,
-    encoder_attention_mask=None,
-    encoder_decoder_position_bias=None,
-    layer_head_mask=None,
-    cross_attn_layer_head_mask=None,
-    past_key_value=None,
-    use_cache=False,
-    output_attentions=False,
-    return_dict=True,
-    token_idx=None,
-    max_output_length=0,
-):
-    if past_key_value is not None:
-        if not self.is_decoder:
-            logger.warning("`past_key_values` is passed to the encoder. Please make sure this is intended.")
-        expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
-
-        if len(past_key_value) != expected_num_past_key_values:
-            raise ValueError(
-                f"There should be {expected_num_past_key_values} past states. "
-                f"{'2 (past / key) for cross attention. ' if expected_num_past_key_values == 4 else ''}"
-                f"Got {len(past_key_value)} past key / value states"
-            )
-
-        self_attn_past_key_value = past_key_value[:2]
-        cross_attn_past_key_value = past_key_value[2:]
-    else:
-        self_attn_past_key_value, cross_attn_past_key_value = None, None
-    # print(hidden_states)
-    self_attention_outputs = self.layer[0](
-        hidden_states,
-        attention_mask=attention_mask,
-        position_bias=position_bias,
-        layer_head_mask=layer_head_mask,
-        past_key_value=self_attn_past_key_value,
-        use_cache=use_cache,
-        output_attentions=output_attentions,
-        token_idx=token_idx,
-        max_output_length=max_output_length,
-    )
-    hidden_states, present_key_value_state = self_attention_outputs[:2]
-    attention_outputs = self_attention_outputs[2:]  # Keep self-attention outputs and relative position weights
-
-    # clamp inf values to enable fp16 training
-    if hidden_states.dtype == torch.float16:
-        clamp_value = torch.where(
-            torch.isinf(hidden_states).any(),
-            torch.finfo(hidden_states.dtype).max - 1000,
-            torch.finfo(hidden_states.dtype).max,
-        )
-        hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-    do_cross_attention = self.is_decoder and encoder_hidden_states is not None
-    if do_cross_attention:
-        # the actual query length is unknown for cross attention
-        # if using past key value states. Need to inject it here
-        if present_key_value_state is not None:
-            query_length = present_key_value_state[0].shape[2]
-        else:
-            query_length = None
-
-        cross_attention_outputs = self.layer[1](
-            hidden_states,
-            key_value_states=encoder_hidden_states,
-            attention_mask=encoder_attention_mask,
-            position_bias=encoder_decoder_position_bias,
-            layer_head_mask=cross_attn_layer_head_mask,
-            past_key_value=cross_attn_past_key_value,
-            query_length=query_length,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-        )
-        hidden_states = cross_attention_outputs[0]
-
-        # clamp inf values to enable fp16 training
-        if hidden_states.dtype == torch.float16:
-            clamp_value = torch.where(
-                torch.isinf(hidden_states).any(),
-                torch.finfo(hidden_states.dtype).max - 1000,
-                torch.finfo(hidden_states.dtype).max,
-            )
-            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-        # Combine self attn and cross attn key value states
-        if present_key_value_state is not None:
-            present_key_value_state = present_key_value_state + cross_attention_outputs[1]
-
-        # Keep cross-attention outputs and relative position weights
-        attention_outputs = attention_outputs + cross_attention_outputs[2:]
-
-    # Apply Feed Forward layer
-    hidden_states = self.layer[-1](hidden_states)
-
-    # clamp inf values to enable fp16 training
-    if hidden_states.dtype == torch.float16:
-        clamp_value = torch.where(
-            torch.isinf(hidden_states).any(),
-            torch.finfo(hidden_states.dtype).max - 1000,
-            torch.finfo(hidden_states.dtype).max,
-        )
-        hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-    outputs = (hidden_states,)
-    if use_cache:
-        outputs = outputs + (present_key_value_state,) + attention_outputs
-    else:
-        outputs = outputs + attention_outputs
-
-    return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
 
 
 # Warning message for FutureWarning: head_mask was separated into two input args - head_mask, decoder_head_mask
@@ -654,39 +548,9 @@ def gaudi_T5ForConditionalGeneration_forward(
     token_idx: Optional[torch.LongTensor] = None,
     max_output_length=0,
 ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
-    r"""
-    labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-        Labels for computing the sequence classification/regression loss. Indices should be in `[-100, 0, ...,
-        config.vocab_size - 1]`. All labels set to `-100` are ignored (masked), the loss is only computed for
-        labels in `[0, ..., config.vocab_size]`
-
-    Returns:
-
-    Examples:
-
-    ```python
-    >>> from transformers import AutoTokenizer, T5ForConditionalGeneration
-
-    >>> tokenizer = AutoTokenizer.from_pretrained("t5-small")
-    >>> model = T5ForConditionalGeneration.from_pretrained("t5-small")
-
-    >>> # training
-    >>> input_ids = tokenizer("The <extra_id_0> walks in <extra_id_1> park", return_tensors="pt").input_ids
-    >>> labels = tokenizer("<extra_id_0> cute dog <extra_id_1> the <extra_id_2>", return_tensors="pt").input_ids
-    >>> outputs = model(input_ids=input_ids, labels=labels)
-    >>> loss = outputs.loss
-    >>> logits = outputs.logits
-
-    >>> # inference
-    >>> input_ids = tokenizer(
-    ...     "summarize: studies have shown that owning a dog is good for you", return_tensors="pt"
-    ... ).input_ids  # Batch size 1
-    >>> outputs = model.generate(input_ids)
-    >>> print(tokenizer.decode(outputs[0], skip_special_tokens=True))
-    >>> # studies have shown that owning a dog is good for you.
-    ```"""
     use_cache = use_cache if use_cache is not None else self.config.use_cache
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
     # FutureWarning: head_mask was separated into two input args - head_mask, decoder_head_mask
     if head_mask is not None and decoder_head_mask is None:
         if self.config.num_layers == self.config.num_decoder_layers:
@@ -714,23 +578,9 @@ def gaudi_T5ForConditionalGeneration_forward(
 
     hidden_states = encoder_outputs[0]
 
-    if self.model_parallel:
-        torch.cuda.set_device(self.decoder.first_device)
-
     if labels is not None and decoder_input_ids is None and decoder_inputs_embeds is None:
         # get decoder inputs from shifting lm labels to the right
         decoder_input_ids = self._shift_right(labels)
-
-    # Set device for model parallelism
-    if self.model_parallel:
-        torch.cuda.set_device(self.decoder.first_device)
-        hidden_states = hidden_states.to(self.decoder.first_device)
-        if decoder_input_ids is not None:
-            decoder_input_ids = decoder_input_ids.to(self.decoder.first_device)
-        if attention_mask is not None:
-            attention_mask = attention_mask.to(self.decoder.first_device)
-        if decoder_attention_mask is not None:
-            decoder_attention_mask = decoder_attention_mask.to(self.decoder.first_device)
 
     # Decode
     decoder_outputs = self.decoder(
@@ -751,12 +601,6 @@ def gaudi_T5ForConditionalGeneration_forward(
     )
 
     sequence_output = decoder_outputs[0]
-
-    # Set device for model parallelism
-    if self.model_parallel:
-        torch.cuda.set_device(self.encoder.first_device)
-        self.lm_head = self.lm_head.to(self.encoder.first_device)
-        sequence_output = sequence_output.to(self.lm_head.weight.device)
 
     if self.config.tie_word_embeddings:
         # Rescale output before projecting on vocab
@@ -797,11 +641,11 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
     attention_mask=None,
     head_mask=None,
     decoder_head_mask=None,
+    decoder_attention_mask=None,
     cross_attn_head_mask=None,
     use_cache=None,
     encoder_outputs=None,
     token_idx=None,
-    decoder_attention_mask=None,
     max_output_length=0,
     **kwargs,
 ):
@@ -833,6 +677,7 @@ def gaudi_T5ForConditionalGeneration_reorder_cache(self, past_key_values, beam_i
     if past_key_values is None:
         logger.warning("You might want to consider setting `use_cache=True` to speed up decoding")
         return past_key_values
+
     reordered_decoder_past = ()
     for layer_past_states in past_key_values:
         # get the correct batch idx from layer past batch dim
@@ -844,8 +689,15 @@ def gaudi_T5ForConditionalGeneration_reorder_cache(self, past_key_values, beam_i
                 layer_past_state.index_select(0, beam_idx.to(layer_past_state.device)),
             )
 
-        assert reordered_layer_past_states[0].shape == layer_past_states[0].shape
-        assert len(reordered_layer_past_states) == len(layer_past_states)
+            if reordered_layer_past_states[0].shape != layer_past_states[0].shape:
+                raise ValueError(
+                    f"reordered_layer_past_states[0] shape {reordered_layer_past_states[0].shape} and layer_past_states[0] shape {layer_past_states[0].shape} mismatched"
+                )
+            if len(reordered_layer_past_states) != len(layer_past_states):
+                raise ValueError(
+                    f"length of reordered_layer_past_states {len(reordered_layer_past_states)} and length of layer_past_states {len(layer_past_states)} mismatched"
+                )
+
         reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
     return reordered_decoder_past
 
