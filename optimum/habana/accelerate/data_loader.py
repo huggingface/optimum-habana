@@ -122,8 +122,8 @@ def gaudi_prepare_data_loader(
         sampler = dataloader.sampler.sampler
     else:
         sampler = dataloader.batch_sampler.sampler
-    # Commenting the block below as it makes the accuracy decrease quite a lot for a models and tasks
-    # e.g. audio classification with Wav2Vec2 or Seq2SeqQA avec T5
+    # Commenting the block below as it makes the accuracy decrease quite a lot for a few models and tasks
+    # e.g. audio classification with Wav2Vec2 or Seq2SeqQA with T5
     # if isinstance(sampler, RandomSampler) and num_processes > 1:
     #     # When iterating through the dataloader during distributed processes
     #     # we want to ensure that on each process we are iterating through the same
