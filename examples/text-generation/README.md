@@ -54,7 +54,7 @@ python run_generation.py --help
 ```
 
 
-### Single prompt
+### Single and multiple prompts
 
 If you want to generate a sequence of text from a prompt of your choice, you should use the `--prompt` argument.
 For example:
@@ -67,6 +67,20 @@ python run_generation.py \
 --do_sample \
 --prompt "Here is my prompt"
 ```
+
+If you want to provide several prompts as inputs, here is how to do it:
+```
+python run_generation.py \
+--model_name_or_path gpt2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--do_sample \
+--batch_size 2 \
+--prompt "Hello world" "How are you?"
+```
+
+> The batch size should be larger than or equal to the number of prompts. Otherwise, only the first N prompts are kept with N being equal to the batch size.
 
 
 ### Benchmark
@@ -81,7 +95,7 @@ Here are a few settings you may be interested in:
 - `--limit_hpu_graphs` to skip HPU Graph usage for first token to save memory
 - `--use_kv_cache` to use the [key/value cache](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationConfig.use_cache) to speed up generation
 - `--do_sample` or `--num_beams` to generate new tokens doing sampling or beam search (greedy search is the default)
-- `--prompt` to benchmark the model on a prompt of your choice
+- `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
 
@@ -170,7 +184,7 @@ python run_generation.py \
 ### Using growing bucket optimization
 With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
 
-> For now, it is available only for greedy generation, and cannot be used with `--reuse_cache`.
+> For now, it is available only for greedy and beam search generation, and cannot be used with `--reuse_cache`.
 
 Here is an example:
 ```bash
@@ -183,3 +197,5 @@ python run_generation.py \
 --batch_size=2 \
 --bucket_size 50
 ```
+
+`--bucket_size` option is especially useful when processing an input stream with varying lengths, that is when you have something like `--dataset_name squad --column_name context --max_input_tokens -1`. `--max_input_tokens -1` specifies no truncation of input prompt in the dataset.

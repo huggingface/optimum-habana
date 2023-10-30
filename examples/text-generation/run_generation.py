@@ -27,15 +27,16 @@ import time
 from pathlib import Path
 
 import torch
-from checkpoint_utils import (
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers.utils import check_min_version
+
+from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
     model_is_optimized,
     model_on_meta,
     write_checkpoints_json,
 )
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from transformers.utils import check_min_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -137,7 +138,8 @@ def main():
         "--prompt",
         default=None,
         type=str,
-        help="Optional argument to give a prompt of your choice as input.",
+        nargs="*",
+        help='Optional argument to give a prompt of your choice as input. Can be a single string (eg: --prompt "Hello world"), or a list of space-separated strings (eg: --prompt "Hello world" "How are you?")',
     )
     parser.add_argument(
         "--bad_words",
@@ -398,9 +400,7 @@ def main():
     if args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:
-            input_sentences = [
-                args.prompt,
-            ]
+            input_sentences = args.prompt
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",
@@ -568,8 +568,8 @@ def main():
 
         if prompt_length <= 0:
             # Todo please check if this collate function is suitable for your model
-            # This has been tested for OPT, and Bloom
-            assert model.config.model_type in ["opt", "bloom"]
+            # This has been tested for OPT, llama, and Bloom
+            assert model.config.model_type in ["opt", "bloom", "llama"]
 
             def collate_fn(data):
                 collect = {k: [dt[k] for dt in data] for k in data[0]}
