@@ -93,7 +93,6 @@ from .models import (
     gaudi_T5Block_forward,
     gaudi_T5ForConditionalGeneration_forward,
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
-    gaudi_T5ForConditionalGeneration_reorder_cache,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_forward,
 )
@@ -272,9 +271,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.forward = gaudi_T5ForConditionalGeneration_forward
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.prepare_inputs_for_generation = (
         gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation
-    )
-    transformers.models.t5.modeling_t5.T5ForConditionalGeneration._reorder_cache = (
-        gaudi_T5ForConditionalGeneration_reorder_cache
     )
     transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
     transformers.models.t5.modeling_t5.T5Block.forward = gaudi_T5Block_forward

@@ -92,7 +92,6 @@ from .t5 import (
     gaudi_T5Block_forward,
     gaudi_T5ForConditionalGeneration_forward,
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
-    gaudi_T5ForConditionalGeneration_reorder_cache,
 )
 from .vit import gaudi_vit_self_attention_forward
 from .wav2vec2 import (
