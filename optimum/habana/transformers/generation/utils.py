@@ -459,14 +459,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if bucket_input:
             if not params['inp_processing_ongoing']:
-                print('HERE token_idx')
                 model_kwargs['token_idx'] = torch.tensor(params['token_idx'], device=self.device)
+                #import pdb; pdb.set_trace()
+                #model_kwargs['position_ids'] = torch.arange(params['start'], params['token_idx'], device=self.device)
             else:
                 model_kwargs['token_idx'] = torch.arange(params['start']+1, params['token_idx']+1, device=self.device)
-                model_kwargs['position_ids'] = torch.arange(params['start'], params['token_idx'], device=self.device)
                 if model_kwargs.get('past_key_values') is None:
                     model_kwargs['past_key_values'] = 1 # setting it to not None value so that it takes a certain path in llama's prepare_inputs_for_generation
                 # or we could just clip the output of prepare_inputs_for_generation instead of setting to 1 to force down non-None path
+            model_kwargs['position_ids'] = torch.arange(params['start'], params['token_idx'], device=self.device)
         else:
             if "token_idx" not in model_kwargs:
                 model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
@@ -1448,11 +1449,11 @@ class GaudiGenerationMixin(GenerationMixin):
         else:
             orig_attention_mask = None
 
-        print('----------------')
+        #print('----------------')
         cnt = -1
         while True:
-            cnt += 1
-            print('count', cnt, flush=True)
+            #cnt += 1
+            #print('count', cnt, flush=True)
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1465,7 +1466,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 # did all peers finish? the reduced sum will be 0.0 then
                 if this_peer_finished_flag.item() == 0.0:
                     break
-
             if bucket_size > 0:
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
@@ -1500,7 +1500,6 @@ class GaudiGenerationMixin(GenerationMixin):
             if bucket_input:
                 model_inputs['bucket_size'] = bucket_size
 
-            print(model_kwargs["attention_mask"].shape, model_inputs["attention_mask"].shape, model_inputs["position_ids"], cnt)
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1557,7 +1556,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
-            if not bucket_input or not params['inp_processing_ongoing']:
+            if not bucket_input or params['inp_processing_done']:
                 if token_idx is not None:
                     input_ids.index_copy_(
                         1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
@@ -1569,8 +1568,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs = self._update_model_kwargs_for_generation(
                     outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
                 )
-                import pdb; pdb.set_trace()
-                print()
             else:
                 if False: # TODO remove
                     kvcacheval = self._extract_past_from_model_output(outputs, standardize_cache_format=False)

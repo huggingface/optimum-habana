@@ -179,7 +179,6 @@ class GaudiLlamaAttention(LlamaAttention):
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
-        #print(kv_seq_len, 'x0')
         bucket_inp = (key_states.shape[2] > 1) and len(token_idx.shape) == 1
 
         if past_key_value is not None:
@@ -188,14 +187,11 @@ class GaudiLlamaAttention(LlamaAttention):
                 if bucket_inp and (kv_seq_len%bucket_size != 0):
                     # could happen in last step of prefill with bucket_input
                     kv_seq_len += (bucket_size - kv_seq_len%bucket_size)
-                #print(kv_seq_len, 'x1')
             else:
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][-2]
-                    #print(kv_seq_len, 'x2')
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
-                    #print(kv_seq_len, 'x3')
         cos, sin = self.rotary_emb(value_states, seq_len=full_size)
         #print('xx1.5', query_states.shape, key_states.shape, cos.shape, sin.shape, position_ids)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
@@ -411,7 +407,6 @@ class GaudiLlamaModel(LlamaModel):
         attention_mask = _prepare_decoder_attention_mask(
             attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length, bucket_size
         )
-        print(attention_mask.shape, '.....')
 
         hidden_states = inputs_embeds
 
@@ -688,8 +683,6 @@ def _prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds, 
         )
 
     if combined_attention_mask.shape[-1]%bucket_size != 0:
-        print('PADDING ATTENTION MASK')
-        #import pdb; pdb.set_trace()
         pad_amount = bucket_size - combined_attention_mask.shape[2]%bucket_size
         combined_attention_mask = torch.nn.functional.pad(combined_attention_mask, (0, pad_amount), value=0)
     return combined_attention_mask
