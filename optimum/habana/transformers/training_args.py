@@ -94,7 +94,7 @@ class GaudiTrainingArguments(TrainingArguments):
         use_hpu_graphs_for_training (`bool`, *optional*, defaults to `False`):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
-            Whether to disable tensor cache when using hpu graphs.
+            Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*, defaults to None):
             Maximum number of hpu graphs to use.
         distribution_strategy (`str`, *optional*, defaults to `ddp`):
