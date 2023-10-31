@@ -150,6 +150,9 @@ def gaudi_prepare_data_loader(
                 split_batches=split_batches,
             )
         else:
+            # The block below was removed in Accelerate but it makes the accuracy decrease quite a lot
+            # for a few models and tasks e.g. audio classification with Wav2Vec2 or Seq2SeqQA with T5
+            # Keeping it for now
             # New batch sampler for the current process.
             sampler_is_batch_sampler = isinstance(dataloader.sampler, BatchSampler)
             if sampler_is_batch_sampler:
