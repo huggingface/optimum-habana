@@ -302,10 +302,10 @@ class GaudiTrainingArguments(TrainingArguments):
                 f"`--distribution_strategy` is {self.distribution_strategy} which is an invalid or unsupported value. Possible choices are: {', '.join(SUPPORTED_DISTRIBUTION_STRATEGIES)}."
             )
 
-        if disable_tensor_cache_hpu_graphs and not use_hpu_graphs:
+        if self.disable_tensor_cache_hpu_graphs and not use_hpu_graphs:
             raise ValueError("must be using hpu graphs to set disable_tensor_cache_hpu_graphs.")
 
-        if max_hpu_graphs is not None and not use_hpu_graphs:
+        if self.max_hpu_graphs is not None and not use_hpu_graphs:
             raise ValueError("must be using hpu graphs to set max_hpu_graphs.")
 
         # Raise errors for arguments that are not supported by optimum-habana
