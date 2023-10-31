@@ -463,7 +463,8 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 model_kwargs['token_idx'] = torch.arange(params['start']+1, params['token_idx']+1, device=self.device)
                 model_kwargs['position_ids'] = torch.arange(params['start'], params['token_idx'], device=self.device)
-                model_kwargs['past_key_values'] = 1 # setting it to not None value so that it takes a certain path in llama's prepare_inputs_for_generation
+                if model_kwargs.get('past_key_values') is None:
+                    model_kwargs['past_key_values'] = 1 # setting it to not None value so that it takes a certain path in llama's prepare_inputs_for_generation
                 # or we could just clip the output of prepare_inputs_for_generation instead of setting to 1 to force down non-None path
         else:
             if "token_idx" not in model_kwargs:
@@ -1446,7 +1447,11 @@ class GaudiGenerationMixin(GenerationMixin):
         else:
             orig_attention_mask = None
 
+        print('----------------')
+        cnt = -1
         while True:
+            cnt += 1
+            print('count', cnt, flush=True)
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1472,7 +1477,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if bucket_input and params['inp_processing_ongoing']:# and params['passnum'] == 0:
                 assert 'past_key_values' in model_inputs
-                x = model_inputs.pop('past_key_values', 1)
+                if params['passnum'] == 0:
+                    x = model_inputs.pop('past_key_values')
+                    assert x == 1
             else:
                 x = 1
 
@@ -1559,15 +1566,15 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 kvcacheval = self._extract_past_from_model_output(outputs, standardize_cache_format=False)
                 collect_inp_kvcache += [kvcacheval]
-                if params['allocated_space'] > prompt_len:
-                    if not collection_of_prompt_kvcache_done:
-                        collection_of_prompt_kvcache_done = True
-                        model_kwargs['past_key_values'] = join_kv_cache(collect_inp_kvcache, params['allocated_space'], bucket_size, self.device)# tuple(new_kv)
-                        model_kwargs.pop('position_ids') # inp processing is done, we dont need it any longer in model kwargs, it will be computed in prepare_inputs_for_generation
-                        if lazy_mode:
-                            self.htcore_generation.mark_step()
-                else:
-                    model_kwargs.pop('past_key_values')
+                #if params['allocated_space'] > prompt_len:
+                    #if not collection_of_prompt_kvcache_done:
+                    #    collection_of_prompt_kvcache_done = True
+                model_kwargs['past_key_values'] = join_kv_cache(collect_inp_kvcache, params['allocated_space'], bucket_size, self.device)# tuple(new_kv)
+                model_kwargs.pop('position_ids') # inp processing is done, we dont need it any longer in model kwargs, it will be computed in prepare_inputs_for_generation
+                if lazy_mode:
+                    self.htcore_generation.mark_step()
+                #else:
+                 #   model_kwargs.pop('past_key_values')
 
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:
