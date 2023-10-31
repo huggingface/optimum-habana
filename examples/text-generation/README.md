@@ -184,7 +184,7 @@ python run_generation.py \
 ### Using growing bucket optimization
 With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
 
-> For now, it is available only for greedy generation, and cannot be used with `--reuse_cache`.
+> For now, it is available only for greedy and beam search generation, and cannot be used with `--reuse_cache`.
 
 Here is an example:
 ```bash
@@ -197,3 +197,5 @@ python run_generation.py \
 --batch_size=2 \
 --bucket_size 50
 ```
+
+`--bucket_size` option is especially useful when processing an input stream with varying lengths, that is when you have something like `--dataset_name squad --column_name context --max_input_tokens -1`. `--max_input_tokens -1` specifies no truncation of input prompt in the dataset.
