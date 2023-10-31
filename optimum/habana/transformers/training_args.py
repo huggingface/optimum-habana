@@ -154,16 +154,12 @@ class GaudiTrainingArguments(TrainingArguments):
 
     disable_tensor_cache_hpu_graphs: Optional[bool] = field(
         default=False,
-        metadata={
-            "help": "Whether to use a tensor cache for hpu graphs."
-        },
+        metadata={"help": "Whether to use a tensor cache for hpu graphs."},
     )
 
     max_hpu_graphs: Optional[int] = field(
         default=None,
-        metadata={
-            "help": "Maximum number of HPU graphs to use."
-        },
+        metadata={"help": "Maximum number of HPU graphs to use."},
     )
 
     distribution_strategy: Optional[str] = field(
@@ -307,14 +303,10 @@ class GaudiTrainingArguments(TrainingArguments):
             )
 
         if disable_tensor_cache_hpu_graphs and not use_hpu_graphs:
-            raise ValueError(
-                f"must be using hpu graphs to set disable_tensor_cache_hpu_graphs."
-            )
+            raise ValueError("must be using hpu graphs to set disable_tensor_cache_hpu_graphs.")
 
         if max_hpu_graphs is not None and not use_hpu_graphs:
-            raise ValueError(
-                f"must be using hpu graphs to set max_hpu_graphs."
-            )
+            raise ValueError("must be using hpu graphs to set max_hpu_graphs.")
 
         # Raise errors for arguments that are not supported by optimum-habana
         if self.bf16_full_eval:
