@@ -64,13 +64,7 @@
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-333c354,356
-<         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
----
->         warnings.warn(
->             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
->         )
-359a383,389
+362a384,390
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -78,25 +72,25 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-360a391
+363a392
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-362,363c393,395
+365,366c394,396
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-444a477
+447a478
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-463a497,502
+466a498,503
 >     is_bart = model.config.model_type == "bart"
 >     if is_bart and training_args.do_train:
 >         raise ValueError(
 >             "Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`."
 >         )
 > 
-466c505,512
+469c506,513
 <     embedding_size = model.get_input_embeddings().weight.shape[0]
 ---
 >     embeddings = model.get_input_embeddings()
@@ -107,16 +101,16 @@
 >             embedding_size = embeddings.weight.shape[0]
 >     else:
 >         embedding_size = embeddings.weight.shape[0]
-499a546
+502a547
 >     suffix = data_args.source_suffix if data_args.source_suffix is not None else ""
-570a618,619
+573a619,620
 >             else:
 >                 raise ValueError("Found case where either text or summary is missing.")
-572c621
+575c622
 <         inputs = [prefix + inp for inp in inputs]
 ---
 >         inputs = [prefix + inp + suffix for inp in inputs]
-637,642c686,694
+640,645c687,695
 <     data_collator = DataCollatorForSeq2Seq(
 <         tokenizer,
 <         model=model,
@@ -133,7 +127,7 @@
 >             label_pad_token_id=label_pad_token_id,
 >             pad_to_multiple_of=8 if training_args.fp16 else None,
 >         )
-677,684c729,737
+680,687c730,738
 <     training_args.generation_max_length = (
 <         training_args.generation_max_length
 <         if training_args.generation_max_length is not None
@@ -152,13 +146,13 @@
 >         training_args.generation_config.num_beams = data_args.num_beams
 >     elif training_args.generation_num_beams is not None:
 >         training_args.generation_config.num_beams = training_args.generation_num_beams
-687c740
+690c741
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-688a742
+691a743
 >         gaudi_config=gaudi_config,
-777,781d830
+780,784d831
 < 
 < 
 < def _mp_fn(index):

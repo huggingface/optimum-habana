@@ -38,13 +38,7 @@
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-256c267,269
-<         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
----
->         warnings.warn(
->             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
->         )
-281a295,301
+284a296,302
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -52,18 +46,18 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-282a303
+285a304
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-284,285c305,307
+287,288c306,308
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-432d453
+435d454
 <     image_transformations = torch.jit.script(image_transformations)
-479,480c500,508
+482,483c501,509
 <         # Transform images on the fly as doing it on the whole dataset takes too much time.
 <         train_dataset.set_transform(transform_images)
 ---
@@ -76,7 +70,7 @@
 >         else:
 >             # Transform images on the fly as doing it on the whole dataset takes too much time.
 >             train_dataset.set_transform(transform_images)
-502,503c530,538
+505,506c531,539
 <         # Transform images on the fly as doing it on the whole dataset takes too much time.
 <         eval_dataset.set_transform(transform_images)
 ---
@@ -89,7 +83,7 @@
 >         else:
 >             # Transform images on the fly as doing it on the whole dataset takes too much time.
 >             eval_dataset.set_transform(transform_images)
-526a562,570
+529a563,571
 >         if data_args.mediapipe_dataloader:
 >             test_dataset.image_mean = image_processor.image_mean
 >             test_dataset.image_std = image_processor.image_std
@@ -99,10 +93,10 @@
 >         else:
 >             # Transform images on the fly as doing it on the whole dataset takes too much time.
 >             test_dataset.set_transform(transform_images)
-529c573,574
+532c574,575
 <     trainer = Trainer(
 ---
 >     trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
 >     trainer = trainer_cls(
-530a576
+533a577
 >         gaudi_config=gaudi_config,

@@ -37,13 +37,7 @@
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-294c303,305
-<         warnings.warn("The `use_auth_token` argument is deprecated and will be removed in v4.34.", FutureWarning)
----
->         warnings.warn(
->             "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
->         )
-320a332,338
+323a333,339
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -51,18 +45,18 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-321a340
+324a341
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
-323,324c342,344
+326,327c343,345
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-671a692
+674a693
 >         gaudi_config=gaudi_config,
-745,749d765
+748,752d766
 < 
 < 
 < def _mp_fn(index):
