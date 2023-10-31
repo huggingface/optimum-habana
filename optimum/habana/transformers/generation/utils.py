@@ -1495,6 +1495,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_inputs['past_key_values'] = join_kv_cache(collect_inp_kvcache, params['allocated_space'], bucket_size, self.device)
 
             # forward pass to get next token
+            #import pdb; pdb.set_trace()
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1564,17 +1565,20 @@ class GaudiGenerationMixin(GenerationMixin):
                     outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
                 )
             else:
-                kvcacheval = self._extract_past_from_model_output(outputs, standardize_cache_format=False)
-                collect_inp_kvcache += [kvcacheval]
-                #if params['allocated_space'] > prompt_len:
-                    #if not collection_of_prompt_kvcache_done:
-                    #    collection_of_prompt_kvcache_done = True
-                model_kwargs['past_key_values'] = join_kv_cache(collect_inp_kvcache, params['allocated_space'], bucket_size, self.device)# tuple(new_kv)
-                model_kwargs.pop('position_ids') # inp processing is done, we dont need it any longer in model kwargs, it will be computed in prepare_inputs_for_generation
-                if lazy_mode:
-                    self.htcore_generation.mark_step()
-                #else:
-                 #   model_kwargs.pop('past_key_values')
+                if False: # TODO remove
+                    kvcacheval = self._extract_past_from_model_output(outputs, standardize_cache_format=False)
+                    collect_inp_kvcache += [kvcacheval]
+                    #if params['allocated_space'] > prompt_len:
+                        #if not collection_of_prompt_kvcache_done:
+                        #    collection_of_prompt_kvcache_done = True
+                    model_kwargs['past_key_values'] = join_kv_cache(collect_inp_kvcache, params['allocated_space'], bucket_size, self.device)# tuple(new_kv)
+                    model_kwargs.pop('position_ids') # inp processing is done, we dont need it any longer in model kwargs, it will be computed in prepare_inputs_for_generation
+                    if lazy_mode:
+                        self.htcore_generation.mark_step()
+                    #else:
+                    #   model_kwargs.pop('past_key_values')
+                else:
+                    model_kwargs['past_key_values'] = self._extract_past_from_model_output(outputs, standardize_cache_format=False)
 
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:

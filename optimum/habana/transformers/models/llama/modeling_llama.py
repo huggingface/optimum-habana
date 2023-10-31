@@ -35,6 +35,11 @@ except ImportError:
 
 
 def update(prev, cur, dim, idx):
+    # we can use this condition to detect bucket_inp
+    bucket_inp = (cur.shape[2] > 1) and len(idx.shape) == 1
+    if bucket_inp:
+        return torch.cat((prev, cur), 2)
+
     orig_cur = cur
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
@@ -183,6 +188,7 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 past_key = past_key_value[0]
                 past_value = past_key_value[1]
+
             key_states = update(past_key, key_states, 2, token_idx)
             value_states = update(past_value, value_states, 2, token_idx)
 
@@ -653,7 +659,6 @@ def _prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds, 
         expanded_attn_mask = _expand_mask(attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]).to(
             inputs_embeds.device
         )
-        #import pdb; pdb.set_trace()
         combined_attention_mask = (
             expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask[:,:,:,-combined_attention_mask.shape[-1]:] + combined_attention_mask
         )
