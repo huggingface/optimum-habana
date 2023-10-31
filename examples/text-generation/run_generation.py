@@ -211,6 +211,12 @@ def main():
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
     )
+    parser.add_argument(
+        "--dataset_min_max",
+        default="",
+        type=str,
+        help="For dataset run, specify 2 integers (comma separated) defining min and max sentence length, so we can perform warmup. To be used with --max_input_tokens=-1 and --bucket_size set to > 0 (bucketed uncropped dataset)",
+    )
 
     args = parser.parse_args()
 
@@ -605,23 +611,55 @@ def main():
             return prompt, outputs
 
         # warmup
+        from optimum.habana.utils import HabanaProfile
+        # compilation stage disable profiling
+        HabanaProfile.disable()
+        # Compilation
+        if rank in [-1, 0]:
+            logger.info("Graph compilation...")
+        t0 = time.perf_counter()
         if prompt_length > 0:
-            from optimum.habana.utils import HabanaProfile
-
-            # compilation stage disable profiling
-            HabanaProfile.disable()
-            # Compilation
-            if rank in [-1, 0]:
-                logger.info("Graph compilation...")
-            t0 = time.perf_counter()
             for i, batch in enumerate(dataloader):
                 generate_dataset(batch)
                 # The first three iterations take longer because of graph compilation
-                if (i + 1) == 3:
+                if (i + 1) == args.warmup:
                     break
-            torch_hpu.synchronize()
-            compilation_duration = time.perf_counter() - t0
-            HabanaProfile.enable()
+        elif len(args.dataset_min_max) > 0 and args.bucket_size > -1:
+            assert model.config.model_type in ["llama", 'opt'], 'This path only tested for opt, llama.'
+            # warm in the case we have dataset, min, max shape is 
+            mn, mx = args.dataset_min_max.split(',') # if dataset is given we Could compute min/max from it
+            mn = int(mn)
+            mx = int(mx)
+            import math
+            rounder = lambda x : int(math.ceil(x//args.bucket_size) * args.bucket_size)
+            min_prompt_len = rounder(mn)
+            max_sentence_len = rounder(mx + args.max_new_tokens)
+            # we need to compile models for length:
+            # min_prompt_len, min_prompt_len+b, min_prompt_len+2b, ... max_sentence_len
+            for i, batch in enumerate(dataloader):
+                break
+            def adjust_batch(batch, size):
+                curr_size = batch['input_ids'].shape[1]
+                if curr_size >= size:
+                    adjusted_batch = {'input_ids': batch['input_ids'][:,:size], 'attention_mask': batch['attention_mask'][:,:size]}
+                else:
+                    adjusted_batch = {}
+                    for k in batch.keys():
+                        last_colm = batch[k][:,-1]
+                        expanded = last_colm.tile((size-curr_size,1)).T
+                        adjusted_batch[k] = torch.concat([batch[k], expanded],1)
+                assert adjusted_batch['input_ids'].shape[1] == size
+                assert adjusted_batch['attention_mask'].shape[1] == size
+                return adjusted_batch
+            for _ in range(args.warmup):
+                for sz in range(min_prompt_len, max_sentence_len+1, args.bucket_size):
+                    print('Compiling for size', sz)
+                    adjusted_size_batch = adjust_batch(batch, sz)
+                    generate_dataset(adjusted_size_batch)
+        torch_hpu.synchronize()
+        compilation_duration = time.perf_counter() - t0
+        HabanaProfile.enable()
+            
 
         total_new_tokens_generated = 0
         duration = 0
