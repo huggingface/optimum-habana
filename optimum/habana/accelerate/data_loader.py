@@ -150,6 +150,17 @@ def gaudi_prepare_data_loader(
                 split_batches=split_batches,
             )
         else:
+            # New batch sampler for the current process.
+            sampler_is_batch_sampler = isinstance(dataloader.sampler, BatchSampler)
+            if sampler_is_batch_sampler:
+                sampler = dataloader.sampler.sampler
+            else:
+                sampler = dataloader.batch_sampler.sampler
+            if hasattr(sampler, "generator"):
+                if sampler.generator is None:
+                    sampler.generator = torch.Generator()
+                synchronized_generator = sampler.generator
+
             batch_sampler = dataloader.sampler if sampler_is_batch_sampler else dataloader.batch_sampler
             new_batch_sampler = BatchSamplerShard(
                 batch_sampler,
