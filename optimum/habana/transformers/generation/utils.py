@@ -81,8 +81,8 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 
 logger = logging.get_logger(__name__)
 
-
-def incrementor(bucket_size, prompt_len):
+# TODO sarkar delete this one
+def incrementor1(bucket_size, prompt_len):
     assert bucket_size > 0
     passnum = -1
     while True:
@@ -104,11 +104,88 @@ def incrementor(bucket_size, prompt_len):
             "need_expansion": need_expansion,
         }
 
+def incrementor(bucket_size, bucket_input, prompt_len):
+    assert bucket_size > 0
+    passnum = -1
+    inp_processing_done = False
+    inp_processing_ongoing = True
+    # 3 cases: inp_processing_done=F, inp_processing_ongoing=T: when input is being processed. all tokens are from inp
+    # inp_processing_done=T, inp_processing_ongoing=T: Inp processing will finish in this step
+    # inp_processing_done=T, inp_processing_ongoing=F: inp processing done
+    while True:
+        passnum+=1
+        if passnum == 0:
+            prompt_done = 0
+            token_idx = bucket_size - max(bucket_size-(prompt_len-prompt_done),0) if bucket_input else prompt_len
+            allocated_space = bucket_size if bucket_input else int(math.ceil(prompt_len / bucket_size) * bucket_size)
+            prompt_done = token_idx
+            need_expansion = not (prompt_len == allocated_space)
+            #if token_idx >= prompt_len:
+            #    inp_processing_done = True
+            start = 0
+            inp_processing_ongoing = True
+        else:
+            #inp_processing_done = token_idx >= prompt_len
+            if inp_processing_done:
+                assert prompt_done == prompt_len, f'{prompt_done} != {prompt_len}'
+                start = token_idx
+                token_idx += 1
+            else:
+                assert bucket_input, "If not bucket_input, prompt should have been processed in first pass itself"
+                input_prompt_being_processed_this_pass = bucket_size - max(bucket_size-(prompt_len-prompt_done),0)
+                prompt_done += input_prompt_being_processed_this_pass
+                start = token_idx
+                token_idx += input_prompt_being_processed_this_pass
+            if token_idx >= allocated_space:
+                assert (allocated_space - token_idx) <= bucket_size
+                allocated_space += bucket_size
+                need_expansion = True
+            else:
+                need_expansion = False
+
+            if bucket_input:
+                inp_processing_ongoing = token_idx <= prompt_len
+            else:
+                inp_processing_ongoing = False
+        if token_idx >= prompt_len:
+            inp_processing_done = True
+        # inp_processing_done: prefill is gonna be done in this pass or has already been done
+        assert inp_processing_done or inp_processing_ongoing
+        yield {'allocated_space':allocated_space,'passnum':passnum,'start':start,'token_idx':token_idx,'need_expansion':need_expansion, 'inp_processing_done': inp_processing_done, 'inp_processing_ongoing': inp_processing_ongoing}
+
+
+def join_kv_cache(collect_inp_kvcache, allocated_space, bucket_size, device):
+    dim0 = len(collect_inp_kvcache[0])
+    dim1 = len(collect_inp_kvcache[0][0])
+    shp = list(collect_inp_kvcache[0][0][0].shape)
+    shp[2] = allocated_space
+    new_kv = [None for i in range(dim0)]
+    for i in range(dim0):
+        tmp_lst = [None for j in range(dim1)]
+        for j in range(dim1):
+            tmp = torch.zeros(shp, device=device, dtype=collect_inp_kvcache[0][0][0].dtype)
+            copy_idx = torch.arange(0, bucket_size, device=device)
+            for inp_chunk_id in range(len(collect_inp_kvcache)):
+                kvcache_piece = collect_inp_kvcache[inp_chunk_id][i][j]
+                tmp.index_copy_(2, copy_idx[:kvcache_piece.shape[2]], kvcache_piece)
+                if inp_chunk_id < len(collect_inp_kvcache)-1:
+                    assert kvcache_piece.shape[2] == bucket_size
+                else:
+                    assert kvcache_piece.shape[2] <= bucket_size
+                copy_idx.add_(kvcache_piece.shape[2])
+                #tmp_lst[j] = torch.nn.functional.pad(model_kwargs['past_key_values'][i][j], (0, 0, 0, pad_amount), value=0)
+            tmp_lst[j] = tmp#.to('cpu') # TODO remove to cpu
+        new_kv[i] = tuple(tmp_lst)
+    return tuple(new_kv)
+
 
 class StaticMaxLengthCriteria(StoppingCriteria):
-    def __init__(self, max_steps: int):
+    # Set init_val = 1 - num_steps_to_process_input
+    # in normal cases, its 0, because we prefill in 1 step
+    # if we have bucket_input, we need multiple steps to prefill
+    def __init__(self, max_steps: int, init_value: int = 0):
         self.max_steps = max_steps
-        self.cur_step = 0
+        self.cur_step = init_value
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
         self.cur_step += 1
@@ -323,52 +400,74 @@ class GaudiGenerationMixin(GenerationMixin):
         return criteria
 
     @torch.no_grad()
-    def update_model_kwargs_for_bucketing(self, params, input_ids, model_kwargs, pad_token_id, bucket_size):
+    def update_model_kwargs_for_bucketing(self, params, input_ids, model_kwargs, pad_token_id, bucket_size, bucket_input, orig_attention_mask):
         if params["need_expansion"]:
-            # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
-            pad_amount = params["allocated_space"] - input_ids.shape[-1]
-            input_ids = torch.nn.functional.pad(input_ids, (0, pad_amount), value=pad_token_id)
-            if model_kwargs["attention_mask"] is not None:
-                model_kwargs["attention_mask"] = torch.nn.functional.pad(
-                    model_kwargs["attention_mask"], (0, pad_amount), value=0
-                )
+            if bucket_input and params['inp_processing_ongoing']:
+                if model_kwargs["attention_mask"] is not None:
+                    model_kwargs["attention_mask"] = torch.index_select(orig_attention_mask, 1, torch.arange(0, params['token_idx'], device=self.device))
+                    #torch.index_select(orig_attention_mask, 1, torch.arange(0, params['token_idx'], device=self.device))
+                    # if in last block of prefill, pad if needed
+                    if params['inp_processing_done'] and params['inp_processing_ongoing']:
+                        pad = bucket_size - model_kwargs["attention_mask"].shape[1] % bucket_size
+                        model_kwargs["attention_mask"] = torch.nn.functional.pad(model_kwargs["attention_mask"], (0, pad), value=0)
+                        input_ids = torch.nn.functional.pad(input_ids, (0, pad), value=pad_token_id)
+                else:
+                    assert False, 'Untested path'
+                pad_amount = params['token_idx'] - params['start'] # for kv cache increase in pass 1 onwards (after pass 0)
             else:
-                assert False, "Not tested for cases where attn_mask isnt passed"
+                # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
+                pad_amount = params["allocated_space"] - input_ids.shape[-1]
+                input_ids = torch.nn.functional.pad(input_ids, (0, pad_amount), value=pad_token_id)
+                if model_kwargs["attention_mask"] is not None:
+                    model_kwargs["attention_mask"] = torch.nn.functional.pad(
+                        model_kwargs["attention_mask"], (0, pad_amount), value=0
+                    )
+                else:
+                    assert False, "Not tested for cases where attn_mask isnt passed"
 
-            if "past_key_values" in model_kwargs:
+                if "past_key_values" in model_kwargs:
 
-                def create_pad_arg(pad_amount, i, j):
-                    if model_kwargs["past_key_values"][0][0].dim() == 3:
-                        assert self.config.model_type == "bloom"
-                        if j == 0:
-                            return (0, pad_amount)
-                        elif j == 1:
-                            return (0, 0, 0, pad_amount)
+                    def create_pad_arg(pad_amount, i, j):
+                        if model_kwargs["past_key_values"][0][0].dim() == 3:
+                            assert self.config.model_type == "bloom"
+                            if j == 0:
+                                return (0, pad_amount)
+                            elif j == 1:
+                                return (0, 0, 0, pad_amount)
+                            else:
+                                assert False
+                        elif model_kwargs["past_key_values"][0][0].dim() == 4:
+                            return (0, 0, 0, pad_amount)  # llama, falcon
                         else:
-                            assert False
-                    elif model_kwargs["past_key_values"][0][0].dim() == 4:
-                        return (0, 0, 0, pad_amount)  # llama, falcon
-                    else:
-                        assert False, "Unknown case, please handle, or dont use bucketing"
+                            assert False, "Unknown case, please handle, or dont use bucketing"
 
-                new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
-                for i in range(len(model_kwargs["past_key_values"])):
-                    tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
-                    for j in range(len(model_kwargs["past_key_values"][i])):
-                        pad_tuple = create_pad_arg(pad_amount, i, j)
-                        # Different models might have different shapes of kv-cache
-                        # create_pad_arg handles them on a per-model basis
-                        # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
-                        # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
-                        assert model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
-                        tmp_lst[j] = torch.nn.functional.pad(
-                            model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
-                        )
-                    new_kv[i] = tuple(tmp_lst)
-                model_kwargs["past_key_values"] = tuple(new_kv)
+                    new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
+                        for j in range(len(model_kwargs["past_key_values"][i])):
+                            pad_tuple = create_pad_arg(pad_amount, i, j)
+                            # Different models might have different shapes of kv-cache
+                            # create_pad_arg handles them on a per-model basis
+                            # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
+                            # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
+                            assert model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
+                            tmp_lst[j] = torch.nn.functional.pad(
+                                model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
+                            )
+                        new_kv[i] = tuple(tmp_lst)
+                    model_kwargs["past_key_values"] = tuple(new_kv)
 
-        if "token_idx" not in model_kwargs:
-            model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
+        if bucket_input:
+            if not params['inp_processing_ongoing']:
+                model_kwargs['token_idx'] = torch.tensor(params['token_idx'], device=self.device)
+            else:
+                model_kwargs['token_idx'] = torch.arange(params['start']+1, params['token_idx']+1, device=self.device)
+                model_kwargs['position_ids'] = torch.arange(params['start'], params['token_idx'], device=self.device)
+                model_kwargs['past_key_values'] = 1 # setting it to not None value so that it takes a certain path in llama's prepare_inputs_for_generation
+                # or we could just clip the output of prepare_inputs_for_generation instead of setting to 1 to force down non-None path
+        else:
+            if "token_idx" not in model_kwargs:
+                model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
         return input_ids, model_kwargs
 
     @torch.no_grad()
@@ -568,6 +667,7 @@ class GaudiGenerationMixin(GenerationMixin):
             or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
+        model_kwargs["bucket_input"] = generation_config.bucket_input if generation_config.static_shapes else False
         if generation_config.reuse_cache:
             assert generation_config.bucket_size <= 0, "reuse_cache and bucketing flags set together"
 
@@ -587,6 +687,8 @@ class GaudiGenerationMixin(GenerationMixin):
                         model_kwargs["attention_mask"] = torch.nn.functional.pad(
                             model_kwargs["attention_mask"], (0, generation_config.max_new_tokens), value=0
                         )
+                else:
+                    model_kwargs["max_new_tokens"] = generation_config.max_new_tokens
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
                 model_kwargs["token_idx"] = torch.tensor(1, device=inputs_tensor.device)
@@ -678,6 +780,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.bucket_size > 0:
             assert generation_config.static_shapes, "bucket_size > 0 can be set only when static_shapes is set"
         # if generation_config.bucket_size <= 0, padding is handled by the generating fn (like greedy_search)
+        if generation_config.bucket_input:
+            assert generation_config.bucket_size > 0, \
+                f'If bucket_input is set, expect generation_config.bucket_size > 0, but it is {generation_config.bucket_size}'
         if generation_config.static_shapes and generation_config.bucket_size > 0:
             assert (
                 generation_mode == GenerationMode.GREEDY_SEARCH or generation_mode == GenerationMode.BEAM_SEARCH
@@ -727,9 +832,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
         if generation_config.static_shapes and generation_config.bucket_size > 0:
+            num_steps_to_prefill = 1 if not generation_config.bucket_input or generation_config.bucket_size < 0 else int(math.ceil(generation_config.max_length/generation_config.bucket_size))
             stopping_criteria = StoppingCriteriaList(
                 [
-                    StaticMaxLengthCriteria(generation_config.max_new_tokens)
+                    StaticMaxLengthCriteria(generation_config.max_new_tokens, init_value=1-num_steps_to_prefill)
                     if type(crit) == MaxLengthCriteria
                     else crit
                     for crit in stopping_criteria
@@ -1325,12 +1431,20 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         bucket_size = model_kwargs["bucket_size"]
+        bucket_input = model_kwargs["bucket_input"]
 
         prompt_len = input_ids.shape[-1]
         if bucket_size >= 0:
-            inc = iter(incrementor(bucket_size, prompt_len))
+            inc = iter(incrementor(bucket_size, bucket_input, prompt_len))
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
+
+        if bucket_input:
+            orig_attention_mask = model_kwargs["attention_mask"]
+            collect_inp_kvcache = []
+            collection_of_prompt_kvcache_done = False
+        else:
+            orig_attention_mask = None
 
         while True:
             if lazy_mode:
@@ -1350,13 +1464,28 @@ class GaudiGenerationMixin(GenerationMixin):
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
                 input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
-                    params, input_ids, model_kwargs, pad_token_id, bucket_size
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size, bucket_input, orig_attention_mask
                 )
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
+            if bucket_input and params['inp_processing_ongoing']:# and params['passnum'] == 0:
+                assert 'past_key_values' in model_inputs
+                x = model_inputs.pop('past_key_values', 1)
+            else:
+                x = 1
+
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
+
+            if bucket_input:
+                model_inputs['full_size'] = prompt_len + model_kwargs['max_new_tokens']
+            else:
+                model_inputs['full_size'] = -1
+
+            if x != 1:
+                import pdb; pdb.set_trace()
+                model_inputs['past_key_values'] = join_kv_cache(collect_inp_kvcache, params['allocated_space'], bucket_size, self.device)
 
             # forward pass to get next token
             outputs = self(
@@ -1415,20 +1544,35 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
-            if token_idx is not None:
-                input_ids.index_copy_(
-                    1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
+            if not bucket_input or not params['inp_processing_ongoing']:
+                if token_idx is not None:
+                    input_ids.index_copy_(
+                        1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
+                    )
+                else:
+                    input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+                if streamer is not None:
+                    streamer.put(next_tokens.cpu())
+                model_kwargs = self._update_model_kwargs_for_generation(
+                    outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
                 )
             else:
-                input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
-            if streamer is not None:
-                streamer.put(next_tokens.cpu())
-            model_kwargs = self._update_model_kwargs_for_generation(
-                outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
-            )
+                kvcacheval = self._extract_past_from_model_output(outputs, standardize_cache_format=False)
+                collect_inp_kvcache += [kvcacheval]
+                if params['allocated_space'] > prompt_len:
+                    if not collection_of_prompt_kvcache_done:
+                        collection_of_prompt_kvcache_done = True
+                        model_kwargs['past_key_values'] = join_kv_cache(collect_inp_kvcache, params['allocated_space'], bucket_size, self.device)# tuple(new_kv)
+                        model_kwargs.pop('position_ids') # inp processing is done, we dont need it any longer in model kwargs, it will be computed in prepare_inputs_for_generation
+                        if lazy_mode:
+                            self.htcore_generation.mark_step()
+                else:
+                    model_kwargs.pop('past_key_values')
 
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:
+                if bucket_input:
+                    assert False, 'untested path'
                 unfinished_sequences = unfinished_sequences.mul(
                     next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
                 )
@@ -1438,8 +1582,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # stop if we exceed the maximum length
             if stopping_criteria(input_ids, scores):
+                if bucket_input:
+                    assert params['inp_processing_done'], 'We shouldnt be finishing before prefill stage is done'
                 this_peer_finished = True
-
             hb_profer.step()
 
             if this_peer_finished and not synced_gpus:
@@ -1988,9 +2133,11 @@ class GaudiGenerationMixin(GenerationMixin):
         this_peer_finished = False  # used by synced_gpus only
 
         bucket_size = model_kwargs["bucket_size"]
+        bucket_input = model_kwargs["bucket_input"]
+        assert not bucket_input, "bucket_input + beam search are not tested yet"
         prompt_len = input_ids.shape[-1]
         if bucket_size >= 0:
-            inc = iter(incrementor(bucket_size, prompt_len))
+            inc = iter(incrementor(bucket_size, bucket_input, prompt_len))
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
         while True:
@@ -2008,7 +2155,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
                 input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
-                    params, input_ids, model_kwargs, pad_token_id, bucket_size
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size, bucket_input, None
                 )
 
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)

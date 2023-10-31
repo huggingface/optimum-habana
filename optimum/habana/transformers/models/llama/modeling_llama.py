@@ -124,6 +124,7 @@ class GaudiLlamaAttention(LlamaAttention):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        full_size: int = -1,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -171,7 +172,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        cos, sin = self.rotary_emb(value_states, seq_len=full_size)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None or reuse_cache:
@@ -262,6 +263,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        full_size: int = -1,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -285,6 +287,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
+            full_size=full_size,
         )
         hidden_states = residual + hidden_states
 
@@ -326,6 +329,7 @@ class GaudiLlamaModel(LlamaModel):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        full_size: int = -1,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -378,7 +382,7 @@ class GaudiLlamaModel(LlamaModel):
             attention_mask = torch.ones(
                 (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
             )
-        attention_mask = self._prepare_decoder_attention_mask(
+        attention_mask = _prepare_decoder_attention_mask(
             attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
         )
 
@@ -428,6 +432,7 @@ class GaudiLlamaModel(LlamaModel):
                     token_idx=token_idx,
                     attn_softmax_bf16=attn_softmax_bf16,
                     reuse_cache=reuse_cache,
+                    full_size=full_size,
                 )
 
             hidden_states = layer_outputs[0]
@@ -489,6 +494,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        full_size: int = -1,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -509,6 +515,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
+            full_size=full_size,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -596,6 +603,63 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         )
         return model_inputs
 
+# Copied from transformers.models.bart.modeling_bart._make_causal_mask
+def _make_causal_mask(
+    input_ids_shape: torch.Size, dtype: torch.dtype, device: torch.device, past_key_values_length: int = 0
+    ):
+        """
+        Make causal mask used for bi-directional self-attention.
+        """
+        bsz, tgt_len = input_ids_shape
+        mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min, device=device)
+        mask_cond = torch.arange(mask.size(-1), device=device)
+        mask.masked_fill_(mask_cond < (mask_cond + 1).view(mask.size(-1), 1), 0)
+        mask = mask.to(dtype)
+
+        if past_key_values_length > 0:
+            mask = torch.cat([torch.zeros(tgt_len, past_key_values_length, dtype=dtype, device=device), mask], dim=-1)
+        return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len + past_key_values_length)
+
+# Copied from transformers.models.bart.modeling_bart._expand_mask
+def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
+    """
+    Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
+    """
+    bsz, src_len = mask.size()
+    tgt_len = tgt_len if tgt_len is not None else src_len
+
+    expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(dtype)
+
+    inverted_mask = 1.0 - expanded_mask
+
+    return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
+
+
+# Copied from transformers.models.bart.modeling_bart.BartDecoder._prepare_decoder_attention_mask
+def _prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds, past_key_values_length):
+    # create causal mask
+    # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+    combined_attention_mask = None
+    if input_shape[-1] > 1:
+        combined_attention_mask = _make_causal_mask(
+            input_shape,
+            inputs_embeds.dtype,
+            device=inputs_embeds.device,
+            past_key_values_length=past_key_values_length,
+        )
+
+    if attention_mask is not None:
+        # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+        expanded_attn_mask = _expand_mask(attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]).to(
+            inputs_embeds.device
+        )
+        #import pdb; pdb.set_trace()
+        combined_attention_mask = (
+            expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask[:,:,:,-combined_attention_mask.shape[-1]:] + combined_attention_mask
+        )
+
+
+    return combined_attention_mask
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:

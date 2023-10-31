@@ -196,6 +196,11 @@ def main():
             we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
     )
     parser.add_argument(
+        "--bucket_input",
+        action="store_true",
+        help="Bucket input as well. Needs --bucket_size to be set to positive number",
+    )
+    parser.add_argument(
         "--dataset_max_samples",
         default=-1,
         type=int,
@@ -381,12 +386,16 @@ def main():
         model = PeftModel.from_pretrained(model, args.peft_model)
         model = model.to(model_dtype)
 
+    # TODO assert model=llama. untested for other models
+    if args.bucket_input:
+        assert args.bucket_size > 0, f"bucket_input  is set, expected bucket_size>0 but got {bucket_size}"
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)
     generation_config.max_new_tokens = args.max_new_tokens
     generation_config.use_cache = args.use_kv_cache
     generation_config.static_shapes = is_optimized
     generation_config.bucket_size = args.bucket_size if is_optimized else -1
+    generation_config.bucket_input = args.bucket_input if is_optimized else False
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
     generation_config.bad_words_ids = bad_words_ids

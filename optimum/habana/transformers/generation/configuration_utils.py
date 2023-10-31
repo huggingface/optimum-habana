@@ -38,3 +38,5 @@ class GaudiGenerationConfig(GenerationConfig):
         self.limit_hpu_graphs = kwargs.get("limit_hpu_graphs", None)
         self.reuse_cache = kwargs.get("reuse_cache", None)
         self.bucket_size = kwargs.get("bucket_size", -1)
+        self.bucket_input = kwargs.get("bucket_input", False)
+
