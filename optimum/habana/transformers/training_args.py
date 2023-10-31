@@ -96,7 +96,7 @@ class GaudiTrainingArguments(TrainingArguments):
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*, defaults to None):
-            Maximum number of hpu graphs to use.
+            Maximum hpu graphs to be cached. Reduce to save device memory.
         distribution_strategy (`str`, *optional*, defaults to `ddp`):
             Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
