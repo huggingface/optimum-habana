@@ -11,6 +11,14 @@ from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+from optimum.habana.checkpoint_utils import (
+    get_ds_injection_policy,
+    get_repo_root,
+    model_is_optimized,
+    model_on_meta,
+    write_checkpoints_json,
+)
+
 from text_generation_server.models import Model
 from text_generation_server.models.types import (
     Batch,
@@ -558,15 +566,15 @@ class CausalLM(Model):
             deepspeed.init_distributed(dist_backend="hccl")
             logger.info("DeepSpeed is enabled. world_size {} rank {} local_rank {}".format(world_size, rank, local_rank))
             config = AutoConfig.from_pretrained(model_id, **model_kwargs)
-            is_optimized = True #model_is_optimized(config)
-            load_to_meta = False #model_on_meta(config)
+            is_optimized = model_is_optimized(config)
+            load_to_meta = model_on_meta(config)
 
-            if False: #True: #load_to_meta:
+            if load_to_meta:
                 # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
                 with deepspeed.OnDevice(dtype=dtype, device="meta"):
                     model = AutoModelForCausalLM.from_config(config, torch_dtype=dtype)
             else:
-                #get_repo_root(model_id, local_rank=os.getenv('LOCAL_RANK'))
+                get_repo_root(model_id, local_rank=os.getenv('LOCAL_RANK'))
                 # TODO: revisit placement on CPU when auto-injection is possible
                 with deepspeed.OnDevice(dtype=dtype, device="cpu"):
                     model = AutoModelForCausalLM.from_pretrained(
@@ -582,13 +590,14 @@ class CausalLM(Model):
             if load_to_meta:
                 # model loaded to meta is managed differently
                 checkpoints_json = "checkpoints.json"
-                #write_checkpoints_json(model_id, local_rank, checkpoints_json )
+                write_checkpoints_json(model_id, local_rank, checkpoints_json )
 
             # Make sure all devices/nodes have access to the model checkpoints
             torch.distributed.barrier()
 
-            #if load_to_meta:
-                #ds_inference_kwargs["checkpoint"] = checkpoints_json
+            ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
+            if load_to_meta:
+                ds_inference_kwargs["checkpoint"] = checkpoints_json
             model = deepspeed.init_inference(model, **ds_inference_kwargs)
             model = model.module
         else:

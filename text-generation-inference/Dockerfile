@@ -72,8 +72,9 @@ COPY server/pyproject.toml server/pyproject.toml
 RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
-    pip install . --no-cache-dir \
-    pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0
+    pip install . --no-cache-dir && \
+    pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0 && \
+    pip install git+https://github.com/huggingface/optimum-habana.git
 
 #ADD . /tmp/
 #RUN cd /tmp/DeepSpeed && \
