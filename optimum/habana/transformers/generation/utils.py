@@ -459,6 +459,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if bucket_input:
             if not params['inp_processing_ongoing']:
+                print('HERE token_idx')
                 model_kwargs['token_idx'] = torch.tensor(params['token_idx'], device=self.device)
             else:
                 model_kwargs['token_idx'] = torch.arange(params['start']+1, params['token_idx']+1, device=self.device)
@@ -1496,6 +1497,10 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # forward pass to get next token
             #import pdb; pdb.set_trace()
+            if bucket_input:
+                model_inputs['bucket_size'] = bucket_size
+
+            print(model_kwargs["attention_mask"].shape, model_inputs["attention_mask"].shape, model_inputs["position_ids"], cnt)
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1564,6 +1569,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs = self._update_model_kwargs_for_generation(
                     outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
                 )
+                import pdb; pdb.set_trace()
+                print()
             else:
                 if False: # TODO remove
                     kvcacheval = self._extract_past_from_model_output(outputs, standardize_cache_format=False)

@@ -34,11 +34,21 @@ except ImportError:
     FusedRMSNorm = None
 
 
-def update(prev, cur, dim, idx):
+def update(prev, cur, dim, idx, bucket_size):
     # we can use this condition to detect bucket_inp
     bucket_inp = (cur.shape[2] > 1) and len(idx.shape) == 1
     if bucket_inp:
-        return torch.cat((prev, cur), 2)
+        x = torch.cat((prev, cur), 2)
+        if x.shape[2]%bucket_size != 0:
+            #desired_shape = list(x.shape[2])
+            #desired_shape[2] += bucket_size - x.shape[2]%bucket_size
+            #padded = torch.zeros(desired_shape, device=prev.device)
+            #padded.index_copy_(2, ??, x)
+            #x = padded
+            x = torch.nn.functional.pad(x, (0, 0, 0, bucket_size - x.shape[2]%bucket_size), value=0)
+            # TODO: is pad or copy better for staticness?
+            # this can happen in the last step of prefill with bucket_input
+        return x
 
     orig_cur = cur
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
@@ -130,6 +140,7 @@ class GaudiLlamaAttention(LlamaAttention):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         full_size: int = -1,
+        bucket_size: int = -1
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -140,7 +151,6 @@ class GaudiLlamaAttention(LlamaAttention):
         - add new args reuse_cache
         """
         bsz, q_len, _ = hidden_states.size()
-
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
             query_slices = self.q_proj.weight.split(
@@ -169,15 +179,25 @@ class GaudiLlamaAttention(LlamaAttention):
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
+        #print(kv_seq_len, 'x0')
+        bucket_inp = (key_states.shape[2] > 1) and len(token_idx.shape) == 1
+
         if past_key_value is not None:
-            if token_idx is None:
+            if token_idx is None or bucket_inp:
                 kv_seq_len += past_key_value[0].shape[-2]
+                if bucket_inp and (kv_seq_len%bucket_size != 0):
+                    # could happen in last step of prefill with bucket_input
+                    kv_seq_len += (bucket_size - kv_seq_len%bucket_size)
+                #print(kv_seq_len, 'x1')
             else:
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][-2]
+                    #print(kv_seq_len, 'x2')
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
+                    #print(kv_seq_len, 'x3')
         cos, sin = self.rotary_emb(value_states, seq_len=full_size)
+        #print('xx1.5', query_states.shape, key_states.shape, cos.shape, sin.shape, position_ids)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None or reuse_cache:
@@ -189,8 +209,8 @@ class GaudiLlamaAttention(LlamaAttention):
                 past_key = past_key_value[0]
                 past_value = past_key_value[1]
 
-            key_states = update(past_key, key_states, 2, token_idx)
-            value_states = update(past_value, value_states, 2, token_idx)
+            key_states = update(past_key, key_states, 2, token_idx, bucket_size)
+            value_states = update(past_value, value_states, 2, token_idx, bucket_size)
 
         if use_cache:
             if reuse_cache:
@@ -203,9 +223,7 @@ class GaudiLlamaAttention(LlamaAttention):
         # repeat k/v heads if n_kv_heads < n_heads
         key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
         value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
-
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
             raise ValueError(
                 f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
@@ -226,7 +244,6 @@ class GaudiLlamaAttention(LlamaAttention):
             attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
                 query_states.dtype
             )
-
         attn_output = torch.matmul(attn_weights, value_states)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -270,6 +287,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         full_size: int = -1,
+        bucket_size: int = -1
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -294,6 +312,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
             full_size=full_size,
+            bucket_size=bucket_size
         )
         hidden_states = residual + hidden_states
 
@@ -336,6 +355,7 @@ class GaudiLlamaModel(LlamaModel):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         full_size: int = -1,
+        bucket_size:int = -1
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -389,8 +409,9 @@ class GaudiLlamaModel(LlamaModel):
                 (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
             )
         attention_mask = _prepare_decoder_attention_mask(
-            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length, bucket_size
         )
+        print(attention_mask.shape, '.....')
 
         hidden_states = inputs_embeds
 
@@ -439,6 +460,7 @@ class GaudiLlamaModel(LlamaModel):
                     attn_softmax_bf16=attn_softmax_bf16,
                     reuse_cache=reuse_cache,
                     full_size=full_size,
+                    bucket_size=bucket_size
                 )
 
             hidden_states = layer_outputs[0]
@@ -501,6 +523,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         full_size: int = -1,
+        bucket_size: int = -1
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -522,6 +545,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
             full_size=full_size,
+            bucket_size=bucket_size
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -642,7 +666,7 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
 
 
 # Copied from transformers.models.bart.modeling_bart.BartDecoder._prepare_decoder_attention_mask
-def _prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds, past_key_values_length):
+def _prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds, past_key_values_length, bucket_size):
     # create causal mask
     # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
     combined_attention_mask = None
@@ -663,7 +687,11 @@ def _prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds, 
             expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask[:,:,:,-combined_attention_mask.shape[-1]:] + combined_attention_mask
         )
 
-
+    if combined_attention_mask.shape[-1]%bucket_size != 0:
+        print('PADDING ATTENTION MASK')
+        #import pdb; pdb.set_trace()
+        pad_amount = bucket_size - combined_attention_mask.shape[2]%bucket_size
+        combined_attention_mask = torch.nn.functional.pad(combined_attention_mask, (0, pad_amount), value=0)
     return combined_attention_mask
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
