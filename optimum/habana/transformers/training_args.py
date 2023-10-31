@@ -152,7 +152,7 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
-    disable_tensor_cache_hpu_graphs: Optional[bool] field(
+    disable_tensor_cache_hpu_graphs: Optional[bool] = field(
         default=False,
         metadata={
             "help": "Whether to use a tensor cache for hpu graphs."
