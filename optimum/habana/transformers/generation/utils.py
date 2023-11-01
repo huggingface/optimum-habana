@@ -667,10 +667,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
-                if not is_greedy_or_beam_and_bucket:
-                    unwrap_deepspeed_model(self).allocate_kv_cache(
-                        bs * generation_config.num_beams, input_ids.shape[-1] if is_greedy_and_bucket else calculated_max_length
-                    )
+                unwrap_deepspeed_model(self).allocate_kv_cache(
+                    bs * generation_config.num_beams, input_ids.shape[-1] if is_greedy_or_beam_and_bucket else calculated_max_length
+                )
 
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)

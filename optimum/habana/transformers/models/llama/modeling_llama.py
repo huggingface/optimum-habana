@@ -38,13 +38,12 @@ except ImportError:
 def update(prev, cur, dim, idx, bucket_size=-1, need_expansion=False):
     if need_expansion and cur.shape[2] == 1:
         # we have cur.shape[2] > 1 for prefill (first) step
-        # no need ot expand for first/prefill
+        # no need to expand for first/prefill
         # because we can just start with cur as the kv cache
         assert bucket_size > 0
         pad_amount = bucket_size - prev.shape[2] % bucket_size
         prev = torch.nn.functional.pad(prev, (0, 0, 0, pad_amount), value=0)
     orig_cur = cur
-
     prefill = cur.shape[2] > 1 and (
         cur.shape[2] <= (prev.shape[2] + (0 if bucket_size <= 0 else (bucket_size - prev.shape[2] % bucket_size)))
     )
