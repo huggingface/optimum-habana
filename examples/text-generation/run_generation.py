@@ -631,7 +631,7 @@ def main():
             mn = int(mn)
             mx = int(mx)
             import math
-            rounder = lambda x : int(math.ceil(x//args.bucket_size) * args.bucket_size)
+            rounder = lambda x : int(math.ceil(x/args.bucket_size) * args.bucket_size)
             min_prompt_len = rounder(mn)
             max_sentence_len = rounder(mx + args.max_new_tokens)
             # we need to compile models for length:
