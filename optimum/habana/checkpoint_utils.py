@@ -61,15 +61,14 @@ def get_checkpoint_files(model_name_or_path, local_rank, token=None):
     return file_list
 
 
-def write_checkpoints_json(model_name_or_path, local_rank, checkpoints_json, token=None):
+def write_checkpoints_json(model_name_or_path, local_rank, f, token=None):
     """
     Dumps metadata into a JSON file for DeepSpeed-inference.
     """
-    checkpoint_files = get_checkpoint_files(model_name_or_path, local_rank, token=token)
-    if local_rank == 0:
-        data = {"type": "ds_model", "checkpoints": checkpoint_files, "version": 1.0}
-        with open(checkpoints_json, "w") as fp:
-            json.dump(data, fp)
+    checkpoint_files = get_checkpoint_files(model_name_or_path, local_rank, token)
+    data = {"type": "ds_model", "checkpoints": checkpoint_files, "version": 1.0}
+    json.dump(data, f)
+    f.flush()
 
 
 def model_on_meta(config):
