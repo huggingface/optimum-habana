@@ -26,7 +26,7 @@ tokenizers = "^0.13.3"
 huggingface-hub = "^0.16.4"
 peft = "^0.4.0"
 transformers = "^4.32.1"
-optimum-habana = "1.7.2"
+optimum-habana = "*"
 optimum = "*"
 
 [tool.poetry.group.dev.dependencies]
