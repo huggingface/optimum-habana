@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 # Needs nodejs >= v14.x but Ubuntu 22 repos are stuck to v12.x
 RUN apt-get remove -y libnode-dev &&\
     apt-get autoremove -y &&\
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - &&\
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - &&\
     apt-get install -y nodejs
 RUN npm install npm@latest -g && \
     npm install n -g && \
