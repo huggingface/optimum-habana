@@ -137,6 +137,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_MAPPING,
         MODELS_TO_TEST_FOR_IMAGE_TEXT,
     ),
+    "run_bridgetower": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        ["bridgetower"],
+    ),
 }
 
 
@@ -154,6 +159,7 @@ class ExampleTestMeta(type):
             "gpt2-xl",
             "facebook/wav2vec2-base",
             "facebook/wav2vec2-large-lv60",
+            "BridgeTower/bridgetower-large-itm-mlm-itc",
         ]
 
         if model_name not in models_with_specific_rules and not deepspeed:
@@ -168,6 +174,8 @@ class ExampleTestMeta(type):
         elif "wav2vec2-base" in model_name and example_name == "run_audio_classification":
             return True
         elif "wav2vec2-large" in model_name and example_name == "run_speech_recognition_ctc":
+            return True
+        elif "bridgetower" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
             return True
 
         return False
@@ -438,8 +446,8 @@ class ExampleTesterBase(TestCase):
             if metric_name in baseline and metric_name in results:
                 metrics_to_assess.append(metric_name)
 
-        # There is no accuracy metric for `run_clip.py`
-        min_number_metrics = 2 if self.EXAMPLE_NAME == "run_clip" else 3
+        # There is no accuracy metric for `run_clip.py` and `run_bridgetower.py``
+        min_number_metrics = 2 if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower"] else 3
 
         # Check that at least 3 metrics are assessed:
         # training time + throughput + accuracy metric (F1, accuracy, perplexity,...)
@@ -568,3 +576,9 @@ class MultiCardCausalLanguageModelingLORAExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"
 ):
     pass
+
+
+class MultiCardBridgetowerExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_bridgetower", multi_card=True
+):
+    TASK_NAME = "jmhessel/newyorker_caption_contest"

@@ -47,7 +47,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "swin": [("microsoft/swin-base-patch4-window7-224-in22k", "Habana/swin")],
     "clip": [("./clip-roberta", "Habana/clip")],
-    # "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
+    "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -83,4 +83,4 @@ MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION = ["wav2vec2"]
 
 MODELS_TO_TEST_FOR_SPEECH_RECOGNITION = ["wav2vec2"]
 
-MODELS_TO_TEST_FOR_IMAGE_TEXT = ["clip"]  # , "bridgetower"]
+MODELS_TO_TEST_FOR_IMAGE_TEXT = ["clip"]

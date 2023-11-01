@@ -1,23 +1,22 @@
 {
     "gaudi2": {
         "jmhessel/newyorker_caption_contest": {
-            "num_train_epochs": 10,
-            "eval_batch_size": 32,
+            "num_train_epochs": 5,
+            "eval_batch_size": 16,
             "distribution": {
                 "multi_card": {
-                    "learning_rate": 3e-4,
-                    "train_batch_size": 16,
-                    "eval_accuracy": 0.8088,
-                    "train_runtime": 611.0691,
-                    "train_samples_per_second": 392.788,
+                    "learning_rate": 1e-5,
+                    "train_batch_size": 48,
+                    "train_runtime": 293.424,
+                    "train_samples_per_second": 921.069,
                     "extra_arguments": [
-                        "--audio_column_name audio",
-                        "--label_column_name language",
+                        "--dataset_config_name matching",
+                        "--image_column image",
+                        "--caption_column image_description",
                         "--remove_unused_columns False",
-                        "--max_length_seconds 8",
-                        "--attention_mask False",
-                        "--warmup_ratio 0.1",
-                        "--seed 0",
+                        "--mediapipe_dataloader",
+                        "--dataloader_num_workers 2",
+                        "--logging_steps 10",
                         "--use_hpu_graphs_for_inference"
                     ]
                 }

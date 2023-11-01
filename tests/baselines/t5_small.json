@@ -55,12 +55,12 @@
             "eval_batch_size": 4,
             "distribution": {
                 "multi_card": {
-                    "learning_rate": 5e-5,
-                    "train_batch_size": 4,
-                    "eval_rougeLsum": 38.4667,
-                    "train_runtime": 1222.3181,
-                    "train_samples_per_second": 239.759,
-                    "eval_samples_per_second": 19.774,
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 32,
+                    "eval_rougeLsum": 38.4327,
+                    "train_runtime": 201.9517,
+                    "train_samples_per_second": 1522.349,
+                    "eval_samples_per_second": 78.586,
                     "extra_arguments": [
                         "--dataset_config \"3.0.0\"",
                         "--source_prefix \"summarize: \"",
@@ -78,11 +78,11 @@
             "eval_batch_size": 33,
             "distribution": {
                 "multi_card": {
-                    "learning_rate": 2e-4,
-                    "train_batch_size": 16,
-                    "eval_f1": 64.71,
-                    "train_runtime": 260.0505,
-                    "train_samples_per_second": 1130.148,
+                    "learning_rate": 2e-3,
+                    "train_batch_size": 64,
+                    "eval_f1": 66.1802,
+                    "train_runtime": 56.5184,
+                    "train_samples_per_second": 5836.473,
                     "extra_arguments": [
                         "--context_column context",
                         "--question_column question",

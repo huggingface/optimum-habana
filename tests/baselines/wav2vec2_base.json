@@ -33,11 +33,11 @@
             "distribution": {
                 "multi_card": {
                     "learning_rate": 5e-4,
-                    "train_batch_size": 64,
-                    "eval_accuracy": 0.8047,
-                    "train_runtime": 549.2108,
-                    "train_samples_per_second": 462.584,
-                    "eval_samples_per_second": 294.293,
+                    "train_batch_size": 32,
+                    "eval_accuracy": 0.7829483695652174,
+                    "train_runtime": 144.1349,
+                    "train_samples_per_second": 1964.686,
+                    "eval_samples_per_second": 535.281,
                     "extra_arguments": [
                         "--audio_column_name audio",
                         "--label_column_name language",

@@ -33,9 +33,9 @@
             "distribution": {
                 "multi_card": {
                     "learning_rate": 5e-5,
-                    "train_batch_size": 64,
-                    "train_runtime": 313.414,
-                    "train_samples_per_second": 2288.31,
+                    "train_batch_size": 512,
+                    "train_runtime": 107.7326,
+                    "train_samples_per_second": 9125.619,
                     "extra_arguments": [
                         "--data_dir $PWD/",
                         "--dataset_config_name 2017",
@@ -47,7 +47,8 @@
                         "--save_strategy epoch",
                         "--use_hpu_graphs_for_training",
                         "--use_hpu_graphs_for_inference",
-                        "--dataloader_num_workers 16"
+                        "--dataloader_num_workers 16",
+                        "--distribution_strategy fast_ddp"
                     ]
                 }
             }
