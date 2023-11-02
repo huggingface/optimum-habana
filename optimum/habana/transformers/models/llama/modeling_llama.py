@@ -36,9 +36,9 @@ except ImportError:
 
 def update(prev, cur, dim, idx):
     orig_cur = cur
-    if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+    if prev.shape == cur.shape:
         # Initialize
-        prev[:, :, :idx, :].copy_(cur)
+        prev.copy_(cur)
         return orig_cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
@@ -560,10 +560,6 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
                 input_ids = input_ids[:, -1:]
-        elif reuse_cache and token_idx is not None:
-            # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
-            input_ids = input_ids[:, :token_idx]
-            attention_mask = attention_mask[:, :token_idx]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
