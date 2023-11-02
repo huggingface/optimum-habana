@@ -444,7 +444,7 @@ def main():
                 )
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
-
+            print('INP SHAPE', input_tokens['input_ids'].shape)
             # Move inputs to target device(s)
             for t in input_tokens:
                 if torch.is_tensor(input_tokens[t]):

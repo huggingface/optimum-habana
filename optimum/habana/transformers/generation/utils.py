@@ -136,6 +136,7 @@ def incrementor(bucket_size, bucket_input, prompt_len):
                 prompt_done += input_prompt_being_processed_this_pass
                 start = token_idx
                 token_idx += input_prompt_being_processed_this_pass
+            #import pdb; pdb.set_trace()
             if token_idx >= allocated_space:
                 assert (allocated_space - token_idx) <= bucket_size
                 allocated_space += bucket_size
@@ -401,12 +402,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
     @torch.no_grad()
     def update_model_kwargs_for_bucketing(self, params, input_ids, model_kwargs, pad_token_id, bucket_size, bucket_input, orig_attention_mask):
+        print(input_ids)
         if params["need_expansion"]:
+            #import pdb; pdb.set_trace()
             if bucket_input and params['inp_processing_ongoing']:
                 if model_kwargs["attention_mask"] is not None:
                     model_kwargs["attention_mask"] = torch.index_select(orig_attention_mask, 1, torch.arange(0, params['token_idx'], device=self.device))
                     #torch.index_select(orig_attention_mask, 1, torch.arange(0, params['token_idx'], device=self.device))
                     # if in last block of prefill, pad if needed
+                    #import pdb; pdb.set_trace()
                     if params['inp_processing_done'] and params['inp_processing_ongoing']:
                         pad = bucket_size - model_kwargs["attention_mask"].shape[1] % bucket_size
                         model_kwargs["attention_mask"] = torch.nn.functional.pad(model_kwargs["attention_mask"], (0, pad), value=0)
@@ -415,18 +419,20 @@ class GaudiGenerationMixin(GenerationMixin):
                     assert False, 'Untested path'
                 pad_amount = params['token_idx'] - params['start'] # for kv cache increase in pass 1 onwards (after pass 0)
             else:
+                #import pdb; pdb.set_trace()
                 # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
                 pad_amount = params["allocated_space"] - input_ids.shape[-1]
                 input_ids = torch.nn.functional.pad(input_ids, (0, pad_amount), value=pad_token_id)
+                #import pdb; pdb.set_trace()
                 if model_kwargs["attention_mask"] is not None:
                     model_kwargs["attention_mask"] = torch.nn.functional.pad(
                         model_kwargs["attention_mask"], (0, pad_amount), value=0
                     )
                 else:
                     assert False, "Not tested for cases where attn_mask isnt passed"
-
+                #import pdb; pdb.set_trace()
                 if "past_key_values" in model_kwargs:
-
+                    pad_amount = params["allocated_space"] - model_kwargs["past_key_values"][0][0].shape[-2]
                     def create_pad_arg(pad_amount, i, j):
                         if model_kwargs["past_key_values"][0][0].dim() == 3:
                             assert self.config.model_type == "bloom"
@@ -456,6 +462,8 @@ class GaudiGenerationMixin(GenerationMixin):
                             )
                         new_kv[i] = tuple(tmp_lst)
                     model_kwargs["past_key_values"] = tuple(new_kv)
+                    #import pdb; pdb.set_trace()
+                    #print()
 
         if bucket_input:
             if not params['inp_processing_ongoing']:
@@ -471,6 +479,7 @@ class GaudiGenerationMixin(GenerationMixin):
         else:
             if "token_idx" not in model_kwargs:
                 model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
+
         return input_ids, model_kwargs
 
     @torch.no_grad()
@@ -1437,6 +1446,7 @@ class GaudiGenerationMixin(GenerationMixin):
         bucket_input = model_kwargs["bucket_input"]
 
         prompt_len = input_ids.shape[-1]
+        #import pdb; pdb.set_trace()
         if bucket_size >= 0:
             inc = iter(incrementor(bucket_size, bucket_input, prompt_len))
         if bucket_size > 0:
@@ -1452,7 +1462,7 @@ class GaudiGenerationMixin(GenerationMixin):
         #print('----------------')
         cnt = -1
         while True:
-            #cnt += 1
+            cnt += 1
             #print('count', cnt, flush=True)
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1490,6 +1500,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_inputs['full_size'] = prompt_len + model_kwargs['max_new_tokens']
             else:
                 model_inputs['full_size'] = -1
+            model_inputs['bucket_input'] = bucket_input  #(not (params['inp_processing_done'] and not params['inp_processing_ongoing'])) and bucket_input
 
             if x != 1:
                 import pdb; pdb.set_trace()
@@ -1499,7 +1510,11 @@ class GaudiGenerationMixin(GenerationMixin):
             #import pdb; pdb.set_trace()
             if bucket_input:
                 model_inputs['bucket_size'] = bucket_size
-
+            #print('entering fwd', cnt, params)
+            #import pdb; pdb.set_trace()
+            #if model_inputs.get('past_key_values', None) is None:
+            #    import pdb; pdb.set_trace()
+            #    print()
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1507,6 +1522,13 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_hidden_states=output_hidden_states,
                 **hpu_graphs_kwargs,
             )
+            print(cnt, outputs['logits'].sum(), outputs['past_key_values'][0][0].sum())
+            if cnt == 0:
+                try:
+                    for i in range(0,8,bucket_size):
+                        print('..', cnt, outputs['logits'][:,i:i+bucket_size,:].sum(), outputs['past_key_values'][0][0][:,:,:3,:].sum())
+                except:
+                    pass
 
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
@@ -1556,13 +1578,15 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
-            if not bucket_input or params['inp_processing_done']:
+            if not bucket_input or (params['inp_processing_done'] and not params['inp_processing_ongoing']):
                 if token_idx is not None:
+                    #import pdb; pdb.set_trace()
                     input_ids.index_copy_(
                         1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
                     )
                 else:
                     input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+                #import pdb; pdb.set_trace()
                 if streamer is not None:
                     streamer.put(next_tokens.cpu())
                 model_kwargs = self._update_model_kwargs_for_generation(

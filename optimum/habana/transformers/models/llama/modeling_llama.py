@@ -34,26 +34,32 @@ except ImportError:
     FusedRMSNorm = None
 
 
-def update(prev, cur, dim, idx, bucket_size):
+def update(prev, cur, dim, idx, bucket_size, bucket_input):
     # we can use this condition to detect bucket_inp
-    bucket_inp = (cur.shape[2] > 1) and len(idx.shape) == 1
-    if bucket_inp:
-        x = torch.cat((prev, cur), 2)
-        if x.shape[2]%bucket_size != 0:
-            #desired_shape = list(x.shape[2])
-            #desired_shape[2] += bucket_size - x.shape[2]%bucket_size
-            #padded = torch.zeros(desired_shape, device=prev.device)
-            #padded.index_copy_(2, ??, x)
-            #x = padded
-            x = torch.nn.functional.pad(x, (0, 0, 0, bucket_size - x.shape[2]%bucket_size), value=0)
-            # TODO: is pad or copy better for staticness?
-            # this can happen in the last step of prefill with bucket_input
-        return x
+    if bucket_input:
+        if cur.shape[2] == 1:
+            #print(idx, prev.shape, 'XXX')
+            return prev.index_copy_(dim, idx - 1, cur)
+        else:
+            x = torch.cat((prev, cur), 2)
+            if x.shape[2]%bucket_size != 0:
+                #desired_shape = list(x.shape[2])
+                #desired_shape[2] += bucket_size - x.shape[2]%bucket_size
+                #padded = torch.zeros(desired_shape, device=prev.device)
+                #padded.index_copy_(2, ??, x)
+                #x = padded
+                x = torch.nn.functional.pad(x, (0, 0, 0, bucket_size - x.shape[2]%bucket_size), value=0)
+                # TODO: is pad or copy better for staticness?
+                # this can happen in the last step of prefill with bucket_input
+            return x
 
     orig_cur = cur
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
-        prev[:, :, :idx, :].copy_(cur)
+        try:
+            prev[:, :, :idx, :].copy_(cur)
+        except:
+            import pdb; pdb.set_trace()
         return orig_cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
@@ -140,7 +146,8 @@ class GaudiLlamaAttention(LlamaAttention):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         full_size: int = -1,
-        bucket_size: int = -1
+        bucket_size: int = -1,
+        bucket_input: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -179,19 +186,24 @@ class GaudiLlamaAttention(LlamaAttention):
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
-        bucket_inp = (key_states.shape[2] > 1) and len(token_idx.shape) == 1
+        #print(kv_seq_len, '1')
 
         if past_key_value is not None:
-            if token_idx is None or bucket_inp:
+            if token_idx is None or bucket_input:
                 kv_seq_len += past_key_value[0].shape[-2]
-                if bucket_inp and (kv_seq_len%bucket_size != 0):
+                #print(kv_seq_len, '2')
+                if bucket_input and (kv_seq_len%bucket_size != 0):
                     # could happen in last step of prefill with bucket_input
                     kv_seq_len += (bucket_size - kv_seq_len%bucket_size)
+                    #print(kv_seq_len, '3')
             else:
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][-2]
+                    #print(kv_seq_len, '4')
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
+                    #import pdb; pdb.set_trace()
+                    #print(kv_seq_len, '5')
         cos, sin = self.rotary_emb(value_states, seq_len=full_size)
         #print('xx1.5', query_states.shape, key_states.shape, cos.shape, sin.shape, position_ids)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
@@ -205,8 +217,14 @@ class GaudiLlamaAttention(LlamaAttention):
                 past_key = past_key_value[0]
                 past_value = past_key_value[1]
 
-            key_states = update(past_key, key_states, 2, token_idx, bucket_size)
-            value_states = update(past_value, value_states, 2, token_idx, bucket_size)
+            key_states_orig = key_states
+            past_key_orig = past_key
+            key_states = update(past_key, key_states, 2, token_idx, bucket_size, bucket_input)
+            value_states = update(past_value, value_states, 2, token_idx, bucket_size, bucket_input)
+        #else:
+        #    import pdb; pdb.set_trace()
+        #    print()
+        #    key_states_orig = torch.tensor([1])
 
         if use_cache:
             if reuse_cache:
@@ -220,7 +238,11 @@ class GaudiLlamaAttention(LlamaAttention):
         key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
         value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        #print(key_states_orig.shape, key_states.shape, query_states.shape, attn_weights.shape)
+        
+        '''
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+            import pdb; pdb.set_trace()
             raise ValueError(
                 f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
                 f" {attn_weights.size()}"
@@ -228,11 +250,20 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                import pdb; pdb.set_trace()
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
             attn_weights = attn_weights + attention_mask
-
+        '''
+        try:
+            attn_weights = attn_weights + attention_mask
+        except:
+            import pdb; pdb.set_trace()
+            print()
+        #print(attn_weights.shape, attention_mask.shape)
+        if attention_mask.shape[0] == 16:
+            assert False
         if attn_softmax_bf16:
             attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
         else:
@@ -283,7 +314,8 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         full_size: int = -1,
-        bucket_size: int = -1
+        bucket_size: int = -1,
+        bucket_input: bool = False
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -308,7 +340,8 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
             full_size=full_size,
-            bucket_size=bucket_size
+            bucket_size=bucket_size,
+            bucket_input=bucket_input
         )
         hidden_states = residual + hidden_states
 
@@ -351,7 +384,8 @@ class GaudiLlamaModel(LlamaModel):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         full_size: int = -1,
-        bucket_size:int = -1
+        bucket_size:int = -1,
+        bucket_input: bool = False
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -455,7 +489,8 @@ class GaudiLlamaModel(LlamaModel):
                     attn_softmax_bf16=attn_softmax_bf16,
                     reuse_cache=reuse_cache,
                     full_size=full_size,
-                    bucket_size=bucket_size
+                    bucket_size=bucket_size,
+                    bucket_input=bucket_input
                 )
 
             hidden_states = layer_outputs[0]
@@ -518,7 +553,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         full_size: int = -1,
-        bucket_size: int = -1
+        bucket_size: int = -1,
+        bucket_input: bool=False
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -540,7 +576,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
             full_size=full_size,
-            bucket_size=bucket_size
+            bucket_size=bucket_size,
+            bucket_input=bucket_input
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -589,11 +626,14 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         reuse_cache = kwargs.get("reuse_cache")
         if past_key_values:
             if token_idx is not None:
+                #import pdb; pdb.set_trace()
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
+                #import pdb; pdb.set_trace()
                 input_ids = input_ids[:, -1:]
         elif reuse_cache and token_idx is not None:
             # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
+            #import pdb; pdb.set_trace()
             input_ids = input_ids[:, :token_idx]
             attention_mask = attention_mask[:, :token_idx]
 
@@ -613,7 +653,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
             model_inputs = {"input_ids": input_ids}
-
+        print(attention_mask.shape, "attention_mask shape")
         model_inputs.update(
             {
                 "position_ids": position_ids,
