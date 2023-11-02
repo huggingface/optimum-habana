@@ -160,12 +160,16 @@ class ExampleTestMeta(type):
             "facebook/wav2vec2-base",
             "facebook/wav2vec2-large-lv60",
             "BridgeTower/bridgetower-large-itm-mlm-itc",
+            "EleutherAI/gpt-neox-20b",
         ]
 
         if model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
+            return True
+        elif "gpt-neox" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+            # GPT-NeoX is tested only on Gaudi2 and with DeepSpeed
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
