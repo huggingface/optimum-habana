@@ -21,6 +21,7 @@ class Model(ABC):
         device: torch.device,
         rank: int = 0,
         world_size: int = 1,
+        kwargs: dict={},
     ):
         self.model = model
         self.tokenizer = tokenizer
@@ -30,7 +31,7 @@ class Model(ABC):
         self.device = device
         self.rank = rank
         self.world_size = world_size
-
+        self.kwargs = kwargs
         self.has_position_ids = inspect.signature(model.forward).parameters.get("position_ids", None) is not None
 
         self.check_initialized()

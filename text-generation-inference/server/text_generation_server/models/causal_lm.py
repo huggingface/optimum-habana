@@ -7,6 +7,9 @@ from opentelemetry import trace
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase, AutoConfig
 from typing import Optional, Tuple, List, Type, Dict
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+import habana_frameworks.torch as htorch
+import habana_frameworks.torch as ht
+from contextlib import nullcontext
 
 from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
 from optimum.habana.checkpoint_utils import (
@@ -550,7 +553,7 @@ class CausalLM(Model):
 
         world_size = int(os.getenv("WORLD_SIZE", '1'))
         rank = int(os.getenv("RANK"), 0)
-
+        self.stream = None
         if world_size > 1:
             import habana_frameworks.torch.hpu as torch_hpu
 
@@ -581,7 +584,7 @@ class CausalLM(Model):
             # Initialize the model
             ds_inference_kwargs = {"dtype": dtype}
             ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
-            ds_inference_kwargs["enable_cuda_graph"] = False # args.use_hpu_graphs
+            ds_inference_kwargs["enable_cuda_graph"] = True if os.getenv("ENABLE_HPU_GRAPH","True") == "True" else False
 
             if load_to_meta:
                 # model loaded to meta is managed differently
@@ -594,6 +597,8 @@ class CausalLM(Model):
             if load_to_meta:
                 ds_inference_kwargs["checkpoint"] = checkpoints_json
             model = deepspeed.init_inference(model, **ds_inference_kwargs)
+            if os.getenv("ENABLE_HPU_GRAPH","True") == "True":
+                self.stream = htorch.hpu.current_stream()
             model = model.module
         else:
             get_repo_root(model_id)
@@ -621,6 +626,16 @@ class CausalLM(Model):
             else:
                 tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
+        kwargs = {
+            "use_cache": True,
+            "return_dict": True,
+        }
+
+        if model.config.model_type == "llama":
+             kwargs["attn_softmax_bf16"] = True
+             kwargs["trim_logits"] = True
+
+
         super(CausalLM, self).__init__(
             model=model,
             tokenizer=tokenizer,
@@ -628,6 +643,7 @@ class CausalLM(Model):
             dtype=dtype,
             device=device,
             rank=rank,
+            kwargs=kwargs,
         )
 
     @property
@@ -645,8 +661,6 @@ class CausalLM(Model):
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "past_key_values": past_key_values,
-            "use_cache": True,
-            "return_dict": True,
         }
 
         if self.is_optimized_for_gaudi:
@@ -658,6 +672,7 @@ class CausalLM(Model):
 
         if self.has_position_ids:
             kwargs["position_ids"] = position_ids
+        kwargs.update(self.kwargs)
         outputs = self.model.forward(**kwargs)
         return outputs.logits, outputs.past_key_values
 
@@ -671,13 +686,14 @@ class CausalLM(Model):
             # slice the attention mask to the correct shape
             attention_mask = batch.attention_mask[:, : -batch.padding_right_offset]
 
-        logits, past = self.forward(
-            batch.input_ids,
-            attention_mask,
-            batch.position_ids,
-            token_idx,
-            batch.past_key_values,
-        )
+        with ht.hpu.stream(self.stream) if self.stream else nullcontext():
+            logits, past = self.forward(
+                batch.input_ids,
+                attention_mask,
+                batch.position_ids,
+                token_idx,
+                batch.past_key_values,
+            )
 
         # Results
         generations: List[Generation] = []

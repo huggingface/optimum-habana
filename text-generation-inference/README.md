@@ -27,7 +27,7 @@ To use [🤗 text-generation-inference](https://github.com/huggingface/text-gene
    model=bigscience/bloom-560m
    volume=$PWD/data # share a volume with the Docker container to avoid downloading weights every run
 
-   docker run -p 8080:80 -v $volume:/data --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host tgi_gaudi --model-id $model
+   docker run -p 8080:80 -v $volume:/data --runtime=habana -e PT_HPU_ENABLE_LAZY_COLLECTIVES=true -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host tgi_gaudi --model-id $model
    ```
 3. You can then send a request:
    ```bash
@@ -45,7 +45,7 @@ For more information and documentation about Text Generation Inference, checkout
 Not all features of TGI are currently supported as this is still a work in progress.
 It has been tested for batches of 1 sample so far.
 New features will be added soon, including:
-- support for DeepSpeed-inference to use sharded models
+- support for DeepSpeed-inference to use sharded models (Added ENABLE_HPU_GRAPH=true/false to enable/disable hpu graph in docker run. default to true)
 - batching strategy to have less model compilations
 - Added an env var MAX_TOTAL_TOKENS for models that require it to be set during benchmark test.
   It defaults to 0. To change it please add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker.
