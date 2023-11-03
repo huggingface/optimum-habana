@@ -482,7 +482,6 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --adam_epsilon 1e-08 \
     --do_eval \
     --low_cpu_mem_usage True
-```
 
 - Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization and LoRA:
 
@@ -521,6 +520,42 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --validation_split_percentage 4
 ````
 
+- Multi-card finetuning of Falcon-180B:
+```bash
+DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 HABANA_PROFILE=1 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_lora_clm.py \
+    --model_name_or_path tiiuae/falcon-180B \
+    --dataset_name timdettmers/openassistant-guanaco \
+    --bf16 True \
+    --output_dir ./model_lora_falcon_ddp \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 16 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 195 \
+    --save_total_limit 1 \
+    --learning_rate 4e-4 \
+    --max_grad_norm  0.3 \
+    --warmup_ratio  0.03 \
+    --lr_scheduler_type "constant" \
+    --logging_steps 1 \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --pipelining_fwd_bwd \
+    --throughput_warmup_steps 3 \
+    --lora_rank=64 \
+    --lora_alpha=16 \
+    --lora_dropout=0.1 \
+    --lora_target_modules "query_key_value" "dense" "dense_h_to_4h" "dense_4h_to_h" \
+    --dataset_concatenation \
+    --max_seq_length 256 \
+    --adam_epsilon 1e-08 \
+    --do_eval \
+    --deepspeed ds_falcon_180b_z3.json
+```
 ## Streaming
 
 To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified in the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
