@@ -599,6 +599,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
+        # TODO: remove `.clone()` when SynapseAI v1.15 is released
+        return FusedRoPE.apply(q, cos.clone(), sin.clone(), position_ids), FusedRoPE.apply(
+            k, cos.clone(), sin.clone(), position_ids
+        )
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
