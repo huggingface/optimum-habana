@@ -166,6 +166,7 @@ class ExampleTestMeta(type):
             "facebook/wav2vec2-large-lv60",
             "BridgeTower/bridgetower-large-itm-mlm-itc",
             "EleutherAI/gpt-neox-20b",
+            "google/flan-t5-xxl",
         ]
 
         if model_name not in models_with_specific_rules and not deepspeed:
@@ -175,6 +176,10 @@ class ExampleTestMeta(type):
             return True
         elif "gpt-neox" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
             # GPT-NeoX is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "flan-t5" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+            # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
+            os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "512"
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -535,6 +540,12 @@ class MultiCardSpeechRecognitionExampleTester(
 
 class MultiCardSummarizationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
+):
+    TASK_NAME = "cnn_dailymail"
+
+
+class MultiCardSummarizationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", deepspeed=True
 ):
     TASK_NAME = "cnn_dailymail"
 
