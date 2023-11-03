@@ -36,12 +36,14 @@ except ImportError:
 
 
 def update(prev, cur, dim, idx, bucket_size=-1, need_expansion=False):
+    #import pdb; pdb.set_trace()
     if need_expansion and cur.shape[2] == 1:
         # we have cur.shape[2] > 1 for prefill (first) step
         # no need to expand for first/prefill
         # because we can just start with cur as the kv cache
         assert bucket_size > 0
         pad_amount = bucket_size - prev.shape[2] % bucket_size
+        #print('EXPANDING cache', prev.shape, pad_amount)
         prev = torch.nn.functional.pad(prev, (0, 0, 0, pad_amount), value=0)
     orig_cur = cur
     prefill = cur.shape[2] > 1 and (
@@ -51,9 +53,11 @@ def update(prev, cur, dim, idx, bucket_size=-1, need_expansion=False):
         # this condition is true only in prefill/first stage, after that cur.shape[2]==1
         if bucket_size < 0:
             prev[:, :, :idx, :].copy_(cur)
+        #print('start cache size in update', orig_cur.shape)
         return orig_cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
+        #print('HERE cache', prev.shape, cur.shape, idx)
         return prev.index_copy_(dim, idx - 1, cur)
     else:
         return torch.cat((prev, cur), dim=dim)
@@ -98,6 +102,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
         self.past_key = None
         self.past_value = None
+        self.cnt = -1
 
     def allocate_kv_cache(self, batch_size, seq_len):
         key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
@@ -138,6 +143,8 @@ class GaudiLlamaAttention(LlamaAttention):
         reuse_cache: Optional[bool] = False,
         need_expansion=False,
         bucket_size=-1,
+        dummy=None,
+        idx=0
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -147,6 +154,7 @@ class GaudiLlamaAttention(LlamaAttention):
         - add new args attn_softmax_bf16
         - add new args reuse_cache
         """
+        self.cnt += 1
         bsz, q_len, _ = hidden_states.size()
 
         if self.config.pretraining_tp > 1:
@@ -196,7 +204,11 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 past_key = past_key_value[0]
                 past_value = past_key_value[1]
+            past_key_orig = past_key
+            key_states_orig = key_states
+            self_past_key_orig = self.past_key
             key_states = update(past_key, key_states, 2, token_idx, bucket_size, need_expansion)
+            #print(idx, past_key_orig.shape, self_past_key_orig.shape, key_states.shape, 'xxx')
             if bucket_size > 0 and reuse_cache:
                 self.past_key = key_states.contiguous()
                 kv_seq_len = self.past_key.shape[2]
@@ -204,7 +216,10 @@ class GaudiLlamaAttention(LlamaAttention):
             if bucket_size > 0 and reuse_cache:
                 self.past_value = value_states.contiguous()
                 # TODO can this update be done inside update. also taking care of "contiguous"?
-
+        #try:
+        #    print(past_key.shape, self.cnt)
+        #except:
+        #    pass
         if use_cache:
             if reuse_cache:
                 past_key_value = (self.past_key.shape, self.past_value.shape)
@@ -212,6 +227,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
             past_key_value = None
+
 
         # repeat k/v heads if n_kv_heads < n_heads
         key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
@@ -225,8 +241,10 @@ class GaudiLlamaAttention(LlamaAttention):
                 f" {attn_weights.size()}"
             )
 
+        #print(key_states.shape)
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                #import pdb; pdb.set_trace()
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
@@ -284,6 +302,8 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         reuse_cache: Optional[bool] = False,
         need_expansion=False,
         bucket_size=-1,
+        dummy=None,
+        idx=0
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -309,6 +329,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             reuse_cache=reuse_cache,
             need_expansion=need_expansion,
             bucket_size=bucket_size,
+            dummy=dummy,idx=idx
         )
         hidden_states = residual + hidden_states
 
@@ -352,6 +373,7 @@ class GaudiLlamaModel(LlamaModel):
         reuse_cache: Optional[bool] = False,
         need_expansion=False,
         bucket_size=-1,
+        dummy=None
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -456,6 +478,8 @@ class GaudiLlamaModel(LlamaModel):
                     reuse_cache=reuse_cache,
                     need_expansion=need_expansion,
                     bucket_size=bucket_size,
+                    dummy=dummy,
+                    idx=idx
                 )
 
             hidden_states = layer_outputs[0]
@@ -519,6 +543,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         reuse_cache: Optional[bool] = False,
         need_expansion=False,
         bucket_size=-1,
+        dummy=None
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -541,6 +566,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             reuse_cache=reuse_cache,
             need_expansion=need_expansion,
             bucket_size=bucket_size,
+            dummy=dummy
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -615,6 +641,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         else:
             model_inputs = {"input_ids": input_ids}
 
+        #print('attn mask shape: ', attention_mask.shape)
         model_inputs.update(
             {
                 "position_ids": position_ids,

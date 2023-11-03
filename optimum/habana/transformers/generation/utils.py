@@ -90,7 +90,9 @@ def incrementor(bucket_size, prompt_len):
         if passnum == 0:
             token_idx = prompt_len
             allocated_space = int(math.ceil(prompt_len / bucket_size) * bucket_size)
-            need_expansion = not (prompt_len == allocated_space)
+            if prompt_len == bucket_size:
+                allocated_space += bucket_size
+            need_expansion = True #not (prompt_len == allocated_space) # in first step expansion is always needed. fix this
         else:
             token_idx += 1
             need_expansion = token_idx >= allocated_space
@@ -661,12 +663,14 @@ class GaudiGenerationMixin(GenerationMixin):
         # prepare for allocate kv cache
         model_kwargs["reuse_cache"] = generation_config.reuse_cache
 
+
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[-1]
             if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
                 calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
+                print('Calling allocate kv with:', calculated_max_length)
                 unwrap_deepspeed_model(self).allocate_kv_cache(
                     bs * generation_config.num_beams, input_ids.shape[-1] if is_greedy_or_beam_and_bucket else calculated_max_length
                 )
@@ -1330,7 +1334,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
 
+        cnt = -1
         while True:
+            cnt +=1
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1353,6 +1359,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            # dummy param to force new graph
+            import os
+            if os.environ.get('DUMMY_HACK', '0') == '1':
+                if cnt==0:
+                    first_inp_padded_len = model_inputs['input_ids'].shape[1]
+                model_inputs['dummy'] = torch.ones([first_inp_padded_len], device=self.device)
+            else:
+                if bucket_size > 0 and model_kwargs["reuse_cache"]:
+                    print('DUMMY_HACK not set to 1')
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
             hpu_graphs_kwargs["need_expansion"] = (
@@ -1361,6 +1376,7 @@ class GaudiGenerationMixin(GenerationMixin):
             hpu_graphs_kwargs["bucket_size"] = bucket_size
 
             # forward pass to get next token
+            print(cnt, params, model_inputs['attention_mask'].shape)
             outputs = self(
                 **model_inputs,
                 return_dict=True,

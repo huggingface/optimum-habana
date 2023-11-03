@@ -244,7 +244,7 @@ def main():
 
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
-        args.reuse_cache = False
+        #args.reuse_cache = False
 
     # Device is HPU
     args.device = "hpu"
@@ -484,7 +484,7 @@ def main():
             dyn_prompt_lens = [int(k) for k in args.simulate_dyn_prompt.split(',')]
         else:
             dyn_prompt_lens = None
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         if dyn_prompt_lens is None:
             for _ in range(args.warmup):
                 generate()
@@ -493,13 +493,16 @@ def main():
             mx = max(dyn_prompt_lens)
             import math
             rounder = lambda x : int(math.ceil(x/args.bucket_size) * args.bucket_size)
-            min_prompt_len = rounder(mn)
-            max_sentence_len = rounder(mx + args.max_new_tokens)
+            assert args.bucket_size > 4
+            min_prompt_len = rounder(mn)-3
+            max_sentence_len = rounder(mx + args.max_new_tokens)-3
             for _ in range(args.warmup):
-                for sz in range(min_prompt_len, max_sentence_len+1, args.bucket_size):
+                lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
+                for sz in lst:
                     print('Warming up for shape,', sz)
                     generate(sz)
         torch_hpu.synchronize()
+        #import pdb; pdb.set_trace()
         compilation_duration = time.perf_counter() - t0
         HabanaProfile.enable()
         total_new_tokens_generated = 0
