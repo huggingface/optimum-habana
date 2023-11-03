@@ -142,6 +142,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_MAPPING,
         ["bridgetower"],
     ),
+    "run_lora_clm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama", "falcon"],
+    ),
 }
 
 
@@ -247,43 +252,6 @@ class ExampleTestMeta(type):
                 # Ensure the run finished without any issue
                 self.assertEqual(return_code, 0)
                 return
-            # At the moment, just run the LORA example to check if there is no error
-            elif self.EXAMPLE_NAME == "run_lora_clm":
-                self._install_requirements(example_script.parent / "requirements.txt")
-
-                command = [
-                    "python3",
-                    # TODO: uncomment the following lines when LoRA 8x is fixed
-                    # f"{example_script.parent.parent / 'gaudi_spawn.py'}",
-                    # "--use_mpi",
-                    # "--world_size 8",
-                    f"{example_script}",
-                    "--model_name_or_path huggyllama/llama-7b",
-                    "--dataset_name tatsu-lab/alpaca",
-                    "--bf16",
-                    "--output_dir /tmp/model_lora_llama",
-                    "--num_train_epochs 1",
-                    "--per_device_train_batch_size 2",
-                    "--per_device_eval_batch_size 2",
-                    "--gradient_accumulation_steps 4",
-                    "--save_strategy no",
-                    "--learning_rate 1e-4",
-                    "--dataset_concatenation",
-                    "--do_train",
-                    "--use_habana",
-                    "--use_lazy_mode",
-                    "--throughput_warmup_steps 3",
-                    "--max_steps 100",
-                ]
-                pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
-                command = [x for y in command for x in re.split(pattern, y) if x]
-                p = subprocess.Popen(command)
-                return_code = p.wait()
-
-                # Ensure the run finished without any issue
-                self.assertEqual(return_code, 0)
-                return
-            # The CLIP example requires COCO and a clip-roberta model
             elif self.EXAMPLE_NAME == "run_clip":
                 from .clip_coco_utils import create_clip_roberta_model, download_coco
 
@@ -297,13 +265,28 @@ class ExampleTestMeta(type):
             )
             with path_to_baseline.open("r") as json_file:
                 device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi"
-                baseline = json.load(json_file)[device][self.TASK_NAME]
+                baseline = json.load(json_file)[device]
+                if isinstance(self.TASK_NAME, list):
+                    for key in self.TASK_NAME:
+                        if key in baseline:
+                            baseline = baseline[key]
+                            break
+                    if "num_train_epochs" not in baseline:
+                        raise ValueError(
+                            f"Couldn't find a baseline associated to any of these tasks: {self.TASK_NAME}."
+                        )
+                    self.TASK_NAME = key
+                else:
+                    baseline = baseline[self.TASK_NAME]
 
             distribution = "single_card"
             if multi_card:
                 distribution = "multi_card"
             elif deepspeed:
                 distribution = "deepspeed"
+
+            if "falcon" in model_name:
+                os.environ["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
@@ -544,10 +527,6 @@ class MultiCardAudioClassificationExampleTester(
     TASK_NAME = "common_language"
 
 
-# class SpeechRecognitionExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc"):
-#     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
-
-
 class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
@@ -577,9 +556,9 @@ class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, 
 
 
 class MultiCardCausalLanguageModelingLORAExampleTester(
-    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
 ):
-    pass
+    TASK_NAME = ["tatsu-lab/alpaca", "timdettmers/openassistant-guanaco"]
 
 
 class MultiCardBridgetowerExampleTester(

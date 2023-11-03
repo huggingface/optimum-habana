@@ -10,24 +10,24 @@ import pytest
 from .test_examples import TIME_PERF_FACTOR
 
 
-if os.environ.get("GAUDI2_CI", "false") == "true":
+if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 0.0),
-            ("gpt2-xl", 0.0),
-            ("EleutherAI/gpt-j-6b", 0.0),
-            ("EleutherAI/gpt-neox-20b", 0.0),
-            ("meta-llama/Llama-2-7b-hf", 0.0),
-            ("tiiuae/falcon-40b", 0.0),
-            ("bigcode/starcoder", 0.0),
-            ("Salesforce/codegen2-1B", 0.0),
-            ("mosaicml/mpt-7b", 0.0),
+            ("bigscience/bloomz-7b1", 129.80481357662882),
+            ("gpt2-xl", 272.3868331435149),
+            ("EleutherAI/gpt-j-6b", 137.46821395745388),
+            ("EleutherAI/gpt-neox-20b", 50.236713606109355),
+            ("meta-llama/Llama-2-7b-hf", 139.82510055437686),
+            ("tiiuae/falcon-40b", 25.260978255750498),
+            ("bigcode/starcoder", 65.38483087362695),
+            ("Salesforce/codegen2-1B", 231.1951513223901),
+            ("mosaicml/mpt-30b", 35.825021595560855),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 0.0),
-            ("meta-llama/Llama-2-70b-hf", 0.0),
-            ("facebook/opt-66b", 0.0),
+            ("bigscience/bloomz", 33.05719168230658),
+            ("meta-llama/Llama-2-70b-hf", 58.2750262232098),
+            ("facebook/opt-66b", 28.16154122335556),
         ],
     }
 else:
@@ -108,4 +108,5 @@ def test_text_generation_bf16(model_name: str, baseline: float, token: str):
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["deepspeed"])
 def test_text_generation_deepspeed(model_name: str, baseline: float, token: str):
-    _test_text_generation(model_name, baseline, token, deepspeed=True)
+    world_size = 2 if "opt-66b" in model_name else 8
+    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size)

@@ -48,7 +48,9 @@ MODELS_TO_TEST_MAPPING = {
     "swin": [("microsoft/swin-base-patch4-window7-224-in22k", "Habana/swin")],
     "clip": [("./clip-roberta", "Habana/clip")],
     "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
-    "gpt_neox": [("EleutherAI/gpt-neox-20b", "Habana/gpt2")]
+    "gpt_neox": [("EleutherAI/gpt-neox-20b", "Habana/gpt2")],
+    "llama": [("huggyllama/llama-7b", "Habana/gpt2")],
+    "falcon": [("tiiuae/falcon-40b", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
