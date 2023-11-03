@@ -57,6 +57,9 @@ from ...utils import HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .configuration_utils import GaudiGenerationConfig
 
+from habana_frameworks.torch.hpu.metrics import metric_global
+import habana_frameworks.torch.hpu as torch_hpu
+import time
 
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
@@ -329,6 +332,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if params["need_expansion"]:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             pad_amount = params["allocated_space"] - input_ids.shape[-1]
+            print(f"KKKKK before pad input_ids is {input_ids.shape}. padding {pad_amount}")
             input_ids = torch.nn.functional.pad(input_ids, (0, pad_amount), value=pad_token_id)
             if model_kwargs["attention_mask"] is not None:
                 model_kwargs["attention_mask"] = torch.nn.functional.pad(
@@ -1335,6 +1339,8 @@ class GaudiGenerationMixin(GenerationMixin):
             assert "position_ids" not in model_kwargs, "Untested path"
 
         cnt = -1
+        greedy_first = True
+        input_ids_set = set()
         while True:
             cnt +=1
             if lazy_mode:
@@ -1375,8 +1381,10 @@ class GaudiGenerationMixin(GenerationMixin):
             )
             hpu_graphs_kwargs["bucket_size"] = bucket_size
 
+            input_ids_set.add(tuple(input_ids.shape))
+
             # forward pass to get next token
-            print(cnt, params, model_inputs['attention_mask'].shape)
+            #print(cnt, params, model_inputs['attention_mask'].shape)
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1460,9 +1468,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hb_profer.step()
 
+            if greedy_first:
+                torch_hpu.synchronize()
+                print(f"ZZ First Token time(greedy):{time.perf_counter()*1000}")
+                greedy_first = False
+                gc_metric = metric_global("graph_compilation")
+                print(gc_metric.stats())
+
             if this_peer_finished and not synced_gpus:
                 break
 
+        print(f"ZZZZ Used input shapes {input_ids_set}")
         hb_profer.stop()
         if streamer is not None:
             streamer.end()
