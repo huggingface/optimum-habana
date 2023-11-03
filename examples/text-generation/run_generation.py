@@ -53,8 +53,10 @@ logger = logging.getLogger(__name__)
 def adjust_batch(batch, size):
     curr_size = batch['input_ids'].shape[1]
     if curr_size >= size:
+        print('Chopping batch in adjust_batch')
         adjusted_batch = {'input_ids': batch['input_ids'][:,:size], 'attention_mask': batch['attention_mask'][:,:size]}
     else:
+        print('Extending batch in adjust_batch')
         adjusted_batch = {}
         for k in batch.keys():
             last_colm = batch[k][:,-1]
@@ -476,6 +478,7 @@ def main():
             print(f"Total E2E time of this iteration is {duration*1000=}")
             gc_metric = metric_global("graph_compilation")
             print('GC stats', gc_metric.stats())
+            print(f"outputs, size={size}:", outputs, x)
             return x
 
         from optimum.habana.utils import HabanaProfile
@@ -496,18 +499,19 @@ def main():
             for _ in range(args.warmup):
                 generate()
         else:
-            mn = min(dyn_prompt_lens)
-            mx = max(dyn_prompt_lens)
-            import math
-            rounder = lambda x : int(math.ceil(x/args.bucket_size) * args.bucket_size)
-            assert args.bucket_size > 4
-            min_prompt_len = rounder(mn)-3
-            max_sentence_len = rounder(mx + args.max_new_tokens)-3
-            for _ in range(args.warmup):
-                lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
-                for sz in lst:
-                    print('Warming up for shape,', sz)
-                    generate(sz)
+            if args.bucket_size > 0:
+                mn = min(dyn_prompt_lens)
+                mx = max(dyn_prompt_lens)
+                import math
+                rounder = lambda x : int(math.ceil(x/args.bucket_size) * args.bucket_size)
+                assert args.bucket_size > 4
+                min_prompt_len = rounder(mn)-3
+                max_sentence_len = rounder(mx + args.max_new_tokens)-3
+                for _ in range(args.warmup):
+                    lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
+                    for sz in lst:
+                        print('Warming up for shape,', sz)
+                        generate(sz)
         torch_hpu.synchronize()
         #import pdb; pdb.set_trace()
         compilation_duration = time.perf_counter() - t0

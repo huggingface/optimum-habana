@@ -332,7 +332,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if params["need_expansion"]:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             pad_amount = params["allocated_space"] - input_ids.shape[-1]
-            print(f"KKKKK before pad input_ids is {input_ids.shape}. padding {pad_amount}")
+            #print(f"KKKKK before pad input_ids is {input_ids.shape}. padding {pad_amount}")
             input_ids = torch.nn.functional.pad(input_ids, (0, pad_amount), value=pad_token_id)
             if model_kwargs["attention_mask"] is not None:
                 model_kwargs["attention_mask"] = torch.nn.functional.pad(
