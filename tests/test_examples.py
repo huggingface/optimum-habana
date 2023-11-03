@@ -544,7 +544,7 @@ class MultiCardSummarizationExampleTester(
     TASK_NAME = "cnn_dailymail"
 
 
-class MultiCardSummarizationExampleTester(
+class DeepspeedSummarizationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", deepspeed=True
 ):
     TASK_NAME = "cnn_dailymail"

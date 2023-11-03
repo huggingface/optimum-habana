@@ -37,7 +37,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "t5": [
         ("t5-small", "Habana/t5"),
-        ("google/flan-t5-xxl", "Habana/t5")
+        ("google/flan-t5-xxl", "Habana/t5"),
     ],
     "vit": [
         ("google/vit-base-patch16-224-in21k", "Habana/vit"),
