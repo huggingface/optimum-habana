@@ -167,6 +167,7 @@ class ExampleTestMeta(type):
             "BridgeTower/bridgetower-large-itm-mlm-itc",
             "EleutherAI/gpt-neox-20b",
             "google/flan-t5-xxl",
+            "tiiuae/falcon-40b",
         ]
 
         if model_name not in models_with_specific_rules and not deepspeed:
@@ -179,7 +180,6 @@ class ExampleTestMeta(type):
             return True
         elif "flan-t5" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
             # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
-            os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "512"
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -190,6 +190,8 @@ class ExampleTestMeta(type):
         elif "wav2vec2-large" in model_name and example_name == "run_speech_recognition_ctc":
             return True
         elif "bridgetower" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
+            return True
+        elif "falcon" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
             return True
 
         return False
@@ -290,8 +292,11 @@ class ExampleTestMeta(type):
             elif deepspeed:
                 distribution = "deepspeed"
 
+            env_variables = os.environ.copy()
             if "falcon" in model_name:
-                os.environ["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+                env_variables["LOWER_LIST"] = str(example_script.parent / 'ops_bf16.txt')
+            elif "flan" in model_name:
+                env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "512"
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
@@ -311,7 +316,7 @@ class ExampleTestMeta(type):
                     .get("extra_arguments", []),
                 )
 
-                p = subprocess.Popen(cmd_line)
+                p = subprocess.Popen(cmd_line, env=env_variables)
                 return_code = p.wait()
 
                 # Ensure the run finished without any issue
