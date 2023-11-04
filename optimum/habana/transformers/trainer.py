@@ -1516,7 +1516,9 @@ class GaudiTrainer(Trainer):
             if not self.already_wrapped_for_hpu_graphs:
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-                model = wrap_in_hpu_graph(model)
+                model = wrap_in_hpu_graph(
+                    model, disable_tensor_cache=args.disable_tensor_cache_hpu_graphs, max_graphs=args.max_hpu_graphs
+                )
                 self.already_wrapped_for_hpu_graphs = True
 
         batch_size = self.args.eval_batch_size
@@ -1897,7 +1899,9 @@ class GaudiTrainer(Trainer):
             if not self.already_wrapped_for_hpu_graphs:
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-                model = wrap_in_hpu_graph(model)
+                model = wrap_in_hpu_graph(
+                    model, disable_tensor_cache=args.disable_tensor_cache_hpu_graphs, max_graphs=args.max_hpu_graphs
+                )
                 self.already_wrapped_for_hpu_graphs = True
 
         batch_size = dataloader.batch_size

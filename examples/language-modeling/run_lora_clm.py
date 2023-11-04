@@ -623,12 +623,16 @@ def main():
         )
 
     if training_args.do_train:
-        trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+        train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
 
         with training_args.main_process_first(desc="save model"):
             if is_main_process(training_args.local_rank):
                 unwrapped_model = unwrap_model(lora_model)
                 unwrapped_model.save_pretrained(training_args.output_dir, state_dict=unwrapped_model.state_dict())
+
+        metrics = train_result.metrics
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
 
         # Evaluation
     if training_args.do_eval:

@@ -692,6 +692,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             use_lazy_mode=True,
             use_hpu_graphs_for_training=True,
             use_hpu_graphs_for_inference=True,
+            disable_tensor_cache_hpu_graphs=True,
+            max_hpu_graphs=1,
         )
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         trainer.train()
