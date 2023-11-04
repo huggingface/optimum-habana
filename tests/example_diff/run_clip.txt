@@ -25,11 +25,11 @@
 > 
 57,58c64,66
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.35.0.dev0")
+< check_min_version("4.36.0.dev0")
 ---
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.34.0")
-> check_optimum_habana_min_version("1.8.0")
+> check_optimum_habana_min_version("1.8.1")
 188a197,199
 >     mediapipe_dataloader: bool = field(
 >         default=False, metadata={"help": "Turn on MediaPipe hardware-based accelerated data loading."}
@@ -49,7 +49,7 @@
 285a304
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
 287,288c306,308
-<         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
+<         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "

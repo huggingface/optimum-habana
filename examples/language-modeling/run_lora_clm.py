@@ -64,7 +64,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.8.0")
+check_optimum_habana_min_version("1.8.1")
 
 
 @dataclass
@@ -299,8 +299,8 @@ def main():
     # Log on each process the small summary
     b16 = training_args.fp16 or training_args.bf16
     logger.warning(
-        f"Process rank: {training_args.local_rank}, device: {training_args.device}"
-        + f"\ndistributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {b16}"
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
+        + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {b16}"
     )
     # Set the verbosity to info of the Transformers logger (on main process only):
     if is_main_process(training_args.local_rank):
