@@ -51,29 +51,10 @@ def gaudi_falcon_rotary_embedding_forward(self, query, key, seq_len, position_id
     """
     cos, sin = self.cos_sin(seq_len, past_key_values_length, position_ids, query.device, query.dtype)
 
-    # Query and key's shapes are [bs * num_heads, seq_len, dim], might need manual expansion. Ifs and elses used to
-    # avoid unnecessary repeat_interleave operations.
-    query_expansion_factor = int(query.shape[0] / cos.shape[0])
-    if query_expansion_factor > 1:
-        query_cos = torch.repeat_interleave(cos, query_expansion_factor, dim=0)
-        query_sin = torch.repeat_interleave(sin, query_expansion_factor, dim=0)
-    else:
-        query_cos, query_sin = cos, sin
-
-    key_expansion_factor = int(key.shape[0] / cos.shape[0])
-    if key_expansion_factor > 1:
-        if key_expansion_factor != query_expansion_factor:
-            key_cos = torch.repeat_interleave(cos, key_expansion_factor, dim=0)
-            key_sin = torch.repeat_interleave(sin, key_expansion_factor, dim=0)
-        else:
-            key_cos, key_sin = query_cos, query_sin
-    else:
-        key_cos, key_sin = cos, sin
-
     if FusedRoPE:
-        return FusedRoPE.apply(query, query_cos, query_sin, 0), FusedRoPE.apply(key, key_cos, key_sin, 0)
+        return FusedRoPE.apply(query, cos, sin, 0), FusedRoPE.apply(key, cos, sin, 0)
     else:
-        return (query * query_cos) + (rotate_half(query) * query_sin), (key * key_cos) + (rotate_half(key) * key_sin)
+        return (query * cos) + (rotate_half(query) * sin), (key * cos) + (rotate_half(key) * sin)
 
 
 def _make_causal_mask(
@@ -159,7 +140,6 @@ def gaudi_falcon_attention_forward(
     head_mask: Optional[torch.Tensor] = None,
     use_cache: bool = False,
     output_attentions: bool = False,
-    padding_mask: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     """
@@ -303,7 +283,6 @@ def gaudi_falcon_decoder_layer_forward(
     head_mask: Optional[torch.Tensor] = None,
     use_cache: bool = False,
     output_attentions: bool = False,
-    padding_mask: Optional[torch.LongTensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     """
@@ -330,7 +309,6 @@ def gaudi_falcon_decoder_layer_forward(
         head_mask=head_mask,
         use_cache=use_cache,
         output_attentions=output_attentions,
-        padding_mask=padding_mask,
         token_idx=token_idx,
     )
 
@@ -474,14 +452,8 @@ class GaudiFalconModel(FalconModel):
 
         if attention_mask is None:
             attention_mask = torch.ones((batch_size, seq_length + past_key_values_length), device=hidden_states.device)
-            padding_mask = None
         else:
             attention_mask = attention_mask.to(hidden_states.device)
-
-            if 0 in attention_mask:
-                padding_mask = attention_mask
-            else:
-                padding_mask = None
 
         if self.use_alibi:
             alibi = build_alibi_tensor(attention_mask, self.num_heads, dtype=hidden_states.dtype)
@@ -527,7 +499,6 @@ class GaudiFalconModel(FalconModel):
                     causal_mask,
                     position_ids,
                     head_mask[i],
-                    padding_mask,
                 )
             else:
                 outputs = block(
@@ -539,7 +510,6 @@ class GaudiFalconModel(FalconModel):
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                     alibi=alibi,
-                    padding_mask=padding_mask,
                     token_idx=token_idx,
                 )
 

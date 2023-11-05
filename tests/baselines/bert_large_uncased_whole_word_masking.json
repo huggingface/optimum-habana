@@ -102,11 +102,11 @@
                     ]
                 },
                 "multi_card": {
-                    "learning_rate": 6.5e-5,
-                    "train_batch_size": 128,
-                    "eval_f1": 0.8659,
-                    "train_runtime": 40.4849,
-                    "train_samples_per_second": 5513.806,
+                    "learning_rate": 3e-5,
+                    "train_batch_size": 40,
+                    "eval_f1": 0.8723404255319148,
+                    "train_runtime": 36.1821,
+                    "train_samples_per_second": 2544.266,
                     "extra_arguments": [
                         "--max_seq_length 128",
                         "--use_hpu_graphs_for_inference"

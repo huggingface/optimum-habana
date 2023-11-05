@@ -95,7 +95,7 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
         disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
-        max_hpu_graphs (`int`, *optional*, defaults to 10):
+        max_hpu_graphs (`int`, *optional*):
             Maximum number of hpu graphs to be cached. Reduce to save device memory.
         distribution_strategy (`str`, *optional*, defaults to `ddp`):
             Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
@@ -158,7 +158,7 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     max_hpu_graphs: Optional[int] = field(
-        default=10,
+        default=None,
         metadata={"help": "Maximum number of HPU graphs to use."},
     )
 
@@ -310,7 +310,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.disable_tensor_cache_hpu_graphs and not use_hpu_graphs:
             raise ValueError("must be using hpu graphs to set disable_tensor_cache_hpu_graphs.")
 
-        if self.max_hpu_graphs != 10 and not use_hpu_graphs:
+        if self.max_hpu_graphs is not None and not use_hpu_graphs:
             raise ValueError("must be using hpu graphs to set max_hpu_graphs.")
 
         # Raise errors for arguments that are not supported by optimum-habana
