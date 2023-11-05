@@ -29,6 +29,7 @@ from pathlib import Path
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
+from habana_frameworks.torch.hpu.metrics import metric_global
 
 from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
@@ -423,7 +424,8 @@ def main():
 
         def generate():
             """Generates sequences from the input sentences and returns them."""
-
+            t0 = time.perf_counter()
+            print(f"Step4+ starting time is {time.perf_counter()*1000}") 
             # Tokenization
             if args.max_input_tokens > 0:
                 input_tokens = tokenizer.batch_encode_plus(
@@ -449,7 +451,12 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
-            return tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            x = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            duration = time.perf_counter() - t0
+            print(f"Total E2E time of this iteration is {duration*1000=}")
+            gc_metric = metric_global("graph_compilation")
+            print('GC stats', gc_metric.stats())
+            return x
 
         from optimum.habana.utils import HabanaProfile
 
