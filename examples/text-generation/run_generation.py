@@ -478,7 +478,7 @@ def main():
             print(f"Total E2E time of this iteration is {duration*1000=}")
             gc_metric = metric_global("graph_compilation")
             print('GC stats', gc_metric.stats())
-            print(f"outputs, size={size}:", outputs, x)
+            #print(f"outputs, size={size}:", outputs, x)
             return x
 
         from optimum.habana.utils import HabanaProfile
@@ -495,9 +495,11 @@ def main():
         else:
             dyn_prompt_lens = None
         #import pdb; pdb.set_trace()
-        if dyn_prompt_lens is None:
+        assert dyn_prompt_lens is not None # only for this branch
+        if len(set(dyn_prompt_lens)) == 1:
             for _ in range(args.warmup):
-                generate()
+                print('Warming up for shape,', dyn_prompt_lens[0])
+                generate(dyn_prompt_lens[0])
         else:
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
@@ -505,13 +507,14 @@ def main():
                 import math
                 rounder = lambda x : int(math.ceil(x/args.bucket_size) * args.bucket_size)
                 assert args.bucket_size > 4
-                min_prompt_len = rounder(mn)-3
-                max_sentence_len = rounder(mx + args.max_new_tokens)-3
+                min_prompt_len = rounder(mn)
+                max_sentence_len = rounder(mx)
                 for _ in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
                     for sz in lst:
-                        print('Warming up for shape,', sz)
+                        print('Warming up for shape,', sz-3) # TODO this "-3" because need to make sure if size%bkt==0, if generation is correct etc
                         generate(sz)
+
         torch_hpu.synchronize()
         #import pdb; pdb.set_trace()
         compilation_duration = time.perf_counter() - t0
