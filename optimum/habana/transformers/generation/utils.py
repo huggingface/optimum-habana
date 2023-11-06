@@ -337,6 +337,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             else:
                 assert False, "Not tested for cases where attn_mask isnt passed"
+            if params['passnum'] == 0:
+                input_ids = input_ids.to(self.device)
+                model_kwargs["attention_mask"] = model_kwargs["attention_mask"].to(self.device)
 
             if "past_key_values" in model_kwargs:
 
@@ -1337,7 +1340,9 @@ class GaudiGenerationMixin(GenerationMixin):
             assert "position_ids" not in model_kwargs, "Untested path"
 
         greedy_first = True
+        cnt = -1
         while True:
+            cnt += 1
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1358,8 +1363,17 @@ class GaudiGenerationMixin(GenerationMixin):
                     params, input_ids, model_kwargs, pad_token_id, bucket_size
                 )
 
+
+            if bucket_size > 0 and model_kwargs["reuse_cache"]:
+                if cnt == 0:
+                    extra = model_kwargs['bucket_size'] - prompt_len % model_kwargs['bucket_size']
+                    posn = [list(range(prompt_len + cnt)) + [1] * extra]
+                else:
+                    posn = [[prompt_len + cnt - 1]]
+            else:
+                posn = None
             # prepare model inputs
-            model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            model_inputs = self.prepare_inputs_for_generation(posn, input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 

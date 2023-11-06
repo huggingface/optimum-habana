@@ -239,7 +239,12 @@ def main():
         "--simulate_dyn_prompt",
         default="",
         type=str,
-        help="If empty static prompt is used. If a comma separated list of integers are passed, we warmup and use those shapes for prompt length",
+        help="If empty, static prompt is used. If a comma separated list of integers are passed, we warmup and use those shapes for prompt length",
+    )
+    parser.add_argument(
+        "--preproc_on_cpu",
+        action="store_true",
+        help="Preproc on cpu.",
     )
 
 
@@ -471,9 +476,10 @@ def main():
                 input_tokens = adjust_batch(input_tokens, size)
 
             # Move inputs to target device(s)
-            for t in input_tokens:
-                if torch.is_tensor(input_tokens[t]):
-                    input_tokens[t] = input_tokens[t].to(args.device)
+            if not args.preproc_on_cpu:
+                for t in input_tokens:
+                    if torch.is_tensor(input_tokens[t]):
+                        input_tokens[t] = input_tokens[t].to(args.device)
 
             outputs = model.generate(
                 **input_tokens,

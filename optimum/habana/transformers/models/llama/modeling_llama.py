@@ -552,9 +552,10 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
+        self, posn, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         reuse_cache = kwargs.get("reuse_cache")
+        bucket_and_reuse = kwargs['bucket_size'] > 0 and reuse_cache
         if past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
@@ -567,14 +568,19 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
-            # create position_ids on the fly for batch generation
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-            if past_key_values:
-                if token_idx is not None:
-                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
-                else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+            if bucket_and_reuse:
+                assert posn is not None
+                position_ids = torch.tensor(posn, device=self.device)
+            else:
+                assert posn is None
+                # create position_ids on the fly for batch generation
+                position_ids = attention_mask.long().cumsum(-1) - 1
+                position_ids.masked_fill_(attention_mask == 0, 1)
+                if past_key_values:
+                    if token_idx is not None:
+                        position_ids = torch.index_select(position_ids, 1, token_idx - 1)
+                    else:
+                        position_ids = position_ids[:, -1].unsqueeze(-1)
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
