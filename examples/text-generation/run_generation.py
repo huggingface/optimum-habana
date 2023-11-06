@@ -232,6 +232,11 @@ def main():
         type=str,
         help="If empty static prompt is used. If a comma separated list of integers are passed, we warmup and use those shapes for prompt length",
     )
+    parser.add_argument(
+        "--preproc_on_cpu",
+        action="store_true",
+        help="Preproc on cpu.",
+    )
 
     args = parser.parse_args()
 
@@ -442,7 +447,7 @@ def main():
         elif args.batch_size < len(input_sentences):
             input_sentences = input_sentences[: args.batch_size]
 
-        def generate(size=None):
+        def generate(size=None, warming_up=False):
             """Generates sequences from the input sentences and returns them."""
             t0 = time.perf_counter()
             print(f"Step4+ starting time is {time.perf_counter()*1000}", flush=True) 
@@ -461,9 +466,10 @@ def main():
                 input_tokens = adjust_batch(input_tokens, size)
 
             # Move inputs to target device(s)
-            for t in input_tokens:
-                if torch.is_tensor(input_tokens[t]):
-                    input_tokens[t] = input_tokens[t].to(args.device)
+            if not args.preproc_on_cpu:
+                for t in input_tokens:
+                    if torch.is_tensor(input_tokens[t]):
+                        input_tokens[t] = input_tokens[t].to(args.device)
 
             outputs = model.generate(
                 **input_tokens,
@@ -472,6 +478,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                warming_up=warming_up
             ).cpu()
             x = tokenizer.batch_decode(outputs, skip_special_tokens=True)
             duration = time.perf_counter() - t0
@@ -499,7 +506,7 @@ def main():
         if len(set(dyn_prompt_lens)) == 1:
             for _ in range(args.warmup):
                 print('Warming up for shape,', dyn_prompt_lens[0], flush=True)
-                generate(dyn_prompt_lens[0])
+                generate(dyn_prompt_lens[0], True)
         else:
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
@@ -513,7 +520,7 @@ def main():
                     lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
                     for sz in lst:
                         print('Warming up for shape,', sz-3, flush=True) # TODO this "-3" because need to make sure if size%bkt==0, if generation is correct etc
-                        generate(sz)
+                        generate(sz, True)
 
         torch_hpu.synchronize()
         #import pdb; pdb.set_trace()
@@ -530,7 +537,7 @@ def main():
         else:
             for i in range(args.n_iterations):
                 print('Generating for shape,', dyn_prompt_lens[i])
-                generated = generate(dyn_prompt_lens[i])
+                generated = generate(dyn_prompt_lens[i], False)
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration

@@ -328,7 +328,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return criteria
 
     @torch.no_grad()
-    def update_model_kwargs_for_bucketing(self, params, input_ids, model_kwargs, pad_token_id, bucket_size):
+    def update_model_kwargs_for_bucketing(self, params, input_ids, model_kwargs, pad_token_id, bucket_size, warming_up=True):
         if params["need_expansion"]:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             pad_amount = params["allocated_space"] - input_ids.shape[-1]
@@ -340,6 +340,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             else:
                 assert False, "Not tested for cases where attn_mask isnt passed"
+            if params['passnum'] == 0:
+                input_ids = input_ids.to(self.device)
+                model_kwargs["attention_mask"] = model_kwargs["attention_mask"].to(self.device)
 
             if not model_kwargs["reuse_cache"]:  # with reuse cache we will update inside the model
                 if "past_key_values" in model_kwargs:
@@ -394,6 +397,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hpu_graphs: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
+        warming_up: bool = False,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -486,6 +490,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     - [`transformers.generation.BeamSearchEncoderDecoderOutput`],
                     - [`transformers.generation.BeamSampleEncoderDecoderOutput`]
         """
+        import habana_frameworks.torch.core as htcore
         if synced_gpus is None:
             if is_deepspeed_zero3_enabled() and dist.get_world_size() > 1:
                 synced_gpus = True
@@ -603,6 +608,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         inputs_tensor.device,
                     )
 
+
         # decoder-only models should use left-padding for generation
         if not self.config.is_encoder_decoder:
             # If `input_ids` was given, check if the last id in any sequence is `pad_token_id`
@@ -655,6 +661,7 @@ class GaudiGenerationMixin(GenerationMixin):
             generation_config.max_length = generation_config.max_new_tokens + input_ids_length
         self._validate_generated_length(generation_config, input_ids_length, has_default_max_length)
 
+
         # determine whether introduce trim_logits feature
         model_kwargs["trim_logits"] = generation_config.trim_logits
 
@@ -675,8 +682,11 @@ class GaudiGenerationMixin(GenerationMixin):
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
                 print('Calling allocate kv with:', calculated_max_length)
+                # # This could cause a recompile. seq_len isnt padded at this point yet..
+                import math
+                x = math.ceil(input_ids.shape[-1]/model_kwargs['bucket_size']) * model_kwargs['bucket_size']
                 unwrap_deepspeed_model(self).allocate_kv_cache(
-                    bs * generation_config.num_beams, input_ids.shape[-1] if is_greedy_or_beam_and_bucket else calculated_max_length
+                    bs * generation_config.num_beams, x if is_greedy_or_beam_and_bucket else calculated_max_length
                 )
 
         # 7. determine generation mode
@@ -803,6 +813,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
+                warming_up=warming_up,
                 **model_kwargs,
             )
 
@@ -1179,6 +1190,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
+        warming_up:bool = False,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, torch.LongTensor]:
         r"""
@@ -1360,11 +1372,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
                 input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
-                    params, input_ids, model_kwargs, pad_token_id, bucket_size
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size, warming_up
                 )
 
             # prepare model inputs
-            model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            model_inputs = self.prepare_inputs_for_generation(warming_up, input_ids, **model_kwargs)
             # dummy param to force new graph
             import os
             if os.environ.get('DUMMY_HACK', '0') == '1':
@@ -1373,7 +1385,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_inputs['dummy'] = torch.ones([first_inp_padded_len], device=self.device)
             else:
                 if bucket_size > 0 and model_kwargs["reuse_cache"]:
-                    print('DUMMY_HACK not set to 1')
+                    #print('DUMMY_HACK not set to 1')
+                    pass
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
             hpu_graphs_kwargs["need_expansion"] = (

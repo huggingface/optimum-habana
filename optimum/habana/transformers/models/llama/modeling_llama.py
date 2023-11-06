@@ -16,6 +16,7 @@ from transformers.models.llama.modeling_llama import (
 
 from ...generation.utils import incrementor
 from ....utils import get_device_name
+from habana_frameworks.torch.hpu.metrics import metric_global
 
 
 # TODO: remove this workaround when FusedRoPE properly works on Gaudi
@@ -610,7 +611,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
+        self, warming_up, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         reuse_cache = kwargs.get("reuse_cache")
         if past_key_values:
@@ -627,6 +628,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
+            ## computing position ids is causing recompiles...
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
