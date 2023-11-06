@@ -420,6 +420,7 @@ class GaudiLlamaModel(LlamaModel):
         else:
             position_ids = position_ids.view(-1, seq_length).long()
 
+
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
         # embed positions
@@ -614,6 +615,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         self, posn, warming_up, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         reuse_cache = kwargs.get("reuse_cache")
+        bucket_and_reuse = kwargs['bucket_size'] > 0 and reuse_cache
         if past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
@@ -627,10 +629,12 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
-            if True:
+            if bucket_and_reuse:
                 #import pdb; pdb.set_trace()
+                assert posn is not None
                 position_ids = torch.tensor(posn, device=self.device)
             else:
+                assert posn is None
                 # create position_ids on the fly for batch generation
                 ## computing position ids is causing recompiles...
 

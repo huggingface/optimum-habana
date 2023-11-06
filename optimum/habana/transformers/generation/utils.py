@@ -1379,11 +1379,14 @@ class GaudiGenerationMixin(GenerationMixin):
             # prepare model inputs
             #model_kwargs['pos'] =
             # hack.. only for bs=1
-            if cnt == 0:
-                extra = model_kwargs['bucket_size'] - prompt_len % model_kwargs['bucket_size']
-                posn = [list(range(prompt_len + cnt)) + [1] * extra]
+            if bucket_size > 0 and model_kwargs["reuse_cache"]:
+                if cnt == 0:
+                    extra = model_kwargs['bucket_size'] - prompt_len % model_kwargs['bucket_size']
+                    posn = [list(range(prompt_len + cnt)) + [1] * extra]
+                else:
+                    posn = [[prompt_len + cnt - 1]]
             else:
-                posn = [[prompt_len + cnt - 1]]
+                posn=None
             model_inputs = self.prepare_inputs_for_generation(posn, warming_up, input_ids, **model_kwargs)
             # model_kwargs['attention_mask'] = model_inputs['attention_mask']
             #import pdb; pdb.set_trace()
@@ -1409,6 +1412,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # forward pass to get next token
             #print(cnt, params, model_inputs['attention_mask'].shape)
             #print(model_inputs['position_ids'])
+            #print(cnt)
             outputs = self(
                 **model_inputs,
                 return_dict=True,
