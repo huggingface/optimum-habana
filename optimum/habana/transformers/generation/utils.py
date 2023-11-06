@@ -343,6 +343,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if params['passnum'] == 0:
                 input_ids = input_ids.to(self.device)
                 model_kwargs["attention_mask"] = model_kwargs["attention_mask"].to(self.device)
+                # not moving attn mask to hpu yet... position ids still need to be computed from it
 
             if not model_kwargs["reuse_cache"]:  # with reuse cache we will update inside the model
                 if "past_key_values" in model_kwargs:
@@ -1376,7 +1377,16 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # prepare model inputs
-            model_inputs = self.prepare_inputs_for_generation(warming_up, input_ids, **model_kwargs)
+            #model_kwargs['pos'] =
+            # hack.. only for bs=1
+            if cnt == 0:
+                extra = model_kwargs['bucket_size'] - prompt_len % model_kwargs['bucket_size']
+                posn = [list(range(prompt_len + cnt)) + [1] * extra]
+            else:
+                posn = [[prompt_len + cnt - 1]]
+            model_inputs = self.prepare_inputs_for_generation(posn, warming_up, input_ids, **model_kwargs)
+            # model_kwargs['attention_mask'] = model_inputs['attention_mask']
+            #import pdb; pdb.set_trace()
             # dummy param to force new graph
             import os
             if os.environ.get('DUMMY_HACK', '0') == '1':
@@ -1398,6 +1408,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # forward pass to get next token
             #print(cnt, params, model_inputs['attention_mask'].shape)
+            #print(model_inputs['position_ids'])
             outputs = self(
                 **model_inputs,
                 return_dict=True,

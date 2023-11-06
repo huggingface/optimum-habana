@@ -611,7 +611,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, warming_up, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
+        self, posn, warming_up, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         reuse_cache = kwargs.get("reuse_cache")
         if past_key_values:
@@ -627,15 +627,30 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
-            # create position_ids on the fly for batch generation
-            ## computing position ids is causing recompiles...
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-            if past_key_values:
-                if token_idx is not None:
-                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
-                else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+            if True:
+                #import pdb; pdb.set_trace()
+                position_ids = torch.tensor(posn, device=self.device)
+            else:
+                # create position_ids on the fly for batch generation
+                ## computing position ids is causing recompiles...
+
+                #import pdb; pdb.set_trace()
+                position_ids = attention_mask.long().cumsum(-1) - 1
+                position_ids.masked_fill_(attention_mask == 0, 1)
+                #print(position_ids, 'yyy')
+                #rng = torch.arange(attention_mask.shape[1]).to(self.device)
+                #position_ids = torch.where(attention_mask==1, rng, torch.ones(attention_mask.shape[1], dtype=rng.dtype))
+                # TODO .. hack. only valid for bs=1, and contiguous mask
+
+                #import pdb; pdb.set_trace()
+                #attention_mask = attention_mask.to(self.device)
+                #position_ids = position_ids.to(self.device)
+                if past_key_values:
+                    if token_idx is not None:
+                        position_ids = torch.index_select(position_ids, 1, token_idx - 1)
+                    else:
+                        position_ids = position_ids[:, -1].unsqueeze(-1)
+
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
@@ -644,6 +659,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             model_inputs = {"input_ids": input_ids}
 
         #print('attn mask shape: ', attention_mask.shape)
+        #print(position_ids, 'xxx')
         model_inputs.update(
             {
                 "position_ids": position_ids,

@@ -470,7 +470,7 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
-
+            #import pdb; pdb.set_trace()
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
@@ -520,7 +520,7 @@ def main():
                     lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
                     for sz in lst:
                         print('Warming up for shape,', sz-3, flush=True) # TODO this "-3" because need to make sure if size%bkt==0, if generation is correct etc
-                        generate(sz, True)
+                        generate(sz-3, True)
 
         torch_hpu.synchronize()
         #import pdb; pdb.set_trace()
