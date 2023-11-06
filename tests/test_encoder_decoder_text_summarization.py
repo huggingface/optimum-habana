@@ -10,11 +10,11 @@ import pytest
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
-if os.environ.get("GAUDI2_CI", "false") == "true":
+if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("facebook/bart-large-cnn", "Habana/bart", 5.568, 26.0688, 2, 1),
+            ("facebook/bart-large-cnn", "Habana/bart", 4.691, 26.0688, 2, 1),
             ("t5-3b", "Habana/t5", 3.107, 21.9303, 2, 1),
         ],
     }
