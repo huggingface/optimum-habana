@@ -39,8 +39,17 @@ from optimum.habana.checkpoint_utils import (
 )
 
 
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+
+    def check_optimum_habana_min_version(*a, **b):
+        return ()
+
+
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.33.0")
+check_optimum_habana_min_version("1.9.0.dev0")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
