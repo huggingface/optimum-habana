@@ -1470,7 +1470,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if greedy_first:
                 torch_hpu.synchronize()
-                print(f"ZZ First Token time(greedy):{time.perf_counter()*1000}")
+                print(f"ZZ First Token time(greedy):{time.perf_counter()*1000}", flush=True)
                 greedy_first = False
                 gc_metric = metric_global("graph_compilation")
                 print(gc_metric.stats())

@@ -445,7 +445,7 @@ def main():
         def generate(size=None):
             """Generates sequences from the input sentences and returns them."""
             t0 = time.perf_counter()
-            print(f"Step4+ starting time is {time.perf_counter()*1000}") 
+            print(f"Step4+ starting time is {time.perf_counter()*1000}", flush=True) 
             # Tokenization
             if args.max_input_tokens > 0:
                 input_tokens = tokenizer.batch_encode_plus(
@@ -475,9 +475,9 @@ def main():
             ).cpu()
             x = tokenizer.batch_decode(outputs, skip_special_tokens=True)
             duration = time.perf_counter() - t0
-            print(f"Total E2E time of this iteration is {duration*1000=}")
+            print(f"Total E2E time of this iteration is {duration*1000=}", flush=True)
             gc_metric = metric_global("graph_compilation")
-            print('GC stats', gc_metric.stats())
+            print('GC stats', gc_metric.stats(), flush=True)
             #print(f"outputs, size={size}:", outputs, x)
             return x
 
@@ -498,7 +498,7 @@ def main():
         assert dyn_prompt_lens is not None # only for this branch
         if len(set(dyn_prompt_lens)) == 1:
             for _ in range(args.warmup):
-                print('Warming up for shape,', dyn_prompt_lens[0])
+                print('Warming up for shape,', dyn_prompt_lens[0], flush=True)
                 generate(dyn_prompt_lens[0])
         else:
             if args.bucket_size > 0:
@@ -512,7 +512,7 @@ def main():
                 for _ in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
                     for sz in lst:
-                        print('Warming up for shape,', sz-3) # TODO this "-3" because need to make sure if size%bkt==0, if generation is correct etc
+                        print('Warming up for shape,', sz-3, flush=True) # TODO this "-3" because need to make sure if size%bkt==0, if generation is correct etc
                         generate(sz)
 
         torch_hpu.synchronize()
