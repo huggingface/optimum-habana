@@ -319,7 +319,7 @@ def main():
         if load_to_meta:
             # model loaded to meta is managed differently
             checkpoints_json = "checkpoints.json"
-            write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
+            write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json, token=args.token)
 
         # Make sure all devices/nodes have access to the model checkpoints
         torch.distributed.barrier()
