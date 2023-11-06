@@ -493,10 +493,26 @@ def main():
             dyn_prompt_lens = [int(k) for k in args.simulate_dyn_prompt.split(',')]
         else:
             dyn_prompt_lens = None
-        assert len(set(dyn_prompt_lens)) == 1 # this branch is only for static prompt checking
-        for _ in range(args.warmup):
-            print('Warming up for shape,', dyn_prompt_lens[0])
-            generate(dyn_prompt_lens[0])
+        assert dyn_prompt_lens is not None # only for this branch
+        if len(set(dyn_prompt_lens)) == 1:
+            for _ in range(args.warmup):
+                print('Warming up for shape,', dyn_prompt_lens[0])
+                generate(dyn_prompt_lens[0])
+        else:
+            if args.bucket_size > 0:
+                mn = min(dyn_prompt_lens)
+                mx = max(dyn_prompt_lens)
+                import math
+                rounder = lambda x : int(math.ceil(x/args.bucket_size) * args.bucket_size)
+                assert args.bucket_size > 4 # see below TODO
+                min_prompt_len = rounder(mn)
+                max_sentence_len = rounder(mx)
+                for _ in range(args.warmup):
+                    lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
+                    for sz in lst:
+                        print('Warming up for shape,', sz-3) # TODO this "-3" because need to make sure if size%bkt==0, if generation is correct etc
+                        generate(sz-3)
+
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
         HabanaProfile.enable()
@@ -506,8 +522,8 @@ def main():
         t0 = time.perf_counter()
         # Benchmark over n_iterations iterations
         for i in range(args.n_iterations):
-            print('Generating for shape,', dyn_prompt_lens[0])
-            generated = generate(dyn_prompt_lens[0])
+            print('Generating for shape,', dyn_prompt_lens[i])
+            generated = generate(dyn_prompt_lens[i])
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
