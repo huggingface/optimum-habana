@@ -38,9 +38,8 @@ from transformers import Trainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.integrations import hp_params
-from transformers.integrations.deepspeed import deepspeed_load_checkpoint
+from transformers.integrations.deepspeed import deepspeed_load_checkpoint, is_deepspeed_available
 from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint, unwrap_model
-from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
@@ -49,8 +48,8 @@ from transformers.trainer_pt_utils import (
     LengthGroupedSampler,
     SequentialDistributedSampler,
     find_batch_size,
+    get_dataloader_sampler,
     get_model_param_count,
-    get_parameter_names,
     nested_concat,
     nested_detach,
     nested_numpify,
@@ -111,6 +110,10 @@ if is_safetensors_available():
 
 if is_peft_available():
     from peft import PeftModel
+
+
+if is_deepspeed_available():
+    from accelerate.utils import DeepSpeedSchedulerWrapper
 
 
 if TYPE_CHECKING:
@@ -318,8 +321,7 @@ class GaudiTrainer(Trainer):
         Trainer's init through `optimizers`, or subclass and override this method in a subclass.
         """
         if self.optimizer is None:
-            decay_parameters = get_parameter_names(self.model, ALL_LAYERNORM_LAYERS)
-            decay_parameters = [name for name in decay_parameters if "bias" not in name]
+            decay_parameters = self.get_decay_parameter_names(self.model)
 
             optimizer_grouped_parameters = []
             for t_params, t_weight_decay in zip(
@@ -529,6 +531,7 @@ class GaudiTrainer(Trainer):
         total_train_batch_size = self._train_batch_size * args.gradient_accumulation_steps * args.world_size
 
         len_dataloader = None
+        num_train_tokens = None
         if has_length(train_dataloader):
             len_dataloader = len(train_dataloader)
             num_update_steps_per_epoch = len(train_dataloader) // args.gradient_accumulation_steps
@@ -542,10 +545,16 @@ class GaudiTrainer(Trainer):
                 # May be slightly incorrect if the last batch in the training dataloader has a smaller size but it's
                 # the best we can do.
                 num_train_samples = args.max_steps * total_train_batch_size
+                if args.include_tokens_per_second:
+                    num_train_tokens = (
+                        self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
+                    )
             else:
                 max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
                 num_train_epochs = math.ceil(args.num_train_epochs)
                 num_train_samples = self.num_examples(train_dataloader) * args.num_train_epochs
+                if args.include_tokens_per_second:
+                    num_train_tokens = self.num_tokens(train_dataloader) * args.num_train_epochs
         elif args.max_steps > 0:  # Rely on max_steps when dataloader does not have a working size
             max_steps = args.max_steps
             # Setting a very large number of epochs so we go as many times as necessary over the iterator.
@@ -553,6 +562,8 @@ class GaudiTrainer(Trainer):
             num_update_steps_per_epoch = max_steps
             num_examples = total_train_batch_size * args.max_steps
             num_train_samples = args.max_steps * total_train_batch_size
+            if args.include_tokens_per_second:
+                num_train_tokens = self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
         else:
             raise ValueError(
                 "args.max_steps must be set to a positive value if dataloader does not have a length, was"
@@ -762,8 +773,17 @@ class GaudiTrainer(Trainer):
         # Skip the first epochs_trained epochs to get the random state of the dataloader at the right point.
         if not args.ignore_data_skip:
             for epoch in range(epochs_trained):
-                for _ in train_dataloader:
-                    break
+                sampler = get_dataloader_sampler(train_dataloader)
+                is_random_sampler = isinstance(sampler, RandomSampler)
+                if not is_random_sampler:
+                    # We just need to begin an iteration to create the randomization of the sampler.
+                    for _ in train_dataloader:
+                        break
+                else:
+                    # Otherwise we need to call the whooooole sampler cause there is some random operation added
+                    # AT THE VERY END!
+                    sampler = sampler if sampler is not None else []
+                    _ = list(sampler)
 
         if self.args.adjust_throughput:
             self.log_evaluate_save_time = 0
@@ -974,6 +994,7 @@ class GaudiTrainer(Trainer):
             start_time,
             num_samples=num_samples_for_speed_metrics,
             num_steps=num_steps_for_speed_metrics,
+            num_tokens=num_train_tokens,
             start_time_after_warmup=start_time_after_warmup,
             log_evaluate_save_time=self.log_evaluate_save_time,
         )
@@ -1182,7 +1203,11 @@ class GaudiTrainer(Trainer):
                 scheduler_dict = to_device_dtype(scheduler_dict, target_device=torch.device("cpu"))
             torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
 
-            # Save SCHEDULER & SCALER
+        # Save SCHEDULER & SCALER
+        is_deepspeed_custom_scheduler = self.is_deepspeed_enabled and not isinstance(
+            self.lr_scheduler, DeepSpeedSchedulerWrapper
+        )
+        if self.args.should_save and (not self.is_deepspeed_enabled or is_deepspeed_custom_scheduler):
             with warnings.catch_warnings(record=True) as caught_warnings:
                 torch.save(scheduler_dict, os.path.join(output_dir, SCHEDULER_NAME))
             reissue_pt_warnings(caught_warnings)
@@ -1248,10 +1273,23 @@ class GaudiTrainer(Trainer):
 
         if self.is_deepspeed_enabled:
             # deepspeed loads optimizer/lr_scheduler together with the model in deepspeed_init
+            if not isinstance(self.lr_scheduler, DeepSpeedSchedulerWrapper):
+                with warnings.catch_warnings(record=True) as caught_warnings:
+                    self.lr_scheduler.load_state_dict(torch.load(os.path.join(checkpoint, SCHEDULER_NAME)))
+                reissue_pt_warnings(caught_warnings)
             return
 
-        checkpoint_file_exists = os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) or os.path.isfile(
-            os.path.join(checkpoint, OPTIMIZER_NAME_BIN)
+        checkpoint_file_exists = (
+            os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME))
+            or os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME_BIN))
+            or (
+                os.path.isdir(checkpoint)
+                and any(
+                    OPTIMIZER_NAME_BIN.split(".")[0] in folder_name
+                    for folder_name in os.listdir(checkpoint)
+                    if os.path.isdir(os.path.join(checkpoint, folder_name))
+                )
+            )
         )
 
         if checkpoint_file_exists and os.path.isfile(os.path.join(checkpoint, SCHEDULER_NAME)):
@@ -1381,7 +1419,8 @@ class GaudiTrainer(Trainer):
                     " stage3_gather_16bit_weights_on_model_save=false. Saving the full checkpoint instead, use"
                     " zero_to_fp32.py to recover weights"
                 )
-                self._save(output_dir, state_dict={})
+                if self.args.should_save:
+                    self._save(output_dir, state_dict={})
                 # remove the dummy state_dict
                 remove_dummy_checkpoint(self.args.should_save, output_dir, [WEIGHTS_NAME, SAFE_WEIGHTS_NAME])
                 self.model_wrapped.save_checkpoint(output_dir)
