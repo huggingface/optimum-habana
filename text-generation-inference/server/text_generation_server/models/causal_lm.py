@@ -10,6 +10,7 @@ from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 import habana_frameworks.torch as htorch
 import habana_frameworks.torch as ht
 from contextlib import nullcontext
+from optimum.habana.utils import HabanaProfile
 
 from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
 from optimum.habana.checkpoint_utils import (
@@ -645,6 +646,17 @@ class CausalLM(Model):
             rank=rank,
             kwargs=kwargs,
         )
+        self.profiling_warmup_steps = int(os.getenv("PROF_WARMUPSTEP", "0"))
+        self.profiling_steps = int(os.getenv("PROF_STEP", "5"))
+        output_dir = os.getenv("PROF_PATH", "/root/text-generation-inference/hpu_profil")
+        self.hb_profer = HabanaProfile(warmup=self.profiling_warmup_steps, active=self.profiling_steps, output_dir=output_dir)
+        if self.profiling_warmup_steps > 0:
+            self.hb_profer_started = True
+            self.hb_profer.start()
+        else:
+            self.hb_profer = None
+            self.hb_profer_started = False
+        self.step = 0
 
     @property
     def batch_type(self) -> Type[CausalLMBatch]:
@@ -678,6 +690,11 @@ class CausalLM(Model):
 
     @tracer.start_as_current_span("generate_token")
     def generate_token(self, batch: CausalLMBatch) -> Tuple[List[Generation], Optional[CausalLMBatch]]:
+        self.step = self.step  + 1
+        if self.hb_profer_started == True and self.step > self.profiling_warmup_steps +  self.profiling_steps:
+            self.hb_profer.stop()
+            self.hb_profer_started  = False
+
         if self.is_optimized_for_gaudi:
             token_idx = torch.tensor(batch.attention_mask.shape[-1] - batch.padding_right_offset).to(self.device)
             attention_mask = batch.attention_mask
@@ -838,6 +855,8 @@ class CausalLM(Model):
 
         # We finished all generations in the batch; there is no next batch
         if stopped:
+            if self.hb_profer_started == True:
+               self.hb_profer.step()
             return generations, None
 
         # Slice unused values from prefill
@@ -853,5 +872,6 @@ class CausalLM(Model):
 
         # Update past key values
         batch.past_key_values = list(past)
-
+        if self.hb_profer_started == True:
+            self.hb_profer.step()
         return generations, batch

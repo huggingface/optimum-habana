@@ -50,3 +50,4 @@ New features will be added soon, including:
 - Added an env var MAX_TOTAL_TOKENS for models that require it to be set during benchmark test.
   It defaults to 0. To change it please add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker.
   This workaround is needed as max_total_tokens is currently not being passed from rust to python when running launcher app. 
+- Added torch profile with support of envs : "PROF_WARMUPSTEP", "PROF_STEP", "PROF_PATH"
