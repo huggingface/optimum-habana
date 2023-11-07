@@ -48,7 +48,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.33.0")
+check_min_version("4.34.0")
 check_optimum_habana_min_version("1.9.0.dev0")
 
 logging.basicConfig(
