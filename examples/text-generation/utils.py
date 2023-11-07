@@ -78,6 +78,34 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
+def setup_quantization(model, quantization_config_file):
+    from quantization import quantization as quant
+
+    quant_config = quant.parse_configuration(quantization_config_file)
+    from habana_frameworks.torch.core.quantization import _check_params_as_const, _mark_params_as_const
+
+    _mark_params_as_const(model)
+    _check_params_as_const(model)
+    if quant_config.quantization_enabled:
+        print("Initializing inference with quantization")
+        quant.apply_quantization(model, quant_config)
+        import habana_frameworks.torch.core as htcore
+
+        htcore.hpu_initialize(model)
+    return model
+
+
+def setup_const_section_serialization(args):
+    import uuid
+
+    from habana_frameworks.torch.hpu import enable_const_section_serialization
+
+    args.const_serialization_path = os.path.join(args.const_serialization_path + uuid.uuid4().hex)
+    os.makedirs(args.const_serialization_path)
+    print("Serializing const params to {}".format(args.const_serialization_path))
+    enable_const_section_serialization(args.const_serialization_path, False)
+
+
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
     check_min_version("4.34.0")
@@ -98,6 +126,11 @@ def setup_env(args):
 
 
 def setup_device(args):
+    if args.device == "hpu":
+        import habana_frameworks.torch.core as htcore
+
+        if args.quantization_file:
+            htcore.hpu_set_env()
     return torch.device(args.device)
 
 
@@ -236,6 +269,8 @@ def initialize_model(args, logger):
         "revision": args.model_revision,
         "token": args.token,
     }
+    if args.const_serialization_path:
+        setup_const_section_serialization(args)
     model = (
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
@@ -243,6 +278,8 @@ def initialize_model(args, logger):
     )
     tokenizer, model = setup_tokenizer(args, model)
     generation_config = setup_generation_config(args, model, tokenizer)
+    if args.quantization_file:
+        model = setup_quantization(model, args.quantization_file)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")

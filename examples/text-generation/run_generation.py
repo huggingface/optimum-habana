@@ -201,6 +201,15 @@ def setup_parser(parser):
     )
     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
 
+    parser.add_argument(
+        "--kv_cache_fp8",
+        action="store_true",
+        help="Store kv-cache in float8 when kv-cache is used",
+    )
+    parser.add_argument("--const_serialization_path", "-csp", type=str, help="Path to serialize const params")
+
+    parser.add_argument("--quantization_file", "-qf", type=str, help="Read quantization configuration from a file")
+
     args = parser.parse_args()
 
     if not args.use_hpu_graphs:

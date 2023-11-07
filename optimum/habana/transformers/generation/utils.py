@@ -678,7 +678,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 bs, _ = input_ids.shape
                 if not is_greedy_or_beam_and_bucket:
                     unwrap_deepspeed_model(self).allocate_kv_cache(
-                        bs * generation_config.num_beams, calculated_max_length, token_idx
+                        bs * generation_config.num_beams,
+                        calculated_max_length,
+                        token_idx,
+                        generation_config.kv_cache_fp8,
                     )
 
         # 7. determine generation mode
