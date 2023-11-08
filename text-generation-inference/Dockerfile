@@ -74,7 +74,8 @@ RUN cd server && \
     pip install -r requirements.txt && \
     pip install . --no-cache-dir && \
     pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0 && \
-    pip install git+https://github.com/huggingface/optimum-habana.git@308f10450488308d5e7eb21107bba42456b52a87
+    pip install git+https://github.com/huggingface/optimum-habana.git && \
+    pip install transformers==4.34.1
 
 #ADD . /tmp/
 #RUN cd /tmp/DeepSpeed && \
