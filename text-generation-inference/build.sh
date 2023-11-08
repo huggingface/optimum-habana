@@ -1,1 +1,1 @@
-sudo docker build --build-arg ftp_proxy=http://proxy-dmz.intel.com:911 --build-arg  https_proxy=http://proxy-dmz.intel.com:912/ --build-arg  proxy_socks=proxy-dmz.intel.com:1080 --build-arg http_proxy=http://proxy-dmz.intel.com:911/ -t tgi_gaudi_lt .
+sudo docker build --build-arg ftp_proxy=http://proxy-dmz.intel.com:911 --build-arg  https_proxy=http://proxy-dmz.intel.com:912/ --build-arg  proxy_socks=proxy-dmz.intel.com:1080 --build-arg http_proxy=http://proxy-dmz.intel.com:911/ -t tgi_gaudi_sarkar .
