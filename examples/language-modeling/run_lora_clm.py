@@ -92,6 +92,10 @@ class ModelArguments:
         default=None,
         metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
     )
+    auth_token: Optional[str] = field(
+        default=None,
+        metadata={"help": "auth token for private models"},
+    )
     use_fast_tokenizer: bool = field(
         default=True,
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
@@ -340,6 +344,7 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
         "trust_remote_code": True if model_args.trust_remote_code else None,
         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
+        "token": model_args.auth_token,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -475,6 +480,7 @@ def main():
             torch_dtype=model_dtype,
             low_cpu_mem_usage=model_args.low_cpu_mem_usage,
             device_map=training_args.device.type if model_args.load_meta_device else None,
+            token = model_args.auth_token,
         )
     else:
         raise ValueError("Must provide model_name_or_path to load a pretrained CausalLM model.")
