@@ -185,6 +185,7 @@ class CausalLMBatch(Batch):
         read_offsets = []
         all_input_ids = []
         max_input_length = 0
+        max_total_tokens = 0
 
         next_token_choosers = []
         stopping_criterias = []
@@ -206,6 +207,7 @@ class CausalLMBatch(Batch):
             request_input_length = self.input_lengths[idx]
             input_lengths.append(request_input_length)
             max_input_length = max(max_input_length, request_input_length)
+            max_total_tokens = max(max_total_tokens, request_input_length + self.padding_right_offset)
 
             next_token_choosers.append(self.next_token_choosers[idx])
             stopping_criteria = self.stopping_criterias[idx]
@@ -214,6 +216,9 @@ class CausalLMBatch(Batch):
             remaining_decode_tokens = stopping_criteria.max_new_tokens - stopping_criteria.current_tokens
             total_remaining_decode_tokens += remaining_decode_tokens
             new_padding_right_offset = max(new_padding_right_offset, remaining_decode_tokens)
+
+        if is_optimized_for_gaudi and max_total_tokens > max_input_length:
+            new_padding_right_offset = max_total_tokens - max_input_length
 
         # Apply indices to input_ids, attention mask, past key values and other items that need to be cached
         input_ids = self.input_ids[keep_indices]
