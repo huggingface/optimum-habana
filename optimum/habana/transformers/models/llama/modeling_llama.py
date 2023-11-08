@@ -99,6 +99,12 @@ class GaudiLlamaAttention(LlamaAttention):
             self.past_key.fill_(0)
             self.past_value.fill_(0)
 
+        # Also call rotary emb to update cos/sin cache of seq len when infering more than self.max_position_embeddings
+        # This helps in avoiding recompilation during forward pass and reduce memory consumption
+        if seq_len > self.max_position_embeddings:
+            self.max_position_embeddings = seq_len
+            _, _ = self.rotary_emb(self.past_value, seq_len=seq_len)
+
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
         tensor.copy_(updated)
