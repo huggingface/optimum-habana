@@ -761,11 +761,12 @@ class CausalLM(Model):
             top_token_ids,
             top_token_logprobs,
         ) in enumerate(iterator):
+            logger.info(f'SARKAR: here 0 {i}')
             generation, next_token_id, all_input_ids, new_input_length, prefix_offset, read_offset, stopped_i = self.loop_body(i, logits, next_token_chooser, all_input_ids, input_length, prefix_offset, read_offset, stopping_criteria, request, top_n_tokens, top_token_ids, top_token_logprobs)
-            logger.info('SARKAR: here 1')
+            logger.info(f'SARKAR: here 1 {i}')
             if not stopped_i:
-                stopped_i = False
-            logger.info(f'SARKAR: here 2 {stopped_i}')
+                stopped = False
+            logger.info(f'SARKAR: here 2 {stopped_i} {i}')
             if generation is not None:
                 generations.append(generation)
 
@@ -776,12 +777,13 @@ class CausalLM(Model):
             batch.prefix_offsets[i] = prefix_offset
             batch.read_offsets[i] = read_offset
             batch.max_input_length = max(batch.max_input_length, new_input_length)
-            logger.info('SARKAR: here 1 end of loop')
+            logger.info(f'SARKAR: here 1 end of loop {i}')
 
         # We finished all generations in the batch; there is no next batch
         if stopped:
             if self.hb_profer_started == True:
                self.hb_profer.step()
+            logger.info(f'SARKAR: RETURNING GENTOKEN HERE')
             return generations, None
 
         # Slice unused values from prefill
@@ -799,6 +801,7 @@ class CausalLM(Model):
         batch.past_key_values = list(past)
         if self.hb_profer_started == True:
             self.hb_profer.step()
+        logger.info(f'SARKAR: RETURNING GENTOKEN')
         return generations, batch
 
 
