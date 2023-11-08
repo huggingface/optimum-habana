@@ -27,11 +27,6 @@ if is_datasets_available():
 class GaudiSeq2seqTrainerTester(TestCasePlus):
     @require_torch
     def test_finetune_t5(self):
-        model = T5ForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-t5-v1.1")
-        tokenizer = AutoTokenizer.from_pretrained("t5-small")
-
-        model.config.max_length = 128
-
         train_dataset = datasets.load_dataset("cnn_dailymail", "3.0.0", split="train[:1%]")
         val_dataset = datasets.load_dataset("cnn_dailymail", "3.0.0", split="validation[:1%]")
 
@@ -39,6 +34,24 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
         val_dataset = val_dataset.select(range(16))
 
         batch_size = 4
+
+        training_args = GaudiSeq2SeqTrainingArguments(
+            output_dir=self.get_auto_remove_tmp_dir(),
+            gaudi_config_name="Habana/t5",
+            per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=batch_size,
+            predict_with_generate=True,
+            do_train=True,
+            do_eval=True,
+            use_habana=True,
+            use_lazy_mode=True,
+            use_hpu_graphs_for_inference=True,
+        )
+
+        model = T5ForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-t5-v1.1")
+        tokenizer = AutoTokenizer.from_pretrained("t5-small")
+
+        model.config.max_length = 128
 
         def _map_to_encoder_decoder_inputs(batch):
             # Tokenizer will automatically set [BOS] <text> [EOS]
@@ -90,21 +103,6 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
         val_dataset.set_format(
             type="torch",
             columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],
-        )
-
-        output_dir = self.get_auto_remove_tmp_dir()
-
-        training_args = GaudiSeq2SeqTrainingArguments(
-            output_dir=output_dir,
-            gaudi_config_name="Habana/t5",
-            per_device_train_batch_size=batch_size,
-            per_device_eval_batch_size=batch_size,
-            predict_with_generate=True,
-            do_train=True,
-            do_eval=True,
-            use_habana=True,
-            use_lazy_mode=True,
-            use_hpu_graphs_for_inference=True,
         )
 
         # instantiate trainer

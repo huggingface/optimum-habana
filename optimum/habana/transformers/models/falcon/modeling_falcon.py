@@ -57,17 +57,90 @@ def gaudi_falcon_rotary_embedding_forward(self, query, key, seq_len, position_id
         return (query * cos) + (rotate_half(query) * sin), (key * cos) + (rotate_half(key) * sin)
 
 
+def _make_causal_mask(
+    input_ids_shape: torch.Size, device: torch.device, past_key_values_length: int
+) -> torch.BoolTensor:
+    batch_size, target_length = input_ids_shape
+
+    mask = torch.empty((target_length, target_length + past_key_values_length), dtype=torch.bool, device=device)
+
+    # ONNX doesn't support `torch.Tensor.triu` properly, thus we use this workaround
+    seq_ids = torch.arange(target_length, device=device)
+    mask[:, past_key_values_length:] = seq_ids[:, None] < seq_ids[None, :]
+
+    if past_key_values_length > 0:
+        mask[:, :past_key_values_length] = False
+
+    expanded_mask = mask[None, None, :, :].expand(batch_size, 1, target_length, target_length + past_key_values_length)
+    return expanded_mask
+
+
+def _expand_mask(mask: torch.Tensor, past_key_values_length: int, tgt_len: int) -> torch.BoolTensor:
+    """
+    Copied from transformers.models.falcon.modeling_falcon._expand_mask
+    Expands attention_mask from `[batch_size, seq_length]` to `[batch_size, 1, seq_length, seq_length + past_length]`
+    when past_key_values_length is not 0 or to `[batch_size, 1, seq_length, tgt_len] when past_key_values_length is 0.`
+    """
+    batch_size, total_length = mask.shape
+    if tgt_len > 0:
+        seq_length = tgt_len
+    else:
+        seq_length = total_length - past_key_values_length if past_key_values_length is not None else total_length
+
+    expanded_mask = ~(mask[:, None, None, :].to(torch.bool))
+    return expanded_mask.expand(batch_size, 1, seq_length, total_length)
+
+
+def gaudi_falcon_attention_split_heads(
+    self, fused_qkv: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Copied from FalconAttention._split_heads https://github.com/huggingface/transformers/blob/v4.33.2/src/transformers/models/falcon/modeling_falcon.py
+    Changing index operation of qkv[:::] to use torch.index_select to work around gradient accuracy issue and improve performance.
+    """
+    if self.new_decoder_architecture:
+        batch, seq_len, _ = fused_qkv.shape
+        qkv = fused_qkv.view(batch, seq_len, self.num_kv_heads, -1, self.head_dim)
+        # query = qkv[:, :, :, :-2]
+        # key = qkv[:, :, :, [-2]]
+        # value = qkv[:, :, :, [-1]]
+        d3 = qkv.shape[3] - 2
+        query = torch.index_select(qkv, 3, index=torch.arange(d3, device=qkv.device))
+        key = torch.index_select(qkv, 3, index=torch.tensor([d3], device=qkv.device))
+        value = torch.index_select(qkv, 3, index=torch.tensor([d3 + 1], device=qkv.device))
+
+        key = torch.broadcast_to(key, query.shape)
+        value = torch.broadcast_to(value, query.shape)
+
+        query, key, value = [x.flatten(2, 3) for x in (query, key, value)]
+        return query, key, value
+    elif not self.multi_query:
+        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
+        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads, 3, self.head_dim)
+        # TODO : Need to be fixed to use index_select()
+        return fused_qkv[..., 0, :], fused_qkv[..., 1, :], fused_qkv[..., 2, :]
+    else:
+        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
+        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads + 2, self.head_dim)
+        # return fused_qkv[..., :-2, :], fused_qkv[..., [-2], :], fused_qkv[..., [-1], :]
+        d2 = fused_qkv.shape[2] - 2
+        query = torch.index_select(fused_qkv, 2, index=torch.arange(d2, device=fused_qkv.device))
+        key = torch.index_select(fused_qkv, 2, index=torch.tensor([d2], device=fused_qkv.device))
+        value = torch.index_select(fused_qkv, 2, index=torch.tensor([d2 + 1], device=fused_qkv.device))
+        return query, key, value
+
+
 def gaudi_falcon_attention_forward(
     self,
     hidden_states: torch.Tensor,
     alibi: Optional[torch.Tensor],
     attention_mask: torch.Tensor,
+    position_ids: Optional[torch.LongTensor] = None,
     layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     head_mask: Optional[torch.Tensor] = None,
     use_cache: bool = False,
     output_attentions: bool = False,
     token_idx: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
 ):
     """
     Copied from FalconAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
@@ -118,7 +191,8 @@ def gaudi_falcon_attention_forward(
     else:
         present = None
 
-    attention_mask_float = (attention_mask * 1.0).masked_fill(attention_mask, float("-1e9")).to(query_layer.dtype)
+    float_min = torch.finfo(query_layer.dtype).min
+    attention_mask_float = (attention_mask * 1.0).masked_fill(attention_mask, float_min).to(query_layer.dtype)
 
     query_layer_ = query_layer.reshape(batch_size, -1, query_length, self.head_dim)
     key_layer_ = key_layer.reshape(batch_size, -1, seq_len, self.head_dim)
@@ -204,12 +278,12 @@ def gaudi_falcon_decoder_layer_forward(
     hidden_states: torch.Tensor,
     alibi: Optional[torch.Tensor],
     attention_mask: torch.Tensor,
+    position_ids: Optional[torch.LongTensor] = None,
     layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     head_mask: Optional[torch.Tensor] = None,
     use_cache: bool = False,
     output_attentions: bool = False,
     token_idx: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
 ):
     """
     Copied from FalconDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
@@ -230,12 +304,12 @@ def gaudi_falcon_decoder_layer_forward(
         attention_layernorm_out,
         layer_past=layer_past,
         attention_mask=attention_mask,
+        position_ids=position_ids,
         alibi=alibi,
         head_mask=head_mask,
         use_cache=use_cache,
         output_attentions=output_attentions,
         token_idx=token_idx,
-        position_ids=position_ids,
     )
 
     attention_output = attn_outputs[0]
@@ -263,79 +337,6 @@ def gaudi_falcon_decoder_layer_forward(
         outputs = (output,) + outputs[1:]
 
     return outputs  # hidden_states, present, attentions
-
-
-def gaudi_falcon_attention_split_heads(
-    self, fused_qkv: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    Copied from FalconAttention._split_heads https://github.com/huggingface/transformers/blob/v4.33.2/src/transformers/models/falcon/modeling_falcon.py
-    Changing index operation of qkv[:::] to use torch.index_select to work around gradient accuracy issue and improve performance.
-    """
-    if self.new_decoder_architecture:
-        batch, seq_len, _ = fused_qkv.shape
-        qkv = fused_qkv.view(batch, seq_len, self.num_kv_heads, -1, self.head_dim)
-        # query = qkv[:, :, :, :-2]
-        # key = qkv[:, :, :, [-2]]
-        # value = qkv[:, :, :, [-1]]
-        d3 = qkv.shape[3] - 2
-        query = torch.index_select(qkv, 3, index=torch.arange(d3, device=qkv.device))
-        key = torch.index_select(qkv, 3, index=torch.tensor([d3], device=qkv.device))
-        value = torch.index_select(qkv, 3, index=torch.tensor([d3 + 1], device=qkv.device))
-
-        key = torch.broadcast_to(key, query.shape)
-        value = torch.broadcast_to(value, query.shape)
-
-        query, key, value = [x.flatten(2, 3) for x in (query, key, value)]
-        return query, key, value
-    elif not self.multi_query:
-        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
-        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads, 3, self.head_dim)
-        # TODO : Need to be fixed to use index_select()
-        return fused_qkv[..., 0, :], fused_qkv[..., 1, :], fused_qkv[..., 2, :]
-    else:
-        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
-        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads + 2, self.head_dim)
-        # return fused_qkv[..., :-2, :], fused_qkv[..., [-2], :], fused_qkv[..., [-1], :]
-        d2 = fused_qkv.shape[2] - 2
-        query = torch.index_select(fused_qkv, 2, index=torch.arange(d2, device=fused_qkv.device))
-        key = torch.index_select(fused_qkv, 2, index=torch.tensor([d2], device=fused_qkv.device))
-        value = torch.index_select(fused_qkv, 2, index=torch.tensor([d2 + 1], device=fused_qkv.device))
-        return query, key, value
-
-
-def _expand_mask(mask: torch.Tensor, past_key_values_length: int, tgt_len: int) -> torch.BoolTensor:
-    """
-    Copied from transformers.models.falcon.modeling_falcon._expand_mask
-    Expands attention_mask from `[batch_size, seq_length]` to `[batch_size, 1, seq_length, seq_length + past_length]`
-    when past_key_values_length is not 0 or to `[batch_size, 1, seq_length, tgt_len] when past_key_values_length is 0.`
-    """
-    batch_size, total_length = mask.shape
-    if tgt_len > 0:
-        seq_length = tgt_len
-    else:
-        seq_length = total_length - past_key_values_length if past_key_values_length is not None else total_length
-
-    expanded_mask = ~(mask[:, None, None, :].to(torch.bool))
-    return expanded_mask.expand(batch_size, 1, seq_length, total_length)
-
-
-def _make_causal_mask(
-    input_ids_shape: torch.Size, device: torch.device, past_key_values_length: int
-) -> torch.BoolTensor:
-    batch_size, target_length = input_ids_shape
-
-    mask = torch.empty((target_length, target_length + past_key_values_length), dtype=torch.bool, device=device)
-
-    # ONNX doesn't support `torch.Tensor.triu` properly, thus we use this workaround
-    seq_ids = torch.arange(target_length, device=device)
-    mask[:, past_key_values_length:] = seq_ids[:, None] < seq_ids[None, :]
-
-    if past_key_values_length > 0:
-        mask[:, :past_key_values_length] = False
-
-    expanded_mask = mask[None, None, :, :].expand(batch_size, 1, target_length, target_length + past_key_values_length)
-    return expanded_mask
 
 
 class GaudiFalconModel(FalconModel):
@@ -389,6 +390,7 @@ class GaudiFalconModel(FalconModel):
         input_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -396,7 +398,6 @@ class GaudiFalconModel(FalconModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -458,6 +459,14 @@ class GaudiFalconModel(FalconModel):
             alibi = build_alibi_tensor(attention_mask, self.num_heads, dtype=hidden_states.dtype)
         else:
             alibi = None
+            if position_ids is None:
+                device = input_ids.device if input_ids is not None else inputs_embeds.device
+                position_ids = torch.arange(
+                    past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
+                )
+                position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+            else:
+                position_ids = position_ids.view(-1, seq_length).long()
 
         causal_mask = self._prepare_attn_mask(
             attention_mask,
@@ -488,6 +497,7 @@ class GaudiFalconModel(FalconModel):
                     hidden_states,
                     alibi,
                     causal_mask,
+                    position_ids,
                     head_mask[i],
                 )
             else:
@@ -495,12 +505,12 @@ class GaudiFalconModel(FalconModel):
                     hidden_states,
                     layer_past=layer_past,
                     attention_mask=causal_mask,
+                    position_ids=position_ids,
                     head_mask=head_mask[i],
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                     alibi=alibi,
                     token_idx=token_idx,
-                    position_ids=position_ids,
                 )
 
             hidden_states = outputs[0]
@@ -540,11 +550,52 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
 
+    def prepare_inputs_for_generation(
+        self,
+        input_ids: torch.LongTensor,
+        past_key_values: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> dict:
+        if past_key_values is not None:
+            if token_idx is not None:
+                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+            else:
+                input_ids = input_ids[:, -1:]
+
+        # Note: versions of Falcon with alibi do not use position_ids. It is used with RoPE.
+        if (
+            not self.transformer.use_alibi
+            and attention_mask is not None
+            and position_ids is None
+            and token_idx is not None
+        ):
+            # create position_ids on the fly for batch generation
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            if past_key_values:
+                if token_idx is not None:
+                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
+                else:
+                    position_ids = position_ids[:, -1].unsqueeze(-1)
+
+        return {
+            "input_ids": input_ids,
+            "position_ids": position_ids,
+            "past_key_values": past_key_values,
+            "use_cache": kwargs.get("use_cache"),
+            "attention_mask": attention_mask,
+            "token_idx": token_idx,
+        }
+
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
@@ -553,7 +604,6 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -567,6 +617,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             input_ids,
             past_key_values=past_key_values,
             attention_mask=attention_mask,
+            position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
@@ -574,7 +625,6 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             token_idx=token_idx,
-            position_ids=position_ids,
         )
         hidden_states = transformer_outputs[0]
 
@@ -603,37 +653,3 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
-
-    def prepare_inputs_for_generation(
-        self,
-        input_ids: torch.LongTensor,
-        past_key_values: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        token_idx: Optional[torch.Tensor] = None,
-        **kwargs,
-    ) -> dict:
-        if past_key_values is not None:
-            if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
-            else:
-                input_ids = input_ids[:, -1:]
-
-        position_ids = kwargs.get("position_ids", None)
-        if attention_mask is not None and position_ids is None and token_idx is not None:
-            # create position_ids on the fly for batch generation
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-            if past_key_values:
-                if token_idx is not None:
-                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
-                else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
-
-        return {
-            "input_ids": input_ids,
-            "past_key_values": past_key_values,
-            "use_cache": kwargs.get("use_cache"),
-            "attention_mask": attention_mask,
-            "token_idx": token_idx,
-            "position_ids": position_ids,
-        }
