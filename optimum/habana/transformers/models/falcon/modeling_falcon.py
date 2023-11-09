@@ -23,7 +23,7 @@ else:
     FusedRoPE = None
 
 import habana_frameworks.torch.core as htcore
-from habana_frameworks.torch.hpu import sdp_kernel
+import habana_frameworks.torch.hpu as ht
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import (
@@ -208,7 +208,7 @@ def gaudi_falcon_attention_forward(
             attn_output = attention_scores @ value_layer_
         else:
             if FusedSDPA:
-                with sdp_kernel(enable_recompute=False):
+                with ht.sdp_kernel(enable_recompute=False):
                     attn_output = FusedSDPA.apply(
                         query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False
                     )
