@@ -42,10 +42,6 @@ from optimum.habana.utils import set_seed
 
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
-    # from diffusers.utils.testing_utils import enable_full_determinism
-
-    # enable_full_determinism()
-
     THROUGHPUT_BASELINE_HMP = 0.981
     THROUGHPUT_BASELINE_BF16 = 1.019
     THROUGHPUT_BASELINE_AUTOCAST = 0.389
@@ -643,8 +639,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 )
             image = outputs.images[0]
 
-            print("HERE 1", image[-3:, -3:, -1].flatten())
-
             self.assertEqual(image.shape, (512, 512, 3))
             self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
 
@@ -713,9 +707,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             rgb = outputs.rgb[0]
             depth = outputs.depth[0]
 
-            print("HERE 2", rgb[-3:, -3:, -1].flatten())
-            print("HERE 3", depth[-3:, -3:, -1].flatten())
-
             self.assertEqual(rgb.shape, (512, 512, 3))
             self.assertEqual(depth.shape, (512, 512, 1))
             self.assertLess(np.abs(expected_slice_rgb - rgb[-3:, -3:, -1].flatten()).max(), 5e-3)
@@ -770,6 +761,5 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                         0.14590913,
                     ]
                 )
-            print("HERE 4", upscaled_image[-3:, -3:, -1].flatten())
             self.assertEqual(upscaled_image.shape, (512, 512, 3))
             self.assertLess(np.abs(expected_slice - upscaled_image[-3:, -3:, -1].flatten()).max(), 5e-3)
