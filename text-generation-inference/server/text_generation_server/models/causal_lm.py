@@ -762,7 +762,7 @@ class CausalLM(Model):
             top_token_ids,
             top_token_logprobs,
         ) in enumerate(iterator):
-            logger.info(f'SARKAR: here 0 {i}')
+            #logger.info(f'SARKAR: here 0 {i}')
             #generation, next_token_id, all_input_ids, new_input_length, prefix_offset, read_offset, stopped_i = self.loop_body(i, logits, next_token_chooser, all_input_ids, input_length, prefix_offset, read_offset, stopping_criteria, request, top_n_tokens, top_token_ids, top_token_logprobs)
             futures.append(torch.jit.fork(self.loop_body, i, logits, next_token_chooser, all_input_ids, input_length, prefix_offset, read_offset, stopping_criteria, request, top_n_tokens, top_token_ids, top_token_logprobs))
 
@@ -775,10 +775,10 @@ class CausalLM(Model):
                 generation = Generation(request_id, prefill_tokens, next_token_id_squeezed, next_token_logprob, next_token_text, all_special_ids, generated_text, top_tokens)  # we cant return Generation from torch.fork. its a weird unknown object torch is afraid of, so reutning a tuple for generation instead
             else:
                 generation = None
-            logger.info(f'SARKAR: here 1 {i}')
+            #logger.info(f'SARKAR: here 1 {i}')
             if not stopped_i:
                 stopped = False
-            logger.info(f'SARKAR: here 2 {stopped_i} {i}')
+            #logger.info(f'SARKAR: here 2 {stopped_i} {i}')
             if generation is not None:
                 generations.append(generation)
 
@@ -789,13 +789,13 @@ class CausalLM(Model):
             batch.prefix_offsets[i] = prefix_offset
             batch.read_offsets[i] = read_offset
             batch.max_input_length = max(batch.max_input_length, new_input_length)
-            logger.info(f'SARKAR: here 1 end of loop {i}')
+            #logger.info(f'SARKAR: here 1 end of loop {i}')
 
         # We finished all generations in the batch; there is no next batch
         if stopped:
             if self.hb_profer_started == True:
                self.hb_profer.step()
-            logger.info(f'SARKAR: RETURNING GENTOKEN HERE')
+            #logger.info(f'SARKAR: RETURNING GENTOKEN HERE')
             return generations, None
 
         # Slice unused values from prefill
@@ -813,12 +813,12 @@ class CausalLM(Model):
         batch.past_key_values = list(past)
         if self.hb_profer_started == True:
             self.hb_profer.step()
-        logger.info(f'SARKAR: RETURNING GENTOKEN')
+        #logger.info(f'SARKAR: RETURNING GENTOKEN')
         return generations, batch
 
 
     def loop_body(self, i, logits, next_token_chooser, all_input_ids, input_length, prefix_offset, read_offset, stopping_criteria, request, top_n_tokens, top_token_ids, top_token_logprobs):
-        logger.info(f'PROCESSING {i}')
+        #logger.info(f'PROCESSING {i}')
         # Select next token
         if self.is_optimized_for_gaudi and logits.shape[-2] > 1:
             next_token_id, logprobs = next_token_chooser(
@@ -914,14 +914,14 @@ class CausalLM(Model):
                 generated_text,
                 top_tokens,
             )
-            logger.info(f'GENERATED SOMETHING {i} {generated_text}')
+            #logger.info(f'GENERATED SOMETHING {i} {generated_text}')
             #generations.append(generation)
         else:
-            logger.info(f'GENERATED NONE {i}')
+            #logger.info(f'GENERATED NONE {i}')
             generation = None
 
-        logger.info('IN LOOP BODY')
-        logger.info('******************')
+        #logger.info('IN LOOP BODY')
+        #logger.info('******************')
 
         return generation, next_token_id, all_input_ids, new_input_length, prefix_offset, read_offset, stopped
             
