@@ -135,12 +135,13 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     Tests the StableDiffusionPipeline for Gaudi.
     """
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(4, 8),
             layers_per_block=1,
             sample_size=32,
+            time_cond_proj_dim=time_cond_proj_dim,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
