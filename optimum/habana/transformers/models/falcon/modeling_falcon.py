@@ -23,6 +23,7 @@ else:
     FusedRoPE = None
 
 import habana_frameworks.torch.core as htcore
+from habana_frameworks.torch.hpu import sdp_kernel
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import (
@@ -207,8 +208,7 @@ def gaudi_falcon_attention_forward(
             attn_output = attention_scores @ value_layer_
         else:
             if FusedSDPA:
-                import habana_frameworks.torch.hpu as ht
-                with ht.sdp_kernel(enable_recompute = False):
+                with sdp_kernel(enable_recompute = False):
                     attn_output = FusedSDPA.apply(query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False)
             else:
                 # Workaround util scaled_dot_product_attention support broadcast.
