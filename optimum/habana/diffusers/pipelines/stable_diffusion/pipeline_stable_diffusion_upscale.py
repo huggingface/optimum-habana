@@ -32,6 +32,7 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
+from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from diffusers.utils import USE_PEFT_BACKEND, BaseOutput, deprecate, scale_lora_layers, unscale_lora_layers
 from diffusers.utils.torch_utils import randn_tensor
@@ -87,7 +88,9 @@ def preprocess(image):
     return image
 
 
-class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin):
+class GaudiStableDiffusionUpscalePipeline(
+    GaudiDiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+):
     """
     Pipeline for text-guided image super-resolution using Stable Diffusion 2.
 

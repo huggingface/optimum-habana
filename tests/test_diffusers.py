@@ -42,6 +42,10 @@ from optimum.habana.utils import set_seed
 
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
+    # from diffusers.utils.testing_utils import enable_full_determinism
+
+    # enable_full_determinism()
+
     THROUGHPUT_BASELINE_HMP = 0.981
     THROUGHPUT_BASELINE_BF16 = 1.019
     THROUGHPUT_BASELINE_AUTOCAST = 0.389
@@ -138,14 +142,15 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
+            block_out_channels=(4, 8),
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
+            norm_num_groups=2,
         )
         scheduler = GaudiDDIMScheduler(
             beta_start=0.00085,
@@ -156,22 +161,23 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=[4, 8],
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=32,
-            intermediate_size=37,
+            intermediate_size=64,
             layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
+            num_attention_heads=8,
+            num_hidden_layers=3,
             pad_token_id=1,
             vocab_size=1000,
         )
@@ -221,7 +227,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             image_slice = image[-3:, -3:, -1]
 
             self.assertEqual(image.shape, (64, 64, 3))
-            expected_slice = np.array([0.5756, 0.6118, 0.5005, 0.5041, 0.5471, 0.4726, 0.4976, 0.4865, 0.4864])
+            expected_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
 
             self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
@@ -619,7 +625,17 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
             if os.environ.get("GAUDI2_CI", "0") == "1":
                 expected_slice = np.array(
-                    [0.3510745, 0.35209572, 0.3374615, 0.35495365, 0.32214567, 0.3310442, 0.34063604, 0.30393118, 0.30016547]
+                    [
+                        0.3510745,
+                        0.35209572,
+                        0.3374615,
+                        0.35495365,
+                        0.32214567,
+                        0.3310442,
+                        0.34063604,
+                        0.30393118,
+                        0.30016547,
+                    ]
                 )
             else:
                 expected_slice = np.array(
@@ -654,15 +670,45 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
             if os.environ.get("GAUDI2_CI", "0") == "1":
                 expected_slice_rgb = np.array(
-                    [0.14627555, 0.11901495, 0.08357495, 0.14823142, 0.11886021, 0.09443256, 0.15565616, 0.14477989, 0.0475893 ]
+                    [
+                        0.14627555,
+                        0.11901495,
+                        0.08357495,
+                        0.14823142,
+                        0.11886021,
+                        0.09443256,
+                        0.15565616,
+                        0.14477989,
+                        0.0475893,
+                    ]
                 )
                 expected_slice_depth = np.array(
-                    [0.67299855, 0.6717663, 0.6758976, 0.6725053, 0.67743355, 0.6797291, 0.67287683, 0.66431385, 0.65159535]
+                    [
+                        0.67299855,
+                        0.6717663,
+                        0.6758976,
+                        0.6725053,
+                        0.67743355,
+                        0.6797291,
+                        0.67287683,
+                        0.66431385,
+                        0.65159535,
+                    ]
                 )
             else:
                 expected_slice_rgb = np.array([0.7083766, 1.0, 1.0, 0.70610344, 0.9867363, 1.0, 0.7214538, 1.0, 1.0])
                 expected_slice_depth = np.array(
-                    [0.919621, 0.92072034, 0.9184986, 0.91994286, 0.9242079, 0.93387043, 0.92345214, 0.93558526, 0.9223714]
+                    [
+                        0.919621,
+                        0.92072034,
+                        0.9184986,
+                        0.91994286,
+                        0.9242079,
+                        0.93387043,
+                        0.92345214,
+                        0.93558526,
+                        0.9223714,
+                    ]
                 )
             rgb = outputs.rgb[0]
             depth = outputs.depth[0]
@@ -698,11 +744,31 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             upscaled_image = pipeline(prompt=prompt, image=low_res_img, output_type="np").images[0]
             if os.environ.get("GAUDI2_CI", "0") == "1":
                 expected_slice = np.array(
-                    [0.16527882, 0.161616, 0.15665859, 0.1660901, 0.1594379, 0.14936888, 0.1578255, 0.15342498, 0.14590919]
+                    [
+                        0.16527882,
+                        0.161616,
+                        0.15665859,
+                        0.1660901,
+                        0.1594379,
+                        0.14936888,
+                        0.1578255,
+                        0.15342498,
+                        0.14590919,
+                    ]
                 )
             else:
                 expected_slice = np.array(
-                    [0.1652787, 0.16161594, 0.15665877, 0.16608998, 0.1594378, 0.14936894, 0.15782538, 0.15342498, 0.14590913]
+                    [
+                        0.1652787,
+                        0.16161594,
+                        0.15665877,
+                        0.16608998,
+                        0.1594378,
+                        0.14936894,
+                        0.15782538,
+                        0.15342498,
+                        0.14590913,
+                    ]
                 )
             print("HERE 4", upscaled_image[-3:, -3:, -1].flatten())
             self.assertEqual(upscaled_image.shape, (512, 512, 3))
