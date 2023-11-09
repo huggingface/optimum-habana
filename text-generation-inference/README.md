@@ -52,4 +52,5 @@ New features will be added soon, including:
   This workaround is needed as max_total_tokens is currently not being passed from Rust to Python when running launcher app.
 
 > The license to use TGI on Habana Gaudi is the one of TGI: https://github.com/huggingface/text-generation-inference/blob/main/LICENSE
+>
 > Please reach out to api-enterprise@huggingface.co if you have any question.
