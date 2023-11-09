@@ -748,6 +748,7 @@ class CausalLM(Model):
 
         # For each member of the batch
         stopped = True
+        futures  = []
         for i, (
             request,
             input_length,
@@ -762,7 +763,18 @@ class CausalLM(Model):
             top_token_logprobs,
         ) in enumerate(iterator):
             logger.info(f'SARKAR: here 0 {i}')
-            generation, next_token_id, all_input_ids, new_input_length, prefix_offset, read_offset, stopped_i = self.loop_body(i, logits, next_token_chooser, all_input_ids, input_length, prefix_offset, read_offset, stopping_criteria, request, top_n_tokens, top_token_ids, top_token_logprobs)
+            #generation, next_token_id, all_input_ids, new_input_length, prefix_offset, read_offset, stopped_i = self.loop_body(i, logits, next_token_chooser, all_input_ids, input_length, prefix_offset, read_offset, stopping_criteria, request, top_n_tokens, top_token_ids, top_token_logprobs)
+            futures.append(torch.jit.fork(self.loop_body, i, logits, next_token_chooser, all_input_ids, input_length, prefix_offset, read_offset, stopping_criteria, request, top_n_tokens, top_token_ids, top_token_logprobs))
+
+        results = [torch.jit.wait(future) for future in futures]
+        for result in results:
+            generation, next_token_id, all_input_ids, new_input_length, prefix_offset, read_offset, stopped_i = result
+            request_id, prefill_tokens, next_token_id_squeezed, next_token_logprob, next_token_text, all_special_ids, generated_text, top_tokens = generation
+            if generated_text is not None:
+                generated_text = GeneratedText(*generated_text)
+                generation = Generation(request_id, prefill_tokens, next_token_id_squeezed, next_token_logprob, next_token_text, all_special_ids, generated_text, top_tokens)  # we cant return Generation from torch.fork. its a weird unknown object torch is afraid of, so reutning a tuple for generation instead
+            else:
+                generation = None
             logger.info(f'SARKAR: here 1 {i}')
             if not stopped_i:
                 stopped = False
@@ -854,7 +866,8 @@ class CausalLM(Model):
                 else:
                     seed = None
 
-                generated_text = GeneratedText(output_text, stopping_criteria.current_tokens, reason, seed)
+                # GeneratedText
+                generated_text = (output_text, stopping_criteria.current_tokens, reason, seed)
             else:
                 generated_text = None
 
@@ -890,7 +903,8 @@ class CausalLM(Model):
             else:
                 top_tokens = None
 
-            generation = Generation(
+            #Generation
+            generation = (
                 request.id,
                 prefill_tokens,
                 next_token_id_squeezed,
