@@ -301,7 +301,7 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 Here is another example with Bloom-7B1:
 
 ```bash
-python ../gaudi_spawn.py \
+DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_MAX_COMPOUND_OP_SYNC=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_clm.py \
     --model_name_or_path bigscience/bloom-7b1 \
     --dataset_name wikitext \
