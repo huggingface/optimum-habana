@@ -246,6 +246,16 @@ class GaudiTrainer(Trainer):
                     raise error
                 self.htcore = htcore
 
+                try:
+                    import habana_frameworks.torch.hpu as hthpu
+                except ImportError as error:
+                    error.msg = f"Could not import habana_frameworks.torch.hpu. {error.msg}."
+                    raise error
+                if self.gaudi_config.use_dynamic_shapes:
+                    hthpu.enable_dynamic_shape()
+                else:
+                    hthpu.disable_dynamic_shape()
+
             try:
                 from habana_frameworks.torch.hpu import random as hpu_random
             except ImportError as error:
