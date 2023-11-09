@@ -208,8 +208,10 @@ def gaudi_falcon_attention_forward(
             attn_output = attention_scores @ value_layer_
         else:
             if FusedSDPA:
-                with sdp_kernel(enable_recompute = False):
-                    attn_output = FusedSDPA.apply(query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False)
+                with sdp_kernel(enable_recompute=False):
+                    attn_output = FusedSDPA.apply(
+                        query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False
+                    )
             else:
                 # Workaround util scaled_dot_product_attention support broadcast.
                 if self.training is True and query_layer_.shape != key_layer_.shape:
