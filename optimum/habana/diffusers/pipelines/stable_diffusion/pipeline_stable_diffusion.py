@@ -969,7 +969,7 @@ class GaudiStableDiffusionPipeline(
                 if not output_type == "latent":
                     # 8. Post-processing
                     image = self.vae.decode(
-                        latents / self.vae.config.scaling_factor, return_dict=False, generator=generator
+                        latents_batch / self.vae.config.scaling_factor, return_dict=False, generator=generator
                     )[0]
                 else:
                     image = latents_batch
