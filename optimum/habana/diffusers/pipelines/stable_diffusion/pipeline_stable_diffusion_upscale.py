@@ -24,7 +24,7 @@ import numpy as np
 import PIL
 import torch
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor2_0,
@@ -32,10 +32,8 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-
-# Added for upscaling
 from diffusers.schedulers import DDPMScheduler, KarrasDiffusionSchedulers
-from diffusers.utils import BaseOutput, deprecate
+from diffusers.utils import USE_PEFT_BACKEND, BaseOutput, deprecate, scale_lora_layers, unscale_lora_layers
 from diffusers.utils.torch_utils import randn_tensor
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
@@ -89,7 +87,7 @@ def preprocess(image):
     return image
 
 
-class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin):
     """
     Pipeline for text-guided image super-resolution using Stable Diffusion 2.
 
@@ -220,6 +218,39 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
+        **kwargs,
+    ):
+        deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
+        deprecate("_encode_prompt()", "1.0.0", deprecation_message, standard_warn=False)
+
+        prompt_embeds_tuple = self.encode_prompt(
+            prompt=prompt,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=lora_scale,
+            **kwargs,
+        )
+
+        # concatenate for backwards comp
+        prompt_embeds = torch.cat([prompt_embeds_tuple[1], prompt_embeds_tuple[0]])
+
+        return prompt_embeds
+
+    def encode_prompt(
+        self,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt=None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -245,13 +276,21 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
             lora_scale (`float`, *optional*):
-                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
+                A LoRA scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
             self._lora_scale = lora_scale
-            # adjust_lora_scale_text_encoder(self.text_encoder, lora_scale) #TODO why this has been removed?
+
+            # dynamically adjust the LoRA scale
+            if not USE_PEFT_BACKEND:
+                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+            else:
+                scale_lora_layers(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             num_prompts = 1
@@ -291,10 +330,31 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             else:
                 attention_mask = None
 
-            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
-            prompt_embeds = prompt_embeds[0]
+            if clip_skip is None:
+                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+                prompt_embeds = prompt_embeds[0]
+            else:
+                prompt_embeds = self.text_encoder(
+                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                )
+                # Access the `hidden_states` first, that contains a tuple of
+                # all the hidden states from the encoder layers. Then index into
+                # the tuple to access the hidden states from the desired layer.
+                prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
+                # We also need to apply the final LayerNorm here to not mess with the
+                # representations. The `last_hidden_states` that we typically use for
+                # obtaining the final prompt representations passes through the LayerNorm
+                # layer.
+                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        if self.text_encoder is not None:
+            prompt_embeds_dtype = self.text_encoder.dtype
+        elif self.unet is not None:
+            prompt_embeds_dtype = self.unet.dtype
+        else:
+            prompt_embeds_dtype = prompt_embeds.dtype
+
+        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -328,7 +388,11 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
-                uncond_tokens, padding="max_length", max_length=max_length, truncation=True, return_tensors="pt"
+                uncond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
             )
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
@@ -337,7 +401,8 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                 attention_mask = None
 
             negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device), attention_mask=attention_mask
+                uncond_input.input_ids.to(device),
+                attention_mask=attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
@@ -345,10 +410,14 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(num_prompts * num_images_per_prompt, seq_len, -1)
+
+        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+            # Retrieve the original scale by scaling back the LoRA layers
+            unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -441,15 +510,16 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-                if (
-                    not isinstance(image, torch.Tensor)
-                    and not isinstance(image, PIL.Image.Image)
-                    and not isinstance(image, np.ndarray)
-                    and not isinstance(image, list)
-                ):
-                    raise ValueError(
-                        f"`image` has to be of type `torch.Tensor`, `np.ndarray`, `PIL.Image.Image` or `list` but is {type(image)}"
-                    )
+
+        if (
+            not isinstance(image, torch.Tensor)
+            and not isinstance(image, PIL.Image.Image)
+            and not isinstance(image, np.ndarray)
+            and not isinstance(image, list)
+        ):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `np.ndarray`, `PIL.Image.Image` or `list` but is {type(image)}"
+            )
 
         # verify batch size of prompt and image are same if image is a list or tensor or numpy array
         if isinstance(image, list) or isinstance(image, torch.Tensor) or isinstance(image, np.ndarray):
@@ -518,6 +588,32 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             self.vae.post_quant_conv.to(dtype)
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
+
+    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
+        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
+
+        The suffixes after the scaling factors represent the stages where they are being applied.
+
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
+        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
+
+        Args:
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
+        """
+        if not hasattr(self, "unet"):
+            raise ValueError("The pipeline must have `unet` for using FreeU.")
+        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
+
+    def disable_freeu(self):
+        """Disables the FreeU mechanism if enabled."""
+        self.unet.disable_freeu()
 
     @classmethod
     def _split_inputs_into_batches(cls, batch_size, latents, text_embeddings, uncond_embeddings, image, noise_level):
@@ -597,6 +693,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        clip_skip: int = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -657,6 +754,9 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Returns:
             [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] or `tuple`:
@@ -723,7 +823,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
             text_encoder_lora_scale = (
                 cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
             )
-            prompt_embeds, negative_prompt_embeds = self._encode_prompt(
+            prompt_embeds, negative_prompt_embeds = self.encode_prompt(
                 prompt,
                 device,
                 num_images_per_prompt,
@@ -732,6 +832,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
                 prompt_embeds=prompt_embeds,
                 negative_prompt_embeds=negative_prompt_embeds,
                 lora_scale=text_encoder_lora_scale,
+                clip_skip=clip_skip,
             )
 
             # 3. Preprocess image
@@ -851,7 +952,8 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
 
                     # call the callback, if provided
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, timestep, latents_batch)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, timestep, latents_batch)
 
                 if not output_type == "latent":
                     # 8. Post-processing
@@ -860,8 +962,9 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, TextualInversi
 
                     if needs_upcasting:
                         self.upcast_vae()
-                        latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
+                    # Ensure latents are always the same type as the VAE
+                    latents_batch = latents_batch.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
                     image = self.vae.decode(latents_batch / self.vae.config.scaling_factor, return_dict=False)[0]
 
                     # cast back to fp16 if needed
