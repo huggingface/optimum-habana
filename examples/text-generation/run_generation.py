@@ -320,6 +320,17 @@ def main():
                 )
         model = model.eval()
 
+        if args.peft_model:
+            import importlib.util
+
+            if importlib.util.find_spec("peft") is None:
+                raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+            from peft import PeftModel
+
+            model = PeftModel.from_pretrained(model, args.peft_model)
+            model = model.merge_and_unload()
+            # model = model.to(model_dtype)
+
         # Initialize the model
         ds_inference_kwargs = {"dtype": model_dtype}
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
@@ -344,6 +355,17 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = model.eval().to(args.device)
         is_optimized = model_is_optimized(model.config)
+
+        if args.peft_model:
+            import importlib.util
+
+            if importlib.util.find_spec("peft") is None:
+                raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+            from peft import PeftModel
+
+            model = PeftModel.from_pretrained(model, args.peft_model)
+            model = model.merge_and_unload()
+            model = model.to(model_dtype)
 
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -379,16 +401,6 @@ def main():
         bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
     if args.force_words is not None:
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
-
-    if args.peft_model:
-        import importlib.util
-
-        if importlib.util.find_spec("peft") is None:
-            raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
-        from peft import PeftModel
-
-        model = PeftModel.from_pretrained(model, args.peft_model)
-        model = model.to(model_dtype)
 
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)
