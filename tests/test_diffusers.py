@@ -614,10 +614,10 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         rgb = outputs.rgb[0]
         depth = outputs.depth[0]
 
-            self.assertEqual(rgb.shape, (512, 512, 3))
-            self.assertEqual(depth.shape, (512, 512, 1))
-            self.assertLess(np.abs(expected_slice_rgb - rgb[-3:, -3:, -1].flatten()).max(), 5e-3)
-            self.assertLess(np.abs(expected_slice_depth - depth[-3:, -3:, -1].flatten()).max(), 5e-3)
+        self.assertEqual(rgb.shape, (512, 512, 3))
+        self.assertEqual(depth.shape, (512, 512, 1))
+        self.assertLess(np.abs(expected_slice_rgb - rgb[-3:, -3:, -1].flatten()).max(), 5e-3)
+        self.assertLess(np.abs(expected_slice_depth - depth[-3:, -3:, -1].flatten()).max(), 5e-3)
 
     @slow
     def test_no_generation_regression_upscale(self):
