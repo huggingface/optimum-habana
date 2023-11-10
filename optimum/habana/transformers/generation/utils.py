@@ -76,6 +76,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "gpt_bigcode",
     "bart",
     "mpt",
+    "mistral",
 ]
 
 
