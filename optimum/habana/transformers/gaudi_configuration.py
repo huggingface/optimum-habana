@@ -15,7 +15,6 @@
 
 import os
 import sys
-import warnings
 from pathlib import Path
 
 from optimum.configuration_utils import BaseConfig
@@ -54,20 +53,10 @@ class GaudiConfig(BaseConfig):
     FULL_CONFIGURATION_FILE = "gaudi_config.json"
 
     def __init__(self, **kwargs):
-        # Habana Mixed Precision (MHP) configuration
-        self.use_habana_mixed_precision = kwargs.pop("use_habana_mixed_precision", False)
-        self.hmp_bf16_ops = kwargs.pop("hmp_bf16_ops", DEFAULT_BF16_OPS)
-        self.hmp_fp32_ops = kwargs.pop("hmp_fp32_ops", DEFAULT_FP32_OPS)
-        self.hmp_is_verbose = kwargs.pop("hmp_is_verbose", False)
         # Torch Autocast
         self.use_torch_autocast = kwargs.pop("use_torch_autocast", False)
         self.autocast_bf16_ops = kwargs.pop("autocast_bf16_ops", None)
         self.autocast_fp32_ops = kwargs.pop("autocast_fp32_ops", None)
-
-        if self.use_habana_mixed_precision and self.use_torch_autocast:
-            raise ValueError(
-                "`use_habana_mixed_precision` and `use_torch_autocast` cannot be both `True` in your Gaudi configuration, you must choose one or the other to perform mixed-precision training."
-            )
 
         # Use Habana's custom AdamW implementation
         self.use_fused_adam = kwargs.pop("use_fused_adam", False)
@@ -75,12 +64,6 @@ class GaudiConfig(BaseConfig):
         self.use_fused_clip_norm = kwargs.pop("use_fused_clip_norm", False)
 
         # TODO: to remove in a future version
-        if "hmp_opt_level" in kwargs:
-            warnings.warn(
-                "`hmp_opt_level` is deprecated and will be removed in a future version.",
-                FutureWarning,
-            )
-        self.hmp_opt_level = kwargs.pop("hmp_opt_level", "O1")
 
     def write_bf16_fp32_ops_to_text_files(
         self,

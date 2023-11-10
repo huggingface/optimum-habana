@@ -109,16 +109,14 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     f"`gaudi_config` must be a string or a GaudiConfig object but is {type(gaudi_config)}."
                 )
 
-            if self.gaudi_config.use_habana_mixed_precision or self.gaudi_config.use_torch_autocast:
+            if self.gaudi_config.use_torch_autocast:
                 if bf16_full_eval:
                     logger.warning(
-                        "`use_habana_mixed_precision` or `use_torch_autocast` is True in the given Gaudi configuration but "
+                        "`use_torch_autocast` is True in the given Gaudi configuration but "
                         "`torch_dtype=torch.blfloat16` was given. Disabling mixed precision and continuing in bf16 only."
                     )
                     self.gaudi_config.use_torch_autocast = False
-                    self.gaudi_config.use_habana_mixed_precision = False
-                elif self.gaudi_config.use_torch_autocast:
-                    # Open temporary files to write mixed-precision ops
+                else:
                     with tempfile.NamedTemporaryFile() as hmp_bf16_file:
                         with tempfile.NamedTemporaryFile() as hmp_fp32_file:
                             self.gaudi_config.write_bf16_fp32_ops_to_text_files(
@@ -127,29 +125,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                             )
                             os.environ["LOWER_LIST"] = str(hmp_bf16_file)
                             os.environ["FP32_LIST"] = str(hmp_fp32_file)
-
-                            import habana_frameworks.torch.core  # noqa
-                elif self.gaudi_config.use_habana_mixed_precision:
-                    try:
-                        from habana_frameworks.torch.hpex import hmp
-                    except ImportError as error:
-                        error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-                        raise error
-
-                    # Open temporary files to write mixed-precision ops
-                    with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                        with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                            # hmp.convert needs ops to be written in text files
-                            self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                                hmp_bf16_file.name,
-                                hmp_fp32_file.name,
-                            )
-                            hmp.convert(
-                                opt_level=self.gaudi_config.hmp_opt_level,
-                                bf16_file_path=hmp_bf16_file.name,
-                                fp32_file_path=hmp_fp32_file.name,
-                                isVerbose=self.gaudi_config.hmp_is_verbose,
-                            )
 
             # Workaround for Synapse 1.11 for full bf16 and Torch Autocast
             if bf16_full_eval or self.gaudi_config.use_torch_autocast:

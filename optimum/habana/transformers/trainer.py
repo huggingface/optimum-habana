@@ -20,7 +20,6 @@ import os
 import random
 import shutil
 import sys
-import tempfile
 import time
 import warnings
 from collections.abc import Mapping
@@ -217,29 +216,6 @@ class GaudiTrainer(Trainer):
 
             if self.use_hpu_amp and "LOWER_LIST" not in os.environ:
                 gaudi_config.declare_autocast_bf16_fp32_ops()
-
-            if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
-                try:
-                    from habana_frameworks.torch.hpex import hmp
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-                    raise error
-                self.hmp = hmp
-
-                # Open temporary files to mixed-precision write ops
-                with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                    with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                        # hmp.convert needs ops to be written in text files
-                        self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                            hmp_bf16_file.name,
-                            hmp_fp32_file.name,
-                        )
-                        self.hmp.convert(
-                            opt_level=self.gaudi_config.hmp_opt_level,
-                            bf16_file_path=hmp_bf16_file.name,
-                            fp32_file_path=hmp_fp32_file.name,
-                            isVerbose=self.gaudi_config.hmp_is_verbose,
-                        )
 
             if self.args.use_lazy_mode:
                 try:
@@ -907,31 +883,14 @@ class GaudiTrainer(Trainer):
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
-                            if (
-                                args.use_habana
-                                and (not (self.use_hpu_amp or self.use_cpu_amp))
-                                and self.gaudi_config.use_habana_mixed_precision
-                            ):
-                                with self.hmp.disable_casts():
-                                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                            else:
-                                self.accelerator.clip_grad_norm_(
-                                    model.parameters(),
-                                    args.max_grad_norm,
-                                )
+                            self.accelerator.clip_grad_norm_(
+                                model.parameters(),
+                                args.max_grad_norm,
+                            )
 
                     # Optimizer step
                     optimizer_was_run = True
-                    if (
-                        args.use_habana
-                        and self.gaudi_config.use_habana_mixed_precision
-                        and (not self.gaudi_config.use_fused_adam)
-                        and (not (self.use_hpu_amp or self.use_cpu_amp))
-                    ):
-                        with self.hmp.disable_casts():
-                            self.optimizer.step()
-                    else:
-                        self.optimizer.step()
+                    self.optimizer.step()
                     optimizer_was_run = not self.accelerator.optimizer_step_was_skipped
 
                     if optimizer_was_run:
