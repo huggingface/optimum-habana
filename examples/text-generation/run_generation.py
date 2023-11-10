@@ -328,8 +328,7 @@ def main():
             from peft import PeftModel
 
             model = PeftModel.from_pretrained(model, args.peft_model)
-            model = model.merge_and_unload()
-            # model = model.to(model_dtype)
+            model = model.merge_and_unload().eval().to(model_dtype)
 
         # Initialize the model
         ds_inference_kwargs = {"dtype": model_dtype}
@@ -364,8 +363,7 @@ def main():
             from peft import PeftModel
 
             model = PeftModel.from_pretrained(model, args.peft_model)
-            model = model.merge_and_unload()
-            model = model.to(model_dtype)
+            model = model.merge_and_unload().eval().to(model_dtype)
 
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
