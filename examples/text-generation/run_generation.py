@@ -39,8 +39,17 @@ from optimum.habana.checkpoint_utils import (
 )
 
 
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+
+    def check_optimum_habana_min_version(*a, **b):
+        return ()
+
+
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.33.0")
+check_min_version("4.34.0")
+check_optimum_habana_min_version("1.9.0.dev0")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -311,6 +320,16 @@ def main():
                 )
         model = model.eval()
 
+        if args.peft_model:
+            import importlib.util
+
+            if importlib.util.find_spec("peft") is None:
+                raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+            from peft import PeftModel
+
+            model = PeftModel.from_pretrained(model, args.peft_model)
+            model = model.merge_and_unload().eval().to(model_dtype)
+
         # Initialize the model
         ds_inference_kwargs = {"dtype": model_dtype}
         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
@@ -319,7 +338,7 @@ def main():
         if load_to_meta:
             # model loaded to meta is managed differently
             checkpoints_json = "checkpoints.json"
-            write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
+            write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json, token=args.token)
 
         # Make sure all devices/nodes have access to the model checkpoints
         torch.distributed.barrier()
@@ -335,6 +354,16 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = model.eval().to(args.device)
         is_optimized = model_is_optimized(model.config)
+
+        if args.peft_model:
+            import importlib.util
+
+            if importlib.util.find_spec("peft") is None:
+                raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+            from peft import PeftModel
+
+            model = PeftModel.from_pretrained(model, args.peft_model)
+            model = model.merge_and_unload().eval().to(model_dtype)
 
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -370,16 +399,6 @@ def main():
         bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
     if args.force_words is not None:
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
-
-    if args.peft_model:
-        import importlib.util
-
-        if importlib.util.find_spec("peft") is None:
-            raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
-        from peft import PeftModel
-
-        model = PeftModel.from_pretrained(model, args.peft_model)
-        model = model.to(model_dtype)
 
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)

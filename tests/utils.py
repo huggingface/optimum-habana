@@ -37,6 +37,7 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "t5": [
         ("t5-small", "Habana/t5"),
+        ("google/flan-t5-xxl", "Habana/t5"),
     ],
     "vit": [
         ("google/vit-base-patch16-224-in21k", "Habana/vit"),
@@ -47,7 +48,10 @@ MODELS_TO_TEST_MAPPING = {
     ],
     "swin": [("microsoft/swin-base-patch4-window7-224-in22k", "Habana/swin")],
     "clip": [("./clip-roberta", "Habana/clip")],
-    # "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
+    "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
+    "gpt_neox": [("EleutherAI/gpt-neox-20b", "Habana/gpt2")],
+    "llama": [("huggyllama/llama-7b", "Habana/gpt2")],
+    "falcon": [("tiiuae/falcon-40b", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -65,7 +69,7 @@ MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     # "distilbert",
 ]
 
-MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2"]
+MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox"]
 
 MODELS_TO_TEST_FOR_SEQ2SEQ = ["t5"]
 
@@ -83,4 +87,4 @@ MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION = ["wav2vec2"]
 
 MODELS_TO_TEST_FOR_SPEECH_RECOGNITION = ["wav2vec2"]
 
-MODELS_TO_TEST_FOR_IMAGE_TEXT = ["clip"]  # , "bridgetower"]
+MODELS_TO_TEST_FOR_IMAGE_TEXT = ["clip"]

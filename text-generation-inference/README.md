@@ -49,4 +49,8 @@ New features will be added soon, including:
 - batching strategy to have less model compilations
 - Added an env var MAX_TOTAL_TOKENS for models that require it to be set during benchmark test.
   It defaults to 0. To change it please add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker.
-  This workaround is needed as max_total_tokens is currently not being passed from rust to python when running launcher app. 
+  This workaround is needed as max_total_tokens is currently not being passed from Rust to Python when running launcher app.
+
+> The license to use TGI on Habana Gaudi is the one of TGI: https://github.com/huggingface/text-generation-inference/blob/main/LICENSE
+>
+> Please reach out to api-enterprise@huggingface.co if you have any question.

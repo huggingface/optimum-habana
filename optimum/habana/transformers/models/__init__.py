@@ -28,8 +28,6 @@ from .codegen import (
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
-    gaudi_esmoutput_forward,
-    gaudi_esmselfoutput_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
 )
@@ -94,5 +92,6 @@ from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     _gaudi_wav2vec2_sample_negative_indices,
+    gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
 )
