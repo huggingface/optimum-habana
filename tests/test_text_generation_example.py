@@ -45,7 +45,7 @@ else:
             ("bigcode/starcoder", 15.955986010526113),
             ("Salesforce/codegen2-1B", 109.03016111561857),
             ("mosaicml/mpt-7b", 44.888696119070424),
-            ("mistralai/Mistral-7B-v0.1", 35.825021595560855),
+            ("mistralai/Mistral-7B-v0.1", 40.0690067247771),
         ],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 27.34439410425298),
