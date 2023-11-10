@@ -1,0 +1,62 @@
+{
+    "gaudi": {
+        "tatsu-lab/alpaca": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 2,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 1e-4,
+                    "train_batch_size": 2,
+                    "perplexity": 2.7363,
+                    "train_runtime": 585.6146,
+                    "train_samples_per_second": 19.015,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 4",
+                        "--save_strategy no",
+                        "--use_hpu_graphs_for_inference",
+                        "--dataset_concatenation",
+                        "--validation_split_percentage 10",
+                        "--max_steps 100"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "tatsu-lab/alpaca": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 8,
+                    "perplexity": 2.3665,
+                    "train_runtime": 310.8441,
+                    "train_samples_per_second": 139.34,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 2",
+                        "--evaluation_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10"
+                    ]
+                }
+            }
+        }
+    }
+}

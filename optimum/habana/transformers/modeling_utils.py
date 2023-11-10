@@ -33,6 +33,7 @@ from .models import (
     GaudiLlamaDecoderLayer,
     GaudiLlamaForCausalLM,
     GaudiLlamaModel,
+    GaudiMistralForCausalLM,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
@@ -59,8 +60,6 @@ from .models import (
     gaudi_conv1d_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
-    gaudi_esmoutput_forward,
-    gaudi_esmselfoutput_forward,
     gaudi_falcon_attention_forward,
     gaudi_falcon_attention_split_heads,
     gaudi_falcon_decoder_layer_forward,
@@ -78,6 +77,9 @@ from .models import (
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
+    gaudi_mistral_attn_forward,
+    gaudi_mistral_decoder_layer_forward,
+    gaudi_mistral_model_forward,
     gaudi_mpt_attention_forward,
     gaudi_mpt_block_forward,
     gaudi_opt_attention_forward,
@@ -203,8 +205,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.esm.modeling_esmfold.EsmForProteinFolding.forward = gaudi_esm_for_protein_folding_forward
     transformers.models.esm.openfold_utils.rigid_utils.rot_matmul = gaudi_rot_matmul
     transformers.models.esm.openfold_utils.rigid_utils.rot_vec_mul = gaudi_rot_vec_mul
-    transformers.models.esm.modeling_esm.EsmSelfOutput.forward = gaudi_esmselfoutput_forward
-    transformers.models.esm.modeling_esm.EsmOutput.forward = gaudi_esmoutput_forward
 
     # Optimization for OPT generation on Gaudi
     transformers.models.opt.modeling_opt.OPTAttention.forward = gaudi_opt_attention_forward
@@ -260,3 +260,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
     transformers.models.mpt.modeling_mpt.MptAttention.forward = gaudi_mpt_attention_forward
     transformers.models.mpt.modeling_mpt.MptBlock.forward = gaudi_mpt_block_forward
+
+    # Optimization for mistral on Gaudi
+    transformers.models.mistral.modeling_mistral.MistralForCausalLM = GaudiMistralForCausalLM
+    transformers.models.mistral.modeling_mistral.MistralModel.forward = gaudi_mistral_model_forward
+    transformers.models.mistral.modeling_mistral.MistralAttention.forward = gaudi_mistral_attn_forward
+    transformers.models.mistral.modeling_mistral.MistralDecoderLayer.forward = gaudi_mistral_decoder_layer_forward
