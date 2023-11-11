@@ -614,7 +614,7 @@
 >             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
 >             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
 >                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
-378c315,338
+378c315,348
 <             tokenizer_kwargs = {}
 ---
 >             get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
@@ -624,6 +624,16 @@
 >                     args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
 >                 )
 >         model = model.eval()
+> 
+>         if args.peft_model:
+>             import importlib.util
+> 
+>             if importlib.util.find_spec("peft") is None:
+>                 raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+>             from peft import PeftModel
+> 
+>             model = PeftModel.from_pretrained(model, args.peft_model)
+>             model = model.merge_and_unload().eval().to(model_dtype)
 > 
 >         # Initialize the model
 >         ds_inference_kwargs = {"dtype": model_dtype}
@@ -641,14 +651,14 @@
 >         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
 >         if load_to_meta:
 >             ds_inference_kwargs["checkpoint"] = checkpoints_json
-380,382c340,341
+380,382c350,351
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
 ---
 >         model = deepspeed.init_inference(model, **ds_inference_kwargs)
 >         model = model.module
-384,386c343,370
+384,386c353,390
 <         prefix = args.prefix if args.prefix else args.padding_text
 <         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
 <     encoded_prompt = encoded_prompt.to(distributed_state.device)
@@ -657,6 +667,16 @@
 >         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
 >         model = model.eval().to(args.device)
 >         is_optimized = model_is_optimized(model.config)
+> 
+>         if args.peft_model:
+>             import importlib.util
+> 
+>             if importlib.util.find_spec("peft") is None:
+>                 raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+>             from peft import PeftModel
+> 
+>             model = PeftModel.from_pretrained(model, args.peft_model)
+>             model = model.merge_and_unload().eval().to(model_dtype)
 > 
 >         if args.use_hpu_graphs:
 >             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -681,7 +701,7 @@
 >     if tokenizer.pad_token is None:
 >         tokenizer.pad_token = tokenizer.eos_token
 >         model.generation_config.pad_token_id = model.generation_config.eos_token_id
-388,389c372,523
+388,389c392,533
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
@@ -695,16 +715,6 @@
 >         bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
 >     if args.force_words is not None:
 >         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
-> 
->     if args.peft_model:
->         import importlib.util
-> 
->         if importlib.util.find_spec("peft") is None:
->             raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
->         from peft import PeftModel
-> 
->         model = PeftModel.from_pretrained(model, args.peft_model)
->         model = model.to(model_dtype)
 > 
 >     # Generation configuration
 >     generation_config = copy.deepcopy(model.generation_config)
@@ -837,7 +847,7 @@
 >             print(f"Graph compilation duration          = {compilation_duration} seconds")
 >             print(separator)
 >             print()
-391c525,540
+391c535,550
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -856,7 +866,7 @@
 >             .shuffle()
 >             .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
 >         )
-393,399c542,550
+393,399c552,560
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -874,7 +884,7 @@
 >                 logger.info(
 >                     f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >                 )
-401,439c552,572
+401,439c562,582
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -936,7 +946,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-440a574,595
+440a584,605
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
@@ -959,12 +969,12 @@
 > 
 >         else:
 >             collate_fn = None
-442,443c597
+442,443c607
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
 >         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
-445c599,672
+445c609,682
 <     return generated_sequences
 ---
 >         def generate_dataset(batch):
