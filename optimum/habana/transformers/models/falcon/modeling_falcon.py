@@ -16,9 +16,9 @@ except ImportError:
 try:
     from habana_frameworks.torch.hpu import sdp_kernel
 
-    SDPContext = sdp_kernel(enable_recompute=False)
+    SDPContext = True
 except ImportError:
-    SDPContext = contextlib.nullcontext()
+    SDPContext = False
 
 # TODO: remove this workaround when FusedRoPE properly works on Gaudi
 if get_device_name() == "gaudi2":
@@ -216,7 +216,7 @@ def gaudi_falcon_attention_forward(
             attn_output = attention_scores @ value_layer_
         else:
             if FusedSDPA:
-                with SDPContext:
+                with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
                     attn_output = FusedSDPA.apply(
                         query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False
                     )
