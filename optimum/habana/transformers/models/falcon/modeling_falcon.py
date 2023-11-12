@@ -1,3 +1,4 @@
+import contextlib
 import math
 from typing import Optional, Tuple, Union
 
@@ -12,6 +13,13 @@ except ImportError:
     print("Not using HPU fused kernel for scaled_dot_product_attention")
     FusedSDPA = None
 
+try:
+    from habana_frameworks.torch.hpu import sdp_kernel
+
+    SDPContext = True
+except ImportError:
+    SDPContext = False
+
 # TODO: remove this workaround when FusedRoPE properly works on Gaudi
 if get_device_name() == "gaudi2":
     try:
@@ -21,6 +29,7 @@ if get_device_name() == "gaudi2":
         FusedRoPE = None
 else:
     FusedRoPE = None
+
 
 import habana_frameworks.torch.core as htcore
 from torch.nn import CrossEntropyLoss
@@ -213,7 +222,10 @@ def gaudi_falcon_attention_forward(
             attn_output = attention_scores @ value_layer_
         else:
             if FusedSDPA:
-                attn_output = FusedSDPA.apply(query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False)
+                with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
+                    attn_output = FusedSDPA.apply(
+                        query_layer_, key_layer_, value_layer_, attention_mask_float, 0.0, False
+                    )
             else:
                 # Workaround util scaled_dot_product_attention support broadcast.
                 if self.training is True and query_layer_.shape != key_layer_.shape:
