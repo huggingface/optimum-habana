@@ -1,4 +1,5 @@
 import os
+post_process_cpu = int(os.getenv("POST_PROCESS_CPU","0"))
 from text_generation_server.utils.tokens import batch_top_tokens
 import torch
 
@@ -7,8 +8,11 @@ from opentelemetry import trace
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase, AutoConfig
 from typing import Optional, Tuple, List, Type, Dict
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-import habana_frameworks.torch.core as htcore
-
+if post_process_cpu == 1:
+    import habana_frameworks.torch.core as htcore
+else:
+    import habana_frameworks.torch as htorch
+    import habana_frameworks.torch as ht
 from contextlib import nullcontext
 from optimum.habana.utils import HabanaProfile
 
@@ -128,7 +132,10 @@ class CausalLMBatch(Batch):
             return_token_type_ids=False,
             truncation=True,
             max_length=max_truncation,
-        ) #.to(device)
+        ) 
+        if post_process_cpu == 0:
+            tokenized_inputs.to(device)
+
         for _ in pb.requests:
             input_len = tokenized_inputs["input_ids"].shape[1]
             input_lengths.append(input_len)
@@ -143,22 +150,30 @@ class CausalLMBatch(Batch):
             # pad to max_total_tokens in case max_new_token changes per request and triggers new hpu graph generation
             padding_right_offset = max_total_tokens - max_input_length
 
-        #only move model inputs to device
         input_ids = tokenized_inputs["input_ids"]
-        attention_mask = tokenized_inputs["attention_mask"].to(device)
-        position_ids = tokenized_inputs["attention_mask"].to(device).long().cumsum(-1) - 1
-        position_ids.masked_fill_(attention_mask == 0, 1)
+        if post_process_cpu == 1:
+            #only move model inputs to device
+            attention_mask = tokenized_inputs["attention_mask"].to(device)
+            position_ids = tokenized_inputs["attention_mask"].to(device).long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
 
-        if is_optimized_for_gaudi:
-            input_ids_cpu = torch.nn.functional.pad(input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id)
-            input_ids = input_ids_cpu.to(device)
-            attention_mask = torch.nn.functional.pad(attention_mask, (0, padding_right_offset), value=0)
-            all_input_ids = input_ids_cpu.T.split(1, dim=1)
+            if is_optimized_for_gaudi:
+                input_ids_cpu = torch.nn.functional.pad(input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id)
+                input_ids = input_ids_cpu.to(device)
+                attention_mask = torch.nn.functional.pad(attention_mask, (0, padding_right_offset), value=0)
+                all_input_ids = input_ids_cpu.T.split(1, dim=1)
+            else:
+                all_input_ids = input_ids.clone().T.split(1, dim=1)
+                input_ids = input_ids.to(device)
+            htcore.mark_step()
         else:
-            all_input_ids = input_ids.clone().T.split(1, dim=1)
-            input_ids = input_ids.to(device)
-        htcore.mark_step()
-
+            attention_mask = tokenized_inputs["attention_mask"]
+            if is_optimized_for_gaudi:
+                input_ids = torch.nn.functional.pad(input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id)
+                attention_mask = torch.nn.functional.pad(attention_mask, (0, padding_right_offset), value=0)
+            position_ids = tokenized_inputs["attention_mask"].long().cumsum(-1) - 1
+            position_ids.masked_fill_(tokenized_inputs["attention_mask"] == 0, 1)
+            all_input_ids = input_ids.T.clone().split(1, dim=1)
 
         top_n_tokens_tensor = torch.tensor(top_n_tokens, device=device, dtype=torch.int64)
 
@@ -563,7 +578,8 @@ class CausalLM(Model):
 
         world_size = int(os.getenv("WORLD_SIZE", '1'))
         rank = int(os.getenv("RANK"), 0)
-
+        if post_process_cpu == 0:
+            self.stream = None
         if world_size > 1:
             import habana_frameworks.torch.hpu as torch_hpu
 
@@ -607,6 +623,8 @@ class CausalLM(Model):
             if load_to_meta:
                 ds_inference_kwargs["checkpoint"] = checkpoints_json
             model = deepspeed.init_inference(model, **ds_inference_kwargs)
+            if post_process_cpu == 0 and os.getenv("ENABLE_HPU_GRAPH","True") == "True":
+                self.stream = htorch.hpu.current_stream()
             model = model.module
         else:
             get_repo_root(model_id)
@@ -709,27 +727,43 @@ class CausalLM(Model):
             token_idx = None
             # slice the attention mask to the correct shape
             attention_mask = batch.attention_mask[:, : -batch.padding_right_offset]
-
-        logits, past = self.forward(
-            batch.input_ids,
-            attention_mask,
-            batch.position_ids,
-            token_idx,
-            batch.past_key_values,
-        )
-        logsoftmax = torch.softmax(logits[:, -1], -1)
-        htcore.mark_step()
-        logits = logits.to('cpu')
-        logsoftmax = logsoftmax.to('cpu')
+        if post_process_cpu == 0:
+            with ht.hpu.stream(self.stream) if self.stream else nullcontext():
+                logits, past = self.forward(
+                    batch.input_ids,
+                    attention_mask,
+                    batch.position_ids,
+                    token_idx,
+                    batch.past_key_values,
+                )
+        else:
+            logits, past = self.forward(
+                batch.input_ids,
+                attention_mask,
+                batch.position_ids,
+                token_idx,
+                batch.past_key_values,
+            )
+            logsoftmax = torch.softmax(logits[:, -1], -1)
+            htcore.mark_step()
+            logits = logits.to('cpu')
+            logsoftmax = logsoftmax.to('cpu')
         # Results
         generations: List[Generation] = []
         stopped = True
 
-        batch_top_token_ids, batch_top_token_logprobs = batch_top_tokens(
-            batch.top_n_tokens,
-            batch.top_n_tokens_tensor,
-            logsoftmax,
-        )
+        if post_process_cpu == 0:
+            batch_top_token_ids, batch_top_token_logprobs = batch_top_tokens(
+                batch.top_n_tokens,
+                batch.top_n_tokens_tensor,
+                torch.softmax(logits[:, -1], -1),
+            )
+        else:
+            batch_top_token_ids, batch_top_token_logprobs = batch_top_tokens(
+                batch.top_n_tokens,
+                batch.top_n_tokens_tensor,
+                logsoftmax,
+            )
 
         # Zipped iterator
         iterator = zip(
