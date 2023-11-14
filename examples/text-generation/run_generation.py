@@ -30,6 +30,8 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
 
+from habana_frameworks.torch.hpu.metrics import metric_global
+
 from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
@@ -240,6 +242,11 @@ def main():
         type=str,
         help="If empty static prompt is used. If a comma separated list of integers are passed, we warmup and use those shapes for prompt length",
     )
+    parser.add_argument(
+        "--reduce_recompile",
+        action="store_true",
+        help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
+    )
 
 
     args = parser.parse_args()
@@ -436,6 +443,7 @@ def main():
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
     generation_config.reuse_cache = args.reuse_cache
+    generation_config.reduce_recompile = args.reduce_recompile
 
     if args.dataset_name is None:
         # Benchmark over the prompts below
@@ -461,9 +469,10 @@ def main():
         elif args.batch_size < len(input_sentences):
             input_sentences = input_sentences[: args.batch_size]
 
-        def generate(size=None):
+        def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
-
+            t0 = time.perf_counter()
+            print(f"Starting time is {time.perf_counter()*1000}", flush=True)
             # Tokenization
             if args.max_input_tokens > 0:
                 input_tokens = tokenizer.batch_encode_plus(
@@ -480,9 +489,10 @@ def main():
                 input_tokens = adjust_batch(input_tokens, size)
 
             # Move inputs to target device(s)
-            for t in input_tokens:
-                if torch.is_tensor(input_tokens[t]):
-                    input_tokens[t] = input_tokens[t].to(args.device)
+            if not reduce_recompile:
+                for t in input_tokens:
+                    if torch.is_tensor(input_tokens[t]):
+                        input_tokens[t] = input_tokens[t].to(args.device)
 
             outputs = model.generate(
                 **input_tokens,
@@ -492,7 +502,12 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
-            return tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            x = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            duration = time.perf_counter() - t0
+            print(f"Total E2E time of this iteration is {duration*1000=}", flush=True)
+            gc_metric = metric_global("graph_compilation")
+            print('GC stats', gc_metric.stats(), flush=True)
+            return x
 
         from optimum.habana.utils import HabanaProfile
 
@@ -511,23 +526,22 @@ def main():
             for _ in range(args.warmup):
                 print('Warming up for shape,', dyn_prompt_lens[0], flush=True)
                 if dyn_prompt_lens is None:
-                    generate(None)
+                    generate(None, args.reduce_recompile)
                 else:
-                    generate(dyn_prompt_lens[0])
+                    generate(dyn_prompt_lens[0], args.reduce_recompile)
         else:
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
                 mx = max(dyn_prompt_lens)
                 import math
                 rounder = lambda x : int(math.ceil(x/args.bucket_size) * args.bucket_size)
-                assert args.bucket_size > 4
                 min_prompt_len = rounder(mn)
                 max_sentence_len = rounder(mx)
                 for _ in range(args.warmup):
                     lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
                     for sz in lst:
-                        print('Warming up for shape,', sz-3, flush=True) # TODO this "-3" because need to make sure if size%bkt==0, if generation is correct etc
-                        generate(sz-3)
+                        print('Warming up for shape,', sz-1, flush=True)
+                        generate(sz-1, args.reduce_recompile)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
         HabanaProfile.enable()

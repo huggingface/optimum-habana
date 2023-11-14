@@ -56,7 +56,9 @@ from optimum.utils import logging
 from ...utils import HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .configuration_utils import GaudiGenerationConfig
-
+from habana_frameworks.torch.hpu.metrics import metric_global
+import habana_frameworks.torch.hpu as torch_hpu
+import time
 
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
@@ -91,13 +93,15 @@ def incrementor(bucket_size, prompt_len):
         if passnum == 0:
             token_idx = prompt_len
             allocated_space = int(math.ceil(prompt_len / bucket_size) * bucket_size)
+            if prompt_len % bucket_size == 0:
+                allocated_space += bucket_size
             need_expansion = True
         else:
             token_idx += 1
             need_expansion = token_idx >= allocated_space
-        if need_expansion:
-            assert (allocated_space - token_idx) <= bucket_size
-            allocated_space += bucket_size
+            if need_expansion:
+                assert (allocated_space - token_idx) <= bucket_size
+                allocated_space += bucket_size
         yield {
             "allocated_space": allocated_space,
             "passnum": passnum,
@@ -324,7 +328,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return criteria
 
     @torch.no_grad()
-    def update_model_kwargs_for_bucketing(self, params, input_ids, model_kwargs, pad_token_id, bucket_size):
+    def update_model_kwargs_for_bucketing(self, params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile=False):
         if params["need_expansion"]:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             pad_amount = params["allocated_space"] - input_ids.shape[-1]
@@ -335,9 +339,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             else:
                 assert False, "Not tested for cases where attn_mask isnt passed"
+            if reduce_recompile and params['passnum'] == 0:
+                input_ids = input_ids.to(self.device)
+                model_kwargs["attention_mask"] = model_kwargs["attention_mask"].to(self.device)
 
             if "past_key_values" in model_kwargs:
-
                 def create_pad_arg(pad_amount, i, j):
                     if model_kwargs["past_key_values"][0][0].dim() == 3:
                         assert self.config.model_type == "bloom"
@@ -573,6 +579,7 @@ class GaudiGenerationMixin(GenerationMixin):
             or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
+        model_kwargs["reduce_recompile"] = generation_config.reduce_recompile
         if generation_config.reuse_cache:
             assert generation_config.bucket_size <= 0, "reuse_cache and bucketing flags set together"
 
@@ -1331,6 +1338,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         bucket_size = model_kwargs["bucket_size"]
+        reduce_recompile = model_kwargs["reduce_recompile"]
 
         prompt_len = input_ids.shape[-1]
         if bucket_size >= 0:
@@ -1338,7 +1346,10 @@ class GaudiGenerationMixin(GenerationMixin):
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
 
+        greedy_first = True
+        cnt = -1
         while True:
+            cnt += 1
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1356,9 +1367,18 @@ class GaudiGenerationMixin(GenerationMixin):
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
                 input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
-                    params, input_ids, model_kwargs, pad_token_id, bucket_size
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
                 )
 
+            if reduce_recompile:
+                if cnt == 0:
+                    extra = model_kwargs['bucket_size'] - prompt_len % model_kwargs['bucket_size']
+                    posn = [list(range(prompt_len + cnt)) + [1] * extra]
+                else:
+                    posn = [[prompt_len + cnt - 1]]
+            else:
+                posn = None
+            model_kwargs['position'] = posn
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
@@ -1447,6 +1467,14 @@ class GaudiGenerationMixin(GenerationMixin):
                 this_peer_finished = True
 
             hb_profer.step()
+
+            # TODO remove these
+            if greedy_first:
+                torch_hpu.synchronize()
+                print(f"First Token time: {time.perf_counter()*1000}")
+                greedy_first = False
+                gc_metric = metric_global("graph_compilation")
+                print(gc_metric.stats())
 
             if this_peer_finished and not synced_gpus:
                 break
