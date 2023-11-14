@@ -2010,6 +2010,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         bucket_size = model_kwargs["bucket_size"]
         prompt_len = input_ids.shape[-1]
+        reduce_recompile = model_kwargs["reduce_recompile"]
         if bucket_size >= 0:
             inc = iter(incrementor(bucket_size, prompt_len))
         if bucket_size > 0:
@@ -2028,10 +2029,13 @@ class GaudiGenerationMixin(GenerationMixin):
             if bucket_size > 0:
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
-                input_ids, model_kwargs, _ = self.update_model_kwargs_for_bucketing(
-                    params, input_ids, model_kwargs, pad_token_id, bucket_size
+                input_ids, model_kwargs, posn = self.update_model_kwargs_for_bucketing(
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile, prompt_len
                 )
+            else:
+                posn = None
 
+            model_kwargs['position'] = posn
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
