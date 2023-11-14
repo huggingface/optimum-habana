@@ -56,8 +56,6 @@ from optimum.utils import logging
 from ...utils import HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .configuration_utils import GaudiGenerationConfig
-import habana_frameworks.torch.hpu as torch_hpu
-import time
 
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
