@@ -46,6 +46,7 @@ from accelerate.utils import (
     PrecisionType,
     ProjectConfiguration,
     RNGType,
+    check_os_kernel,
     is_deepspeed_available,
     parse_choice_from_env,
 )
@@ -63,6 +64,7 @@ if is_deepspeed_available():
         DummyScheduler,
     )
 
+from .data_loader import gaudi_prepare_data_loader
 from .state import GaudiAcceleratorState, GaudiPartialState
 from .utils import GaudiDistributedType, GaudiDynamoBackend, GaudiTorchDynamoPlugin
 
@@ -97,6 +99,7 @@ class GaudiAccelerator(Accelerator):
         dynamo_backend: GaudiDynamoBackend | str | None = None,
         distribution_strategy: str = None,
     ):
+        self.trackers = []
         if project_config is not None:
             self.project_configuration = project_config
         else:
@@ -244,6 +247,8 @@ class GaudiAccelerator(Accelerator):
         self.flag_tensor = None
 
         self._distribution_strategy = distribution_strategy
+
+        check_os_kernel()
 
     @property
     def use_fp16(self):
@@ -582,6 +587,57 @@ class GaudiAccelerator(Accelerator):
                     "You can't use same `Accelerator()` instance with multiple models when using DeepSpeed"
                 )
         return tuple(result)
+
+    def prepare_data_loader(
+        self, data_loader: torch.utils.data.DataLoader, device_placement=None, slice_fn_for_dispatch=None
+    ):
+        """
+        Prepares a PyTorch DataLoader for training in any distributed setup. It is recommended to use
+        [`Accelerator.prepare`] instead.
+
+        Args:
+            data_loader (`torch.utils.data.DataLoader`):
+                A vanilla PyTorch DataLoader to prepare
+            device_placement (`bool`, *optional*):
+                Whether or not to place the batches on the proper device in the prepared dataloader. Will default to
+                `self.device_placement`.
+            slice_fn_for_dispatch (`Callable`, *optional*`):
+                If passed, this function will be used to slice tensors across `num_processes`. Will default to
+                [`~utils.slice_tensors`]. This argument is used only when `dispatch_batches` is set to `True` and will
+                be ignored otherwise.
+
+        Example:
+
+        ```python
+        >>> import torch
+        >>> from accelerate import Accelerator
+
+        >>> accelerator = Accelerator()
+        >>> data_loader = torch.utils.data.DataLoader(...)
+        >>> data_loader = accelerator.prepare_data_loader(data_loader, device_placement=True)
+        ```
+        """
+        # Ensure we can't double wrap a DataLoader due to `find_batch_size`
+        if getattr(data_loader, "_is_accelerate_prepared", False):
+            if data_loader not in self._dataloaders:
+                self._dataloaders.append(data_loader)
+            return data_loader
+        if device_placement is None:
+            device_placement = self.device_placement
+        prepared_data_loader = gaudi_prepare_data_loader(
+            data_loader,
+            self.device,
+            num_processes=self.num_processes,
+            process_index=self.process_index,
+            split_batches=self.split_batches,
+            put_on_device=device_placement,
+            rng_types=self.rng_types.copy(),
+            dispatch_batches=self.dispatch_batches,
+            even_batches=self.even_batches,
+            slice_fn_for_dispatch=slice_fn_for_dispatch,
+        )
+        self._dataloaders.append(prepared_data_loader)
+        return prepared_data_loader
 
     def gather(self, tensor):
         """

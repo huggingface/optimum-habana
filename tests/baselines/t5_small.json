@@ -1,49 +1,101 @@
 {
-    "cnn_dailymail": {
-        "num_train_epochs": 1,
-        "eval_batch_size": 4,
-        "distribution": {
-            "multi_card": {
-                "learning_rate": 5e-5,
-                "train_batch_size": 4,
-                "eval_rougeLsum": 38.4693,
-                "train_runtime": 1216.8807,
-                "train_samples_per_second": 241.022,
-                "eval_samples_per_second": 19.774,
-                "extra_arguments": [
-                    "--dataset_config \"3.0.0\"",
-                    "--source_prefix \"summarize: \"",
-                    "--predict_with_generate",
-                    "--ignore_pad_token_for_loss False",
-                    "--pad_to_max_length",
-                    "--use_hpu_graphs_for_inference",
-                    "--save_strategy epoch"
-                ]
+    "gaudi": {
+        "cnn_dailymail": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-5,
+                    "train_batch_size": 4,
+                    "eval_rougeLsum": 38.4693,
+                    "train_runtime": 1216.8807,
+                    "train_samples_per_second": 241.022,
+                    "eval_samples_per_second": 19.774,
+                    "extra_arguments": [
+                        "--dataset_config \"3.0.0\"",
+                        "--source_prefix \"summarize: \"",
+                        "--predict_with_generate",
+                        "--ignore_pad_token_for_loss False",
+                        "--pad_to_max_length",
+                        "--use_hpu_graphs_for_inference",
+                        "--save_strategy epoch"
+                    ]
+                }
+            }
+        },
+        "squad_v2": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 33,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 16,
+                    "eval_f1": 65.084,
+                    "train_runtime": 255.8475,
+                    "train_samples_per_second": 1153.194,
+                    "extra_arguments": [
+                        "--context_column context",
+                        "--question_column question",
+                        "--answer_column answers",
+                        "--version_2_with_negative",
+                        "--max_seq_length 384",
+                        "--predict_with_generate",
+                        "--ignore_pad_token_for_loss False",
+                        "--pad_to_max_length",
+                        "--use_hpu_graphs_for_inference",
+                        "--save_strategy epoch"
+                    ]
+                }
             }
         }
     },
-    "squad_v2": {
-        "num_train_epochs": 2,
-        "eval_batch_size": 33,
-        "distribution": {
-            "multi_card": {
-                "learning_rate": 2e-4,
-                "train_batch_size": 16,
-                "eval_f1": 65.084,
-                "train_runtime": 255.8475,
-                "train_samples_per_second": 1153.194,
-                "extra_arguments": [
-                    "--context_column context",
-                    "--question_column question",
-                    "--answer_column answers",
-                    "--version_2_with_negative",
-                    "--max_seq_length 384",
-                    "--predict_with_generate",
-                    "--ignore_pad_token_for_loss False",
-                    "--pad_to_max_length",
-                    "--use_hpu_graphs_for_inference",
-                    "--save_strategy epoch"
-                ]
+    "gaudi2": {
+        "cnn_dailymail": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 32,
+                    "eval_rougeLsum": 38.4327,
+                    "train_runtime": 201.9517,
+                    "train_samples_per_second": 1522.349,
+                    "eval_samples_per_second": 78.586,
+                    "extra_arguments": [
+                        "--dataset_config \"3.0.0\"",
+                        "--source_prefix \"summarize: \"",
+                        "--predict_with_generate",
+                        "--ignore_pad_token_for_loss False",
+                        "--pad_to_max_length",
+                        "--use_hpu_graphs_for_inference",
+                        "--save_strategy epoch"
+                    ]
+                }
+            }
+        },
+        "squad_v2": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 33,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 2e-3,
+                    "train_batch_size": 64,
+                    "eval_f1": 66.1802,
+                    "train_runtime": 56.5184,
+                    "train_samples_per_second": 5836.473,
+                    "extra_arguments": [
+                        "--context_column context",
+                        "--question_column question",
+                        "--answer_column answers",
+                        "--version_2_with_negative",
+                        "--max_seq_length 384",
+                        "--predict_with_generate",
+                        "--ignore_pad_token_for_loss False",
+                        "--pad_to_max_length",
+                        "--use_hpu_graphs_for_inference",
+                        "--save_strategy epoch"
+                    ]
+                }
             }
         }
     }
