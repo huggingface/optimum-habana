@@ -30,8 +30,6 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
 
-from habana_frameworks.torch.hpu.metrics import metric_global
-
 from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
