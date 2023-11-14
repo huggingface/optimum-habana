@@ -526,10 +526,11 @@ def main():
         # The first three iterations take longer because of graph compilation
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
             for _ in range(args.warmup):
-                print('Warming up for shape,', dyn_prompt_lens[0], flush=True)
                 if dyn_prompt_lens is None:
+                    print('Warming up', flush=True)
                     generate(None, args.reduce_recompile)
                 else:
+                    print('Warming up for shape,', dyn_prompt_lens[0], flush=True)
                     generate(dyn_prompt_lens[0], args.reduce_recompile)
         else:
             if args.bucket_size > 0:
