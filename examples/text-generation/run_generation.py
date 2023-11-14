@@ -555,7 +555,7 @@ def main():
         # Benchmark over n_iterations iterations
         if dyn_prompt_lens is None:
             for i in range(args.n_iterations):
-                generated = generate()
+                generated = generate(None, args.reduce_recompile)
         else:
             for i in range(args.n_iterations):
                 print('Generating for shape,', dyn_prompt_lens[i])
