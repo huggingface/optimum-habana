@@ -57,6 +57,7 @@ from ...utils import HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .configuration_utils import GaudiGenerationConfig
 
+
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
 
@@ -325,7 +326,9 @@ class GaudiGenerationMixin(GenerationMixin):
         return criteria
 
     @torch.no_grad()
-    def update_model_kwargs_for_bucketing(self, params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile=False, prompt_len=None):
+    def update_model_kwargs_for_bucketing(
+        self, params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile=False, prompt_len=None
+    ):
         if params["need_expansion"]:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             pad_amount = params["allocated_space"] - input_ids.shape[-1]
@@ -336,13 +339,14 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
             else:
                 assert False, "Not tested for cases where attn_mask isnt passed"
-            if reduce_recompile and params['passnum'] == 0:
+            if reduce_recompile and params["passnum"] == 0:
                 position_ids_cpu = model_kwargs["attention_mask"].long().cumsum(-1) - 1
                 position_ids_cpu.masked_fill_(model_kwargs["attention_mask"] == 0, 1)
                 input_ids = input_ids.to(self.device)
                 model_kwargs["attention_mask"] = model_kwargs["attention_mask"].to(self.device)
 
             if "past_key_values" in model_kwargs:
+
                 def create_pad_arg(pad_amount, i, j):
                     if model_kwargs["past_key_values"][0][0].dim() == 3:
                         assert self.config.model_type == "bloom"
@@ -1374,12 +1378,11 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 posn = None
 
-            model_kwargs['position'] = posn
+            model_kwargs["position"] = posn
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
-
 
             # forward pass to get next token
             outputs = self(
@@ -2037,7 +2040,7 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 posn = None
 
-            model_kwargs['position'] = posn
+            model_kwargs["position"] = posn
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)

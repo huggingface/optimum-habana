@@ -557,7 +557,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         reuse_cache = kwargs.get("reuse_cache")
-        posn = kwargs.get('position')
+        posn = kwargs.get("position")
         if past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
