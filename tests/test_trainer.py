@@ -727,8 +727,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             optimizers=(optimizer, lr_scheduler),
         )
         train_output_static = trainer.train()
-        # Check if performance with dynamic shapes support is at least 10 times that without dynamic shapes
-        # Note "10x" number is not applicable across models, it is tuned for this particular dummy model
+        # Check if performance with dynamic shapes support is at least 5 times that without dynamic shapes
+        # Note "5x" number is not applicable across models, it is tuned for this particular dummy model
         self.assertGreaterEqual(
             train_output_ds.metrics["train_samples_per_second"],
             10 * train_output_static.metrics["train_samples_per_second"],
