@@ -1361,10 +1361,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
 
-        greedy_first = True
-        cnt = -1
         while True:
-            cnt += 1
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1477,14 +1474,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 this_peer_finished = True
 
             hb_profer.step()
-
-            # TODO remove these
-            if greedy_first:
-                torch_hpu.synchronize()
-                print(f"First Token time: {time.perf_counter()*1000}")
-                greedy_first = False
-                gc_metric = metric_global("graph_compilation")
-                print(gc_metric.stats())
 
             if this_peer_finished and not synced_gpus:
                 break
