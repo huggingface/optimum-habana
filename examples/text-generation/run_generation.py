@@ -20,14 +20,15 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 
 import argparse
 import copy
+import glob
 import json
 import logging
 import os
+import shutil
+import tempfile
 import time
 from pathlib import Path
-import glob
-import tempfile
-import shutil
+
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
@@ -39,10 +40,8 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from transformers.utils import check_min_version
 from optimum.habana.utils import set_seed
+
 
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
@@ -63,54 +62,63 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def override_print(enable):
     import builtins as __builtin__
+
     builtin_print = __builtin__.print
 
     def print(*args, **kwargs):
-        force = kwargs.pop('force', False)
+        force = kwargs.pop("force", False)
         if force or enable:
             builtin_print(*args, **kwargs)
 
     __builtin__.print = print
 
+
 def override_logger(enable):
     logger_info = logger.info
 
     def info(*args, **kwargs):
-        force = kwargs.pop('force', False)
+        force = kwargs.pop("force", False)
         if force or enable:
             logger_info(*args, **kwargs)
 
     logger.info = info
 
+
 def count_hpu_graphs():
-    return len(glob.glob('.graph_dumps/*PreGraph*'))
+    return len(glob.glob(".graph_dumps/*PreGraph*"))
+
 
 def setup_distributed(args):
-    args.local_rank = int(os.getenv('LOCAL_RANK', '0'))
-    args.world_size = int(os.getenv('WORLD_SIZE', '0'))
-    args.global_rank = int(os.getenv('RANK', '0'))
+    args.local_rank = int(os.getenv("LOCAL_RANK", "0"))
+    args.world_size = int(os.getenv("WORLD_SIZE", "0"))
+    args.global_rank = int(os.getenv("RANK", "0"))
     override_print(args.global_rank == 0 or args.verbose_workers)
     override_logger(args.global_rank == 0 or args.verbose_workers)
 
+
 def setup_env(args):
     if args.global_rank == 0:
-        os.environ.setdefault('GRAPH_VISUALIZATION', 'true')
-        shutil.rmtree('.graph_dumps', ignore_errors=True)
+        os.environ.setdefault("GRAPH_VISUALIZATION", "true")
+        shutil.rmtree(".graph_dumps", ignore_errors=True)
 
     if args.world_size > 0:
         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
-        os.environ.setdefault('PT_HPU_ENABLE_LAZY_COLLECTIVES', 'true')
+        os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
     # Tweak generation so that it runs faster on Gaudi
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
     adapt_transformers_to_gaudi()
 
+
 def setup_device(args):
-    if args.device == 'hpu':
-        import habana_frameworks.torch.core as htcore
+    if args.device == "hpu":
+        pass
     return torch.device(args.device)
+
 
 def initialize_model(args):
     init_start = time.perf_counter()
@@ -130,18 +138,23 @@ def initialize_model(args):
         "revision": args.model_revision,
         "token": args.token,
     }
-    model = setup_model(args, model_dtype, model_kwargs) if not use_deepspeed else setup_distributed_model(args, model_dtype, model_kwargs)
+    model = (
+        setup_model(args, model_dtype, model_kwargs)
+        if not use_deepspeed
+        else setup_distributed_model(args, model_dtype, model_kwargs)
+    )
     tokenizer, model = setup_tokenizer(args, model)
-    generation_config = setup_generation_config(args,model, tokenizer)
+    generation_config = setup_generation_config(args, model, tokenizer)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
     logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
     return model, tokenizer, generation_config
 
+
 def setup_parser(parser):
     # Arguments management
-    parser.add_argument('--device', '-d', type=str, choices=['hpu'], help='Device to run', default='hpu')
+    parser.add_argument("--device", "-d", type=str, choices=["hpu"], help="Device to run", default="hpu")
     parser.add_argument(
         "--model_name_or_path",
         default=None,
@@ -300,7 +313,7 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
     )
-    parser.add_argument('--verbose_workers', action='store_true', help="Enable output from non-master workers")
+    parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
 
     args = parser.parse_args()
 
@@ -309,6 +322,7 @@ def setup_parser(parser):
         args.reuse_cache = False
     return args
 
+
 def setup_model(args, model_dtype, model_kwargs):
     logger.info("Single-device run.")
     model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
@@ -316,8 +330,10 @@ def setup_model(args, model_dtype, model_kwargs):
     model = peft_model(args, model, model_dtype)
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
         model = wrap_in_hpu_graph(model)
     return model
+
 
 def setup_tokenizer(args, model):
     tokenizer_kwargs = {
@@ -347,8 +363,10 @@ def setup_tokenizer(args, model):
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
     return tokenizer, model
 
+
 def setup_distributed_model(args, model_dtype, model_kwargs):
     import deepspeed
+
     logger.info("DeepSpeed is enabled.")
     config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
     load_to_meta = model_on_meta(config)
@@ -380,14 +398,14 @@ def setup_distributed_model(args, model_dtype, model_kwargs):
     model = model.module
     return model
 
-def setup_generation_config(args,model, tokenizer):
+
+def setup_generation_config(args, model, tokenizer):
     bad_words_ids = None
     force_words_ids = None
     if args.bad_words is not None:
         bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
     if args.force_words is not None:
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
-
 
     is_optimized = model_is_optimized(model.config)
     # Generation configuration
@@ -407,7 +425,8 @@ def setup_generation_config(args,model, tokenizer):
     generation_config.reuse_cache = args.reuse_cache
     return generation_config
 
-def peft_model(args,model, model_dtype):
+
+def peft_model(args, model, model_dtype):
     if args.peft_model:
         import importlib.util
 
@@ -419,12 +438,14 @@ def peft_model(args,model, model_dtype):
         model = model.merge_and_unload().eval().to(model_dtype)
     return model
 
+
 def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
     model, tokenizer, generation_config = initialize_model(args)
 
     import habana_frameworks.torch.hpu as torch_hpu
+
     if args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:
@@ -502,7 +523,6 @@ def main():
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
 
-
         print()
         print("Input/outputs:")
         for i, input_sentence in enumerate(zip(input_sentences)):
@@ -527,7 +547,7 @@ def main():
             from optimum.habana.utils import get_hpu_memory_stats
 
             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
-            stats = stats + f' hpu_graphs:{count_hpu_graphs()}'
+            stats = stats + f" hpu_graphs:{count_hpu_graphs()}"
             separator = "-" * len(stats)
             print()
             print("Stats:")
