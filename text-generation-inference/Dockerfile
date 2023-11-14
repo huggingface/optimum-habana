@@ -89,9 +89,9 @@ COPY --from=builder /usr/src/target/release/text-generation-router /usr/local/bi
 # Install launcher
 COPY --from=builder /usr/src/target/release/text-generation-launcher /usr/local/bin/text-generation-launcher
 
-#ENV LOG_LEVEL=TRACE
+ENV LOG_LEVEL=DEBUG
 # Final image
 FROM base
 
-ENTRYPOINT ["text-generation-launcher"]
-CMD ["--json-output"]
+#ENTRYPOINT ["text-generation-launcher"]
+#CMD ["--json-output"]
