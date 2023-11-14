@@ -56,7 +56,6 @@ from optimum.utils import logging
 from ...utils import HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .configuration_utils import GaudiGenerationConfig
-from habana_frameworks.torch.hpu.metrics import metric_global
 import habana_frameworks.torch.hpu as torch_hpu
 import time
 
