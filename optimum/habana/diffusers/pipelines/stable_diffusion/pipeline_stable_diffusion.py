@@ -130,7 +130,7 @@ class GaudiStableDiffusionPipeline(
             bf16_full_eval,
         )
 
-        # Workaround for Synapse 1.11 for full bf16
+        # TODO: remove this workaround when SynapseAI 1.13 is released?
         if bf16_full_eval:
             unet.conv_in.float()
 
@@ -876,7 +876,7 @@ class GaudiStableDiffusionPipeline(
             timestep_cond = None
             if self.unet.config.time_cond_proj_dim is not None:
                 guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(
-                    batch_size * num_images_per_prompt
+                    num_prompts * num_images_per_prompt
                 )
                 timestep_cond = self.get_guidance_scale_embedding(
                     guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
