@@ -566,7 +566,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
             if posn is not None:
-                position_ids = torch.tensor(posn, device=self.device)
+                position_ids = posn
             else:
                 # create position_ids on the fly for batch generation
                 position_ids = attention_mask.long().cumsum(-1) - 1
