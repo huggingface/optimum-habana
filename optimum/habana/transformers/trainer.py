@@ -852,7 +852,8 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                if self.model.generation_config.attn_softmax_bf16:
+                # attn_softmax_bf16 is enabled only for llama
+                if self.model.config.model_type == "llama" and self.model.generation_config.attn_softmax_bf16:
                     inputs["attn_softmax_bf16"] = True
 
                 # TODO: keep syncs for fast DDP?
@@ -1565,7 +1566,8 @@ class GaudiTrainer(Trainer):
                 if batch_size is None:
                     batch_size = observed_batch_size
 
-            if self.model.generation_config.attn_softmax_bf16:
+            # attn_softmax_bf16 is enabled only for llama
+            if self.model.config.model_type == "llama" and self.model.generation_config.attn_softmax_bf16:
                 inputs["attn_softmax_bf16"] = True
 
             # Prediction step
