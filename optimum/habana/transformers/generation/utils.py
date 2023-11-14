@@ -580,6 +580,8 @@ class GaudiGenerationMixin(GenerationMixin):
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
         model_kwargs["reduce_recompile"] = generation_config.reduce_recompile
+        if generation_config.reduce_recompile:
+            assert generation_config.bucket_size
         if generation_config.reuse_cache:
             assert generation_config.bucket_size <= 0, "reuse_cache and bucketing flags set together"
 
@@ -1374,8 +1376,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if reduce_recompile:
                 if cnt == 0:
+                    assert model_kwargs['bucket_size'] > 0
                     extra = model_kwargs['bucket_size'] - prompt_len % model_kwargs['bucket_size']
-                    posn = [list(range(prompt_len + cnt)) + [1] * extra]
+                    posn = [list(range(prompt_len)) + [1] * extra]
                 else:
                     posn = [[prompt_len + cnt - 1]]
             else:
