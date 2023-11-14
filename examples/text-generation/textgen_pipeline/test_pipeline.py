@@ -9,7 +9,14 @@ class TestGaudiTextGenPipeline(unittest.TestCase):
     def setUpClass(self):
         """Overrides setUpClass from unittest to create artifacts for testing"""
         self.max_new_tokens = 100
-        self.pipe = GaudiTextGenerationPipeline(model_name_or_path="meta-llama/Llama-2-7b-chat-hf", max_new_tokens=self.max_new_tokens, temperature=0.2, top_p=0.95, repetition_penalty=1.15, do_sample=True)
+        self.pipe = GaudiTextGenerationPipeline(
+            model_name_or_path="meta-llama/Llama-2-7b-chat-hf",
+            max_new_tokens=self.max_new_tokens,
+            temperature=0.2,
+            top_p=0.95,
+            repetition_penalty=1.15,
+            do_sample=True,
+        )
 
         # Inputs for testing
         self.short_prompt = "Once upon a time"
@@ -36,7 +43,7 @@ Answer: """
         end_time = time.perf_counter()
         print(f"Generated Text: {repr(output[0]['generated_text'])}")
         print(f"Latency: {end_time-start_time} seconds")
-        throughput = self.max_new_tokens / (end_time-start_time)
+        throughput = self.max_new_tokens / (end_time - start_time)
         print(f"Throughput (including tokenization): {throughput} tokens/second")
 
     def test_long_prompt_input(self):
@@ -46,7 +53,7 @@ Answer: """
         end_time = time.perf_counter()
         print(f"Generated Text: {repr(output[0]['generated_text'])}")
         print(f"Latency: {end_time-start_time} seconds")
-        throughput = self.max_new_tokens / (end_time-start_time)
+        throughput = self.max_new_tokens / (end_time - start_time)
         print(f"Throughput (including tokenization): {throughput} tokens/second")
 
     def test_qa_prompt_input(self):
@@ -56,7 +63,7 @@ Answer: """
         end_time = time.perf_counter()
         print(f"Generated Text: {repr(output[0]['generated_text'])}")
         print(f"Latency: {end_time-start_time} seconds")
-        throughput = self.max_new_tokens / (end_time-start_time)
+        throughput = self.max_new_tokens / (end_time - start_time)
         print(f"Throughput (including tokenization): {throughput} tokens/second")
 
 

@@ -1,18 +1,18 @@
 import copy
 import json
-import torch
 import os
 from pathlib import Path
 
+import habana_frameworks.torch.hpu as torch_hpu
+import torch
 from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
-import habana_frameworks.torch.hpu as torch_hpu
-from optimum.habana.utils import set_seed
-
 from huggingface_hub import snapshot_download
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
 from transformers.utils import is_offline_mode
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.utils import set_seed
 
 
 def get_repo_root(model_name_or_path, local_rank=-1, token=None):
@@ -146,9 +146,10 @@ def get_ds_injection_policy(config):
 
 
 class CustomStoppingCriteria(StoppingCriteria):
-    """" 
+    """ "
     A custom stopping criteria which stops text generation when a stop token is generated.
     """
+
     def __init__(self, stop_token_id):
         super().__init__()
         self.stop_token_id = stop_token_id
@@ -161,6 +162,7 @@ class GaudiTextGenerationPipeline:
     """
     An end-to-end text-generation pipeline that can used to initialize LangChain classes. It supports both single-hpu and multi-hpu inference.
     """
+
     def __init__(self, model_name_or_path=None, **kwargs):
         self.use_deepspeed = "deepspeed" in os.environ["_"]
 
@@ -168,6 +170,7 @@ class GaudiTextGenerationPipeline:
             world_size, _, self.local_rank = initialize_distributed_hpu()
 
             import deepspeed
+
             # Initialize Deepspeed processes
             deepspeed.init_distributed(dist_backend="hccl")
 
@@ -229,7 +232,7 @@ class GaudiTextGenerationPipeline:
         # Used for padding input to fixed length
         self.tokenizer.padding_side = "left"
         self.max_padding_length = kwargs.get("max_padding_length", self.model.config.max_position_embeddings)
-        
+
         # Define config params for llama models
         if self.model.config.model_type == "llama":
             self.model.generation_config.pad_token_id = 0
@@ -241,7 +244,7 @@ class GaudiTextGenerationPipeline:
             self.tokenizer.pad_token = self.tokenizer.decode(self.tokenizer.pad_token_id)
             self.tokenizer.eos_token = self.tokenizer.decode(self.tokenizer.eos_token_id)
             self.tokenizer.bos_token = self.tokenizer.decode(self.tokenizer.bos_token_id)
-        
+
         # Applicable to models that do not have pad tokens
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -269,13 +272,23 @@ class GaudiTextGenerationPipeline:
             torch.distributed.barrier()
 
     def __call__(self, prompt: str):
-        model_inputs = self.tokenizer.encode_plus(prompt, return_tensors="pt", max_length=self.max_padding_length, padding="max_length", truncation=True)
+        model_inputs = self.tokenizer.encode_plus(
+            prompt, return_tensors="pt", max_length=self.max_padding_length, padding="max_length", truncation=True
+        )
 
         for t in model_inputs:
             if torch.is_tensor(model_inputs[t]):
                 model_inputs[t] = model_inputs[t].to(self.device)
 
-        output = self.model.generate(**model_inputs, generation_config=self.generation_config, lazy_mode=True, hpu_graphs=True, profiling_steps=0, profiling_warmup_steps=0, stopping_criteria=self.stopping_criteria).cpu()
+        output = self.model.generate(
+            **model_inputs,
+            generation_config=self.generation_config,
+            lazy_mode=True,
+            hpu_graphs=True,
+            profiling_steps=0,
+            profiling_warmup_steps=0,
+            stopping_criteria=self.stopping_criteria,
+        ).cpu()
 
         output_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
         del output, model_inputs
@@ -300,7 +313,14 @@ class GaudiTextGenerationPipeline:
 
 
 def main():
-    pipe = GaudiTextGenerationPipeline(model_name_or_path="meta-llama/Llama-2-7b-chat-hf", max_new_tokens=100, temperature=0.2, top_p=0.95, repetition_penalty=1.15, do_sample=True)
+    pipe = GaudiTextGenerationPipeline(
+        model_name_or_path="meta-llama/Llama-2-7b-chat-hf",
+        max_new_tokens=100,
+        temperature=0.2,
+        top_p=0.95,
+        repetition_penalty=1.15,
+        do_sample=True,
+    )
     pipe.compile_graph()
 
     # Test model on different input prompts
@@ -309,17 +329,25 @@ def main():
     print("Success!\n")
 
     print("Test 2: long prompt")
-    print(pipe("Antibiotics are a type of medication used to treat bacterial infections. They work by either killing the bacteria or preventing them from reproducing, allowing the body’s immune system to fight off the infection. Antibiotics are usually taken orally in the form of pills, capsules, or liquid solutions, or sometimes administered intravenously. They are not effective against viral infections, and using them"))
+    print(
+        pipe(
+            "Antibiotics are a type of medication used to treat bacterial infections. They work by either killing the bacteria or preventing them from reproducing, allowing the body’s immune system to fight off the infection. Antibiotics are usually taken orally in the form of pills, capsules, or liquid solutions, or sometimes administered intravenously. They are not effective against viral infections, and using them"
+        )
+    )
     print("Success!\n")
 
     print("Test 3: qa prompt")
-    print(pipe("""Answer the question based on the context below. If the question cannot be answered using the information provided answer with "I don't know".
+    print(
+        pipe(
+            """Answer the question based on the context below. If the question cannot be answered using the information provided answer with "I don't know".
 
 Context: Large Language Models (LLMs) are the latest models used in NLP. Their superior performance over smaller models has made them incredibly useful for developers building NLP enabled applications. These models can be accessed via Hugging Face's `transformers` library, via OpenAI using the `openai` library, and via Cohere using the `cohere` library.
 
 Question: Which libraries and model providers offer LLMs?
 
-Answer: """))
+Answer: """
+        )
+    )
     print("Success!")
 
 
