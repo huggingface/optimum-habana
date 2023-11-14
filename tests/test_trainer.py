@@ -731,7 +731,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         # Note "5x" number is not applicable across models, it is tuned for this particular dummy model
         self.assertGreaterEqual(
             train_output_ds.metrics["train_samples_per_second"],
-            10 * train_output_static.metrics["train_samples_per_second"],
+            5 * train_output_static.metrics["train_samples_per_second"],
         )
 
     def test_eager_mode(self):
