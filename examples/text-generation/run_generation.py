@@ -58,6 +58,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def adjust_batch(batch, size):
+    curr_size = batch['input_ids'].shape[1]
+    if curr_size >= size:
+        adjusted_batch = {'input_ids': batch['input_ids'][:,:size], 'attention_mask': batch['attention_mask'][:,:size]}
+    else:
+        adjusted_batch = {}
+        for k in batch.keys():
+            last_colm = batch[k][:,-1]
+            expanded = last_colm.tile((size-curr_size,1)).T
+            adjusted_batch[k] = torch.concat([batch[k], expanded],1)
+    assert adjusted_batch['input_ids'].shape[1] == size
+    assert adjusted_batch['attention_mask'].shape[1] == size
+    return adjusted_batch
+
 
 def main():
     # Arguments management
@@ -220,6 +234,13 @@ def main():
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
     )
+    parser.add_argument(
+        "--simulate_dyn_prompt",
+        default="",
+        type=str,
+        help="If empty static prompt is used. If a comma separated list of integers are passed, we warmup and use those shapes for prompt length",
+    )
+
 
     args = parser.parse_args()
 
@@ -440,7 +461,7 @@ def main():
         elif args.batch_size < len(input_sentences):
             input_sentences = input_sentences[: args.batch_size]
 
-        def generate():
+        def generate(size=None):
             """Generates sequences from the input sentences and returns them."""
 
             # Tokenization
@@ -454,6 +475,9 @@ def main():
                 )
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+
+            if size is not None:
+                input_tokens = adjust_batch(input_tokens, size)
 
             # Move inputs to target device(s)
             for t in input_tokens:
@@ -478,9 +502,32 @@ def main():
         if rank in [-1, 0]:
             logger.info("Graph compilation...")
         t0 = time.perf_counter()
+        if len(args.simulate_dyn_prompt) > 0:
+            dyn_prompt_lens = [int(k) for k in args.simulate_dyn_prompt.split(',')]
+        else:
+            dyn_prompt_lens = None
         # The first three iterations take longer because of graph compilation
-        for _ in range(args.warmup):
-            generate()
+        if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
+            for _ in range(args.warmup):
+                print('Warming up for shape,', dyn_prompt_lens[0], flush=True)
+                if dyn_prompt_lens is None:
+                    generate(None)
+                else:
+                    generate(dyn_prompt_lens[0])
+        else:
+            if args.bucket_size > 0:
+                mn = min(dyn_prompt_lens)
+                mx = max(dyn_prompt_lens)
+                import math
+                rounder = lambda x : int(math.ceil(x/args.bucket_size) * args.bucket_size)
+                assert args.bucket_size > 4
+                min_prompt_len = rounder(mn)
+                max_sentence_len = rounder(mx)
+                for _ in range(args.warmup):
+                    lst = list(range(min_prompt_len, max_sentence_len+1, args.bucket_size))
+                    for sz in lst:
+                        print('Warming up for shape,', sz-3, flush=True) # TODO this "-3" because need to make sure if size%bkt==0, if generation is correct etc
+                        generate(sz-3)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
         HabanaProfile.enable()
@@ -489,8 +536,13 @@ def main():
             logger.info("Running generate...")
         t0 = time.perf_counter()
         # Benchmark over n_iterations iterations
-        for i in range(args.n_iterations):
-            generated = generate()
+        if dyn_prompt_lens is None:
+            for i in range(args.n_iterations):
+                generated = generate()
+        else:
+            for i in range(args.n_iterations):
+                print('Generating for shape,', dyn_prompt_lens[i])
+                generated = generate(dyn_prompt_lens[i])
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
@@ -535,6 +587,7 @@ def main():
         # Downloading and loading a dataset from the hub.
         from datasets import load_dataset
         from torch.utils.data import DataLoader
+        assert args.simulate_dyn_prompt == '', 'Both dataset_name and simulate_dyn_prompt are set'
 
         raw_dataset = load_dataset(args.dataset_name)
         if "test" in raw_dataset:
