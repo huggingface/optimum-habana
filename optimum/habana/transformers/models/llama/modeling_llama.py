@@ -407,7 +407,7 @@ class GaudiLlamaModel(LlamaModel):
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         # None for past_key_value
-                        return module(*inputs, past_key_value, output_attentions)
+                        return module(*inputs, past_key_value, output_attentions, attn_softmax_bf16=attn_softmax_bf16)
 
                     return custom_forward
 

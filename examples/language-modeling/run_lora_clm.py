@@ -130,6 +130,10 @@ class ModelArguments:
             )
         },
     )
+    attn_softmax_bf16: bool = field(
+        default=False,
+        metadata={"help": ("Whether to run attention softmax layer in bf16 precision",)},
+    )
 
 
 @dataclass
@@ -466,6 +470,8 @@ def main():
         model.generation_config.pad_token_id = 0
         model.generation_config.bos_token_id = 1
         model.generation_config.eos_token_id = 2
+        if model_args.attn_softmax_bf16:
+            model.generation_config.attn_softmax_bf16 = True
 
     if hasattr(model.generation_config, "pad_token_id") and model.generation_config.pad_token_id is not None:
         tokenizer.pad_token_id = model.generation_config.pad_token_id
