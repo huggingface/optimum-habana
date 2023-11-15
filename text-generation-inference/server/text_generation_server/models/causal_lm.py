@@ -149,11 +149,10 @@ class CausalLMBatch(Batch):
 
         input_ids = tokenized_inputs["input_ids"]
         attention_mask = tokenized_inputs["attention_mask"]
-        position_ids = tokenized_inputs["attention_mask"]
         if post_process_cpu == 1:
             #only move model inputs to device
             attention_mask = attention_mask.to(device)
-            position_ids = position_ids.to(device).long().cumsum(-1) - 1
+            position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
 
             if is_optimized_for_gaudi:
@@ -169,8 +168,8 @@ class CausalLMBatch(Batch):
             if is_optimized_for_gaudi:
                 input_ids = torch.nn.functional.pad(input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id)
                 attention_mask = torch.nn.functional.pad(attention_mask, (0, padding_right_offset), value=0)
-            position_ids = position_ids.long().cumsum(-1) - 1
-            position_ids.masked_fill_(tokenized_inputs["attention_mask"] == 0, 1)
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
             all_input_ids = input_ids.T.clone().split(1, dim=1)
 
         top_n_tokens_tensor = torch.tensor(top_n_tokens, device=device, dtype=torch.int64)
