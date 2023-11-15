@@ -458,7 +458,7 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
 
 - Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization and LoRA:
 
-**Note:** the following command requires Habana DeepSpeed 1.13.0 or later.
+  **Note:** the following command requires Habana DeepSpeed 1.13.0 or later.
 
 ```bash
 PT_HPU_MAX_COMPOUND_OP_SIZE=10 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 \
