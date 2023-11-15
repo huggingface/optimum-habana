@@ -677,6 +677,11 @@ class GaudiGenerationMixin(GenerationMixin):
                     unwrap_deepspeed_model(self).allocate_kv_cache(
                         bs * generation_config.num_beams, calculated_max_length
                     )
+            if self.config.model_type in ["llama"]:
+                if self.config.max_position_embeddings < calculated_max_length:
+                    unwrap_deepspeed_model(self).update_sincos_cache(
+                        seq_len=calculated_max_length
+                    )
 
         # 7. determine generation mode
         generation_mode = self._get_generation_mode(generation_config, assistant_model)
