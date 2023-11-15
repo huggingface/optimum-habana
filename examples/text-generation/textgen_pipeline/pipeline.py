@@ -1,164 +1,29 @@
 import copy
-import json
 import os
-from pathlib import Path
 
 import habana_frameworks.torch.hpu as torch_hpu
 import torch
 from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-from huggingface_hub import snapshot_download
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
-from transformers.utils import is_offline_mode
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    TextGenerationPipeline,
+)
 
+from optimum.habana.checkpoint_utils import (
+    get_ds_injection_policy,
+    get_repo_root,
+    model_is_optimized,
+    model_on_meta,
+    write_checkpoints_json,
+)
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import set_seed
 
 
-def get_repo_root(model_name_or_path, local_rank=-1, token=None):
-    """
-    Downloads the specified model checkpoint and returns the repository where it was downloaded.
-    """
-    if Path(model_name_or_path).is_dir():
-        # If it is a local model, no need to download anything
-        return model_name_or_path
-    else:
-        # Checks if online or not
-        if is_offline_mode():
-            if local_rank == 0:
-                print("Offline mode: forcing local_files_only=True")
-
-        # Only download PyTorch weights by default
-        allow_patterns = ["*.bin"]
-
-        # Download only on first process
-        if local_rank in [-1, 0]:
-            cache_dir = snapshot_download(
-                model_name_or_path,
-                local_files_only=is_offline_mode(),
-                cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
-                allow_patterns=allow_patterns,
-                max_workers=16,
-                token=token,
-            )
-            if local_rank == -1:
-                # If there is only one process, then the method is finished
-                return cache_dir
-
-        # Make all processes wait so that other processes can get the checkpoint directly from cache
-        torch.distributed.barrier()
-
-        return snapshot_download(
-            model_name_or_path,
-            local_files_only=is_offline_mode(),
-            cache_dir=os.getenv("TRANSFORMERS_CACHE", None),
-            allow_patterns=allow_patterns,
-            token=token,
-        )
-
-
-def get_checkpoint_files(model_name_or_path, local_rank):
-    """
-    Gets the list of files for the specified model checkpoint.
-    """
-    cached_repo_dir = get_repo_root(model_name_or_path, local_rank)
-
-    # Extensions: .bin | .pt
-    # Creates a list of paths from all downloaded files in cache dir
-    file_list = [str(entry) for entry in Path(cached_repo_dir).rglob("*.[bp][it][n]") if entry.is_file()]
-    return file_list
-
-
-def write_checkpoints_json(model_name_or_path, local_rank, checkpoints_json):
-    """
-    Dumps metadata into a JSON file for DeepSpeed-inference.
-    """
-    checkpoint_files = get_checkpoint_files(model_name_or_path, local_rank)
-    if local_rank == 0:
-        data = {"type": "ds_model", "checkpoints": checkpoint_files, "version": 1.0}
-        with open(checkpoints_json, "w") as fp:
-            json.dump(data, fp)
-
-
-def model_on_meta(config):
-    """
-    Checks if load the model to meta.
-    """
-    return config.model_type in ["bloom", "llama"]
-
-
-def get_optimized_model_name(config):
-    from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
-
-    for model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES:
-        if model_type == config.model_type:
-            return model_type
-
-    return None
-
-
-def model_is_optimized(config):
-    """
-    Checks if the given config belongs to a model in optimum/habana/transformers/models, which has a
-    new input token_idx.
-    """
-    return get_optimized_model_name(config) is not None
-
-
-def get_ds_injection_policy(config):
-    """
-    Defines injection policies for model parallelism via DeepSpeed.
-    """
-    model_type = get_optimized_model_name(config)
-    policy = {}
-    if model_type:
-        if model_type == "bloom":
-            from transformers.models.bloom.modeling_bloom import BloomBlock
-
-            policy = {BloomBlock: ("self_attention.dense", "mlp.dense_4h_to_h")}
-
-        if model_type == "opt":
-            from transformers.models.opt.modeling_opt import OPTDecoderLayer
-
-            policy = {OPTDecoderLayer: ("self_attn.out_proj", ".fc2")}
-
-        if model_type == "gpt2":
-            from transformers.models.gpt2.modeling_gpt2 import GPT2MLP
-
-            policy = {GPT2MLP: ("attn.c_proj", "mlp.c_proj")}
-
-        if model_type == "gptj":
-            from transformers.models.gptj.modeling_gptj import GPTJBlock
-
-            policy = {GPTJBlock: ("attn.out_proj", "mlp.fc_out")}
-
-        if model_type == "gpt_neox":
-            from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXLayer
-
-            policy = {GPTNeoXLayer: ("attention.dense", "mlp.dense_4h_to_h")}
-
-        if model_type == "llama":
-            from transformers.models.llama.modeling_llama import LlamaDecoderLayer
-
-            policy = {LlamaDecoderLayer: ("self_attn.o_proj", "mlp.down_proj")}
-
-    return policy
-
-
-class CustomStoppingCriteria(StoppingCriteria):
-    """ "
-    A custom stopping criteria which stops text generation when a stop token is generated.
-    """
-
-    def __init__(self, stop_token_id):
-        super().__init__()
-        self.stop_token_id = stop_token_id
-
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor):
-        return self.stop_token_id in input_ids[0]
-
-
-class GaudiTextGenerationPipeline:
+class GaudiTextGenerationPipeline(TextGenerationPipeline):
     """
     An end-to-end text-generation pipeline that can used to initialize LangChain classes. It supports both single-hpu and multi-hpu inference.
     """
@@ -196,8 +61,8 @@ class GaudiTextGenerationPipeline:
                     model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
             else:
                 get_repo_root(model_name_or_path, local_rank=self.local_rank)
-                # placement on hpu if meta tensors are not supported
-                with deepspeed.OnDevice(dtype=model_dtype, device="hpu"):
+                # placement on cpu if meta tensors are not supported
+                with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
                     model = AutoModelForCausalLM.from_pretrained(model_name_or_path, torch_dtype=model_dtype)
             model = model.eval()
 
@@ -251,7 +116,6 @@ class GaudiTextGenerationPipeline:
             self.model.generation_config.pad_token_id = self.model.generation_config.eos_token_id
 
         # Edit generation configuration based on input arguments
-
         self.generation_config = copy.deepcopy(self.model.generation_config)
         self.generation_config.max_new_tokens = kwargs.get("max_new_tokens", 100)
         self.generation_config.use_cache = kwargs.get("use_kv_cache", True)
@@ -264,9 +128,7 @@ class GaudiTextGenerationPipeline:
         self.generation_config.num_return_sequences = kwargs.get("num_return_sequences", 1)
         self.generation_config.bad_words_ids = None
         self.generation_config.force_words_ids = None
-
-        # Define stopping criteria based on eos token id
-        self.stopping_criteria = StoppingCriteriaList([CustomStoppingCriteria(self.generation_config.eos_token_id)])
+        self.generation_config.ignore_eos = False
 
         if self.use_deepspeed:
             torch.distributed.barrier()
@@ -287,7 +149,6 @@ class GaudiTextGenerationPipeline:
             hpu_graphs=True,
             profiling_steps=0,
             profiling_warmup_steps=0,
-            stopping_criteria=self.stopping_criteria,
         ).cpu()
 
         output_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
