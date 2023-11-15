@@ -137,13 +137,12 @@ class ModelArguments:
     load_meta_device: bool = field(
         default=False,
         metadata={
-           "help": (
+            "help": (
                 "It is an option to load the model to the device instead of the host, so it can reduce the host RAM usage."
                 "https://huggingface.co/blog/accelerate-large-models"
             )
         },
     )
-
 
 
 @dataclass
