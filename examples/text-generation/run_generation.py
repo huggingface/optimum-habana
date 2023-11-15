@@ -37,7 +37,7 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-
+import math
 
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
@@ -531,9 +531,9 @@ def main():
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
                 mx = max(dyn_prompt_lens)
-                import math
+                def rounder(x):
+                    return int(math.ceil(x / args.bucket_size) * args.bucket_size)
 
-                rounder = lambda x: int(math.ceil(x / args.bucket_size) * args.bucket_size)
                 min_prompt_len = rounder(mn)
                 max_sentence_len = rounder(mx)
                 for _ in range(args.warmup):
