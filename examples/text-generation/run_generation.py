@@ -19,7 +19,6 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 """
 
 import argparse
-import contextlib
 import copy
 import json
 import logging
@@ -329,7 +328,9 @@ def main():
             from peft import PeftModel
 
             context = (
-                deepspeed.OnDevice(dtype=model_dtype, device="meta") if load_to_meta else contextlib.nullcontext()
+                deepspeed.OnDevice(dtype=model_dtype, device="meta")
+                if load_to_meta
+                else deepspeed.OnDevice(dtype=model_dtype, device="cpu")
             )
             with context:
                 model = PeftModel.from_pretrained(model, args.peft_model)
