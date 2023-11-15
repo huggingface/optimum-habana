@@ -38,7 +38,8 @@ def get_repo_root(model_name_or_path, local_rank=-1, token=None):
                 return cache_dir
 
         # Make all processes wait so that other processes can get the checkpoint directly from cache
-        torch.distributed.barrier()
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()
 
         return snapshot_download(
             model_name_or_path,

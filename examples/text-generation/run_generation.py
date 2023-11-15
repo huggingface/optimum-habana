@@ -20,7 +20,6 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 
 import argparse
 import copy
-import glob
 import json
 import logging
 import os
@@ -40,7 +39,7 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import count_hpu_graphs, get_hpu_memory_stats, override_prints, set_seed, setup_distributed
 
 
 try:
@@ -63,42 +62,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def override_print(enable):
-    import builtins as __builtin__
-
-    builtin_print = __builtin__.print
-
-    def print(*args, **kwargs):
-        force = kwargs.pop("force", False)
-        if force or enable:
-            builtin_print(*args, **kwargs)
-
-    __builtin__.print = print
-
-
-def override_logger(enable):
-    logger_info = logger.info
-
-    def info(*args, **kwargs):
-        force = kwargs.pop("force", False)
-        if force or enable:
-            logger_info(*args, **kwargs)
-
-    logger.info = info
-
-
-def count_hpu_graphs():
-    return len(glob.glob(".graph_dumps/*PreGraph*"))
-
-
-def setup_distributed(args):
-    args.local_rank = int(os.getenv("LOCAL_RANK", "0"))
-    args.world_size = int(os.getenv("WORLD_SIZE", "0"))
-    args.global_rank = int(os.getenv("RANK", "0"))
-    override_print(args.global_rank == 0 or args.verbose_workers)
-    override_logger(args.global_rank == 0 or args.verbose_workers)
-
-
 def setup_env(args):
     if args.global_rank == 0:
         os.environ.setdefault("GRAPH_VISUALIZATION", "true")
@@ -115,14 +78,13 @@ def setup_env(args):
 
 
 def setup_device(args):
-    if args.device == "hpu":
-        pass
     return torch.device(args.device)
 
 
 def initialize_model(args):
     init_start = time.perf_counter()
     setup_distributed(args)
+    override_prints(args.global_rank == 0 or args.verbose_workers, logger)
     setup_env(args)
     setup_device(args)
     set_seed(args.seed)
@@ -533,32 +495,31 @@ def main():
                 print(f"output {j+1}: {output}")
             print()
 
-            # Store results if necessary
-            if args.output_dir is not None:
-                output_dir = Path(args.output_dir)
-                output_dir.mkdir(parents=True, exist_ok=True)
+        # Store results if necessary
+        if args.output_dir is not None:
+            output_dir = Path(args.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
 
-                results = {
-                    "throughput": throughput,
-                    "output": output,
-                }
-                with (output_dir / "results.json").open("w", encoding="utf-8") as f:
-                    json.dump(results, f, ensure_ascii=False, indent=4)
-            from optimum.habana.utils import get_hpu_memory_stats
+            results = {
+                "throughput": throughput,
+                "output": output,
+            }
+            with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+                json.dump(results, f, ensure_ascii=False, indent=4)
 
-            stats = f"Throughput (including tokenization) = {throughput} tokens/second"
-            stats = stats + f" hpu_graphs:{count_hpu_graphs()}"
-            separator = "-" * len(stats)
-            print()
-            print("Stats:")
-            print(separator)
-            print(stats)
-            mem = get_hpu_memory_stats()
-            for k, v in mem.items():
-                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-            print(f"Graph compilation duration          = {compilation_duration} seconds")
-            print(separator)
-            print()
+        stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+        stats = stats + f" hpu_graphs:{count_hpu_graphs()}"
+        separator = "-" * len(stats)
+        print()
+        print("Stats:")
+        print(separator)
+        print(stats)
+        mem = get_hpu_memory_stats()
+        for k, v in mem.items():
+            print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+        print(f"Graph compilation duration          = {compilation_duration} seconds")
+        print(separator)
+        print()
     else:
         # Downloading and loading a dataset from the hub.
         from datasets import load_dataset
@@ -689,8 +650,6 @@ def main():
 
         throughput = total_new_tokens_generated / duration
         # Print Stats
-
-        from optimum.habana.utils import get_hpu_memory_stats
 
         stats = f"Throughput (including tokenization) = {throughput} tokens/second"
         separator = "-" * len(stats)
