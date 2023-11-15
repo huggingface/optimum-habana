@@ -19,6 +19,7 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 """
 
 import argparse
+import contextlib
 import copy
 import json
 import logging
@@ -327,8 +328,12 @@ def main():
                 raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
             from peft import PeftModel
 
-            model = PeftModel.from_pretrained(model, args.peft_model)
-            model = model.merge_and_unload().eval().to(model_dtype)
+            context = (
+                deepspeed.OnDevice(dtype=model_dtype, device="meta") if load_to_meta else contextlib.nullcontext()
+            )
+            with context:
+                model = PeftModel.from_pretrained(model, args.peft_model)
+                model = model.merge_and_unload().eval()
 
         # Initialize the model
         ds_inference_kwargs = {"dtype": model_dtype}
