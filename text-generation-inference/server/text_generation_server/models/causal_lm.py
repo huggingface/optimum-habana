@@ -161,16 +161,15 @@ class CausalLMBatch(Batch):
             else:
                 all_input_ids = input_ids.clone().T.split(1, dim=1)
                 input_ids = input_ids.to(device)
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-            htorch.core.mark_step()
         else:
             if is_optimized_for_gaudi:
                 input_ids = torch.nn.functional.pad(input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id)
                 attention_mask = torch.nn.functional.pad(attention_mask, (0, padding_right_offset), value=0)
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
             all_input_ids = input_ids.T.clone().split(1, dim=1)
+
+        position_ids = attention_mask.long().cumsum(-1) - 1
+        position_ids.masked_fill_(attention_mask == 0, 1)
+        htorch.core.mark_step()
 
         top_n_tokens_tensor = torch.tensor(top_n_tokens, device=device, dtype=torch.int64)
 

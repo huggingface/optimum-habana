@@ -22,14 +22,21 @@ To use [🤗 text-generation-inference](https://github.com/huggingface/text-gene
    ```bash
    docker build -t tgi_gaudi .
    ```
-2. Launch a local server instance with:
+2. Launch a local server instance for 1x:
    ```bash
    model=bigscience/bloom-560m
    volume=$PWD/data # share a volume with the Docker container to avoid downloading weights every run
 
-   docker run -p 8080:80 -v $volume:/data --runtime=habana -e PT_HPU_ENABLE_LAZY_COLLECTIVES=true -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host tgi_gaudi --model-id $model
+   docker run -p 8080:80 -v $volume:/data --runtime=habana -e POST_PROCESS_CPU=0 -e PT_HPU_ENABLE_LAZY_COLLECTIVES=true -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host tgi_gaudi --model-id $model
    ```
-3. You can then send a request:
+3. Launch a local server instance for 8x:
+   ```bash
+   model=meta-llama/Llama-2-70b-hf
+   volume=$PWD/data # share a volume with the Docker container to avoid downloading weights every run
+
+   docker run -p 8080:80 -v $volume:/data --runtime=habana -e PT_HPU_ENABLE_LAZY_COLLECTIVES=true -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host tgi_gaudi --model-id $model --sharded true --num-shard 8
+   ```
+4. You can then send a request:
    ```bash
    curl 127.0.0.1:8080/generate \
      -X POST \
