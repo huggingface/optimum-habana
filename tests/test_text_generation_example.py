@@ -23,6 +23,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("bigcode/starcoder", 65.38483087362695),
             ("Salesforce/codegen2-1B", 231.1951513223901),
             ("mosaicml/mpt-30b", 35.825021595560855),
+            ("mistralai/Mistral-7B-v0.1", 113.64661982817469),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 33.05719168230658),
@@ -44,6 +45,7 @@ else:
             ("bigcode/starcoder", 15.955986010526113),
             ("Salesforce/codegen2-1B", 109.03016111561857),
             ("mosaicml/mpt-7b", 44.888696119070424),
+            ("mistralai/Mistral-7B-v0.1", 40.0690067247771),
         ],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 27.34439410425298),

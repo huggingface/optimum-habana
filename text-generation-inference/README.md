@@ -51,3 +51,7 @@ New features will be added soon, including:
   It defaults to 0. To change it please add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker.
   This workaround is needed as max_total_tokens is currently not being passed from rust to python when running launcher app. 
 - Added torch profile with support of envs : "PROF_WARMUPSTEP", "PROF_STEP", "PROF_PATH"
+
+> The license to use TGI on Habana Gaudi is the one of TGI: https://github.com/huggingface/text-generation-inference/blob/main/LICENSE
+>
+> Please reach out to api-enterprise@huggingface.co if you have any question.
