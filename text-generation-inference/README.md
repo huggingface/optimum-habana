@@ -48,9 +48,11 @@ New features will be added soon, including:
 - support for DeepSpeed-inference to use sharded models (Added ENABLE_HPU_GRAPH=true/false to enable/disable hpu graph in docker run. default to true)
 - batching strategy to have less model compilations
 - Added an env var MAX_TOTAL_TOKENS for models that require it to be set during benchmark test.
-  It defaults to 0. To change it please add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker.
+  It defaults to 0. To change it please add "-e MAX_TOTAL_TOKENS=512" (512 is an example) to docker run command.
   This workaround is needed as max_total_tokens is currently not being passed from rust to python when running launcher app. 
 - Added torch profile with support of envs : "PROF_WARMUPSTEP", "PROF_STEP", "PROF_PATH"
+- Added env var POST_PROCESS_CPU which is set 1 by default for performance. Please set "-e POST_PROCESS_CPU=0" in the docker run command,
+  for smaller models like bloom-560m.
 
 > The license to use TGI on Habana Gaudi is the one of TGI: https://github.com/huggingface/text-generation-inference/blob/main/LICENSE
 >
