@@ -152,8 +152,6 @@ class CausalLMBatch(Batch):
         if post_process_cpu == 1:
             #only move model inputs to device
             attention_mask = attention_mask.to(device)
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
 
             if is_optimized_for_gaudi:
                 input_ids_cpu = torch.nn.functional.pad(input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id)
@@ -163,6 +161,8 @@ class CausalLMBatch(Batch):
             else:
                 all_input_ids = input_ids.clone().T.split(1, dim=1)
                 input_ids = input_ids.to(device)
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
             htorch.core.mark_step()
         else:
             if is_optimized_for_gaudi:
@@ -694,10 +694,10 @@ class CausalLM(Model):
         }
 
         if self.is_optimized_for_gaudi:
-            if not past_key_values:
+            #if not past_key_values:
                 # add padding to position_id
-                position_ids = attention_mask.long().cumsum(-1) - 1
-                position_ids.masked_fill_(attention_mask == 0, 1)
+                #position_ids = attention_mask.long().cumsum(-1) - 1
+                #position_ids.masked_fill_(attention_mask == 0, 1)
             kwargs["token_idx"] = token_idx
 
         if self.has_position_ids:
@@ -716,19 +716,27 @@ class CausalLM(Model):
         if self.is_optimized_for_gaudi:
             token_idx = torch.tensor(batch.attention_mask.shape[-1] - batch.padding_right_offset).to(self.device)
             attention_mask = batch.attention_mask
+
         else:
             token_idx = None
             # slice the attention mask to the correct shape
             attention_mask = batch.attention_mask[:, : -batch.padding_right_offset]
+        if batch.past_key_values:
+            if token_idx is not None:
+                input_ids = torch.index_select(batch.input_ids, 1, token_idx - 1)
+        else:
+            input_ids = batch.input_ids
+
         logits, past = self.forward(
-            batch.input_ids,
+            input_ids,
             attention_mask,
             batch.position_ids,
             token_idx,
             batch.past_key_values,
         )
         logsoftmax = torch.softmax(logits[:, -1], -1)
-        if post_process_cpu == 1:
+
+        if post_process_cpu:
             htorch.core.mark_step()
             logits = logits.to('cpu')
             logsoftmax = logsoftmax.to('cpu')
@@ -756,7 +764,7 @@ class CausalLM(Model):
             batch_top_token_ids,
             batch_top_token_logprobs,
         )
-
+        next_tokens = []
         # For each member of the batch
         for i, (
             request,
@@ -865,22 +873,26 @@ class CausalLM(Model):
 
                 generations.append(generation)
 
-            # Update values
-            batch.input_ids[i, 0] = next_token_id
+            next_tokens.append(next_token_id)
             batch.all_input_ids[i] = all_input_ids
             batch.input_lengths[i] = new_input_length
             batch.prefix_offsets[i] = prefix_offset
             batch.read_offsets[i] = read_offset
             batch.max_input_length = max(batch.max_input_length, new_input_length)
-
+        next_tokens=torch.cat(next_tokens,dim=0)
+        if token_idx is None:
+            batch.input_ids[:,0] = next_tokens[:,0]
+        else:
+            batch.input_ids.index_copy(1, token_idx, next_tokens)
         # We finished all generations in the batch; there is no next batch
         if stopped:
             if self.hb_profer_started == True:
                self.hb_profer.step()
             return generations, None
 
-        # Slice unused values from prefill
-        batch.input_ids = batch.input_ids[:, :1]
+        # Slice unused values from prefill, use it to store next token
+        if token_idx is None:
+            batch.input_ids = batch.input_ids[:, :1]
 
         # Update attention_mask as we added a new token to input_ids
         batch.attention_mask[:, -batch.padding_right_offset] = 1
@@ -889,9 +901,9 @@ class CausalLM(Model):
 
         # Update position_ids
         batch.position_ids = batch.position_ids[:, -1:] + 1
-
         # Update past key values
-        batch.past_key_values = list(past)
+        batch.past_key_values = past
         if self.hb_profer_started == True:
             self.hb_profer.step()
+
         return generations, batch
