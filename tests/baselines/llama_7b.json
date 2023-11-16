@@ -17,7 +17,8 @@
                         "--use_hpu_graphs_for_inference",
                         "--dataset_concatenation",
                         "--validation_split_percentage 10",
-                        "--max_steps 100"
+                        "--max_steps 100",
+                        "--attn_softmax_bf16"
                     ]
                 }
             }
@@ -53,7 +54,8 @@
                         "--low_cpu_mem_usage True",
                         "--adam_epsilon 1e-08",
                         "--ddp_bucket_cap_mb 50",
-                        "--validation_split_percentage 10"
+                        "--validation_split_percentage 10",
+                        "--attn_softmax_bf16"
                     ]
                 }
             }
