@@ -132,7 +132,11 @@ class ModelArguments:
     )
     attn_softmax_bf16: bool = field(
         default=False,
-        metadata={"help": ("Whether to run attention softmax layer in bf16 precision",)},
+        metadata={
+            "help": (
+                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The current support is limited to Llama only.",
+            )
+        },
     )
     load_meta_device: bool = field(
         default=False,
