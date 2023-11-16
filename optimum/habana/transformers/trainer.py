@@ -853,7 +853,7 @@ class GaudiTrainer(Trainer):
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
                 # attn_softmax_bf16 is enabled only for llama
-                if hasattr(self.model, "generation_config"):
+                if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
                     if self.model.config.model_type == "llama" and self.model.generation_config.attn_softmax_bf16:
                         inputs["attn_softmax_bf16"] = True
 
@@ -1568,7 +1568,7 @@ class GaudiTrainer(Trainer):
                     batch_size = observed_batch_size
 
             # attn_softmax_bf16 is enabled only for llama
-            if hasattr(self.model, "generation_config"):
+            if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
                 if self.model.config.model_type == "llama" and self.model.generation_config.attn_softmax_bf16:
                     inputs["attn_softmax_bf16"] = True
 
