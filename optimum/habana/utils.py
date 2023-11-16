@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import glob
-import os
 import random
 import subprocess
 import time
@@ -344,42 +342,3 @@ def get_device_name():
         return "gaudi2"
     else:
         raise ValueError(f"Unsupported device: the device type is {device_type}.")
-
-
-def override_print(enable):
-    import builtins as __builtin__
-
-    builtin_print = __builtin__.print
-
-    def print(*args, **kwargs):
-        force = kwargs.pop("force", False)
-        if force or enable:
-            builtin_print(*args, **kwargs)
-
-    __builtin__.print = print
-
-
-def override_logger(logger, enable):
-    logger_info = logger.info
-
-    def info(*args, **kwargs):
-        force = kwargs.pop("force", False)
-        if force or enable:
-            logger_info(*args, **kwargs)
-
-    logger.info = info
-
-
-def count_hpu_graphs():
-    return len(glob.glob(".graph_dumps/*PreGraph*"))
-
-
-def override_prints(enable, logger):
-    override_print(enable)
-    override_logger(logger, enable)
-
-
-def setup_distributed(args):
-    args.local_rank = int(os.getenv("LOCAL_RANK", "0"))
-    args.world_size = int(os.getenv("WORLD_SIZE", "0"))
-    args.global_rank = int(os.getenv("RANK", "0"))
