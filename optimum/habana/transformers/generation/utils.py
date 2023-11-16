@@ -379,7 +379,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if "token_idx" not in model_kwargs:
             model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
         posn = position_ids_cpu.to(self.device) if reduce_recompile and params["passnum"] == 0 else None
-        return input_ids, model_kwargs
+        return input_ids, model_kwargs, posn
 
     @torch.no_grad()
     def generate(
