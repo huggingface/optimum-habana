@@ -100,8 +100,9 @@ class GaudiLlamaAttention(LlamaAttention):
             self.past_value.fill_(0)
 
     def update_sincos_cache(self, seq_len):
-        # Also call rotary emb to update cos/sin cache of seq len when infering more than self.max_position_embeddings
-        # This helps in avoiding recompilation during forward pass and reduce memory consumption
+        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
+        # This helps in avoiding creation of these caches during actual model forward pass and
+        # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
             _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
