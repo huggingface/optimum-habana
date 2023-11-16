@@ -555,7 +555,7 @@ def main():
         else:
             for i in range(args.n_iterations):
                 print("Generating for shape,", dyn_prompt_lens[i])
-                generated = generate(dyn_prompt_lens[i])
+                generated = generate(dyn_prompt_lens[i], args.reduce_recompile)
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
