@@ -49,6 +49,7 @@ except ImportError:
 
 from optimum.habana.utils import compare_habana_framework_min_version
 
+
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.34.0")
 check_optimum_habana_min_version("1.9.0.dev0")
@@ -223,17 +224,9 @@ def main():
         help="Whether to reuse key/value cache for decoding. It should save memory.",
     )
     parser.add_argument(
-        "--hash_with_views",
+        "--skip_hash_with_views",
         action="store_true",
-        default=True,
-        help="Whether to use hash_with_views for HPU graphs. When hash_with_views is used, the input to HPU graphs includes both view and base tensors. \
-            For some models like Falcon, disabling hash_with_views and preventing multiple recompilations may lead to performance improvements. \
-            The support is limited to Habana framework v1.13.0 and onward.",
-    )
-    parser.add_argument(
-        "--no_hash_with_views",
-        dest="hash_with_views",
-        action="store_false",
+        help="Whether to skip hash with views for HPU graphs. When skip_hash_with_views is not used, the input to HPU graphs includes both view and base tensors.",
     )
 
     args = parser.parse_args()
@@ -384,7 +377,7 @@ def main():
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
             if compare_habana_framework_min_version("1.13.0"):
-                model = wrap_in_hpu_graph(model, hash_with_views=args.hash_with_views)
+                model = wrap_in_hpu_graph(model, hash_with_views=not args.skip_hash_with_views)
             else:
                 model = wrap_in_hpu_graph(model)
 

@@ -124,7 +124,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --trim_logits
 ```
 
-To run Falcon-7B on Gaudi2 with all optimizations enabled, use the following command. Please note that the option --no_hash_with_views were added to disable the hash_with_views feature in HPU graphs:
+To run Falcon-7B on Gaudi2 with all optimizations enabled, use the following command. Please note that the option --skip_hash_with_views were added to disable the hash_with_views feature in HPU graphs:
 ```bash
 python run_generation.py \
  --model_name_or_path tiiuae/falcon-7b \
@@ -134,7 +134,7 @@ python run_generation.py \
  --batch_size 1 \
  --max_new_tokens 128 \
  --do_sample \
- --no_hash_with_views
+ --skip_hash_with_views
 ```
 
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
