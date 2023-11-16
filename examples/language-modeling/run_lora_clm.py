@@ -134,7 +134,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The currently support is limited to Llama only.",
+                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The current support is limited to Llama only.",
             )
         },
     )
