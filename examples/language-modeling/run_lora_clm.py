@@ -134,6 +134,15 @@ class ModelArguments:
         default=False,
         metadata={"help": ("Whether to run attention softmax layer in bf16 precision",)},
     )
+    load_meta_device: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "It is an option to load the model to the device instead of the host, so it can reduce the host RAM usage."
+                "https://huggingface.co/blog/accelerate-large-models"
+            )
+        },
+    )
 
 
 @dataclass
@@ -461,6 +470,7 @@ def main():
             trust_remote_code=True if model_args.trust_remote_code else None,
             torch_dtype=model_dtype,
             low_cpu_mem_usage=model_args.low_cpu_mem_usage,
+            device_map=training_args.device.type if model_args.load_meta_device else None,
         )
     else:
         raise ValueError("Must provide model_name_or_path to load a pretrained CausalLM model.")
