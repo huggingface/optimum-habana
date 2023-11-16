@@ -720,6 +720,7 @@ class CausalLM(Model):
             token_idx = None
             # slice the attention mask to the correct shape
             attention_mask = batch.attention_mask[:, : -batch.padding_right_offset]
+        prefill = batch.past_key_values is None
         if batch.past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(batch.input_ids, 1, token_idx - 1)
@@ -882,7 +883,7 @@ class CausalLM(Model):
         if token_idx is None:
             batch.input_ids[:,0] = next_tokens[:,0]
         else:
-            batch.input_ids.index_copy(1, token_idx, next_tokens)
+            batch.input_ids.index_copy_(1, token_idx, next_tokens)
         # We finished all generations in the batch; there is no next batch
         if stopped:
             if self.hb_profer_started == True:
@@ -899,7 +900,10 @@ class CausalLM(Model):
         batch.padding_right_offset -= 1
 
         # Update position_ids
-        batch.position_ids = batch.position_ids[:, -1:] + 1
+        if prefill:
+            batch.position_ids = batch.position_ids[:, token_idx-1:token_idx] + 1
+        else:
+            batch.position_ids += 1
         # Update past key values
         batch.past_key_values = past
         if self.hb_profer_started == True:
