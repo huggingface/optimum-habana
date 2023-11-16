@@ -895,7 +895,7 @@ class CausalLM(Model):
             batch.input_ids = batch.input_ids[:, :1]
 
         # Update attention_mask as we added a new token to input_ids
-        batch.attention_mask[:, -batch.padding_right_offset] = 1
+        batch.attention_mask.index_fill_(1, token_idx, 1)
         # Decrease right offset
         batch.padding_right_offset -= 1
 

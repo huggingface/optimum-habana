@@ -49,17 +49,28 @@ To use [🤗 text-generation-inference](https://github.com/huggingface/text-gene
 
 For more information and documentation about Text Generation Inference, checkout [the README](https://github.com/huggingface/text-generation-inference#text-generation-inference) of the original repo.
 
-Not all features of TGI are currently supported as this is still a work in progress.
-It has been tested for batches of 1 sample so far.
-New features will be added soon, including:
-- support for DeepSpeed-inference to use sharded models (Added ENABLE_HPU_GRAPH=true/false to enable/disable hpu graph in docker run. default to true)
-- batching strategy to have less model compilations
-- Added an env var MAX_TOTAL_TOKENS for models that require it to be set during benchmark test.
-  It defaults to 0. To change it please add "-e MAX_TOTAL_TOKENS=512" (512 is an example) to docker run command.
-  This workaround is needed as max_total_tokens is currently not being passed from rust to python when running launcher app. 
-- Added torch profile with support of envs : "PROF_WARMUPSTEP", "PROF_STEP", "PROF_PATH"
-- Added env var POST_PROCESS_CPU which is set 1 by default for performance. Please set "-e POST_PROCESS_CPU=0" in the docker run command,
-  for smaller models like bloom-560m.
+Not all features of TGI are currently supported as this is still features work in progress.
+
+New changes is added for the current release:
+- Shared feature with supporting DeepSpeed-inference auto tensor parallism. Also use HPU graph for performance improvement.
+- Torch profile. 
+
+
+Enviroment Varibles :
+
+<div align="center">
+
+| Name                  | Value(s)       | Default     | Description                       | Usage                                          |
+|------------------     |:---------------|:------------|:--------------------              |:---------------------------------
+|  MAX_TOTAL_TOKENS     | integer        | 0           | Control input + generation token  | add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker <li>                         |                                            </li> |
+|  ENABLE_HPU_GRAPH     | true/false     | true        | Enable hpu graph or not                                                      |  add -e in docker run command  |
+|  PROF_WARMUPSTEP      | integer        | 0           | Enable/disable profile, control profile warmup step, 0 means disable profile |  add -e in docker run command  |
+|  PROF_STEP            | interger       | 5           | Control profile step                                                         |  add -e in docker run command  |
+|  PROF_PATH            | string         | /root/text-generation-inference                                   | Define profile folder  | add -e in docker run command  |
+|  POST_PROCESS_CPU     | 0/1            | 1           | Define post process device          | add -e in docker run command, for smaller model like bloom -560, 0 has better performance |
+
+</div>
+
 
 > The license to use TGI on Habana Gaudi is the one of TGI: https://github.com/huggingface/text-generation-inference/blob/main/LICENSE
 >

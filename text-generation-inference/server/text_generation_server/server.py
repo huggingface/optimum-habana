@@ -23,9 +23,11 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         self.model = model
         self.server_urls = server_urls
         # For some reason, inference_mode does not work well with GLOO which we use on CPU
-        if model.device.type == "hpu":
+        # TODO: The inferecemode set messes up the autograd op dispatch. And results in aten::matmul
+        # op not optimized issue. Will investigate further.
+        #if model.device.type == "hpu":
             # Force inference mode for the lifetime of TextGenerationService
-            self._inference_mode_raii_guard = torch._C._InferenceMode(True)
+            #self._inference_mode_raii_guard = torch._C._InferenceMode(True)
 
     async def Info(self, request, context):
         return self.model.info
