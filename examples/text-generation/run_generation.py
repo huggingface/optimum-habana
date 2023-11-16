@@ -31,6 +31,7 @@ from pathlib import Path
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
+from utils import count_hpu_graphs, override_prints, setup_distributed
 
 from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
@@ -40,8 +41,6 @@ from optimum.habana.checkpoint_utils import (
     write_checkpoints_json,
 )
 from optimum.habana.utils import get_hpu_memory_stats, set_seed
-
-from utils import count_hpu_graphs, override_prints, setup_distributed
 
 
 try:
