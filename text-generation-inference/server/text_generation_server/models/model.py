@@ -21,7 +21,7 @@ class Model(ABC):
         device: torch.device,
         rank: int = 0,
         world_size: int = 1,
-        kwargs: dict={},
+        kwargs: dict = {},
     ):
         self.model = model
         self.tokenizer = tokenizer

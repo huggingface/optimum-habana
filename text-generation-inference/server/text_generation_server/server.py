@@ -25,9 +25,9 @@ class TextGenerationService(generate_pb2_grpc.TextGenerationServiceServicer):
         # For some reason, inference_mode does not work well with GLOO which we use on CPU
         # TODO: The inferecemode set messes up the autograd op dispatch. And results in aten::matmul
         # op not optimized issue. Will investigate further.
-        #if model.device.type == "hpu":
-            # Force inference mode for the lifetime of TextGenerationService
-            #self._inference_mode_raii_guard = torch._C._InferenceMode(True)
+        # if model.device.type == "hpu":
+        # Force inference mode for the lifetime of TextGenerationService
+        # self._inference_mode_raii_guard = torch._C._InferenceMode(True)
 
     async def Info(self, request, context):
         return self.model.info
@@ -116,7 +116,7 @@ def serve(
     uds_path: Path,
     sharded: bool,
 ):
-     # Remove default handler
+    # Remove default handler
     logger.remove()
     logger.add(
         sys.stdout,
@@ -141,14 +141,12 @@ def serve(
             rank = int(os.environ["RANK"])
             logger.info("Server:server_inner: rank ={}".format(rank))
             server_urls = [
-                unix_socket_template.format(uds_path, rank)
-                for rank in range(int(os.environ["WORLD_SIZE"]))
+                unix_socket_template.format(uds_path, rank) for rank in range(int(os.environ["WORLD_SIZE"]))
             ]
             local_url = server_urls[int(os.environ["RANK"])]
         else:
             local_url = unix_socket_template.format(uds_path, 0)
             server_urls = [local_url]
-
 
         logger.info("Server:server_inner: data type = {}, local_url = {}".format(dtype, local_url))
         if dtype == "bfloat16" or None:
@@ -179,7 +177,6 @@ def serve(
 
         await server.start()
 
-
         logger.info("Server started at {}".format(local_url))
 
         try:
@@ -187,5 +184,10 @@ def serve(
         except KeyboardInterrupt:
             logger.info("Signal received. Shutting down")
             await server.stop(0)
-    logger.info("Starting Server : model_id= {}, revision = {}  dtype = {}  sharded = {} ".format(model_id, revision, dtype, sharded))
+
+    logger.info(
+        "Starting Server : model_id= {}, revision = {}  dtype = {}  sharded = {} ".format(
+            model_id, revision, dtype, sharded
+        )
+    )
     asyncio.run(serve_inner(model_id, revision, dtype, sharded))

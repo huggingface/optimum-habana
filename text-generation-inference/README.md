@@ -51,18 +51,18 @@ For more information and documentation about Text Generation Inference, checkout
 
 Not all features of TGI are currently supported as this is still features work in progress.
 
-New changes is added for the current release:
+New changes are added for the current release:
 - Shared feature with supporting DeepSpeed-inference auto tensor parallism. Also use HPU graph for performance improvement.
 - Torch profile. 
 
 
-Enviroment Varibles :
+Enviroment Variables :
 
 <div align="center">
 
 | Name                  | Value(s)       | Default     | Description                       | Usage                                          |
 |------------------     |:---------------|:------------|:--------------------              |:---------------------------------
-|  MAX_TOTAL_TOKENS     | integer        | 0           | Control input + generation token  | add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker <li>                         |                                            </li> |
+|  MAX_TOTAL_TOKENS     | integer        | 0           | Control input + generation token  | add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker           |
 |  ENABLE_HPU_GRAPH     | true/false     | true        | Enable hpu graph or not                                                      |  add -e in docker run command  |
 |  PROF_WARMUPSTEP      | integer        | 0           | Enable/disable profile, control profile warmup step, 0 means disable profile |  add -e in docker run command  |
 |  PROF_STEP            | interger       | 5           | Control profile step                                                         |  add -e in docker run command  |

@@ -37,8 +37,8 @@ COPY --from=tgi /tmp/text-generation-inference/launcher launcher
 RUN cargo build --release
 
 # Text Generation Inference base image
-#FROM vault.habana.ai/gaudi-docker/1.12.0/ubuntu22.04/habanalabs/pytorch-installer-2.0.1:latest as base
-FROM artifactory-kfs.habana-labs.com/docker-local/1.13.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.0:1.13.0-456 as base
+FROM vault.habana.ai/gaudi-docker/1.12.0/ubuntu22.04/habanalabs/pytorch-installer-2.0.1:latest as base
+
 # Text Generation Inference base env
 ENV HUGGINGFACE_HUB_CACHE=/data \
     HF_HUB_ENABLE_HF_TRANSFER=1 \
@@ -73,13 +73,13 @@ RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
     pip install . --no-cache-dir && \
-    #pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0 && \
+    pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0 && \
     pip install git+https://github.com/huggingface/optimum-habana.git && \
     pip install transformers==4.34.1
 
-ADD . /tmp/
-RUN cd /tmp/deepspeed-fork && \
-    pip install -e .
+#ADD . /tmp/
+#RUN cd /tmp/deepspeed-fork && \
+    #pip install -e .
 
 
 # Install benchmarker
