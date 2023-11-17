@@ -326,7 +326,7 @@ def check_optimum_habana_min_version(min_version):
         raise ImportError(error_message)
 
 
-def compare_habana_framework_min_version(min_version):
+def check_habana_frameworks_min_version(min_version):
     """
     Checks if the installed version of habana framework is larger than or equal to `min_version`.
 

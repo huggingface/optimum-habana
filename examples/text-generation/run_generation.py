@@ -47,7 +47,7 @@ except ImportError:
         return ()
 
 
-from optimum.habana.utils import compare_habana_framework_min_version
+from optimum.habana.utils import check_habana_frameworks_min_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -376,7 +376,7 @@ def main():
         if args.use_hpu_graphs:
             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-            if compare_habana_framework_min_version("1.13.0"):
+            if check_habana_frameworks_min_version("1.13.0"):
                 model = wrap_in_hpu_graph(model, hash_with_views=not args.skip_hash_with_views)
             else:
                 model = wrap_in_hpu_graph(model)
