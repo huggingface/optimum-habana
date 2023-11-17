@@ -327,7 +327,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
     @torch.no_grad()
     def update_model_kwargs_for_bucketing(
-        self, params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile=False, prompt_len=None
+        self, params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile=False
     ):
         if params["need_expansion"]:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
@@ -380,8 +380,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if "token_idx" not in model_kwargs:
             model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
 
-        posn = position_ids_cpu.to(self.device) if reduce_recompile and params["passnum"] == 0 else None
-        return input_ids, model_kwargs, posn
+        return input_ids, model_kwargs
 
     @torch.no_grad()
     def generate(
@@ -1372,13 +1371,11 @@ class GaudiGenerationMixin(GenerationMixin):
             if bucket_size > 0:
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
-                input_ids, model_kwargs, posn = self.update_model_kwargs_for_bucketing(
-                    params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile, prompt_len
+                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
                 )
-            else:
-                posn = None
 
-            model_kwargs["position"] = posn
+
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
@@ -2034,13 +2031,10 @@ class GaudiGenerationMixin(GenerationMixin):
             if bucket_size > 0:
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
-                input_ids, model_kwargs, posn = self.update_model_kwargs_for_bucketing(
+                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
                     params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile, prompt_len
                 )
-            else:
-                posn = None
 
-            model_kwargs["position"] = posn
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
