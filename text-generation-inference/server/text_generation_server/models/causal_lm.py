@@ -1,5 +1,5 @@
 import os
-
+import tempfile
 # set default POST_PROCESS_CPU to enabled
 post_process_cpu = int(os.getenv("POST_PROCESS_CPU", "1"))
 from text_generation_server.utils.tokens import batch_top_tokens
@@ -615,11 +615,8 @@ class CausalLM(Model):
 
             if load_to_meta:
                 # model loaded to meta is managed differently
-                checkpoints_json = "checkpoints.json"
+                checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
                 write_checkpoints_json(model_id, local_rank, checkpoints_json)
-
-            # Make sure all devices/nodes have access to the model checkpoints
-            torch.distributed.barrier()
 
             if load_to_meta:
                 ds_inference_kwargs["checkpoint"] = checkpoints_json
