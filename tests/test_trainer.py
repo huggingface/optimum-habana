@@ -97,6 +97,26 @@ class RegressionDataset:
         return result
 
 
+class RegressionDatasetDynamic:
+    def __init__(self, a=2, b=3, length=128, seed=42, label_names=None):
+        np.random.seed(seed)
+        self.label_names = ["labels"] if label_names is None else label_names
+        self.length = length
+        self.a = a
+        self.b = b
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, i):
+        self.x = np.random.normal(size=(self.length + i,)).astype(np.float32)
+        self.ys = self.a * self.x + self.b + np.random.normal(scale=0.1, size=(self.length + i,)).astype(np.float32)
+        result = {}
+        result["labels"] = self.ys
+        result["input_x"] = self.x
+        return result
+
+
 @dataclasses.dataclass
 class RegressionGaudiTrainingArguments(GaudiTrainingArguments):
     a: float = 0.0
@@ -669,6 +689,44 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         args = GaudiTrainingArguments("..", use_habana=True, use_lazy_mode=True)
         self.n_epochs = args.num_train_epochs
         self.batch_size = args.train_batch_size
+
+    def test_dynamic_shape_feature(self):
+        # Run training with variable length inputs and enable dynamic shapes support
+        train_dataset = RegressionDatasetDynamic(length=256)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = True
+        args = GaudiTrainingArguments(
+            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
+        )
+        model = RegressionModel()
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+        )
+        train_output_ds = trainer.train()
+        # Run training again with variable length inputs and disable dynamic shapes support
+        train_dataset = RegressionDatasetDynamic(length=256)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = False
+        args = GaudiTrainingArguments(
+            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
+        )
+        model = RegressionModel()
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+        )
+        train_output_static = trainer.train()
+        # Check if performance with dynamic shapes support is at least 5 times that without dynamic shapes
+        # Note "5x" number is not applicable across models, it is tuned for this particular dummy model
+        self.assertGreaterEqual(
+            train_output_ds.metrics["train_samples_per_second"],
+            5 * train_output_static.metrics["train_samples_per_second"],
+        )
 
     def test_eager_mode(self):
         train_dataset = RegressionDataset()
