@@ -56,18 +56,18 @@ New changes are added for the current release:
 - Torch profile. 
 
 
-Enviroment Variables :
+Enviroment Variables Added:
 
 <div align="center">
 
 | Name                  | Value(s)       | Default     | Description                       | Usage                                          |
 |------------------     |:---------------|:------------|:--------------------              |:---------------------------------
-|  MAX_TOTAL_TOKENS     | integer        | 0           | Control input + generation token  | add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker           |
+|  MAX_TOTAL_TOKENS     | integer        | 0           | Control the padding of input          | add -e in docker run, such         |
 |  ENABLE_HPU_GRAPH     | true/false     | true        | Enable hpu graph or not                                                      |  add -e in docker run command  |
 |  PROF_WARMUPSTEP      | integer        | 0           | Enable/disable profile, control profile warmup step, 0 means disable profile |  add -e in docker run command  |
 |  PROF_STEP            | interger       | 5           | Control profile step                                                         |  add -e in docker run command  |
 |  PROF_PATH            | string         | /root/text-generation-inference                                   | Define profile folder  | add -e in docker run command  |
-|  POST_PROCESS_CPU     | 0/1            | 1           | Define post process device          | add -e in docker run command, for smaller model like bloom -560, 0 has better performance |
+|  POST_PROCESS_CPU     | 0/1            | 1           | Define post process device          | add -e in docker run command, for smaller model like bloom-560m, 0 has better performance |
 
 </div>
 
