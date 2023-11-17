@@ -316,7 +316,7 @@ def main():
                 json.dump(results, f, ensure_ascii=False, indent=4)
 
         stats = f"Throughput (including tokenization) = {throughput} tokens/second"
-        stats = stats + f" hpu_graphs:{count_hpu_graphs()}"
+        stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
         separator = "-" * len(stats)
         print()
         print("Stats:")

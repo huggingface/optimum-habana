@@ -1,22 +1,21 @@
-#!/usr/bin/env python
-# coding=utf-8
-# Copyright 2018 Google AI, Google Brain and Carnegie Mellon University Authors and the HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-Conditional text generation on Habana Gaudi/Gaudi2.
-"""
+ # coding=utf-8 
+ # Copyright 2022 The HuggingFace Team. All rights reserved. 
+ # 
+ # Licensed under the Apache License, Version 2.0 (the "License"); 
+ # you may not use this file except in compliance with the License. 
+ # You may obtain a copy of the License at 
+ # 
+ #     http://www.apache.org/licenses/LICENSE-2.0 
+ # 
+ # Unless required by applicable law or agreed to in writing, software 
+ # distributed under the License is distributed on an "AS IS" BASIS, 
+ # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
+ # See the License for the specific language governing permissions and 
+ # limitations under the License. 
+  
+ ############################################################################### 
+ # Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company 
+ ############################################################################### 
 
 import copy
 import glob
@@ -134,7 +133,8 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
                 args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
             )
     model = model.eval()
-    model = peft_model(args, model, model_dtype)
+    if args.peft_model:
+        model = peft_model(args, model, model_dtype)
     # Initialize the model
     ds_inference_kwargs = {"dtype": model_dtype}
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
@@ -149,15 +149,14 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
 
 def peft_model(args, model, model_dtype):
-    if args.peft_model:
-        import importlib.util
+    import importlib.util
 
-        if importlib.util.find_spec("peft") is None:
-            raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
-        from peft import PeftModel
+    if importlib.util.find_spec("peft") is None:
+        raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+    from peft import PeftModel
 
-        model = PeftModel.from_pretrained(model, args.peft_model)
-        model = model.merge_and_unload().eval().to(model_dtype)
+    model = PeftModel.from_pretrained(model, args.peft_model)
+    model = model.merge_and_unload().eval().to(model_dtype)
     return model
 
 
