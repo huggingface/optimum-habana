@@ -63,7 +63,7 @@ class GaudiConfig(BaseConfig):
         self.use_torch_autocast = kwargs.pop("use_torch_autocast", False)
         self.autocast_bf16_ops = kwargs.pop("autocast_bf16_ops", None)
         self.autocast_fp32_ops = kwargs.pop("autocast_fp32_ops", None)
-        self.use_dynamic_shapes = kwargs.pop("use_dynamic_shapes", None)
+        self.use_dynamic_shapes = kwargs.pop("use_dynamic_shapes", False)
 
         if self.use_habana_mixed_precision and self.use_torch_autocast:
             raise ValueError(

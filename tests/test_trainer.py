@@ -699,14 +699,11 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
         )
         model = RegressionModel()
-        optimizer = torch.optim.SGD(model.parameters(), lr=1.0)
-        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 1.0)
         trainer = GaudiTrainer(
             model,
             gaudi_config,
             args,
             train_dataset=train_dataset,
-            optimizers=(optimizer, lr_scheduler),
         )
         train_output_ds = trainer.train()
         # Run training again with variable length inputs and disable dynamic shapes support
@@ -717,14 +714,11 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
         )
         model = RegressionModel()
-        optimizer = torch.optim.SGD(model.parameters(), lr=1.0)
-        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 1.0)
         trainer = GaudiTrainer(
             model,
             gaudi_config,
             args,
             train_dataset=train_dataset,
-            optimizers=(optimizer, lr_scheduler),
         )
         train_output_static = trainer.train()
         # Check if performance with dynamic shapes support is at least 5 times that without dynamic shapes
