@@ -130,6 +130,23 @@ class ModelArguments:
             )
         },
     )
+    attn_softmax_bf16: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The current support is limited to Llama only.",
+            )
+        },
+    )
+    load_meta_device: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "It is an option to load the model to the device instead of the host, so it can reduce the host RAM usage."
+                "https://huggingface.co/blog/accelerate-large-models"
+            )
+        },
+    )
 
 
 @dataclass
@@ -457,6 +474,7 @@ def main():
             trust_remote_code=True if model_args.trust_remote_code else None,
             torch_dtype=model_dtype,
             low_cpu_mem_usage=model_args.low_cpu_mem_usage,
+            device_map=training_args.device.type if model_args.load_meta_device else None,
         )
     else:
         raise ValueError("Must provide model_name_or_path to load a pretrained CausalLM model.")
@@ -466,6 +484,8 @@ def main():
         model.generation_config.pad_token_id = 0
         model.generation_config.bos_token_id = 1
         model.generation_config.eos_token_id = 2
+        if model_args.attn_softmax_bf16:
+            model.generation_config.attn_softmax_bf16 = True
 
     if hasattr(model.generation_config, "pad_token_id") and model.generation_config.pad_token_id is not None:
         tokenizer.pad_token_id = model.generation_config.pad_token_id
