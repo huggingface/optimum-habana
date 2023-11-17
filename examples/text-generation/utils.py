@@ -104,7 +104,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
     model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     model = model.eval().to(args.device)
-    model = peft_model(args, model, model_dtype)
+    if args.peft_model:
+        model = peft_model(args, model, model_dtype)
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
