@@ -852,6 +852,11 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
+                # attn_softmax_bf16 is enabled only for llama
+                if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
+                    if self.model.config.model_type == "llama" and self.model.generation_config.attn_softmax_bf16:
+                        inputs["attn_softmax_bf16"] = True
+
                 # TODO: keep syncs for fast DDP?
                 with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
@@ -1561,6 +1566,11 @@ class GaudiTrainer(Trainer):
                 # For batch samplers, batch_size is not known by the dataloader in advance.
                 if batch_size is None:
                     batch_size = observed_batch_size
+
+            # attn_softmax_bf16 is enabled only for llama
+            if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
+                if self.model.config.model_type == "llama" and self.model.generation_config.attn_softmax_bf16:
+                    inputs["attn_softmax_bf16"] = True
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
