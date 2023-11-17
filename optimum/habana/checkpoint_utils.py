@@ -68,9 +68,9 @@ def write_checkpoints_json(model_name_or_path, local_rank, f, token=None):
     """
     checkpoint_files = get_checkpoint_files(model_name_or_path, local_rank, token)
     data = {"type": "ds_model", "checkpoints": checkpoint_files, "version": 1.0}
-    with open(f, "w") as fp:
-        json.dump(data, fp)
-        fp.flush()
+    json.dump(data, f)
+    f.flush()
+
 
 def model_on_meta(config):
     """
