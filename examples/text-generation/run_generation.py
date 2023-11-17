@@ -305,7 +305,7 @@ def main():
     if use_deepspeed:
         config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
         is_optimized = model_is_optimized(config)
-        load_to_meta = model_on_meta(config)
+        load_to_meta = model_on_meta(config) and args.peft_model is None
 
         if load_to_meta:
             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
@@ -318,23 +318,18 @@ def main():
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
                 )
+
+                if args.peft_model:
+                    import importlib.util
+
+                    if importlib.util.find_spec("peft") is None:
+                        raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
+                    from peft import PeftModel
+
+                    model = PeftModel.from_pretrained(model, args.peft_model, torch_dtype=model_dtype)
+                    model = model.merge_and_unload()
+
         model = model.eval()
-
-        if args.peft_model:
-            import importlib.util
-
-            if importlib.util.find_spec("peft") is None:
-                raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
-            from peft import PeftModel
-
-            context = (
-                deepspeed.OnDevice(dtype=model_dtype, device="meta")
-                if load_to_meta
-                else deepspeed.OnDevice(dtype=model_dtype, device="cpu")
-            )
-            with context:
-                model = PeftModel.from_pretrained(model, args.peft_model)
-                model = model.merge_and_unload().eval()
 
         # Initialize the model
         ds_inference_kwargs = {"dtype": model_dtype}
