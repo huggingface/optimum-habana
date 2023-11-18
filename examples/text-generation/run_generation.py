@@ -199,6 +199,11 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
     )
+    parser.add_argument(
+        "--skip_hash_with_views",
+        action="store_true",
+        help="Whether to skip hash with views for HPU graphs. When skip_hash_with_views is not used, the input to HPU graphs includes both view and base tensors.",
+    )
     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
 
     args = parser.parse_args()

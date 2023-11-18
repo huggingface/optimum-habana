@@ -326,6 +326,16 @@ def check_optimum_habana_min_version(min_version):
         raise ImportError(error_message)
 
 
+def check_habana_frameworks_min_version(min_version):
+    """
+    Checks if the installed version of `habana_frameworks` is larger than or equal to `min_version`.
+    """
+    if get_habana_frameworks_version() < version.parse(min_version):
+        return False
+    else:
+        return True
+
+
 def get_device_name():
     """
     Returns the name of the current device: Gaudi or Gaudi2.
