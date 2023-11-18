@@ -617,9 +617,7 @@ class CausalLM(Model):
                 # model loaded to meta is managed differently
                 checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
                 write_checkpoints_json(model_id, local_rank, checkpoints_json)
-
-            if load_to_meta:
-                ds_inference_kwargs["checkpoint"] = checkpoints_json
+                ds_inference_kwargs["checkpoint"] = checkpoints_json.name
             model = deepspeed.init_inference(model, **ds_inference_kwargs)
             model = model.module
         else:
