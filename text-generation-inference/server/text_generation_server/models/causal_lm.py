@@ -1,5 +1,5 @@
 import os
-import json
+import tempfile
 # set default POST_PROCESS_CPU to enabled
 post_process_cpu = int(os.getenv("POST_PROCESS_CPU", "1"))
 from text_generation_server.utils.tokens import batch_top_tokens
@@ -19,7 +19,6 @@ from optimum.habana.checkpoint_utils import (
     get_repo_root,
     model_on_meta,
     write_checkpoints_json,
-    get_checkpoint_files,
 )
 
 from text_generation_server.models import Model
@@ -615,16 +614,12 @@ class CausalLM(Model):
             )
 
             if load_to_meta:
-                checkpoints_json = "checkpoint.json"
-                if local_rank == 0:
-                    # model loaded to meta is managed differently
-                    checkpoint_files = get_checkpoint_files(model_id, local_rank, token=None)
-                    data = {"type": "ds_model", "checkpoints": checkpoint_files, "version": 1.0}
-                    with open(checkpoints_json, "w") as fp:
-                        json.dump(data, fp)
-                torch.distributed.barrier()
-                ds_inference_kwargs["checkpoint"] = checkpoints_json
+                # model loaded to meta is managed differently
+                checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
+                write_checkpoints_json(model_id, local_rank, checkpoints_json)
 
+            if load_to_meta:
+                ds_inference_kwargs["checkpoint"] = checkpoints_json
             model = deepspeed.init_inference(model, **ds_inference_kwargs)
             model = model.module
         else:
