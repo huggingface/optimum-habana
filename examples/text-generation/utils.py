@@ -23,6 +23,7 @@ import os
 import shutil
 import tempfile
 import time
+from pathlib import Path
 
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
@@ -102,14 +103,18 @@ def setup_device(args):
 
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
-    model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+
+    if args.peft_model is not None:
+        model = peft_model(args, model_dtype, **model_kwargs)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     model = model.eval().to(args.device)
-    if args.peft_model:
-        model = peft_model(args, model, model_dtype)
+
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
         model = wrap_in_hpu_graph(model)
+
     return model
 
 
@@ -117,6 +122,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     import deepspeed
 
     logger.info("DeepSpeed is enabled.")
+    deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
     load_to_meta = model_on_meta(config)
 
@@ -124,18 +130,36 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
-        # model loaded to meta is managed differently
+
+        # Model loaded to meta is managed differently
         checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
-        write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json, token=args.token)
+
+        # For PEFT models, write the merged model on disk to be able to load it on the meta device
+        if args.peft_model is not None:
+            merged_model_dir = "/tmp/text_generation_merged_peft_model"
+            if args.local_rank == 0:
+                if Path(merged_model_dir).is_dir():
+                    shutil.rmtree(merged_model_dir)
+                peft_model(args, model_dtype, **model_kwargs).save_pretrained(merged_model_dir)
+            torch.distributed.barrier()
+
+        write_checkpoints_json(
+            merged_model_dir if args.peft_model is not None else args.model_name_or_path,
+            args.local_rank,
+            checkpoints_json,
+            token=args.token,
+        )
     else:
         # TODO: revisit placement on CPU when auto-injection is possible
         with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
-            model = AutoModelForCausalLM.from_pretrained(
-                args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
-            )
-    model = model.eval()
-    if args.peft_model:
-        model = peft_model(args, model, model_dtype)
+            if args.peft_model is not None:
+                model = peft_model(args, model_dtype, **model_kwargs)
+            else:
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+                )
+    model.eval()
+
     # Initialize the model
     ds_inference_kwargs = {"dtype": model_dtype}
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
@@ -149,16 +173,16 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     return model
 
 
-def peft_model(args, model, model_dtype):
+def peft_model(args, model_dtype, **model_kwargs):
     import importlib.util
 
     if importlib.util.find_spec("peft") is None:
         raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
-    from peft import PeftModel
+    from peft import AutoPeftModelForCausalLM
 
-    model = PeftModel.from_pretrained(model, args.peft_model)
-    model = model.merge_and_unload().eval().to(model_dtype)
-    return model
+    model = AutoPeftModelForCausalLM.from_pretrained(args.peft_model, torch_dtype=model_dtype, **model_kwargs)
+
+    return model.merge_and_unload()
 
 
 def setup_tokenizer(args, model):
