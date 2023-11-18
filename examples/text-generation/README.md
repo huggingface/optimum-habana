@@ -178,7 +178,7 @@ python run_generation.py \
 --bf16 \
 --max_new_tokens 100 \
 --prompt "Here is my prompt" \
---peft_model trl-lib/llama-7b-se-rm-peft
+--peft_model AhmedSSoliman/Llama2-CodeGen-PEFT-QLoRA
 ```
 
 ### Using growing bucket optimization
