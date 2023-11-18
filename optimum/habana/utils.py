@@ -328,9 +328,7 @@ def check_optimum_habana_min_version(min_version):
 
 def check_habana_frameworks_min_version(min_version):
     """
-    Checks if the installed version of habana framework is larger than or equal to `min_version`.
-
-    Copied from: https://github.com/huggingface/transformers/blob/c41291965f078070c5c832412f5d4a5f633fcdc4/src/transformers/utils/__init__.py#L212
+    Checks if the installed version of `habana_frameworks` is larger than or equal to `min_version`.
     """
     if get_habana_frameworks_version() < version.parse(min_version):
         return False
