@@ -1,5 +1,6 @@
 import os
 import tempfile
+
 # set default POST_PROCESS_CPU to enabled
 post_process_cpu = int(os.getenv("POST_PROCESS_CPU", "1"))
 from text_generation_server.utils.tokens import batch_top_tokens
