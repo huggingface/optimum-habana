@@ -124,7 +124,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --trim_logits
 ```
 
-To run Falcon-7B inference, use the following command. Please note that the option `--skip_hash_with_views`` is added to the command to disable the `hash_with_views` feature in HPU graphs, which requires SynapseAI 1.13.0 or later:
+To run Falcon-7B inference, use the following command. Please note that the option `--skip_hash_with_views` is added to the command to disable the `hash_with_views` feature in HPU graphs, which requires SynapseAI 1.13.0 or later:
 ```bash
 python run_generation.py \
  --model_name_or_path tiiuae/falcon-7b \
