@@ -309,7 +309,7 @@ def main():
             print()
 
         # Store results if necessary
-        if args.output_dir is not None:
+        if args.output_dir is not None and args.global_rank == 0:
             output_dir = Path(args.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
 
