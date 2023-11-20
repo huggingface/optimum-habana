@@ -124,6 +124,19 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --trim_logits
 ```
 
+To run Falcon-7B inference, use the following command. Please note that the option `--skip_hash_with_views` is added to the command to disable the `hash_with_views` feature in HPU graphs, which requires SynapseAI 1.13.0 or later:
+```bash
+python run_generation.py \
+ --model_name_or_path tiiuae/falcon-7b \
+ --bf16 \
+ --use_hpu_graphs \
+ --use_kv_cache \
+ --batch_size 1 \
+ --max_new_tokens 128 \
+ --do_sample \
+ --skip_hash_with_views
+```
+
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
 > - have a HF account
 > - agree to the terms of use of the model in its model card on the HF Hub
