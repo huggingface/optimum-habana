@@ -358,13 +358,11 @@
 <     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
 < 
 <     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
-325c103
+325c103,167
 <         "--use_cpu",
 ---
 >         "--trim_logits",
-327c105,130
-<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
----
+>         action="store_true",
 >         help="Calculate logits only for the last token to save memory in the first step.",
 >     )
 >     parser.add_argument(
@@ -391,11 +389,8 @@
 >         type=str,
 >         nargs="*",
 >         help='Optional argument to give a prompt of your choice as input. Can be a single string (eg: --prompt "Hello world"), or a list of space-separated strings (eg: --prompt "Hello world" "How are you?")',
-329d131
-<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
-331c133,203
-<         "--fp16",
----
+>     )
+>     parser.add_argument(
 >         "--bad_words",
 >         default=None,
 >         type=str,
@@ -431,11 +426,16 @@
 >     )
 >     parser.add_argument(
 >         "--attn_softmax_bf16",
->         action="store_true",
+327c169,170
+<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
+---
 >         help="Whether to run attention softmax layer in lower precision provided that the model supports it and "
 >         "is also running in lower precision.",
->     )
->     parser.add_argument(
+329d171
+<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+331c173,193
+<         "--fp16",
+---
 >         "--output_dir",
 >         default=None,
 >         type=str,
@@ -457,9 +457,14 @@
 >     )
 >     parser.add_argument(
 >         "--limit_hpu_graphs",
->         action="store_true",
+333c195
+<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
+---
 >         help="Skip HPU Graph usage for first token to save memory",
->     )
+335,336c197,207
+<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
+<     args = parser.parse_args()
+---
 >     parser.add_argument(
 >         "--reuse_cache",
 >         action="store_true",
@@ -467,34 +472,27 @@
 >     )
 >     parser.add_argument(
 >         "--skip_hash_with_views",
-333c205
-<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
----
+>         action="store_true",
 >         help="Whether to skip hash with views for HPU graphs. When skip_hash_with_views is not used, the input to HPU graphs includes both view and base tensors.",
-335c207,208
-<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
----
+>     )
 >     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
-> 
-338,339c211,214
+338,339c209
 <     # Initialize the distributed state.
 <     distributed_state = PartialState(cpu=args.use_cpu)
+---
+>     args = parser.parse_args()
+341c211,213
+<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
 >     if not args.use_hpu_graphs:
 >         args.limit_hpu_graphs = False
 >         args.reuse_cache = False
->     return args
-341d215
-<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
-343,344c217,220
+343,344c215
 <     if args.seed is not None:
 <         set_seed(args.seed)
 ---
-> def main():
->     parser = argparse.ArgumentParser()
->     args = setup_parser(parser)
->     model, tokenizer, generation_config = initialize_model(args, logger)
-346,373c222
+>     return args
+346,373d216
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -523,19 +521,17 @@
 <     if requires_preprocessing:
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
----
->     import habana_frameworks.torch.hpu as torch_hpu
-375,376c224,227
+375,378c218,221
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
----
->     if args.dataset_name is None:
->         # Benchmark over the prompts below
->         if args.prompt:
->             input_sentences = args.prompt
-378,389c229,335
+<         else:
 <             tokenizer_kwargs = {}
-< 
+---
+> def main():
+>     parser = argparse.ArgumentParser()
+>     args = setup_parser(parser)
+>     model, tokenizer, generation_config = initialize_model(args, logger)
+380,386c223
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
@@ -543,10 +539,17 @@
 <         prefix = args.prefix if args.prefix else args.padding_text
 <         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
 <     encoded_prompt = encoded_prompt.to(distributed_state.device)
-< 
+---
+>     import habana_frameworks.torch.hpu as torch_hpu
+388,389c225,336
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
+>     if args.dataset_name is None:
+>         # Benchmark over the prompts below
+>         if args.prompt:
+>             input_sentences = args.prompt
+>         else:
 >             input_sentences = [
 >                 "DeepSpeed is a machine learning framework",
 >                 "He is working on",
@@ -654,7 +657,7 @@
 >         print(f"Graph compilation duration          = {compilation_duration} seconds")
 >         print(separator)
 >         print()
-391c337,352
+391c338,353
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -673,7 +676,7 @@
 >             .shuffle()
 >             .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
 >         )
-393,399c354,361
+393,399c355,362
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -690,7 +693,7 @@
 >             logger.info(
 >                 f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >             )
-401,439c363,383
+401,439c364,384
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -752,7 +755,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-440a385,462
+440a386,463
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
@@ -831,13 +834,13 @@
 >             )
 >             print(separator)
 >         t_end = time.time()
-442,443c464,465
+442,443c465,466
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
 >         throughput = total_new_tokens_generated / duration
 >         # Print Stats
-445c467,479
+445c468,480
 <     return generated_sequences
 ---
 >         stats = f"Throughput (including tokenization) = {throughput} tokens/second"

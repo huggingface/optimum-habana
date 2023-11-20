@@ -66,15 +66,24 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-396a423
+377,380d402
+<         if extension == "jsonl":
+<             builder_name = "json"  # the "json" builder reads both .json and .jsonl files
+<         else:
+<             builder_name = extension  # e.g. "parquet"
+382c404
+<             builder_name,
+---
+>             extension,
+400a423
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-593c620
+597c620
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-594a622
+598a622
 >         gaudi_config=gaudi_config,
-687,691d714
+691,695d714
 < 
 < 
 < def _mp_fn(index):
