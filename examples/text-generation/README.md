@@ -184,14 +184,14 @@ You can also provide the path to a PEFT model to perform generation with the arg
 For example:
 ```bash
 python run_generation.py \
---model_name_or_path huggyllama/llama-7b \
+--model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
 --use_kv_cache \
 --batch_size 1 \
 --bf16 \
 --max_new_tokens 100 \
 --prompt "Here is my prompt" \
---peft_model AhmedSSoliman/Llama2-CodeGen-PEFT-QLoRA
+--peft_model goliaro/llama-2-7b-lora-full
 ```
 
 ### Using growing bucket optimization
