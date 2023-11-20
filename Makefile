@@ -97,7 +97,7 @@ doc: build_doc_docker_image
 clean:
 	find . -name "habana_log.livealloc.log_*" -type f -delete
 	find . -name .lock -type f -delete
-	find . -name .graph_dumps -type d -delete
+	find . -name .graph_dumps -type d -exec rm -r {} +
 	find . -name save-hpu.pdb -type f -delete
 	find . -name checkpoints.json -type f -delete
 	rm -rf regression/
