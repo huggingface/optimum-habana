@@ -78,16 +78,18 @@ def setup_distributed(args):
 
 
 def setup_quantization(model):
-    from habana_frameworks.torch.hpu import hpu
+    import habana_frameworks.torch.core as htcore
     from habana_frameworks.torch.core.quantization import _check_params_as_const, _mark_params_as_const
+    from habana_frameworks.torch.hpu import hpu
+
     print("Initializing inference with quantization")
     _mark_params_as_const(model)
     _check_params_as_const(model)
 
-    import habana_frameworks.torch.core as htcore
     hpu.enable_quantization()
     htcore.hpu_initialize(model)
     return model
+
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
