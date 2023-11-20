@@ -212,3 +212,47 @@ python run_generation.py \
 ```
 
 `--bucket_size` option is especially useful when processing an input stream with varying lengths, that is when you have something like `--dataset_name squad --column_name context --max_input_tokens -1`. `--max_input_tokens -1` specifies no truncation of input prompt in the dataset.
+
+## Language Model Evaluation Harness
+The evaluation of Llm model can be done using lm_eval.py script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)
+ framework and provides the possibility to run one of four tasks: HellaSwag, LAMBADA, PiQA, WinoGrande.
+
+
+
+For a more detailed description of parameters, please see the help message:
+```
+./lm_eval.py -h
+```
+
+## LM Eval Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements_lm_eval.txt
+```
+
+### Examples
+Evaluate Llama 7B on Gaudi on task PiQA, using the BF16 data type.
+```
+python lm_eval.py \
+--model_name_or_path meta-llama/Llama-2-7b-hf \
+--use_hpu_graphs \
+--use_kv_cache \
+--bf16 \
+--batch_size=1 \
+--task piqa \
+-o eval.json
+```
+
+Evaluate Llama 70B on 8 Gaudi2 on task WinoGrande, using the BF16 data type.
+```
+```
+deepspeed --num_gpus 8 lm_eval.py \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
+--use_hpu_graphs \
+--use_kv_cache \
+--bf16 \
+--batch_size=1 \
+--task winogrande \
+-o eval.json
+```
