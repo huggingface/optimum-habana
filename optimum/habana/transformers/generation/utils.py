@@ -326,7 +326,9 @@ class GaudiGenerationMixin(GenerationMixin):
         return criteria
 
     @torch.no_grad()
-    def update_model_kwargs_for_bucketing(self, params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile=False):
+    def update_model_kwargs_for_bucketing(
+        self, params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile=False
+    ):
         if params["need_expansion"]:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             pad_amount = params["allocated_space"] - input_ids.shape[-1]

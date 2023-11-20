@@ -21,12 +21,12 @@ Conditional text generation on Habana Gaudi/Gaudi2.
 import argparse
 import json
 import logging
+import math
 import time
 from pathlib import Path
-import math
 
 import torch
-from utils import count_hpu_graphs, initialize_model, adjust_batch
+from utils import adjust_batch, count_hpu_graphs, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -314,6 +314,7 @@ def main():
             if args.bucket_size > 0:
                 mn = min(dyn_prompt_lens)
                 mx = max(dyn_prompt_lens)
+
                 def rounder(x):
                     return int(math.ceil(x / args.bucket_size) * args.bucket_size)
 

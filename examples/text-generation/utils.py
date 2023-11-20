@@ -37,6 +37,7 @@ from optimum.habana.checkpoint_utils import (
 )
 from optimum.habana.utils import check_habana_frameworks_min_version, check_optimum_habana_min_version, set_seed
 
+
 def adjust_batch(batch, size):
     curr_size = batch["input_ids"].shape[1]
     if curr_size >= size:
@@ -53,6 +54,7 @@ def adjust_batch(batch, size):
     assert adjusted_batch["input_ids"].shape[1] == size
     assert adjusted_batch["attention_mask"].shape[1] == size
     return adjusted_batch
+
 
 def override_print(enable):
     import builtins as __builtin__
