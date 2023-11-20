@@ -215,13 +215,13 @@ python run_generation.py \
 
 ## Language Model Evaluation Harness
 The evaluation of Llm model can be done using lm_eval.py script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)
- framework and provides the possibility to run one of four tasks: HellaSwag, LAMBADA, PiQA, WinoGrande.
+ framework and provides the possibility to run one of four tasks: HellaSwag, Lambada_openai, PiQA, WinoGrande.
 
 
 
 For a more detailed description of parameters, please see the help message:
 ```
-./lm_eval.py -h
+./run_lm_eval.py -h
 ```
 
 ## LM Eval Requirements
@@ -234,7 +234,7 @@ pip install -r requirements_lm_eval.txt
 ### Examples
 Evaluate Llama 7B on Gaudi on task PiQA, using the BF16 data type.
 ```
-python lm_eval.py \
+python run_lm_eval.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
 --use_kv_cache \
@@ -247,7 +247,7 @@ python lm_eval.py \
 Evaluate Llama 70B on 8 Gaudi2 on task WinoGrande, using the BF16 data type.
 ```
 ```
-deepspeed --num_gpus 8 lm_eval.py \
+deepspeed --num_gpus 8 run_lm_eval.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --use_hpu_graphs \
 --use_kv_cache \

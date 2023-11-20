@@ -1,6 +1,20 @@
-#!/usr/bin/env python3
+# coding=utf-8
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 ###############################################################################
-# Copyright (C) 2023 Habana Labs, Ltd. an Intel Company
+# Copyright (C) 2020-2021 Habana Labs, Ltd. an Intel Company
 ###############################################################################
 
 import argparse
@@ -32,7 +46,7 @@ def setup_parser_eval():
         type=int,
         nargs="+",
         help="Input length buckets to use with static_shapes",
-        default=[16, 32, 64, 128, 189, 284, 512],
+        default=[16, 32, 64, 128, 189, 284],
     )
 
     parser.add_argument(
@@ -112,7 +126,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             inps = F.pad(inps, (0, padding_length), value=self.model.config.pad_token_id)
         logits = self.model(
             inps.to(self._device),
-            use_cache=self.options.reuse_cache,
+            use_cache=self.options.use_cache,
             attn_softmax_bf16=self.options.attn_softmax_bf16,
         )["logits"].cpu()
         if self.options.static_shapes and padding_length > 0:
@@ -130,9 +144,6 @@ def main():
 
     eval_start = time.perf_counter()
     results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
-    if args.device == "hpu":
-        pass
-
     eval_end = time.perf_counter()
 
     results["args"] = vars(args)
