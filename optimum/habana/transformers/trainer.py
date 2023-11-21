@@ -1224,7 +1224,7 @@ class GaudiTrainer(Trainer):
         )
         if self.args.should_save and (not self.is_deepspeed_enabled or is_deepspeed_custom_scheduler):
             with warnings.catch_warnings(record=True) as caught_warnings:
-                torch.save(scheduler_dict, os.path.join(output_dir, SCHEDULER_NAME))
+                torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
             reissue_pt_warnings(caught_warnings)
 
         # Determine the new best metric / best model checkpoint
