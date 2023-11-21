@@ -99,7 +99,7 @@ Here are a few settings you may be interested in:
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
 - `--kv_cache_fp8` Store kv-cache in float8 when kv-cache is used
-- `--enable_quantization_file` Enable Quantization to fp8
+- `--enable_quantization` Enable Quantization to fp8
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
