@@ -688,14 +688,20 @@ class CausalLM(Model):
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
     def forward(
-        self, input_ids, attention_mask, position_ids, token_idx=None, past_key_values: Optional = None, bypass_hpu_graph: Optional = False,
+        self,
+        input_ids,
+        attention_mask,
+        position_ids,
+        token_idx=None,
+        past_key_values: Optional = None,
+        bypass_hpu_graph: Optional = False,
     ) -> Tuple[torch.Tensor, List[Tuple[torch.Tensor, torch.Tensor]]]:
         # Model Forward
         kwargs = {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "past_key_values": past_key_values,
-            "bypass_hpu_graphs": bypass_hpu_graph
+            "bypass_hpu_graphs": bypass_hpu_graph,
         }
 
         if self.is_optimized_for_gaudi:
@@ -739,7 +745,7 @@ class CausalLM(Model):
             batch.position_ids,
             token_idx,
             batch.past_key_values,
-            bypass_hpu_graph = True if prefill and self.limit_hpu_graph is True else False,
+            bypass_hpu_graph=True if prefill and self.limit_hpu_graph is True else False,
         )
         logsoftmax = torch.softmax(logits[:, -1], -1)
 
