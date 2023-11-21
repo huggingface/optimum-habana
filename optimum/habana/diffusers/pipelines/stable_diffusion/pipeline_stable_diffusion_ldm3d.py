@@ -509,12 +509,12 @@ class GaudiStableDiffusionLDM3DPipeline(
         return latents
 
     @classmethod
-    def _split_inputs_into_batches(cls, batch_size, latents, text_embeddings):
+    def _split_inputs_into_batches(cls, batch_size, latents, prompt_embeds, negative_prompt_embeds):
         # Use torch.split to generate num_batches batches of size batch_size
         latents_batches = list(torch.split(latents, batch_size))
-        # If there are uncond embeddings, the batch size of text embeddings is 2x
-        multiple = text_embeddings.shape[0] // latents.shape[0]
-        text_embeddings_batches = list(torch.split(text_embeddings, multiple * batch_size))
+        prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
+        if negative_prompt_embeds is not None:
+            negative_prompt_embeds_batches = list(torch.split(negative_prompt_embeds, batch_size))
 
         # If the last batch has less samples than batch_size, pad it with dummy samples
         num_dummy_samples = 0
@@ -525,17 +525,31 @@ class GaudiStableDiffusionLDM3DPipeline(
                 torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
             )
             latents_batches[-1] = torch.vstack(sequence_to_stack)
-            # Pad text_embeddings_batches
-            sequence_to_stack = (text_embeddings_batches[-1],) + tuple(
-                torch.zeros_like(text_embeddings_batches[-1][0][None, :]) for _ in range(multiple * num_dummy_samples)
+            # Pad prompt_embeds_batches
+            sequence_to_stack = (prompt_embeds_batches[-1],) + tuple(
+                torch.zeros_like(prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
             )
-            text_embeddings_batches[-1] = torch.vstack(sequence_to_stack)
+            prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+            # Pad uncond_embeddings_batches if necessary
+            if negative_prompt_embeds is not None:
+                sequence_to_stack = (negative_prompt_embeds_batches[-1],) + tuple(
+                    torch.zeros_like(negative_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                )
+                negative_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
 
         # Stack batches in the same tensor
         latents_batches = torch.stack(latents_batches)
-        text_embeddings_batches = torch.stack(text_embeddings_batches)
+        if negative_prompt_embeds is not None:
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            for i, (negative_prompt_embeds_batch, prompt_embeds_batch) in enumerate(
+                zip(negative_prompt_embeds_batches, prompt_embeds_batches[:])
+            ):
+                prompt_embeds_batches[i] = torch.cat([negative_prompt_embeds_batch, prompt_embeds_batch])
+        prompt_embeds_batches = torch.stack(prompt_embeds_batches)
 
-        return latents_batches, text_embeddings_batches, num_dummy_samples
+        return latents_batches, prompt_embeds_batches, num_dummy_samples
 
     @torch.no_grad()
     def __call__(
@@ -663,11 +677,6 @@ class GaudiStableDiffusionLDM3DPipeline(
                 negative_prompt_embeds=negative_prompt_embeds,
                 clip_skip=clip_skip,
             )
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            if do_classifier_free_guidance:
-                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
             # 4. Prepare timesteps
             self.scheduler.set_timesteps(num_inference_steps, device="cpu")
@@ -694,10 +703,12 @@ class GaudiStableDiffusionLDM3DPipeline(
                 batch_size,
                 latents,
                 prompt_embeds,
+                negative_prompt_embeds,
             )
 
             outputs = {
                 "images": [],
+                "depths": [],
                 "has_nsfw_concept": [],
             }
             t0 = time.time()
@@ -800,9 +811,11 @@ class GaudiStableDiffusionLDM3DPipeline(
                 )
 
                 if output_type == "pil":
-                    outputs["images"] += image
+                    outputs["images"] += rgb
+                    outputs["depths"] += depth
                 else:
-                    outputs["images"] += [*image]
+                    outputs["images"] += [*rgb]
+                    outputs["depths"] += [*depth]
 
                 if has_nsfw_concept is not None:
                     outputs["has_nsfw_concept"] += has_nsfw_concept
@@ -816,8 +829,8 @@ class GaudiStableDiffusionLDM3DPipeline(
                 return ((rgb, depth), has_nsfw_concept)
 
             return GaudiStableDiffusionLDM3DPipelineOutput(
-                rgb=rgb,
-                depth=depth,
+                rgb=outputs["images"],
+                depth=outputs["depths"],
                 nsfw_content_detected=has_nsfw_concept,
                 throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
             )
