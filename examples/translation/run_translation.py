@@ -484,7 +484,7 @@ def main():
 
     # For translation we set the codes of our source and target languages (only useful for mBART, the others will
     # ignore those attributes).
-    if any((isinstance(tokenizer, i) for i in MULTILINGUAL_TOKENIZERS)):
+    if isinstance(tokenizer, tuple(MULTILINGUAL_TOKENIZERS)):
         assert data_args.target_lang is not None and data_args.source_lang is not None, (
             f"{tokenizer.__class__.__name__} is a multilingual tokenizer which requires --source_lang and "
             "--target_lang arguments."
