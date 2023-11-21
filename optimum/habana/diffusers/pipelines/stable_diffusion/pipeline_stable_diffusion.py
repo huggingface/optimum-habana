@@ -670,7 +670,7 @@ class GaudiStableDiffusionPipeline(
                 torch.zeros_like(prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
             )
             prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
-            # Pad uncond_embeddings_batches if necessary
+            # Pad negative_prompt_embeds_batches if necessary
             if negative_prompt_embeds is not None:
                 sequence_to_stack = (negative_prompt_embeds_batches[-1],) + tuple(
                     torch.zeros_like(negative_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
