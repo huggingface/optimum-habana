@@ -144,9 +144,10 @@ def main():
 
     eval_start = time.perf_counter()
     results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
-    import habana_frameworks.torch.hpu as torch_hpu
+    if args.device == "hpu":
+        import habana_frameworks.torch.hpu as torch_hpu
 
-    torch_hpu.synchronize()
+        torch_hpu.synchronize()
     eval_end = time.perf_counter()
 
     results["args"] = vars(args)

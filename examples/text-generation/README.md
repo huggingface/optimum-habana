@@ -240,7 +240,7 @@ python run_lm_eval.py \
 --use_kv_cache \
 --bf16 \
 --batch_size=1 \
---task piqa \
+--tasks piqa \
 -o eval.json
 ```
 
@@ -253,6 +253,6 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --use_kv_cache \
 --bf16 \
 --batch_size=1 \
---task winogrande \
+--tasks winogrande \
 -o eval.json
 ```
