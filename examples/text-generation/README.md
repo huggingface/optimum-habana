@@ -216,9 +216,10 @@ python run_generation.py \
 `--bucket_size` option is especially useful when processing an input stream with varying lengths, that is when you have something like `--dataset_name squad --column_name context --max_input_tokens -1`. `--max_input_tokens -1` specifies no truncation of input prompt in the dataset.
 
 ### Running with FP8
-llama-7b in FP8 is enabled. use --enable_synapse_quantization to enable synapse quantization in fp8.
+
+Llama2-7b in FP8 is enabled. Use `--enable_synapse_quantization` to enable quantization in fp8.
 Add the `--kv_cache_fp8` argument to run the model with a KV cache allocated in fp8.
-More information on enabling fp8 in Synapse is here:
+More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
 Here is an example:
