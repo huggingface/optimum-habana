@@ -105,7 +105,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
 
     if args.peft_model is not None:
-        model = peft_model(args, model_dtype, **model_kwargs)
+        model = peft_model(args, model_dtype, logger, **model_kwargs)
     else:
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     model = model.eval().to(args.device)
@@ -144,7 +144,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
             if args.local_rank == 0:
                 if Path(merged_model_dir).is_dir():
                     shutil.rmtree(merged_model_dir)
-                peft_model(args, model_dtype, **model_kwargs).save_pretrained(merged_model_dir)
+                peft_model(args, model_dtype, logger, **model_kwargs).save_pretrained(merged_model_dir)
             torch.distributed.barrier()
 
         write_checkpoints_json(
@@ -157,7 +157,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         # TODO: revisit placement on CPU when auto-injection is possible
         with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
             if args.peft_model is not None:
-                model = peft_model(args, model_dtype, **model_kwargs)
+                model = peft_model(args, model_dtype, logger, **model_kwargs)
             else:
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
@@ -177,14 +177,44 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     return model
 
 
-def peft_model(args, model_dtype, **model_kwargs):
+def peft_model(args, model_dtype, logger, **model_kwargs):
     import importlib.util
 
     if importlib.util.find_spec("peft") is None:
         raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
     from peft import AutoPeftModelForCausalLM
+    from peft.config import PeftConfigMixin
 
-    model = AutoPeftModelForCausalLM.from_pretrained(args.peft_model, torch_dtype=model_dtype, **model_kwargs)
+    base_model_name = PeftConfigMixin.from_pretrained(
+        args.peft_model,
+        token=model_kwargs["token"] if "token" in model_kwargs else None,
+    ).base_model_name_or_path
+
+    base_model_is_local = Path(base_model_name).is_dir()
+    if not base_model_is_local:
+        # Check if the base model path to a remote repository on the HF Hub exists
+        from huggingface_hub import list_repo_files
+
+        try:
+            list_repo_files(base_model_name)
+            base_model_is_remote = True
+        except Exception as e:
+            if "Repository Not Found" in str(e):
+                base_model_is_remote = False
+
+    if base_model_is_local or base_model_is_remote:
+        model = AutoPeftModelForCausalLM.from_pretrained(args.peft_model, torch_dtype=model_dtype, **model_kwargs)
+    else:
+        # Since the base model doesn't exist locally nor remotely, use `args.model_name_or_path` as the base model
+        logger.warning(
+            f"The base model `{base_model_name}` of the LoRA configuration associated"
+            f" to `{args.peft_model}` does not exist locally or remotely. Using "
+            f"`--model_name_or_path {args.model_name_or_path}` as a fall back for the base model."
+        )
+        from peft import PeftModel
+
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+        model = PeftModel.from_pretrained(model, args.peft_model, torch_dtype=model_dtype, **model_kwargs)
 
     return model.merge_and_unload()
 
