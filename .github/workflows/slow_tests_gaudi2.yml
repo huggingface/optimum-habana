@@ -26,11 +26,12 @@ jobs:
             --runtime=habana \
             -e HABANA_VISIBLE_DEVICES=all \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            -e GAUDI2_CI=1 \
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
-            GAUDI2_CI=1 /bin/bash tests/ci/slow_tests_diffusers.sh
+            /bin/bash tests/ci/slow_tests_diffusers.sh
   deepspeed:
     name: Test DeepSpeed models
     if: ${{ !cancelled() && (success() || failure()) }}
@@ -51,11 +52,12 @@ jobs:
             --runtime=habana \
             -e HABANA_VISIBLE_DEVICES=all \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            -e GAUDI2_CI=1 \
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
-            GAUDI2_CI=1 /bin/bash tests/ci/slow_tests_deepspeed.sh
+            /bin/bash tests/ci/slow_tests_deepspeed.sh
   multi-card:
     name: Test multi-card models
     if: ${{ !cancelled() && (success() || failure()) }}
@@ -76,11 +78,12 @@ jobs:
             --runtime=habana \
             -e HABANA_VISIBLE_DEVICES=all \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            -e GAUDI2_CI=1 \
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
-            GAUDI2_CI=1 /bin/bash tests/ci/slow_tests_8x.sh
+            /bin/bash tests/ci/slow_tests_8x.sh
   single-card:
     name: Test single-card models
     if: ${{ !cancelled() && (success() || failure()) }}
@@ -102,19 +105,20 @@ jobs:
             --runtime=habana \
             -e HABANA_VISIBLE_DEVICES=all \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            -e GAUDI2_CI=1 \
+            -e RUN_ALBERT_XXL_1X=1 \
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
-            GAUDI2_CI=1 RUN_ALBERT_XXL_1X=1 /bin/bash tests/ci/slow_tests_1x.sh
+            /bin/bash tests/ci/slow_tests_1x.sh
   text-generation:
     name: Test text-generation example
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - deepspeed
       - multi-card
-      - single-card
-      - albert-xxl-single-card  # run the job when the previous test jobs are done
+      - single-card  # run the job when the previous test jobs are done
     runs-on: [self-hosted, linux, x64, gaudi2]
     steps:
       - name: Checkout
@@ -130,8 +134,9 @@ jobs:
             --runtime=habana \
             -e HABANA_VISIBLE_DEVICES=all \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            -e GAUDI2_CI=1 \
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
-            GAUDI2_CI=1 make slow_tests_text_generation_example TOKEN=${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
+            make slow_tests_text_generation_example TOKEN=${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
