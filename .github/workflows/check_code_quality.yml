@@ -29,12 +29,9 @@ jobs:
       run: |
         source venv/bin/activate
         pip install --upgrade pip
-        pip install black ruff
-    - name: Check style with black
-      run: |
-        source venv/bin/activate
-        black --check .
+        pip install ruff
     - name: Check style with ruff
       run: |
         source venv/bin/activate
-        ruff .
+        ruff check . setup.py
+	      ruff format --check . setup.py
