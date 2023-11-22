@@ -37,7 +37,7 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 logger = logging.getLogger(__name__)
 
 
-def setup_parser_eval():
+def setup_lm_eval_parser():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter, description="Evaluation script for HPU"
     )
@@ -136,7 +136,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
 
 
 def main():
-    args = setup_parser_eval()
+    args = setup_lm_eval_parser()
     model, tokenizer, generation_config = initialize_model(args, logger)
 
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
