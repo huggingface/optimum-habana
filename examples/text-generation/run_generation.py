@@ -209,8 +209,7 @@ def setup_parser(parser):
     args = parser.parse_args()
 
     if not args.use_hpu_graphs:
-        args.limit_hpu_graphs = False
-        args.reuse_cache = False
+        args.limit_hpu_graphs = False        
 
     return args
 
