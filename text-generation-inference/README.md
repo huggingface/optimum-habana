@@ -44,13 +44,16 @@ To use [🤗 text-generation-inference](https://github.com/huggingface/text-gene
      -H 'Content-Type: application/json'
    ```
    > The first call will be slower as the model is compiled.
-5. To run benchmark test, please refer [Benchmark](https://github.com/huggingface/text-generation-inference/tree/main/benchmark)
-   To run it on the same machine, you can do the following
+5. To run benchmark test, please refer [Benchmark](https://github.com/huggingface/text-generation-inference/tree/main/benchmark).
+
+   To run it on the same machine, you can do the following:
    ```bash
    docker exec -it <docker name> bash => pick the docker started from step 3 or 4 using docker ps
+
    text-generation-benchmark -t <model-id> => pass the model-id from docker run command
-   ```
+
    Once the test runs through various batch sizes, hit ctrl+c to see the performance data summary.
+   ```
 
 > For gated models such as [StarCoder](https://huggingface.co/bigcode/starcoder), you will have to pass `-e HUGGING_FACE_HUB_TOKEN=<token>` to the `docker run` command above with a valid Hugging Face Hub read token.
 
