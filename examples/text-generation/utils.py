@@ -114,7 +114,7 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.enable_quantization:
+        if args.enable_synapse_quantization:
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -267,7 +267,7 @@ def initialize_model(args, logger):
     )
     tokenizer, model = setup_tokenizer(args, model)
     generation_config = setup_generation_config(args, model, tokenizer)
-    if args.enable_quantization:
+    if args.enable_synapse_quantization:
         model = setup_quantization(model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
