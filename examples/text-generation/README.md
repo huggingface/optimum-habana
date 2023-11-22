@@ -217,7 +217,7 @@ python run_generation.py \
 
 ### Running with FP8
 llama-7b in FP8 is enabled using these instructions to enable FP8 in synapse:https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
-use --kv_cache_fp8 to run with kv cache allocated in fp8
+Add the --kv_cache_fp8 argument to run the model with a KV cache allocated in fp8.
 
 Here is an example:
 ```bash
