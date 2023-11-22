@@ -37,7 +37,6 @@ from accelerate.utils import (
     DistributedDataParallelKwargs,
     DistributedType,
     FP8RecipeKwargs,
-    FullyShardedDataParallelPlugin,
     GradientAccumulationPlugin,
     GradScalerKwargs,
     InitProcessGroupKwargs,
@@ -50,8 +49,10 @@ from accelerate.utils import (
     check_os_kernel,
     convert_outputs_to_fp32,
     is_deepspeed_available,
+    is_torch_version,
     parse_choice_from_env,
 )
+from accelerate.utils.constants import FSDP_PYTORCH_VERSION
 from accelerate.utils.operations import _gpu_gather
 from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
@@ -68,7 +69,7 @@ if is_deepspeed_available():
 
 from .data_loader import gaudi_prepare_data_loader
 from .state import GaudiAcceleratorState, GaudiPartialState
-from .utils import GaudiDistributedType, GaudiDynamoBackend, GaudiTorchDynamoPlugin
+from .utils import GaudiDistributedType, GaudiDynamoBackend, GaudiTorchDynamoPlugin, GaudiFullyShardedDataParallelPlugin
 
 
 logger = get_logger(__name__)
@@ -87,7 +88,7 @@ class GaudiAccelerator(Accelerator):
         gradient_accumulation_steps: int = 1,
         cpu: bool = False,
         deepspeed_plugin: DeepSpeedPlugin | None = None,
-        fsdp_plugin: FullyShardedDataParallelPlugin | None = None,
+        fsdp_plugin: GaudiFullyShardedDataParallelPlugin | None = None,
         megatron_lm_plugin: MegatronLMPlugin | None = None,
         rng_types: list[str | RNGType] | None = None,
         log_with: str | LoggerType | GeneralTracker | list[str | LoggerType | GeneralTracker] | None = None,
@@ -141,6 +142,24 @@ class GaudiAccelerator(Accelerator):
             )
             deepspeed_plugin.set_mixed_precision(mixed_precision)
             deepspeed_plugin.set_deepspeed_weakref()
+
+        if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" or isinstance(
+            fsdp_plugin, GaudiFullyShardedDataParallelPlugin
+        ):
+            if is_torch_version("<", FSDP_PYTORCH_VERSION):
+                raise ValueError(f"FSDP requires PyTorch >= {FSDP_PYTORCH_VERSION}")
+
+        if fsdp_plugin is None:  # init from env variables
+            fsdp_plugin = (
+                GaudiFullyShardedDataParallelPlugin(backward_prefetch=os.environ["FSDP_BACKWARD_PREFETCH"], 
+                                                    use_orig_params = os.environ["FSDP_USE_ORIG_PARAMS"],
+                                                    sync_module_states = os.environ["FSDP_SYNC_MODULE_STATES"]) 
+                                                    if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" else None
+            )
+        else:
+            if not isinstance(fsdp_plugin, GaudiFullyShardedDataParallelPlugin):
+                raise TypeError("`fsdp_plugin` must be a GaudiFullyShardedDataParallelPlugin object.")
+            os.environ["ACCELERATE_USE_FSDP"] = "true"  # use FSDP if plugin is provided
 
         # Kwargs handlers
         self.ddp_handler = None
@@ -370,6 +389,54 @@ class GaudiAccelerator(Accelerator):
                 if any(p.requires_grad for p in model.parameters()):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
+            elif self.distributed_type == GaudiDistributedType.FSDP:
+                from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
+
+                # Check if the model is already a FSDP model due to `Manual Wrapping` and if so,
+                # don't wrap it again
+                # In case the model is already compiled using PyTorch 2.0 and the wrapped model in it
+                # is a FSDP model, don't wrap it again
+                is_type_fsdp = isinstance(model, FSDP) or (
+                    is_compiled_module(model) and isinstance(model._orig_mod, FSDP)
+                )
+
+                if not is_type_fsdp:
+                    self.state.fsdp_plugin.set_auto_wrap_policy(model)
+                    fsdp_plugin = self.state.fsdp_plugin
+                    kwargs = {
+                        "sharding_strategy": fsdp_plugin.sharding_strategy,
+                        "cpu_offload": fsdp_plugin.cpu_offload,
+                        "auto_wrap_policy": fsdp_plugin.auto_wrap_policy,
+                        "mixed_precision": fsdp_plugin.mixed_precision_policy,
+                        "sync_module_states": fsdp_plugin.sync_module_states,
+                        "backward_prefetch": fsdp_plugin.backward_prefetch,
+                        "forward_prefetch": fsdp_plugin.forward_prefetch,
+                        "use_orig_params": fsdp_plugin.use_orig_params,
+                        "param_init_fn": fsdp_plugin.param_init_fn,
+                        "ignored_modules": fsdp_plugin.ignored_modules,
+                        "limit_all_gathers": fsdp_plugin.limit_all_gathers,
+                        "device_id": self.device,
+                    }
+                    model = FSDP(model, **kwargs)
+                    if fsdp_plugin.activation_checkpointing:
+                        from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
+                            CheckpointImpl,
+                            apply_activation_checkpointing,
+                            checkpoint_wrapper,
+                        )
+
+                        apply_activation_checkpointing(
+                            model,
+                            checkpoint_wrapper_fn=functools.partial(
+                                checkpoint_wrapper,
+                                checkpoint_impl=CheckpointImpl.NO_REENTRANT,
+                            ),
+                            auto_wrap_policy=fsdp_plugin.auto_wrap_policy,
+                        )
+                # if the previous and current models are same, delete the previous one
+                if len(self._models) > 1 and (self._models[-2] is self._models[-1]):
+                    del self._models[-2]
+                self._models[-1] = model
         # torch.compile should be called last and only if the model isn't already compiled.
         if self.state.dynamo_plugin.backend != GaudiDynamoBackend.NO and not is_compiled_module(model):
             model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())

@@ -14,12 +14,14 @@
 # limitations under the License.
 
 import os
+import torch
 from dataclasses import dataclass
 from enum import Enum
 
 from accelerate.utils.dataclasses import BaseEnum, TorchDynamoPlugin
 from accelerate.utils.environment import str_to_bool
-
+from accelerate.utils.constants import FSDP_BACKWARD_PREFETCH
+from accelerate.utils import FullyShardedDataParallelPlugin
 
 class GaudiDistributedType(str, Enum):
     """
@@ -31,13 +33,14 @@ class GaudiDistributedType(str, Enum):
         - **NO** -- Not a distributed environment, just a single process.
         - **MULTI_HPU** -- Distributed on multiple HPUs.
         - **DEEPSPEED** -- Using DeepSpeed.
+        - **DEEPSPEED** -- Using FSDP.
     """
 
     # Subclassing str as well as Enum allows the `GaudiDistributedType` to be JSON-serializable out of the box.
     NO = "NO"
     MULTI_HPU = "MULTI_HPU"
     DEEPSPEED = "DEEPSPEED"
-
+    FSDP = "FSDP"
 
 class GaudiDynamoBackend(str, BaseEnum):
     """
@@ -106,3 +109,35 @@ class GaudiTorchDynamoPlugin(TorchDynamoPlugin):
             self.fullgraph = str_to_bool(os.environ.get(prefix + "USE_FULLGRAPH", "False")) == 1
         if self.dynamic is None:
             self.dynamic = str_to_bool(os.environ.get(prefix + "USE_DYNAMIC", "False")) == 1
+
+@dataclass
+class GaudiFullyShardedDataParallelPlugin(FullyShardedDataParallelPlugin):
+    def __post_init__(self):
+        from torch.distributed.fsdp.fully_sharded_data_parallel import BackwardPrefetch, CPUOffload, ShardingStrategy
+
+        prefix = "FSDP_"
+        if self.sharding_strategy is None:
+            self.sharding_strategy = ShardingStrategy(int(os.environ.get(prefix + "SHARDING_STRATEGY", 1)))
+
+        if self.cpu_offload is None:
+            if str_to_bool(os.environ.get(prefix + "OFFLOAD_PARAMS", "False")) == 1:
+                self.cpu_offload = CPUOffload(offload_params=True)
+            else:
+                self.cpu_offload = CPUOffload(offload_params=False)
+
+        if self.backward_prefetch is None:
+            prefetch_policy = os.environ.get(prefix + "BACKWARD_PREFETCH", "NO_PREFETCH")
+            if prefetch_policy != FSDP_BACKWARD_PREFETCH[-1]:
+                self.backward_prefetch = BackwardPrefetch(FSDP_BACKWARD_PREFETCH.index(prefetch_policy) + 1)
+
+        if self.state_dict_type is None:
+            state_dict_type_policy = os.environ.get(prefix + "STATE_DICT_TYPE", "FULL_STATE_DICT")
+            self.set_state_dict_type(state_dict_type_policy)
+        self.use_orig_params = str_to_bool(os.environ.get(prefix + "USE_ORIG_PARAMS", "False")) == 1
+        self.sync_module_states = str_to_bool(os.environ.get(prefix + "SYNC_MODULE_STATES", "True")) == 1
+        self.forward_prefetch = str_to_bool(os.environ.get(prefix + "FORWARD_PREFETCH", "False")) == 1
+        self.activation_checkpointing = str_to_bool(os.environ.get(prefix + "ACTIVATION_CHECKPOINTING", "False")) == 1
+
+        if self.sync_module_states:
+            device = "hpu:" + str(torch.hpu.current_device())
+            self.param_init_fn = lambda x: x.to_empty(device=device, recurse=False)

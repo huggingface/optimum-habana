@@ -1,1 +1,1 @@
-from .dataclasses import GaudiDistributedType, GaudiDynamoBackend, GaudiTorchDynamoPlugin
+from .dataclasses import GaudiDistributedType, GaudiDynamoBackend, GaudiTorchDynamoPlugin, GaudiFullyShardedDataParallelPlugin
