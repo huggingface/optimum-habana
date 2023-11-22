@@ -406,8 +406,8 @@ class GaudiAccelerator(Accelerator):
                     kwargs = {
                         "sharding_strategy": fsdp_plugin.sharding_strategy,
                         "cpu_offload": fsdp_plugin.cpu_offload,
-                        "auto_wrap_policy": fsdp_plugin.auto_wrap_policy,
-                        "mixed_precision": fsdp_plugin.mixed_precision_policy,
+                        #"auto_wrap_policy": fsdp_plugin.auto_wrap_policy, #bring this back after correcting plugin init
+                        #"mixed_precision": fsdp_plugin.mixed_precision_policy,  #bring this back after correcting plugin init
                         "sync_module_states": fsdp_plugin.sync_module_states,
                         "backward_prefetch": fsdp_plugin.backward_prefetch,
                         "forward_prefetch": fsdp_plugin.forward_prefetch,
@@ -415,7 +415,7 @@ class GaudiAccelerator(Accelerator):
                         "param_init_fn": fsdp_plugin.param_init_fn,
                         "ignored_modules": fsdp_plugin.ignored_modules,
                         "limit_all_gathers": fsdp_plugin.limit_all_gathers,
-                        "device_id": self.device,
+                        #"device_id": self.device, # Vivek: Hack to make FSDP work
                     }
                     model = FSDP(model, **kwargs)
                     if fsdp_plugin.activation_checkpointing:
