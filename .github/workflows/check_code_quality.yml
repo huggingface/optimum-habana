@@ -34,4 +34,4 @@ jobs:
       run: |
         source venv/bin/activate
         ruff check . setup.py
-	      ruff format --check . setup.py
+        ruff format --check . setup.py
