@@ -113,8 +113,7 @@ jobs:
     needs:
       - deepspeed
       - multi-card
-      - single-card
-      - albert-xxl-single-card  # run the job when the previous test jobs are done
+      - single-card  # run the job when the previous test jobs are done
     runs-on: [self-hosted, linux, x64, gaudi2]
     steps:
       - name: Checkout
