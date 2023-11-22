@@ -211,7 +211,9 @@ def setup_parser(parser):
         action="store_true",
         help="Store kv-cache in float8 when kv-cache is used",
     )
-    parser.add_argument("--enable_synapse_quantization", "-esq", action="store_true", help="Enable Quantization to fp8")
+    parser.add_argument(
+        "--enable_synapse_quantization", "-esq", action="store_true", help="Enable Quantization to fp8"
+    )
 
     args = parser.parse_args()
 
