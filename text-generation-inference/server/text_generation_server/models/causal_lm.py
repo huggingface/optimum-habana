@@ -579,6 +579,9 @@ class CausalLM(Model):
 
         world_size = int(os.getenv("WORLD_SIZE", "1"))
         rank = int(os.getenv("RANK"), 0)
+        self.enable_hpu_graph = os.getenv("ENABLE_HPU_GRAPH", "true").lower() == "true"
+        self.limit_hpu_graph = os.getenv("LIMIT_HPU_GRAPH", "false").lower() == "true"
+
         if world_size > 1:
             import habana_frameworks.torch.hpu as torch_hpu
 
@@ -610,9 +613,7 @@ class CausalLM(Model):
             # Initialize the model
             ds_inference_kwargs = {"dtype": dtype}
             ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
-            ds_inference_kwargs["enable_cuda_graph"] = (
-                True if os.getenv("ENABLE_HPU_GRAPH", "True") == "True" else False
-            )
+            ds_inference_kwargs["enable_cuda_graph"] = self.enable_hpu_graph
 
             if load_to_meta:
                 # model loaded to meta is managed differently
@@ -629,14 +630,13 @@ class CausalLM(Model):
                 torch_dtype=dtype,
             )
             model = model.eval().to(device)
+            #TODO only wrap in hpu_graph if self.enable_hpu_graph
             model = wrap_in_hpu_graph(model)
 
         if model.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES:
             self.is_optimized_for_gaudi = True
         else:
             self.is_optimized_for_gaudi = False
-
-        self.limit_hpu_graph = True if os.getenv("LIMIT_HPU_GRAPH", "False") != "False" else False
 
         if tokenizer.pad_token_id is None:
             if model.config.pad_token_id is not None:
@@ -694,14 +694,13 @@ class CausalLM(Model):
         position_ids,
         token_idx=None,
         past_key_values: Optional = None,
-        bypass_hpu_graph: Optional = False,
+        bypass_hpu_graph: Optional = None,
     ) -> Tuple[torch.Tensor, List[Tuple[torch.Tensor, torch.Tensor]]]:
         # Model Forward
         kwargs = {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "past_key_values": past_key_values,
-            "bypass_hpu_graphs": bypass_hpu_graph,
         }
 
         if self.is_optimized_for_gaudi:
@@ -713,6 +712,10 @@ class CausalLM(Model):
 
         if self.has_position_ids:
             kwargs["position_ids"] = position_ids
+
+        if bypass_hpu_graph != None:
+            kwargs["bypass_hpu_graphs"] = bypass_hpu_graph
+
         kwargs.update(self.kwargs)
         outputs = self.model.forward(**kwargs)
         return outputs.logits, outputs.past_key_values
@@ -745,7 +748,7 @@ class CausalLM(Model):
             batch.position_ids,
             token_idx,
             batch.past_key_values,
-            bypass_hpu_graph=True if prefill and self.limit_hpu_graph is True else False,
+            bypass_hpu_graph = prefill and self.limit_hpu_graph if self.enable_hpu_graph else None
         )
         logsoftmax = torch.softmax(logits[:, -1], -1)
 
