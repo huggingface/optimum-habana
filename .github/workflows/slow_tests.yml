@@ -3,8 +3,8 @@ name: Non-regression tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 21 * * 0-5'  # every Sunday to Friday at 11pm CET
-    - cron: '0 21 * * 6'  # every Saturday at 1am CET
+    - cron: '0 21 * * 0-5'  # every Sunday to Friday at 11pm CET (10pm winter time)
+    - cron: '0 21 * * 6'  # every Saturday at 1am CET (midnight winter time)
 
 concurrency:
   group: ${{ github.workflow }}
