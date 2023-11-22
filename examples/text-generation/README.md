@@ -224,7 +224,7 @@ https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP
 
 Here is an example:
 ```bash
-UPDATE_MME_OUTPUT_PRECISION_FILTER="v_proj,matmul_av" USE_DEFAULT_QUANT_PARAM=true UPDATE_GRAPH_OUTPUT_MME=false ENABLE_CALC_DYNAMIC_RANGE=false ENABLE_EXPERIMENTAL_FLAGS=true
+USE_DEFAULT_QUANT_PARAM=true UPDATE_GRAPH_OUTPUT_MME=false ENABLE_CALC_DYNAMIC_RANGE=false ENABLE_EXPERIMENTAL_FLAGS=true
 python run_generation.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
