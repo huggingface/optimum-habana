@@ -138,6 +138,10 @@ class DataTrainingArguments:
     dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
+    dataset_revision: str = field(
+        default="main",
+        metadata={"help": "The specific dataset version to use (can be a branch name, tag name or commit id)."},
+    )
     data_dir: Optional[str] = field(default=None, metadata={"help": "The data directory containing input files."})
     image_column: Optional[str] = field(
         default="image_path",
@@ -339,6 +343,7 @@ def main():
             keep_in_memory=False,
             data_dir=data_args.data_dir,
             token=model_args.token,
+            revision=data_args.dataset_revision,
         )
     else:
         data_files = {}
