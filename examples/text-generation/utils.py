@@ -78,6 +78,20 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
+def setup_quantization(model):
+    import habana_frameworks.torch.core as htcore
+    from habana_frameworks.torch.core.quantization import _check_params_as_const, _mark_params_as_const
+    from habana_frameworks.torch.hpu import hpu
+
+    print("Initializing inference with quantization")
+    _mark_params_as_const(model)
+    _check_params_as_const(model)
+
+    hpu.enable_quantization()
+    htcore.hpu_initialize(model)
+    return model
+
+
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
     check_min_version("4.34.0")
@@ -98,6 +112,11 @@ def setup_env(args):
 
 
 def setup_device(args):
+    if args.device == "hpu":
+        import habana_frameworks.torch.core as htcore
+
+        if args.fp8:
+            htcore.hpu_set_env()
     return torch.device(args.device)
 
 
@@ -242,6 +261,7 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
     generation_config.reuse_cache = args.reuse_cache
+    generation_config.kv_cache_fp8 = args.kv_cache_fp8
     return generation_config
 
 
@@ -254,7 +274,7 @@ def initialize_model(args, logger):
     set_seed(args.seed)
     get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     use_deepspeed = args.world_size > 0
-    if use_deepspeed or args.bf16:
+    if use_deepspeed or args.bf16 or args.fp8:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
@@ -271,6 +291,8 @@ def initialize_model(args, logger):
     )
     tokenizer, model = setup_tokenizer(args, model)
     generation_config = setup_generation_config(args, model, tokenizer)
+    if args.fp8:
+        model = setup_quantization(model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")

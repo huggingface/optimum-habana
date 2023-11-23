@@ -98,6 +98,8 @@ Here are a few settings you may be interested in:
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
+- `--kv_cache_fp8` Store kv-cache in float8 when kv-cache is used
+- `--fp8` Enable Quantization to fp8
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -212,3 +214,27 @@ python run_generation.py \
 ```
 
 `--bucket_size` option is especially useful when processing an input stream with varying lengths, that is when you have something like `--dataset_name squad --column_name context --max_input_tokens -1`. `--max_input_tokens -1` specifies no truncation of input prompt in the dataset.
+
+### Running with FP8
+
+Llama2-7b in FP8 is enabled. Use `--fp8` to enable quantization in fp8.
+Add the `--kv_cache_fp8` argument to run the model with a KV cache allocated in fp8.
+More information on enabling fp8 in SynapseAI is available here:
+https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
+
+Here is an example:
+```bash
+USE_DEFAULT_QUANT_PARAM=true UPDATE_GRAPH_OUTPUT_MME=false ENABLE_CALC_DYNAMIC_RANGE=false ENABLE_EXPERIMENTAL_FLAGS=true
+python run_generation.py \
+--model_name_or_path meta-llama/Llama-2-7b-hf \
+--use_hpu_graphs \
+--use_kv_cache \
+--reuse_cache \
+--trim_logits \
+--attn_softmax_bf16 \
+--max_new_tokens 200 \
+--batch_size=2 \
+--kv_cache_fp8 \
+--fp8
+```
+
