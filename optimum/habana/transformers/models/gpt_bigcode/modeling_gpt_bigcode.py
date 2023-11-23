@@ -352,9 +352,9 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         # only last token for inputs_ids if past is defined in kwargs
         if past_key_values:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1).unsqueeze(-1)
+                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
                 if token_type_ids is not None:
-                    token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1).unsqueeze(-1)
+                    token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
             else:
                 input_ids = input_ids[:, -1].unsqueeze(-1)
                 if token_type_ids is not None:
