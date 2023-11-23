@@ -124,6 +124,19 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --trim_logits
 ```
 
+To run Falcon inference, use the following command. Please note that the option `--skip_hash_with_views` is added to the command to disable the `hash_with_views` feature in HPU graphs, which requires SynapseAI 1.13.0 or later:
+```bash
+python run_generation.py \
+ --model_name_or_path tiiuae/falcon-7b \
+ --bf16 \
+ --use_hpu_graphs \
+ --use_kv_cache \
+ --batch_size 1 \
+ --max_new_tokens 128 \
+ --do_sample \
+ --skip_hash_with_views
+```
+
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
 > - have a HF account
 > - agree to the terms of use of the model in its model card on the HF Hub
@@ -171,14 +184,14 @@ You can also provide the path to a PEFT model to perform generation with the arg
 For example:
 ```bash
 python run_generation.py \
---model_name_or_path huggyllama/llama-7b \
+--model_name_or_path meta-llama/Llama-2-7b-hf \
 --use_hpu_graphs \
 --use_kv_cache \
 --batch_size 1 \
 --bf16 \
 --max_new_tokens 100 \
 --prompt "Here is my prompt" \
---peft_model trl-lib/llama-7b-se-rm-peft
+--peft_model goliaro/llama-2-7b-lora-full
 ```
 
 ### Using growing bucket optimization

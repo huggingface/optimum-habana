@@ -273,24 +273,28 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         gen_kwargs["lazy_mode"] = (
             gen_kwargs["lazy_mode"] if gen_kwargs.get("lazy_mode") is not None else self.args.use_lazy_mode
         )
+        gen_kwargs["ignore_eos"] = (
+            gen_kwargs["ignore_eos"] if gen_kwargs.get("ignore_eos") is not None else self.args.ignore_eos
+        )
         gen_kwargs["hpu_graphs"] = (
             gen_kwargs["hpu_graphs"]
             if gen_kwargs.get("hpu_graphs") is not None
             else self.args.use_hpu_graphs_for_inference
         )
 
+        generation_inputs = inputs.copy()
         # If the `decoder_input_ids` was created from `labels`, evict the former, so that the model can freely generate
         # (otherwise, it would continue generating from the padded `decoder_input_ids`)
         if (
-            "labels" in inputs
-            and "decoder_input_ids" in inputs
-            and inputs["labels"].shape == inputs["decoder_input_ids"].shape
+            "labels" in generation_inputs
+            and "decoder_input_ids" in generation_inputs
+            and generation_inputs["labels"].shape == generation_inputs["decoder_input_ids"].shape
         ):
-            inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
+            generation_inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
         try:
             with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.use_hpu_amp):
                 generated_tokens = self.model.generate(
-                    **inputs,
+                    **generation_inputs,
                     generation_config=self.model.generation_config,
                     **gen_kwargs,
                 )

@@ -34,11 +34,11 @@ except ImportError:
     FusedRMSNorm = None
 
 
-def update(prev, cur, dim, idx):
+def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
-        prev[:, :, :idx, :].copy_(cur)
+        prev[:, :, :inp_seq_len, :].copy_(cur)
         return orig_cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
@@ -86,18 +86,31 @@ class GaudiLlamaAttention(LlamaAttention):
 
         self.past_key = None
         self.past_value = None
+        self.inp_seq_len = -1
 
-    def allocate_kv_cache(self, batch_size, seq_len):
-        key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        key_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
+        value_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
         if self.past_key is None or self.past_key.shape != key_shape:
+            self.inp_seq_len = inp_seq_len
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
             self.past_key = torch.zeros(key_shape, dtype=dtype, device=device)
             self.past_value = torch.zeros(value_shape, dtype=dtype, device=device)
         else:
+            assert (
+                self.inp_seq_len == inp_seq_len
+            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
             self.past_key.fill_(0)
             self.past_value.fill_(0)
+
+    def update_sincos_cache(self, seq_len):
+        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
+        # This helps in avoiding creation of these caches during actual model forward pass and
+        # reduce memory consumption and improve performance.
+        if seq_len > self.max_position_embeddings:
+            self.max_position_embeddings = seq_len
+            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -182,8 +195,8 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 past_key = past_key_value[0]
                 past_value = past_key_value[1]
-            key_states = update(past_key, key_states, 2, token_idx)
-            value_states = update(past_value, value_states, 2, token_idx)
+            key_states = update(past_key, key_states, 2, token_idx, self.inp_seq_len)
+            value_states = update(past_value, value_states, 2, token_idx, self.inp_seq_len)
 
         if use_cache:
             if reuse_cache:
@@ -193,7 +206,6 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        # repeat k/v heads if n_kv_heads < n_heads
         key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
         value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
 
@@ -229,6 +241,7 @@ class GaudiLlamaAttention(LlamaAttention):
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
+
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
         if self.config.pretraining_tp > 1:
@@ -245,11 +258,14 @@ class GaudiLlamaAttention(LlamaAttention):
 
 
 class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
-    def allocate_kv_cache(self, batch_size, seq_len):
-        self.self_attn.allocate_kv_cache(batch_size, seq_len)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.self_attn.reorder_kv_cache(beam_idx)
+
+    def update_sincos_cache(self, seq_len):
+        self.self_attn.update_sincos_cache(seq_len)
 
     def forward(
         self,
@@ -305,12 +321,16 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
 
 
 class GaudiLlamaModel(LlamaModel):
-    def allocate_kv_cache(self, batch_size, seq_len):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         for layer in self.layers:
-            layer.allocate_kv_cache(batch_size, seq_len)
+            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.layers)
+
+    def update_sincos_cache(self, seq_len):
+        for layer in self.layers:
+            layer.update_sincos_cache(seq_len)
 
     def forward(
         self,
@@ -344,13 +364,13 @@ class GaudiLlamaModel(LlamaModel):
 
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
             batch_size, seq_length = input_ids.shape
         elif inputs_embeds is not None:
             batch_size, seq_length, _ = inputs_embeds.shape
         else:
-            raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
 
         seq_length_with_past = seq_length
         past_key_values_length = 0
@@ -407,15 +427,12 @@ class GaudiLlamaModel(LlamaModel):
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         # None for past_key_value
-                        return module(*inputs, past_key_value, output_attentions)
+                        return module(*inputs, past_key_value, output_attentions, attn_softmax_bf16=attn_softmax_bf16)
 
                     return custom_forward
 
                 layer_outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(decoder_layer),
-                    hidden_states,
-                    attention_mask,
-                    position_ids,
+                    create_custom_forward(decoder_layer), hidden_states, attention_mask, position_ids
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -467,11 +484,14 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - add new args reuse_cache
     """
 
-    def allocate_kv_cache(self, batch_size, seq_len):
-        self.model.allocate_kv_cache(batch_size, seq_len)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)
+
+    def update_sincos_cache(self, seq_len):
+        self.model.update_sincos_cache(seq_len)
 
     def forward(
         self,

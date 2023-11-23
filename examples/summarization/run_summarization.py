@@ -65,8 +65,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.33.0")
-check_optimum_habana_min_version("1.7.5")
+check_min_version("4.34.0")
+check_optimum_habana_min_version("1.8.1")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
@@ -123,15 +123,15 @@ class ModelArguments:
     use_auth_token: bool = field(
         default=None,
         metadata={
-            "help": "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token`."
+            "help": "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead."
         },
     )
     trust_remote_code: bool = field(
         default=False,
         metadata={
             "help": (
-                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
-                "should only be set to `True` for repositories you trust and in which you have read the code, as it will"
+                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
+                "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
                 "execute code present on the Hub on your local machine."
             )
         },
@@ -225,7 +225,7 @@ class DataTrainingArguments:
         metadata={
             "help": (
                 "The maximum total sequence length for validation target text after tokenization. Sequences longer "
-                "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`."
+                "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`. "
                 "This argument is also used to override the ``max_length`` param of ``model.generate``, which is used "
                 "during ``evaluate`` and ``predict``."
             )
@@ -269,7 +269,7 @@ class DataTrainingArguments:
         },
     )
     num_beams: Optional[int] = field(
-        default=None,
+        default=1,
         metadata={
             "help": (
                 "Number of beams to use for evaluation. This argument will be passed to ``model.generate``, "
@@ -284,7 +284,7 @@ class DataTrainingArguments:
         },
     )
     source_prefix: Optional[str] = field(
-        default="", metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
+        default=None, metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
     )
     source_suffix: Optional[str] = field(default="", metadata={"help": "A suffix to add after every source text."})
 
@@ -292,7 +292,7 @@ class DataTrainingArguments:
         default=None,
         metadata={
             "help": (
-                "The token to force as the first generated token after the decoder_start_token_id."
+                "The token to force as the first generated token after the decoder_start_token_id. "
                 "Useful for multilingual models like mBART where the first generated token"
                 "needs to be the target language token (Usually it is the target language token)"
             )
@@ -352,7 +352,8 @@ def main():
 
     if model_args.use_auth_token is not None:
         warnings.warn(
-            "The `use_auth_token` argument is deprecated and will be removed in Transformers v4.34.", FutureWarning
+            "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead.",
+            FutureWarning,
         )
         if model_args.token is not None:
             raise ValueError("`token` and `use_auth_token` are both specified. Please set only the argument `token`.")
@@ -461,7 +462,7 @@ def main():
             token=model_args.token,
         )
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
-    # https://huggingface.co/docs/datasets/loading_datasets.html.
+    # https://huggingface.co/docs/datasets/loading_datasets.
 
     # Load pretrained model and tokenizer
     #
@@ -603,7 +604,7 @@ def main():
 
     if training_args.label_smoothing_factor > 0 and not hasattr(model, "prepare_decoder_input_ids_from_labels"):
         logger.warning(
-            "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for"
+            "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for "
             f"`{model.__class__.__name__}`. This will lead to loss being calculated twice and will take up more memory"
         )
 

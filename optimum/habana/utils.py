@@ -67,11 +67,13 @@ def speed_metrics(
     start_time: float,
     num_samples: int = None,
     num_steps: int = None,
+    num_tokens: int = None,
     start_time_after_warmup: float = None,
     log_evaluate_save_time: float = None,
 ) -> Dict[str, float]:
     """
     Measure and return speed performance metrics.
+
     This function requires a time snapshot `start_time` before the operation to be measured starts and this function
     should be run immediately after the operation to be measured has completed.
 
@@ -80,6 +82,7 @@ def speed_metrics(
         start_time (float): operation start time
         num_samples (int, optional): number of samples processed. Defaults to None.
         num_steps (int, optional): number of steps performed. Defaults to None.
+        num_tokens (int, optional): number of tokens processed. Defaults to None.
         start_time_after_warmup (float, optional): time after warmup steps have been performed. Defaults to None.
         log_evaluate_save_time (float, optional): time spent to log, evaluate and save. Defaults to None.
 
@@ -107,6 +110,9 @@ def speed_metrics(
     if num_steps is not None:
         steps_per_second = num_steps / runtime
         result[f"{split}_steps_per_second"] = round(steps_per_second, 3)
+    if num_tokens is not None:
+        tokens_per_second = num_tokens / runtime
+        result[f"{split}_tokens_per_second"] = round(tokens_per_second, 3)
 
     return result
 
@@ -209,7 +215,7 @@ def get_habana_frameworks_version():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    return version.parse(output.stdout.split("\n")[0].split(" ")[-1])
+    return version.parse(output.stdout.split("\n")[0].split()[-1])
 
 
 def get_driver_version():
@@ -318,6 +324,16 @@ def check_optimum_habana_min_version(min_version):
                 "`pip install git+https://github.com/huggingface/optimum-habana.git`."
             )
         raise ImportError(error_message)
+
+
+def check_habana_frameworks_min_version(min_version):
+    """
+    Checks if the installed version of `habana_frameworks` is larger than or equal to `min_version`.
+    """
+    if get_habana_frameworks_version() < version.parse(min_version):
+        return False
+    else:
+        return True
 
 
 def get_device_name():

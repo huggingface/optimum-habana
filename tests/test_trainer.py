@@ -24,7 +24,7 @@ import tempfile
 import unittest
 from itertools import product
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 from huggingface_hub import HfFolder, delete_repo, list_repo_commits
@@ -97,6 +97,26 @@ class RegressionDataset:
         return result
 
 
+class RegressionDatasetDynamic:
+    def __init__(self, a=2, b=3, length=128, seed=42, label_names=None):
+        np.random.seed(seed)
+        self.label_names = ["labels"] if label_names is None else label_names
+        self.length = length
+        self.a = a
+        self.b = b
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, i):
+        self.x = np.random.normal(size=(self.length + i,)).astype(np.float32)
+        self.ys = self.a * self.x + self.b + np.random.normal(scale=0.1, size=(self.length + i,)).astype(np.float32)
+        result = {}
+        result["labels"] = self.ys
+        result["input_x"] = self.x
+        return result
+
+
 @dataclasses.dataclass
 class RegressionGaudiTrainingArguments(GaudiTrainingArguments):
     a: float = 0.0
@@ -118,6 +138,22 @@ class RepeatDataset:
 
     def __getitem__(self, i):
         return {"input_ids": self.x, "labels": self.x}
+
+
+class DynamicShapesDataset:
+    def __init__(self, length=64, seed=42, batch_size=8):
+        self.length = length
+        np.random.seed(seed)
+        sizes = np.random.randint(1, 20, (length // batch_size,))
+        # For easy batching, we make every batch_size consecutive samples the same size.
+        self.xs = [np.random.normal(size=(s,)) for s in sizes.repeat(batch_size)]
+        self.ys = [np.random.normal(size=(s,)) for s in sizes.repeat(batch_size)]
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, i):
+        return {"input_x": self.xs[i], "labels": self.ys[i]}
 
 
 class AlmostAccuracy:
@@ -692,6 +728,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             use_lazy_mode=True,
             use_hpu_graphs_for_training=True,
             use_hpu_graphs_for_inference=True,
+            disable_tensor_cache_hpu_graphs=True,
+            max_hpu_graphs=1,
         )
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         trainer.train()
@@ -929,41 +967,83 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertTrue(np.array_equal(labels[0], trainer.eval_dataset.ys[0]))
         self.assertTrue(np.array_equal(labels[1], trainer.eval_dataset.ys[1]))
 
-    # def test_dynamic_shapes(self):
-    #     eval_dataset = DynamicShapesDataset(batch_size=self.batch_size)
-    #     model = RegressionModel(a=2, b=1)
-    #     args = TrainingArguments("./regression")
-    #     trainer = Trainer(model, args, eval_dataset=eval_dataset)
+    def test_dynamic_shapes(self):
+        eval_dataset = DynamicShapesDataset(batch_size=self.batch_size)
+        model = RegressionModel(a=2, b=1)
+        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = True
+        trainer = GaudiTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
 
-    #     # Check evaluation can run to completion
-    #     _ = trainer.evaluate()
+        # Check evaluation can run to completion
+        _ = trainer.evaluate()
 
-    #     # Check predictions
-    #     preds = trainer.predict(eval_dataset)
-    #     for expected, seen in zip(eval_dataset.ys, preds.label_ids):
-    #         self.assertTrue(np.array_equal(expected, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        # Check predictions
+        preds = trainer.predict(eval_dataset)
+        for expected, seen in zip(eval_dataset.ys, preds.label_ids):
+            self.assertTrue(np.allclose(expected, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    #     for expected, seen in zip(eval_dataset.xs, preds.predictions):
-    #         self.assertTrue(np.array_equal(2 * expected + 1, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        for expected, seen in zip(eval_dataset.xs, preds.predictions):
+            self.assertTrue(np.allclose(2 * expected + 1, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    #     # Same tests with eval accumulation
-    #     args = TrainingArguments("./regression", eval_accumulation_steps=2)
-    #     trainer = Trainer(model, args, eval_dataset=eval_dataset)
+        # Same tests with eval accumulation
+        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True, eval_accumulation_steps=2)
+        trainer = GaudiTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
 
-    #     # Check evaluation can run to completion
-    #     _ = trainer.evaluate()
+        # Check evaluation can run to completion
+        _ = trainer.evaluate()
 
-    #     # Check predictions
-    #     preds = trainer.predict(eval_dataset)
-    #     for expected, seen in zip(eval_dataset.ys, preds.label_ids):
-    #         self.assertTrue(np.array_equal(expected, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        # Check predictions
+        preds = trainer.predict(eval_dataset)
+        for expected, seen in zip(eval_dataset.ys, preds.label_ids):
+            self.assertTrue(np.allclose(expected, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    #     for expected, seen in zip(eval_dataset.xs, preds.predictions):
-    #         self.assertTrue(np.array_equal(2 * expected + 1, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        for expected, seen in zip(eval_dataset.xs, preds.predictions):
+            self.assertTrue(np.allclose(2 * expected + 1, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+
+    def test_dynamic_shape_feature(self):
+        # Run training with variable length inputs and enable dynamic shapes support
+        train_dataset = RegressionDatasetDynamic(length=256)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = True
+        args = GaudiTrainingArguments(
+            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
+        )
+        model = RegressionModel()
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+        )
+        train_output_ds = trainer.train()
+
+        # Run training again with variable length inputs and disable dynamic shapes support
+        train_dataset = RegressionDatasetDynamic(length=256)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = False
+        args = GaudiTrainingArguments(
+            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
+        )
+        model = RegressionModel()
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+        )
+        train_output_static = trainer.train()
+
+        # Check if performance with dynamic shapes support is at least 5 times that without dynamic shapes
+        # Note "5x" number is not applicable across models, it is tuned for this particular dummy model
+        self.assertGreaterEqual(
+            train_output_ds.metrics["train_samples_per_second"],
+            5 * train_output_static.metrics["train_samples_per_second"],
+        )
 
     def test_log_level(self):
         # testing only --log_level (--log_level_replica requires multiple gpus and DDP and is tested elsewhere)
@@ -1603,9 +1683,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         args = GaudiTrainingArguments(output_dir="./test", use_habana=True, use_lazy_mode=True)
         trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args)
         trainer.create_optimizer_and_scheduler(10)
-        # fmt: off
-        wd_names = ['0.linear1.weight', '0.linear2.weight', '1.0.linear1.weight', '1.0.linear2.weight', '1.1.linear1.weight', '1.1.linear2.weight']
-        # fmt: on
+        wd_names = ['0.linear1.weight', '0.linear2.weight', '1.0.linear1.weight', '1.0.linear2.weight', '1.1.linear1.weight', '1.1.linear2.weight']  # fmt: skip
         wd_params = [p for n, p in model.named_parameters() if n in wd_names]
         no_wd_params = [p for n, p in model.named_parameters() if n not in wd_names]
         self.assertListEqual(trainer.optimizer.param_groups[0]["params"], wd_params)
@@ -1781,6 +1859,62 @@ class GaudiTrainerHyperParameterOptunaIntegrationTest(unittest.TestCase):
                 model_init=model_init,
             )
             trainer.hyperparameter_search(direction="minimize", hp_space=hp_space, hp_name=hp_name, n_trials=4)
+
+
+@require_torch
+@require_optuna
+class TrainerHyperParameterMultiObjectOptunaIntegrationTest(unittest.TestCase):
+    def setUp(self):
+        args = GaudiTrainingArguments("..", use_habana=True, use_lazy_mode=True)
+        self.n_epochs = args.num_train_epochs
+        self.batch_size = args.train_batch_size
+
+    def test_hyperparameter_search(self):
+        class MyTrialShortNamer(TrialShortNamer):
+            DEFAULTS = {"a": 0, "b": 0}
+
+        def hp_space(trial):
+            return {}
+
+        def model_init(trial):
+            if trial is not None:
+                a = trial.suggest_int("a", -4, 4)
+                b = trial.suggest_int("b", -4, 4)
+            else:
+                a = 0
+                b = 0
+            config = RegressionModelConfig(a=a, b=b, double_output=False)
+
+            return RegressionPreTrainedModel(config)
+
+        def hp_name(trial):
+            return MyTrialShortNamer.shortname(trial.params)
+
+        def compute_objective(metrics: Dict[str, float]) -> List[float]:
+            return metrics["eval_loss"], metrics["eval_accuracy"]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(
+                output_dir=tmp_dir,
+                learning_rate=0.1,
+                logging_steps=1,
+                evaluation_strategy=IntervalStrategy.EPOCH,
+                save_strategy=IntervalStrategy.EPOCH,
+                num_train_epochs=10,
+                disable_tqdm=True,
+                load_best_model_at_end=True,
+                logging_dir="runs",
+                run_name="test",
+                model_init=model_init,
+                compute_metrics=AlmostAccuracy(),
+            )
+            trainer.hyperparameter_search(
+                direction=["minimize", "maximize"],
+                hp_space=hp_space,
+                hp_name=hp_name,
+                n_trials=4,
+                compute_objective=compute_objective,
+            )
 
 
 # TODO: crashes because `TypeError: cannot pickle 'PyCapsule' object`

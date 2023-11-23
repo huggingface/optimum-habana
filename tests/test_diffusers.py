@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import tempfile
 from io import BytesIO
 from pathlib import Path
@@ -40,9 +41,14 @@ from optimum.habana.diffusers import (
 from optimum.habana.utils import set_seed
 
 
-THROUGHPUT_BASELINE_HMP = 0.298
-THROUGHPUT_BASELINE_BF16 = 0.309
-THROUGHPUT_BASELINE_AUTOCAST = 0.111
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    THROUGHPUT_BASELINE_HMP = 0.981
+    THROUGHPUT_BASELINE_BF16 = 1.019
+    THROUGHPUT_BASELINE_AUTOCAST = 0.389
+else:
+    THROUGHPUT_BASELINE_HMP = 0.298
+    THROUGHPUT_BASELINE_BF16 = 0.309
+    THROUGHPUT_BASELINE_AUTOCAST = 0.111
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -129,17 +135,19 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     Tests the StableDiffusionPipeline for Gaudi.
     """
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
+            block_out_channels=(4, 8),
+            layers_per_block=1,
             sample_size=32,
+            time_cond_proj_dim=time_cond_proj_dim,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
+            norm_num_groups=2,
         )
         scheduler = GaudiDDIMScheduler(
             beta_start=0.00085,
@@ -150,22 +158,23 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=[4, 8],
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=32,
-            intermediate_size=37,
+            intermediate_size=64,
             layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
+            num_attention_heads=8,
+            num_hidden_layers=3,
             pad_token_id=1,
             vocab_size=1000,
         )
@@ -215,7 +224,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             image_slice = image[-3:, -3:, -1]
 
             self.assertEqual(image.shape, (64, 64, 3))
-            expected_slice = np.array([0.5756, 0.6118, 0.5005, 0.5041, 0.5471, 0.4726, 0.4976, 0.4865, 0.4864])
+            expected_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
 
             self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
@@ -611,9 +620,24 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 output_type="np",
             )
 
-            expected_slice = np.array(
-                [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
-            )
+            if os.environ.get("GAUDI2_CI", "0") == "1":
+                expected_slice = np.array(
+                    [
+                        0.350823,
+                        0.34849027,
+                        0.33486015,
+                        0.35479546,
+                        0.3231264,
+                        0.33130097,
+                        0.34374988,
+                        0.30728853,
+                        0.30011398,
+                    ]
+                )
+            else:
+                expected_slice = np.array(
+                    [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
+                )
             image = outputs.images[0]
 
             self.assertEqual(image.shape, (512, 512, 3))
@@ -639,10 +663,48 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 output_type="np",
             )
 
-            expected_slice_rgb = np.array([0.7083766, 1.0, 1.0, 0.70610344, 0.9867363, 1.0, 0.7214538, 1.0, 1.0])
-            expected_slice_depth = np.array(
-                [0.919621, 0.92072034, 0.9184986, 0.91994286, 0.9242079, 0.93387043, 0.92345214, 0.93558526, 0.9223714]
-            )
+            if os.environ.get("GAUDI2_CI", "0") == "1":
+                expected_slice_rgb = np.array(
+                    [
+                        0.2099357,
+                        0.16664368,
+                        0.08352646,
+                        0.20643419,
+                        0.16748399,
+                        0.08781305,
+                        0.21379063,
+                        0.19943115,
+                        0.04389626,
+                    ]
+                )
+                expected_slice_depth = np.array(
+                    [
+                        0.68369114,
+                        0.6827824,
+                        0.6852779,
+                        0.6836072,
+                        0.6888298,
+                        0.6895473,
+                        0.6853674,
+                        0.67561126,
+                        0.660434,
+                    ]
+                )
+            else:
+                expected_slice_rgb = np.array([0.7083766, 1.0, 1.0, 0.70610344, 0.9867363, 1.0, 0.7214538, 1.0, 1.0])
+                expected_slice_depth = np.array(
+                    [
+                        0.919621,
+                        0.92072034,
+                        0.9184986,
+                        0.91994286,
+                        0.9242079,
+                        0.93387043,
+                        0.92345214,
+                        0.93558526,
+                        0.9223714,
+                    ]
+                )
             rgb = outputs.rgb[0]
             depth = outputs.depth[0]
 
@@ -672,18 +734,33 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             low_res_img = low_res_img.resize((128, 128))
             prompt = "a white cat"
             upscaled_image = pipeline(prompt=prompt, image=low_res_img, output_type="np").images[0]
-            expected_slice = np.array(
-                [
-                    0.1652787,
-                    0.16161594,
-                    0.15665877,
-                    0.16608998,
-                    0.1594378,
-                    0.14936894,
-                    0.15782538,
-                    0.15342498,
-                    0.14590913,
-                ]
-            )
+            if os.environ.get("GAUDI2_CI", "0") == "1":
+                expected_slice = np.array(
+                    [
+                        0.16527882,
+                        0.161616,
+                        0.15665859,
+                        0.1660901,
+                        0.1594379,
+                        0.14936888,
+                        0.1578255,
+                        0.15342498,
+                        0.14590919,
+                    ]
+                )
+            else:
+                expected_slice = np.array(
+                    [
+                        0.1652787,
+                        0.16161594,
+                        0.15665877,
+                        0.16608998,
+                        0.1594378,
+                        0.14936894,
+                        0.15782538,
+                        0.15342498,
+                        0.14590913,
+                    ]
+                )
             self.assertEqual(upscaled_image.shape, (512, 512, 3))
             self.assertLess(np.abs(expected_slice - upscaled_image[-3:, -3:, -1].flatten()).max(), 5e-3)

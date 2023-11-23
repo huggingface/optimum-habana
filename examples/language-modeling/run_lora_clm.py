@@ -64,7 +64,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.7.5")
+check_optimum_habana_min_version("1.8.1")
 
 
 @dataclass
@@ -103,8 +103,7 @@ class ModelArguments:
     use_auth_token: bool = field(
         default=False,
         metadata={
-            "help": "Will use the token generated when running `transformers-cli login` (necessary to use this script "
-            "with private models)."
+            "help": "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead."
         },
     )
     trust_remote_code: bool = field(
@@ -128,6 +127,23 @@ class ModelArguments:
             "help": (
                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded."
                 "When set to True, it will benefit LLM loading time and RAM consumption."
+            )
+        },
+    )
+    attn_softmax_bf16: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The current support is limited to Llama only.",
+            )
+        },
+    )
+    load_meta_device: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "It is an option to load the model to the device instead of the host, so it can reduce the host RAM usage."
+                "https://huggingface.co/blog/accelerate-large-models"
             )
         },
     )
@@ -300,8 +316,8 @@ def main():
     # Log on each process the small summary
     b16 = training_args.fp16 or training_args.bf16
     logger.warning(
-        f"Process rank: {training_args.local_rank}, device: {training_args.device}"
-        + f"\ndistributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {b16}"
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
+        + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {b16}"
     )
     # Set the verbosity to info of the Transformers logger (on main process only):
     if is_main_process(training_args.local_rank):
@@ -458,6 +474,7 @@ def main():
             trust_remote_code=True if model_args.trust_remote_code else None,
             torch_dtype=model_dtype,
             low_cpu_mem_usage=model_args.low_cpu_mem_usage,
+            device_map=training_args.device.type if model_args.load_meta_device else None,
         )
     else:
         raise ValueError("Must provide model_name_or_path to load a pretrained CausalLM model.")
@@ -467,6 +484,8 @@ def main():
         model.generation_config.pad_token_id = 0
         model.generation_config.bos_token_id = 1
         model.generation_config.eos_token_id = 2
+        if model_args.attn_softmax_bf16:
+            model.generation_config.attn_softmax_bf16 = True
 
     if hasattr(model.generation_config, "pad_token_id") and model.generation_config.pad_token_id is not None:
         tokenizer.pad_token_id = model.generation_config.pad_token_id
@@ -542,7 +561,7 @@ def main():
         if data_args.dataset_name == "tatsu-lab/alpaca":
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(
+                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(
                     ["prompt_sources", "prompt_targets"]
                 )
         elif data_args.dataset_name == "timdettmers/openassistant-guanaco":
@@ -553,7 +572,7 @@ def main():
             raise ValueError("Unsupported dataset")
         tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
         if training_args.do_eval:
-            tokenized_datasets["test"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
+            tokenized_datasets["validation"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
     if training_args.do_train:
         if "train" not in tokenized_datasets:
             raise ValueError("--do_train requires a train dataset")
@@ -562,9 +581,9 @@ def main():
             train_dataset = train_dataset.select(range(data_args.max_train_samples))
 
     if training_args.do_eval:
-        if "test" not in tokenized_datasets:
-            raise ValueError("--do_eval requires a test dataset")
-        eval_dataset = tokenized_datasets["test"]
+        if "validation" not in tokenized_datasets:
+            raise ValueError("--do_eval requires a validation dataset")
+        eval_dataset = tokenized_datasets["validation"]
         if data_args.max_eval_samples is not None:
             eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
 
@@ -624,12 +643,16 @@ def main():
         )
 
     if training_args.do_train:
-        trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+        train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
 
         with training_args.main_process_first(desc="save model"):
             if is_main_process(training_args.local_rank):
                 unwrapped_model = unwrap_model(lora_model)
                 unwrapped_model.save_pretrained(training_args.output_dir, state_dict=unwrapped_model.state_dict())
+
+        metrics = train_result.metrics
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
 
         # Evaluation
     if training_args.do_eval:

@@ -22,12 +22,12 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
 # Run code quality checks
 style_check: clean
-	black --check . setup.py
-	ruff . setup.py
+	ruff check . setup.py
+	ruff format --check . setup.py
 
 style: clean
-	black . setup.py
-	ruff . setup.py --fix
+	ruff check . setup.py --fix
+	ruff format . setup.py
 
 # Run unit and integration tests
 fast_tests:
@@ -97,7 +97,7 @@ doc: build_doc_docker_image
 clean:
 	find . -name "habana_log.livealloc.log_*" -type f -delete
 	find . -name .lock -type f -delete
-	find . -name .graph_dumps -type d -delete
+	find . -name .graph_dumps -type d -exec rm -r {} +
 	find . -name save-hpu.pdb -type f -delete
 	find . -name checkpoints.json -type f -delete
 	rm -rf regression/
@@ -110,5 +110,4 @@ clean:
 
 test_installs:
 	python -m pip install .[tests]
-	python -m pip install git+https://github.com/huggingface/transformers.git
 	python -m pip install git+https://github.com/huggingface/accelerate.git
