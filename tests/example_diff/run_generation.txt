@@ -481,18 +481,17 @@
 <     distributed_state = PartialState(cpu=args.use_cpu)
 ---
 >     args = parser.parse_args()
-341c211,213
+341c211,212
 <     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
 >     if not args.use_hpu_graphs:
 >         args.limit_hpu_graphs = False
->         args.reuse_cache = False
-343,344c215
+343,344c214
 <     if args.seed is not None:
 <         set_seed(args.seed)
 ---
 >     return args
-346,373d216
+346,373d215
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -521,7 +520,7 @@
 <     if requires_preprocessing:
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
-375,378c218,221
+375,378c217,220
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
 <         else:
@@ -531,7 +530,7 @@
 >     parser = argparse.ArgumentParser()
 >     args = setup_parser(parser)
 >     model, tokenizer, generation_config = initialize_model(args, logger)
-380,386c223
+380,386c222
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
@@ -541,7 +540,7 @@
 <     encoded_prompt = encoded_prompt.to(distributed_state.device)
 ---
 >     import habana_frameworks.torch.hpu as torch_hpu
-388,389c225,336
+388,389c224,335
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
@@ -657,7 +656,7 @@
 >         print(f"Graph compilation duration          = {compilation_duration} seconds")
 >         print(separator)
 >         print()
-391c338,353
+391c337,352
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -676,7 +675,7 @@
 >             .shuffle()
 >             .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
 >         )
-393,399c355,362
+393,399c354,361
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -693,7 +692,7 @@
 >             logger.info(
 >                 f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >             )
-401,439c364,384
+401,439c363,383
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -755,7 +754,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-440a386,463
+440a385,462
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
@@ -834,13 +833,13 @@
 >             )
 >             print(separator)
 >         t_end = time.time()
-442,443c465,466
+442,443c464,465
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
 >         throughput = total_new_tokens_generated / duration
 >         # Print Stats
-445c468,480
+445c467,479
 <     return generated_sequences
 ---
 >         stats = f"Throughput (including tokenization) = {throughput} tokens/second"
