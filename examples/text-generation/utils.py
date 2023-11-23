@@ -198,11 +198,8 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
         try:
             list_repo_files(base_model_name)
             base_model_is_remote = True
-        except Exception as e:
-            if "Repository Not Found" in str(e):
-                base_model_is_remote = False
-            else:
-                raise e
+        except Exception:
+            base_model_is_remote = False
 
     if base_model_is_local or base_model_is_remote:
         model = AutoPeftModelForCausalLM.from_pretrained(args.peft_model, torch_dtype=model_dtype, **model_kwargs)
