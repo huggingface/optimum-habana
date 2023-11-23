@@ -235,6 +235,6 @@ python run_generation.py \
 --max_new_tokens 200 \
 --batch_size=2 \
 --kv_cache_fp8 \
---fp8 \
+--fp8
 ```
 
