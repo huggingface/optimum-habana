@@ -114,7 +114,7 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.enable_synapse_quantization:
+        if args.fp8:
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -250,7 +250,7 @@ def initialize_model(args, logger):
     set_seed(args.seed)
     get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     use_deepspeed = args.world_size > 0
-    if use_deepspeed or args.bf16:
+    if use_deepspeed or args.bf16 or args.fp8:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
@@ -267,7 +267,7 @@ def initialize_model(args, logger):
     )
     tokenizer, model = setup_tokenizer(args, model)
     generation_config = setup_generation_config(args, model, tokenizer)
-    if args.enable_synapse_quantization:
+    if args.fp8:
         model = setup_quantization(model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
