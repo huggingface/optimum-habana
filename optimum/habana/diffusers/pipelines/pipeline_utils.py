@@ -117,14 +117,14 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     )
                     self.gaudi_config.use_torch_autocast = False
                 else:
-                    with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                        with tempfile.NamedTemporaryFile() as hmp_fp32_file:
+                    with tempfile.NamedTemporaryFile() as autocast_bf16_file:
+                        with tempfile.NamedTemporaryFile() as autocast_fp32_file:
                             self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                                hmp_bf16_file.name,
-                                hmp_fp32_file.name,
+                                autocast_bf16_file.name,
+                                autocast_fp32_file.name,
                             )
-                            os.environ["LOWER_LIST"] = str(hmp_bf16_file)
-                            os.environ["FP32_LIST"] = str(hmp_fp32_file)
+                            os.environ["LOWER_LIST"] = str(autocast_bf16_file)
+                            os.environ["FP32_LIST"] = str(autocast_fp32_file)
 
             # Workaround for Synapse 1.11 for full bf16 and Torch Autocast
             if bf16_full_eval or self.gaudi_config.use_torch_autocast:
