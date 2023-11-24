@@ -225,7 +225,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
     def test_stable_diffusion_no_safety_checker(self):
-        gaudi_config = GaudiConfig(use_habana_mixed_precision=False)
+        gaudi_config = GaudiConfig()
         scheduler = GaudiDDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -622,7 +622,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             use_habana=True,
             use_hpu_graphs=True,
-            gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+            gaudi_config=GaudiConfig(),
         )
         set_seed(27)
         outputs = pipeline(

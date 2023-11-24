@@ -194,7 +194,6 @@ class GaudiTrainer(Trainer):
 
             if self.args.deepspeed:
                 # Mixed-precision backends are turned off when using DeepSpeed since it manages this itself
-                self.gaudi_config.use_habana_mixed_precision = False
                 self.gaudi_config.use_torch_autocast = False
                 self.use_hpu_amp = False
 
@@ -208,11 +207,6 @@ class GaudiTrainer(Trainer):
                     logger.warning(
                         "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed-precision training with Torch Autocast is enabled."
                     )
-            elif self.gaudi_config.use_habana_mixed_precision and self.use_hpu_amp:
-                self.gaudi_config.use_habana_mixed_precision = False
-                logger.warning(
-                    "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
-                )
 
             if self.use_hpu_amp and "LOWER_LIST" not in os.environ:
                 gaudi_config.declare_autocast_bf16_fp32_ops()
