@@ -92,7 +92,6 @@ class GaudiConfig(BaseConfig):
                 self.write_bf16_fp32_ops_to_text_files(
                     autocast_bf16_filename,
                     autocast_fp32_filename,
-                    autocast=True,
                 )
                 os.environ["LOWER_LIST"] = autocast_bf16_filename
                 os.environ["FP32_LIST"] = autocast_fp32_filename
