@@ -70,12 +70,8 @@ class GaudiConfig(BaseConfig):
         self,
         path_to_bf16_file: Path,
         path_to_fp32_file: Path,
-        autocast: bool = False,
     ):
-        bf16_ops = self.autocast_bf16_ops if autocast else self.hmp_bf16_ops
-        fp32_ops = self.autocast_fp32_ops if autocast else self.hmp_fp32_ops
-
-        for path, ops in zip([Path(path_to_bf16_file), Path(path_to_fp32_file)], [bf16_ops, fp32_ops]):
+        for path, ops in zip([Path(path_to_bf16_file), Path(path_to_fp32_file)], [self.autocast_bf16_ops, self.autocast_fp32_ops]):
             with path.open("w") as text_file:
                 # writelines does not add new lines after each element so "\n" is inserted
                 text_file.writelines(op + "\n" for op in ops)
