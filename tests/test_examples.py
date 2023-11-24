@@ -168,6 +168,7 @@ class ExampleTestMeta(type):
             "EleutherAI/gpt-neox-20b",
             "google/flan-t5-xxl",
             "tiiuae/falcon-40b",
+            "bigscience/bloom-7b1",
         ]
 
         if model_name not in models_with_specific_rules and not deepspeed:
@@ -192,6 +193,8 @@ class ExampleTestMeta(type):
         elif "bridgetower" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
             return True
         elif "falcon" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
+            return True
+        elif "bloom" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "0":
             return True
 
         return False
@@ -297,6 +300,10 @@ class ExampleTestMeta(type):
                 env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
             elif "flan" in model_name:
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "512"
+            elif "bloom" in model_name:
+                env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
+                env_variables["PT_HPU_MAX_COMPOUND_OP_SYNC"] = "1"
+                env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
@@ -326,7 +333,7 @@ class ExampleTestMeta(type):
                     results = json.load(fp)
 
                 # Ensure performance requirements (accuracy, training time) are met
-                self.assert_no_regression(results, baseline.get("distribution").get(distribution))
+                self.assert_no_regression(results, baseline.get("distribution").get(distribution), model_name)
 
             # TODO: is a cleanup of the dataset cache needed?
             # self._cleanup_dataset_cache()
@@ -398,7 +405,6 @@ class ExampleTesterBase(TestCase):
             f"--gaudi_config_name {gaudi_config_name}",
             f"{task_option}",
             "--do_train",
-            "--do_eval",
             f"--output_dir {output_dir}",
             "--overwrite_output_dir",
             f"--learning_rate {lr}",
@@ -410,6 +416,9 @@ class ExampleTesterBase(TestCase):
             "--throughput_warmup_steps 3",
             "--save_strategy no",
         ]
+
+        if "bloom" not in model_name:
+            cmd_line.append("--do_eval")
 
         if extra_command_line_arguments is not None:
             cmd_line += extra_command_line_arguments
@@ -430,7 +439,7 @@ class ExampleTesterBase(TestCase):
         return_code = p.wait()
         self.assertEqual(return_code, 0)
 
-    def assert_no_regression(self, results: Dict, baseline: Dict):
+    def assert_no_regression(self, results: Dict, baseline: Dict, model_name: str):
         """
         Assert whether all possible performance requirements are met.
         Attributes:
@@ -443,8 +452,10 @@ class ExampleTesterBase(TestCase):
             if metric_name in baseline and metric_name in results:
                 metrics_to_assess.append(metric_name)
 
-        # There is no accuracy metric for `run_clip.py` and `run_bridgetower.py``
-        min_number_metrics = 2 if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower"] else 3
+        # There is no accuracy metric for `run_clip.py`, `run_bridgetower.py` and BLOOM
+        min_number_metrics = 3
+        if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower"] or "bloom" in model_name:
+            min_number_metrics = 2
 
         # Check that at least 3 metrics are assessed:
         # training time + throughput + accuracy metric (F1, accuracy, perplexity,...)

@@ -298,6 +298,29 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 }
 ```
 
+Here is another example with Bloom-7B1:
+
+```bash
+DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_MAX_COMPOUND_OP_SYNC=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --model_name_or_path bigscience/bloom-7b1 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 8 \
+    --do_train \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/roberta-base \
+    --use_habana \
+    --use_lazy_mode \
+    --gradient_checkpointing \
+    --use_cache False \
+    --throughput_warmup_steps 3 \
+    --save_strategy "no" \
+    --learning_rate 1e-04 \
+    --deepspeed path_to_my_deepspeed_config
+```
+[This](https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_3_gaudi1.json) is a DeepSpeed configuration you can use to train this model on Gaudi1.
+
 
 ## Inference
 
