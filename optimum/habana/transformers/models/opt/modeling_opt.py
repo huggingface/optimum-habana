@@ -46,7 +46,6 @@ def gaudi_opt_attention_forward(
     Copied from OPTAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
     The only differences are:
     - add new args token_idx
-    - disable HMP for attention softmax
     - optimize KV cache
     """
     # if key_value_states are provided this layer is used as a cross-attention layer
@@ -118,10 +117,7 @@ def gaudi_opt_attention_forward(
         )
         attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
-    from habana_frameworks.torch.hpex import hmp
-
-    with hmp.disable_casts():
-        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
+    attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
 
     if layer_head_mask is not None:
         if layer_head_mask.size() != (self.num_heads,):

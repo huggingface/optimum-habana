@@ -110,7 +110,8 @@ python run_clip.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
-    --dataloader_num_workers 16
+    --dataloader_num_workers 16 \
+    --bf16
 ```
 
 
@@ -141,7 +142,8 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
     --mediapipe_dataloader \
-    --use_hpu_graphs_for_training
+    --use_hpu_graphs_for_training \
+    --bf16
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.
@@ -247,5 +249,6 @@ python run_clip.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
-    --gaudi_config_name Habana/clip
+    --gaudi_config_name Habana/clip \
+    --bf16
 ```

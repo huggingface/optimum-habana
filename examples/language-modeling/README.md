@@ -178,7 +178,8 @@ python run_mlm.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 To run on your own training and validation files, use the following command:
@@ -197,7 +198,8 @@ python run_mlm.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 If your dataset is organized with one sample per line, you can use the `--line_by_line` flag (otherwise the script
@@ -223,7 +225,8 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 
@@ -247,7 +250,8 @@ python run_clm.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 
@@ -338,7 +342,8 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs_for_inference
+    --use_hpu_graphs_for_inference \
+    --bf16
 ```
 
 
