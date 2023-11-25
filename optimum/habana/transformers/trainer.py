@@ -564,6 +564,8 @@ class GaudiTrainer(Trainer):
         if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:
             debug_overflow = DebugUnderflowOverflow(self.model)  # noqa
 
+        delay_optimizer_creation = self.is_fsdp_enabled
+
         # We need to reset the scheduler, as its parameters may be different on subsequent calls
         if self._created_lr_scheduler:
             self.lr_scheduler = None
@@ -572,7 +574,8 @@ class GaudiTrainer(Trainer):
         if self.is_deepspeed_enabled:
             self.optimizer, self.lr_scheduler = deepspeed_init(self, num_training_steps=max_steps)
 
-        self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+        if not delay_optimizer_creation:
+            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
         self.state = TrainerState()
         self.state.is_hyper_param_search = trial is not None
@@ -647,6 +650,13 @@ class GaudiTrainer(Trainer):
                     self.model, self.optimizer, self.lr_scheduler
                 )
 
+        if delay_optimizer_creation:
+            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+
+
+        if self.is_fsdp_enabled:
+            self.model = self.model_wrapped = model
+
         # for the rest of this function `model` is the outside model, whether it was wrapped or not
         if model is not self.model:
             self.model_wrapped = model
@@ -678,6 +688,7 @@ class GaudiTrainer(Trainer):
         # important: at this point:
         # self.model         is the Transformers Model
         # self.model_wrapped is DDP(Transformers Model), Deepspeed(Transformers Model), etc.
+        # FSDP(Transformers Model), Dynamo Optimized Module(Transformers Model) etc.
 
         # Train!
         logger.info("***** Running training *****")
