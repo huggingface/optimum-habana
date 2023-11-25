@@ -304,7 +304,9 @@ class GaudiAccelerator(Accelerator):
         ```
         """
         if device_placement is None:
-            device_placement = self.device_placement and self.distributed_type != DistributedType.FSDP
+            # This is different from base accelerator package code where in case of FSDP device_placement is None
+            # Further investigation needed to figure out why this does not work on HPU
+            device_placement = self.device_placement #and self.distributed_type != DistributedType.FSDP
             if not evaluation_mode and self.distributed_type == GaudiDistributedType.MULTI_HPU:
                 device_placement = None
         self._models.append(model)
@@ -406,16 +408,16 @@ class GaudiAccelerator(Accelerator):
                     kwargs = {
                         "sharding_strategy": fsdp_plugin.sharding_strategy,
                         "cpu_offload": fsdp_plugin.cpu_offload,
-                        #"auto_wrap_policy": fsdp_plugin.auto_wrap_policy, #bring this back after correcting plugin init
+                        "auto_wrap_policy": fsdp_plugin.auto_wrap_policy,
                         #"mixed_precision": fsdp_plugin.mixed_precision_policy,  #bring this back after correcting plugin init
                         "sync_module_states": fsdp_plugin.sync_module_states,
                         "backward_prefetch": fsdp_plugin.backward_prefetch,
                         "forward_prefetch": fsdp_plugin.forward_prefetch,
                         "use_orig_params": fsdp_plugin.use_orig_params,
                         "param_init_fn": fsdp_plugin.param_init_fn,
-                        "ignored_modules": fsdp_plugin.ignored_modules,
+                        #"ignored_modules": [model.bert.embeddings.word_embeddings], #fsdp_plugin.ignored_modules, #figure out how to set this from json
                         "limit_all_gathers": fsdp_plugin.limit_all_gathers,
-                        #"device_id": self.device, # Vivek: Hack to make FSDP work
+                        #"device_id": self.device, # Not setting device_id for now, does not work for HPU
                     }
                     model = FSDP(model, **kwargs)
                     if fsdp_plugin.activation_checkpointing:
