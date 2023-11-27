@@ -74,6 +74,13 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         self.buckets = sorted(args.buckets)
         self.options = options
         self._device = args.device
+        self.model_inputs = {"use_cache": self.options.use_cache}
+        if self.model.config.model_type == "llama":
+            self.model_inputs.update(
+                {
+                    "attn_softmax_bf16": self.options.attn_softmax_bf16,
+                }
+            )
         if args.warmup:
             self.warm_up()
 
@@ -124,11 +131,8 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             bucket_length = self.find_bucket(seq_length)
             padding_length = bucket_length - seq_length
             inps = F.pad(inps, (0, padding_length), value=self.model.config.pad_token_id)
-        logits = self.model(
-            inps.to(self._device),
-            use_cache=self.options.use_cache,
-            attn_softmax_bf16=self.options.attn_softmax_bf16,
-        )["logits"].cpu()
+        logits = self.model(inps.to(self._device), **self.model_inputs)["logits"].cpu()
+
         if self.options.static_shapes and padding_length > 0:
             logits = logits[:, :-padding_length, :]
         logits = logits.to(torch.float32)
