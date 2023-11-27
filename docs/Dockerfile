@@ -1,4 +1,4 @@
-FROM vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+FROM vault.habana.ai/gaudi-docker/1.13.0/ubuntu20.04/habanalabs/pytorch-installer-2.1.0:latest
 
 ARG commit_sha
 ARG clone_url
