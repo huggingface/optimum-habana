@@ -206,11 +206,18 @@ def setup_parser(parser):
     )
     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
 
+    parser.add_argument(
+        "--kv_cache_fp8",
+        action="store_true",
+        help="Store kv-cache in float8 when kv-cache is used",
+    )
+    parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
+
     args = parser.parse_args()
 
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
-        args.reuse_cache = False
+
     return args
 
 

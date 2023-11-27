@@ -90,14 +90,14 @@ python text_to_image_generation.py \
 
 ### Latent Diffusion Model for 3D (LDM3D)
 
-[LDM3D](https://arxiv.org/abs/2305.10853) generates both image and depth map data from a given text prompt, allowing users to generate RGBD images from text prompts. 
+[LDM3D](https://arxiv.org/abs/2305.10853) generates both image and depth map data from a given text prompt, allowing users to generate RGBD images from text prompts.
 
 [Original checkpoint](https://huggingface.co/Intel/ldm3d) and [latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) are open source.
 A [demo](https://huggingface.co/spaces/Intel/ldm3d) is also available. Here is how to run this model:
 
 ```python
 python text_to_image_generation.py \
-    --ldm3d_model_name_or_path "Intel/ldm3d-4c" \
+    --model_name_or_path "Intel/ldm3d-4c" \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 10 \
     --batch_size 2 \

@@ -215,7 +215,7 @@ def get_habana_frameworks_version():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    return version.parse(output.stdout.split("\n")[0].split(" ")[-1])
+    return version.parse(output.stdout.split("\n")[0].split()[-1])
 
 
 def get_driver_version():

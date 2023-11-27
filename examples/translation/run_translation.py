@@ -334,7 +334,7 @@ def main():
     )
 
     # Log on each process the small summary:
-    mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
+    mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
@@ -400,8 +400,12 @@ def main():
         if data_args.test_file is not None:
             data_files["test"] = data_args.test_file
             extension = data_args.test_file.split(".")[-1]
+        if extension == "jsonl":
+            builder_name = "json"  # the "json" builder reads both .json and .jsonl files
+        else:
+            builder_name = extension  # e.g. "parquet"
         raw_datasets = load_dataset(
-            extension,
+            builder_name,
             data_files=data_files,
             cache_dir=model_args.cache_dir,
             token=model_args.token,

@@ -58,7 +58,7 @@
 >     )
 > 
 312a337
->     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
+>     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 314,315c339,341
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
@@ -66,15 +66,15 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-396a423
+400a427
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-593c620
+597c624
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-594a622
+598a626
 >         gaudi_config=gaudi_config,
-687,691d714
+691,695d718
 < 
 < 
 < def _mp_fn(index):
