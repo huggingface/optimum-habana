@@ -66,11 +66,7 @@ def serve(
     logger.info("CLI SHARDED = {} DTYPE = {}".format(sharded, dtype))
 
     if sharded:
-        tgi_file =  None
-        for file in Path('/usr/local').rglob("tgi_service.py"):
-            tgi_file = file.absolute()
-        if tgi_file is None:
-            logger.error('Cannot find tgi_service.py')
+        tgi_file =  Path(__file__).resolve().parent / "tgi_service.py"
         num_shard = int(os.getenv("WORLD_SIZE", "1"))
         logger.info("CLI SHARDED = {}".format(num_shard))
         import subprocess
