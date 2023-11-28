@@ -1,8 +1,6 @@
 import os
 import tempfile
 
-# set default POST_PROCESS_CPU to enabled
-post_process_cpu = int(os.getenv("POST_PROCESS_CPU", "1"))
 from text_generation_server.utils.tokens import batch_top_tokens
 import torch
 
@@ -36,6 +34,8 @@ from loguru import logger
 
 tracer = trace.get_tracer(__name__)
 
+# set default POST_PROCESS_CPU to enabled
+post_process_cpu = int(os.getenv("POST_PROCESS_CPU", "1"))
 
 @dataclass
 class CausalLMBatch(Batch):
@@ -574,7 +574,6 @@ class CausalLM(Model):
 
         model_kwargs = {
             "revision": revision,
-            # "token": args.token,
         }
 
         world_size = int(os.getenv("WORLD_SIZE", "1"))
@@ -630,8 +629,9 @@ class CausalLM(Model):
                 torch_dtype=dtype,
             )
             model = model.eval().to(device)
-            #TODO only wrap in hpu_graph if self.enable_hpu_graph
-            model = wrap_in_hpu_graph(model)
+            #wrap in hpu_graph only if self.enable_hpu_graph is set
+            if self.enable_hpu_graph:
+                model = wrap_in_hpu_graph(model)
 
         if model.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES:
             self.is_optimized_for_gaudi = True
@@ -668,7 +668,7 @@ class CausalLM(Model):
         )
         self.profiling_warmup_steps = int(os.getenv("PROF_WARMUPSTEP", "0"))
         self.profiling_steps = int(os.getenv("PROF_STEP", "5"))
-        output_dir = os.getenv("PROF_PATH", "/root/text-generation-inference/hpu_profile")
+        output_dir = os.getenv("PROF_PATH", "/tmp/hpu_profile")
         self.hb_profer = HabanaProfile(
             warmup=self.profiling_warmup_steps, active=self.profiling_steps, output_dir=output_dir
         )
@@ -692,7 +692,7 @@ class CausalLM(Model):
         input_ids,
         attention_mask,
         position_ids,
-        token_idx=None,
+        token_idx: Optional = None,
         past_key_values: Optional = None,
         bypass_hpu_graph: Optional = None,
     ) -> Tuple[torch.Tensor, List[Tuple[torch.Tensor, torch.Tensor]]]:
@@ -704,10 +704,6 @@ class CausalLM(Model):
         }
 
         if self.is_optimized_for_gaudi:
-            # if not past_key_values:
-            # add padding to position_id
-            # position_ids = attention_mask.long().cumsum(-1) - 1
-            # position_ids.masked_fill_(attention_mask == 0, 1)
             kwargs["token_idx"] = token_idx
 
         if self.has_position_ids:
@@ -911,7 +907,10 @@ class CausalLM(Model):
             batch.input_ids = batch.input_ids[:, :1]
 
         # Update attention_mask as we added a new token to input_ids
-        batch.attention_mask.index_fill_(1, token_idx, 1)
+        if self.is_optimized_for_gaudi:
+            batch.attention_mask.index_fill_(1, token_idx, 1)
+        else:
+            batch.attention_mask[:, -batch.padding_right_offset] = 1
         # Decrease right offset
         batch.padding_right_offset -= 1
 

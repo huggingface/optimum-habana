@@ -2,7 +2,6 @@
 FROM python:3.9 as tgi
 WORKDIR /tmp
 RUN git clone --depth 1 --branch v1.1.0 https://github.com/huggingface/text-generation-inference.git
-#ADD . /tmp/
 COPY launcher/src/main.rs text-generation-inference/launcher/src/main.rs
 # Rust builder
 FROM lukemathwalker/cargo-chef:latest-rust-1.70 AS chef
@@ -77,11 +76,6 @@ RUN cd server && \
     pip install git+https://github.com/huggingface/optimum-habana.git && \
     pip install transformers==4.34.1
 
-#ADD . /tmp/
-#RUN cd /tmp/deepspeed-fork && \
-#    pip install -e .
-
-
 # Install benchmarker
 COPY --from=builder /usr/src/target/release/text-generation-benchmark /usr/local/bin/text-generation-benchmark
 # Install router
@@ -89,7 +83,6 @@ COPY --from=builder /usr/src/target/release/text-generation-router /usr/local/bi
 # Install launcher
 COPY --from=builder /usr/src/target/release/text-generation-launcher /usr/local/bin/text-generation-launcher
 
-#ENV LOG_LEVEL=TRACE
 # Final image
 FROM base
 

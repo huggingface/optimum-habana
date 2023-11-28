@@ -35,7 +35,6 @@ def serve(
     otlp_endpoint: Optional[str] = None,
 ):
     if sharded:
-        # assert os.getenv("RANK", None) is not None, "RANK must be set when sharded is True"
         assert os.getenv("WORLD_SIZE", None) is not None, "WORLD_SIZE must be set when sharded is True"
         assert os.getenv("MASTER_ADDR", None) is not None, "MASTER_ADDR must be set when sharded is True"
         assert os.getenv("MASTER_PORT", None) is not None, "MASTER_PORT must be set when sharded is True"
@@ -64,14 +63,19 @@ def serve(
     quantize = None if quantize is None else quantize.value
     dtype = "bfloat16" if dtype is None else dtype.value
 
-    logger.info("CLI SHARED = {} DTYPE = {}".format(sharded, dtype))
+    logger.info("CLI SHARDED = {} DTYPE = {}".format(sharded, dtype))
 
     if sharded:
+        tgi_file =  None
+        for file in pathlib.Path('/usr/local').rglob("tgi_service.py"):
+            tgi_file = file.absolute()
+        if tgi_file is None:
+            logger.error('Cannot find tgi_service.py')
         num_shard = int(os.getenv("WORLD_SIZE", "1"))
-        logger.info("CLI SHARED = {}".format(num_shard))
+        logger.info("CLI SHARDED = {}".format(num_shard))
         import subprocess
 
-        cmd = f"deepspeed --num_nodes 1 --num_gpus {num_shard} --no_local_rank /usr/src/server/text_generation_server/tgi_service.py --model_id {model_id} --revision {revision} --sharded {sharded} --dtype {dtype} --uds_path {uds_path}"
+        cmd = f"deepspeed --num_nodes 1 --num_gpus {num_shard} --no_local_rank {tgi_service} --model_id {model_id} --revision {revision} --sharded {sharded} --dtype {dtype} --uds_path {uds_path}"
         logger.info("CLI server start deepspeed ={} ".format(cmd))
         sys.stdout.flush()
         sys.stderr.flush()
