@@ -67,7 +67,7 @@ def serve(
 
     if sharded:
         tgi_file =  None
-        for file in pathlib.Path('/usr/local').rglob("tgi_service.py"):
+        for file in Path('/usr/local').rglob("tgi_service.py"):
             tgi_file = file.absolute()
         if tgi_file is None:
             logger.error('Cannot find tgi_service.py')
@@ -75,7 +75,7 @@ def serve(
         logger.info("CLI SHARDED = {}".format(num_shard))
         import subprocess
 
-        cmd = f"deepspeed --num_nodes 1 --num_gpus {num_shard} --no_local_rank {tgi_service} --model_id {model_id} --revision {revision} --sharded {sharded} --dtype {dtype} --uds_path {uds_path}"
+        cmd = f"deepspeed --num_nodes 1 --num_gpus {num_shard} --no_local_rank {tgi_file} --model_id {model_id} --revision {revision} --sharded {sharded} --dtype {dtype} --uds_path {uds_path}"
         logger.info("CLI server start deepspeed ={} ".format(cmd))
         sys.stdout.flush()
         sys.stderr.flush()
