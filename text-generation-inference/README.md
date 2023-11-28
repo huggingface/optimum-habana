@@ -24,10 +24,10 @@ To use [🤗 text-generation-inference](https://github.com/huggingface/text-gene
    ```
 2. Launch a local server instance on 1 Gaudi card:
    ```bash
-   model=bigscience/bloom-560m
+   model=meta-llama/Llama-2-7b-hf
    volume=$PWD/data # share a volume with the Docker container to avoid downloading weights every run
 
-   docker run -p 8080:80 -v $volume:/data --runtime=habana -e POST_PROCESS_CPU=0 -e PT_HPU_ENABLE_LAZY_COLLECTIVES=true -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host tgi_gaudi --model-id $model
+   docker run -p 8080:80 -v $volume:/data --runtime=habana -e POST_PROCESS_CPU=0 -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host tgi_gaudi --model-id $model
    ```
 3. Launch a local server instance on 8 Gaudi cards:
    ```bash
@@ -47,10 +47,11 @@ To use [🤗 text-generation-inference](https://github.com/huggingface/text-gene
 5. To run benchmark test, please refer [TGI's benchmark tool](https://github.com/huggingface/text-generation-inference/tree/main/benchmark).
 
    To run it on the same machine, you can do the following:
+   ```
    a. docker exec -it <docker name> bash => pick the docker started from step 3 or 4 using docker ps
    b. text-generation-benchmark -t <model-id> => pass the model-id from docker run command
    c. after the completion of tests, hit ctrl+c to see the performance data summary.
-
+   ```
 > For gated models such as [StarCoder](https://huggingface.co/bigcode/starcoder), you will have to pass `-e HUGGING_FACE_HUB_TOKEN=<token>` to the `docker run` command above with a valid Hugging Face Hub read token.
 
 For more information and documentation about Text Generation Inference, checkout [the README](https://github.com/huggingface/text-generation-inference#text-generation-inference) of the original repo.
