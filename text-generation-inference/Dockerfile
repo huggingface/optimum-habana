@@ -72,8 +72,6 @@ RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
     pip install . --no-cache-dir && \
-    pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0 && \
-    pip install git+https://github.com/huggingface/optimum-habana.git && \
     pip install transformers==4.34.1
 
 # Install benchmarker
