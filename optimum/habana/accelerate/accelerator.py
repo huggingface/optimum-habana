@@ -151,10 +151,7 @@ class GaudiAccelerator(Accelerator):
 
         if fsdp_plugin is None:  # init from env variables
             fsdp_plugin = (
-                GaudiFullyShardedDataParallelPlugin(backward_prefetch=os.environ["FSDP_BACKWARD_PREFETCH"], 
-                                                    use_orig_params = os.environ["FSDP_USE_ORIG_PARAMS"],
-                                                    sync_module_states = os.environ["FSDP_SYNC_MODULE_STATES"]) 
-                                                    if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" else None
+                GaudiFullyShardedDataParallelPlugin() if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" else None
             )
         else:
             if not isinstance(fsdp_plugin, GaudiFullyShardedDataParallelPlugin):
@@ -306,7 +303,7 @@ class GaudiAccelerator(Accelerator):
         if device_placement is None:
             # This is different from base accelerator package code where in case of FSDP device_placement is None
             # Further investigation needed to figure out why this does not work on HPU
-            device_placement = self.device_placement #and self.distributed_type != DistributedType.FSDP
+            device_placement = self.device_placement and self.distributed_type != DistributedType.FSDP
             if not evaluation_mode and self.distributed_type == GaudiDistributedType.MULTI_HPU:
                 device_placement = None
         self._models.append(model)
@@ -409,15 +406,15 @@ class GaudiAccelerator(Accelerator):
                         "sharding_strategy": fsdp_plugin.sharding_strategy,
                         "cpu_offload": fsdp_plugin.cpu_offload,
                         "auto_wrap_policy": fsdp_plugin.auto_wrap_policy,
-                        #"mixed_precision": fsdp_plugin.mixed_precision_policy,  #bring this back after correcting plugin init
+                        "mixed_precision": fsdp_plugin.mixed_precision_policy,
                         "sync_module_states": fsdp_plugin.sync_module_states,
                         "backward_prefetch": fsdp_plugin.backward_prefetch,
                         "forward_prefetch": fsdp_plugin.forward_prefetch,
                         "use_orig_params": fsdp_plugin.use_orig_params,
                         "param_init_fn": fsdp_plugin.param_init_fn,
-                        #"ignored_modules": [model.bert.embeddings.word_embeddings], #fsdp_plugin.ignored_modules, #figure out how to set this from json
+                        "ignored_modules": fsdp_plugin.ignored_modules,
                         "limit_all_gathers": fsdp_plugin.limit_all_gathers,
-                        #"device_id": self.device, # Not setting device_id for now, does not work for HPU
+                        "device_id": torch.device("hpu")
                     }
                     model = FSDP(model, **kwargs)
                     if fsdp_plugin.activation_checkpointing:
