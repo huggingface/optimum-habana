@@ -590,7 +590,17 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
         if os.environ.get("GAUDI2_CI", "0") == "1":
             expected_slice = np.array(
-                [0.68306947, 0.6812112 , 0.67309505, 0.70057267, 0.6582885, 0.6325019 , 0.6708976 , 0.6226433 , 0.58038336]
+                [
+                    0.68306947,
+                    0.6812112,
+                    0.67309505,
+                    0.70057267,
+                    0.6582885,
+                    0.6325019,
+                    0.6708976,
+                    0.6226433,
+                    0.58038336,
+                ]
             )
         else:
             expected_slice = np.array(
