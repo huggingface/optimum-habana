@@ -483,6 +483,7 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --adam_epsilon 1e-08 \
     --do_eval \
     --low_cpu_mem_usage True
+```
 
 - Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization and LoRA:
 
@@ -519,7 +520,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --lora_rank 4 \
   --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
   --validation_split_percentage 4
-````
+```
 
 - Multi-card finetuning of Falcon-180B:
   - Falcon-180B example command saves only the LoRA parameters at end
