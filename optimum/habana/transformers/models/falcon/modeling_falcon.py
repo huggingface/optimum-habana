@@ -4,8 +4,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 
-from ....utils import get_device_name
-
 
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
@@ -20,14 +18,10 @@ try:
 except ImportError:
     SDPContext = False
 
-# TODO: remove this workaround when FusedRoPE properly works on Gaudi
-if get_device_name() == "gaudi2":
-    try:
-        from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV1 as FusedRoPE
-    except ImportError:
-        print("Not using HPU fused kernel for apply_rotary_pos_emb")
-        FusedRoPE = None
-else:
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV1 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
 
