@@ -85,7 +85,7 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use Habana's HPU for running the model.
         gaudi_config_name (`str`, *optional*):
             Pretrained Gaudi config name or path.
-        use_lazy_mode (`bool`, *optional*, defaults to `False`):
+        use_lazy_mode (`bool`, *optional*, defaults to `True`):
             Whether to use lazy mode for running the model.
         use_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Deprecated, use `use_hpu_graphs_for_inference` instead. Whether to use HPU graphs for performing inference.
@@ -127,7 +127,7 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     use_lazy_mode: Optional[bool] = field(
-        default=False,
+        default=True,
         metadata={"help": "Whether to use lazy mode for running the model."},
     )
 

@@ -14,7 +14,7 @@
                         "--max_steps 10",
                         "--max_eval_samples 880",
                         "--dataset_config 3.0.0",
-                        "--source_prefix \"summarize: \"",
+                        "--source_prefix summarize: ",
                         "--predict_with_generate",
                         "--ignore_pad_token_for_loss False",
                         "--pad_to_max_length",
