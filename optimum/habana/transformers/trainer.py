@@ -188,6 +188,13 @@ class GaudiTrainer(Trainer):
         else:
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
+        # Workaround for GPT2 that don't support Torch Autocast
+        if model.config.model_type == "gpt2" and self.gaudi_config == GaudiConfig.from_pretrained("Habana/gpt2"):
+            self.gaudi_config = GaudiConfig.from_pretrained(
+                "Habana/gpt2",
+                revision="84e72f935cb53d9c8c99e2911d725dae635a0d01",
+            )
+
         if self.args.use_habana:
             if self.args.use_hpu_graphs_for_inference:
                 self.already_wrapped_for_hpu_graphs = False
