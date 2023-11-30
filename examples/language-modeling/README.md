@@ -522,8 +522,8 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
 ````
 
 - Multi-card finetuning of Falcon-180B:
-- Falcon-180B example command saves only the LoRA parameters at end
-- For inference we need to merge the pretrained model and LoRA weights
+  - Falcon-180B example command saves only the LoRA parameters at end
+  - For inference we need to merge the pretrained model and LoRA weights
 ```bash
 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_lora_clm.py \
