@@ -7,8 +7,8 @@
                 "deepspeed": {
                     "learning_rate": 1e-4,
                     "train_batch_size": 8,
-                    "train_runtime": 1559.6023,
-                    "train_samples_per_second": 4.743,
+                    "train_runtime": 1572.712,
+                    "train_samples_per_second": 4.705,
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_cache False",
