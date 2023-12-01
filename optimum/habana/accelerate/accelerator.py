@@ -738,7 +738,7 @@ class GaudiAccelerator(Accelerator):
         tensor([0, 1, 2, 3])
         ```
         """
-        if GaudiPartialState().distributed_type in [GaudiDistributedType.MULTI_HPU, GaudiDistributedType.DEEPSPEED]:
+        if GaudiPartialState().distributed_type in [GaudiDistributedType.MULTI_HPU, GaudiDistributedType.DEEPSPEED, GaudiDistributedType.FSDP]:
             return _gpu_gather(tensor)
         else:
             return tensor

@@ -23,6 +23,7 @@ import shutil
 import sys
 import time
 import warnings
+from packaging import version
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
@@ -116,6 +117,14 @@ if is_peft_available():
 if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
+if is_accelerate_available():
+    from accelerate import __version__ as accelerate_version
+    from accelerate.utils import (
+        load_fsdp_model,
+        load_fsdp_optimizer,
+        save_fsdp_model,
+        save_fsdp_optimizer,
+    )
 
 if TYPE_CHECKING:
     import optuna
@@ -135,7 +144,7 @@ OPTIMIZER_NAME = "optimizer.pt"
 OPTIMIZER_NAME_BIN = "optimizer.bin"
 SCHEDULER_NAME = "scheduler.pt"
 SCALER_NAME = "scaler.pt"
-
+FSDP_MODEL_NAME = "pytorch_model_fsdp"
 
 class GaudiTrainer(Trainer):
     """
@@ -468,7 +477,7 @@ class GaudiTrainer(Trainer):
             if resume_from_checkpoint is None:
                 raise ValueError(f"No valid checkpoint found in output directory ({args.output_dir})")
 
-        if resume_from_checkpoint is not None and not self.is_deepspeed_enabled:
+        if resume_from_checkpoint is not None and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
             self._load_from_checkpoint(resume_from_checkpoint)
 
         # If model was re-initialized, put it on the right device and update self.model_wrapped
@@ -668,6 +677,10 @@ class GaudiTrainer(Trainer):
         # deepspeed ckpt loading
         if resume_from_checkpoint is not None and self.is_deepspeed_enabled:
             deepspeed_load_checkpoint(self.model_wrapped, resume_from_checkpoint)
+
+        # fsdp ckpt loading
+        if resume_from_checkpoint is not None and self.is_fsdp_enabled:
+            self._load_from_checkpoint(resume_from_checkpoint, self.model_wrapped)
 
         # Check if saved optimizer or scheduler states exist
         self._load_optimizer_and_scheduler(resume_from_checkpoint)
@@ -1031,6 +1044,10 @@ class GaudiTrainer(Trainer):
         # TODO: check if the code below works
         # if self.is_deepspeed_enabled:
         #     deepspeed_load_checkpoint(self.model_wrapped, self.state.best_model_checkpoint)
+        # elif self.is_fsdp_enabled:
+        #     load_result = load_fsdp_model(
+        #         self.accelerator.state.fsdp_plugin, self.accelerator, model, self.state.best_model_checkpoint
+        #     )
         if (
             os.path.exists(best_model_path)
             or os.path.exists(best_safe_model_path)
@@ -1407,8 +1424,14 @@ class GaudiTrainer(Trainer):
         """
         if output_dir is None:
             output_dir = self.args.output_dir
-
-        if self.is_deepspeed_enabled:
+        if self.is_fsdp_enabled:
+            if ("FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type)) and (
+                version.parse(accelerate_version) > version.parse("0.24.1")
+            ):
+                state_dict = self.accelerator.get_state_dict(self.model)
+                if self.args.should_save:
+                    self._save(output_dir, state_dict=state_dict)
+        elif self.is_deepspeed_enabled:
             # this takes care of everything as long as we aren't under zero3
             try:
                 state_dict = self.accelerator.get_state_dict(self.deepspeed)
@@ -1506,6 +1529,9 @@ class GaudiTrainer(Trainer):
                 else self.accelerator.prepare_model(model, evaluation_mode=True)
             )
 
+            if self.is_fsdp_enabled:
+                self.model = model
+
             # for the rest of this function `model` is the outside model, whether it was wrapped or not
             if model is not self.model:
                 self.model_wrapped = model
@@ -1513,6 +1539,7 @@ class GaudiTrainer(Trainer):
             # backward compatibility
             if self.is_deepspeed_enabled:
                 self.deepspeed = self.model_wrapped
+
         model.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
