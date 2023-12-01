@@ -73,7 +73,6 @@ Enviroment Variables Added:
 |  PROF_WARMUPSTEP      | integer        | 0           | Enable/disable profile, control profile warmup step, 0 means disable profile |  add -e in docker run command  |
 |  PROF_STEP            | interger       | 5           | Control profile step                                                         |  add -e in docker run command  |
 |  PROF_PATH            | string         | /root/text-generation-inference                                   | Define profile folder  | add -e in docker run command  |
-|  POST_PROCESS_CPU     | 0/1            | 1           | Define post process device          | add -e in docker run command, for smaller model like bloom-560m, 0 has better performance |
 | LIMIT_HPU_GRAPH       | True/False     | False       | Skip HPU graph usage for prefill to save memory | add -e in docker run command |
 
 </div>
