@@ -71,8 +71,7 @@ COPY server/pyproject.toml server/pyproject.toml
 RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
-    pip install . --no-cache-dir && \
-    pip install transformers==4.34.1
+    pip install . --no-cache-dir
 
 # Install benchmarker
 COPY --from=builder /usr/src/target/release/text-generation-benchmark /usr/local/bin/text-generation-benchmark
