@@ -338,7 +338,7 @@ def main():
     )
 
     # Log on each process the small summary:
-    mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
+    mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
@@ -400,7 +400,7 @@ def main():
             token=model_args.token,
         )
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
-    # https://huggingface.co/docs/datasets/loading_datasets.html.
+    # https://huggingface.co/docs/datasets/loading_datasets.
 
     # Load pretrained model and tokenizer
     #

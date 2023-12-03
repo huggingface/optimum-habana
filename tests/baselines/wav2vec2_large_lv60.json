@@ -7,10 +7,10 @@
                 "multi_card": {
                     "learning_rate": 6e-4,
                     "train_batch_size": 8,
-                    "eval_wer": 0.0463,
-                    "train_runtime": 968.6434,
-                    "train_samples_per_second": 63.916,
-                    "eval_samples_per_second": 67.988,
+                    "eval_wer": 0.0543,
+                    "train_runtime": 935.2505,
+                    "train_samples_per_second": 66.563,
+                    "eval_samples_per_second": 67.677,
                     "extra_arguments": [
                         "--dataset_config_name clean",
                         "--train_split_name train.100",

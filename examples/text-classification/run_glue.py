@@ -150,6 +150,10 @@ class DataTrainingArguments:
     validation_file: Optional[str] = field(
         default=None, metadata={"help": "A csv or a json file containing the validation data."}
     )
+    problem_type: Optional[str] = field(
+        default="multi_label_classification",
+        metadata={"help": "Problem type, such as single_label_classification or multi_label_classification"},
+    )
     test_file: Optional[str] = field(default=None, metadata={"help": "A csv or a json file containing the test data."})
 
     def __post_init__(self):
@@ -280,7 +284,7 @@ def main():
     )
 
     # Log on each process the small summary:
-    mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
+    mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
@@ -372,7 +376,7 @@ def main():
                 token=model_args.token,
             )
     # See more about loading any type of standard or custom dataset at
-    # https://huggingface.co/docs/datasets/loading_datasets.html.
+    # https://huggingface.co/docs/datasets/loading_datasets.
 
     # Labels
     if data_args.task_name is not None:
@@ -389,7 +393,7 @@ def main():
             num_labels = 1
         else:
             # A useful fast method:
-            # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.unique
+            # https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset.unique
             label_list = raw_datasets["train"].unique("label")
             label_list.sort()  # Let's sort it for determinism
             num_labels = len(label_list)
@@ -406,6 +410,7 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
+        problem_type=data_args.problem_type,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,

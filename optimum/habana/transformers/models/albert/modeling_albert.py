@@ -34,7 +34,7 @@ def gaudi_albert_forward(
 ) -> Union[BaseModelOutputWithPooling, Tuple]:
     """
     Same as https://github.com/huggingface/transformers/blob/a9eee2ffecc874df7dd635b2c6abb246fdb318cc/src/transformers/models/albert/modeling_albert.py#L689
-    except that HMP is disabled for computing:
+    except that mixed precision is disabled for computing:
         extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(self.dtype).min
     """
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions

@@ -92,6 +92,10 @@ class ModelArguments:
         default=None,
         metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
     )
+    token: Optional[str] = field(
+        default=None,
+        metadata={"help": "auth token for private models"},
+    )
     use_fast_tokenizer: bool = field(
         default=True,
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
@@ -127,6 +131,23 @@ class ModelArguments:
             "help": (
                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded."
                 "When set to True, it will benefit LLM loading time and RAM consumption."
+            )
+        },
+    )
+    attn_softmax_bf16: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The current support is limited to Llama only.",
+            )
+        },
+    )
+    load_meta_device: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "It is an option to load the model to the device instead of the host, so it can reduce the host RAM usage."
+                "https://huggingface.co/blog/accelerate-large-models"
             )
         },
     )
@@ -323,6 +344,7 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
         "trust_remote_code": True if model_args.trust_remote_code else None,
         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
+        "token": model_args.token,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -336,6 +358,7 @@ def main():
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
+        "token": model_args.token,
     }
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
@@ -457,6 +480,8 @@ def main():
             trust_remote_code=True if model_args.trust_remote_code else None,
             torch_dtype=model_dtype,
             low_cpu_mem_usage=model_args.low_cpu_mem_usage,
+            device_map=training_args.device.type if model_args.load_meta_device else None,
+            token=model_args.token,
         )
     else:
         raise ValueError("Must provide model_name_or_path to load a pretrained CausalLM model.")
@@ -466,6 +491,8 @@ def main():
         model.generation_config.pad_token_id = 0
         model.generation_config.bos_token_id = 1
         model.generation_config.eos_token_id = 2
+        if model_args.attn_softmax_bf16:
+            model.generation_config.attn_softmax_bf16 = True
 
     if hasattr(model.generation_config, "pad_token_id") and model.generation_config.pad_token_id is not None:
         tokenizer.pad_token_id = model.generation_config.pad_token_id

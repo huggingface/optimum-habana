@@ -1,8 +1,8 @@
 # Clone the original TGI repo
 FROM python:3.9 as tgi
 WORKDIR /tmp
-RUN git clone --depth 1 --branch v1.0.3 https://github.com/huggingface/text-generation-inference.git
-
+RUN git clone --depth 1 --branch v1.1.0 https://github.com/huggingface/text-generation-inference.git
+COPY launcher/src/main.rs text-generation-inference/launcher/src/main.rs
 # Rust builder
 FROM lukemathwalker/cargo-chef:latest-rust-1.70 AS chef
 WORKDIR /usr/src
@@ -36,7 +36,7 @@ COPY --from=tgi /tmp/text-generation-inference/launcher launcher
 RUN cargo build --release
 
 # Text Generation Inference base image
-FROM vault.habana.ai/gaudi-docker/1.12.0/ubuntu22.04/habanalabs/pytorch-installer-2.0.1:latest as base
+FROM vault.habana.ai/gaudi-docker/1.13.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.0:latest as base
 
 # Text Generation Inference base env
 ENV HUGGINGFACE_HUB_CACHE=/data \
@@ -54,6 +54,7 @@ COPY --from=tgi /tmp/text-generation-inference/server server
 COPY --from=tgi /tmp/text-generation-inference/server/Makefile server/Makefile
 # Copy files modified for running on Gaudi
 COPY server/text_generation_server/cli.py server/text_generation_server/cli.py
+COPY server/text_generation_server/tgi_service.py server/text_generation_server/tgi_service.py
 COPY server/text_generation_server/server.py server/text_generation_server/server.py
 COPY server/text_generation_server/models/__init__.py server/text_generation_server/models/__init__.py
 COPY server/text_generation_server/models/bloom.py server/text_generation_server/models/bloom.py
@@ -70,7 +71,8 @@ COPY server/pyproject.toml server/pyproject.toml
 RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
-    pip install . --no-cache-dir
+    pip install . --no-cache-dir && \
+    pip install transformers==4.34.1
 
 # Install benchmarker
 COPY --from=builder /usr/src/target/release/text-generation-benchmark /usr/local/bin/text-generation-benchmark

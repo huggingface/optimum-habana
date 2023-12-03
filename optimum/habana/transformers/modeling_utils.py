@@ -195,7 +195,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.codegen.modeling_codegen.CodeGenBlock.forward = gaudi_codegen_block_forward
 
     # Replace invert_attention_mask and get_extended_attention_mask
-    # so that HMP is disabled for specific parts of the code
+    # so that Torch Autocast is disabled for specific parts of the code
     transformers.modeling_utils.ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
     transformers.modeling_utils.ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
     # AlbertModel.forward does not rely on get_extended_attention_mask so it also needs to be replaced

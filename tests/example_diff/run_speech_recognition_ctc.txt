@@ -48,7 +48,7 @@
 >     )
 > 
 434a447
->     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast or gaudi_config.use_habana_mixed_precision
+>     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 436,437c449,451
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"

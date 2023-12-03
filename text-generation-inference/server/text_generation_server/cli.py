@@ -35,7 +35,6 @@ def serve(
     otlp_endpoint: Optional[str] = None,
 ):
     if sharded:
-        assert os.getenv("RANK", None) is not None, "RANK must be set when sharded is True"
         assert os.getenv("WORLD_SIZE", None) is not None, "WORLD_SIZE must be set when sharded is True"
         assert os.getenv("MASTER_ADDR", None) is not None, "MASTER_ADDR must be set when sharded is True"
         assert os.getenv("MASTER_PORT", None) is not None, "MASTER_PORT must be set when sharded is True"
@@ -62,8 +61,29 @@ def serve(
 
     # Downgrade enum into str for easier management later on
     quantize = None if quantize is None else quantize.value
-    dtype = None if dtype is None else dtype.value
-    server.serve(model_id, revision, dtype, uds_path)
+    dtype = "bfloat16" if dtype is None else dtype.value
+
+    logger.info("CLI SHARDED = {} DTYPE = {}".format(sharded, dtype))
+
+    if sharded:
+        tgi_file =  Path(__file__).resolve().parent / "tgi_service.py"
+        num_shard = int(os.getenv("WORLD_SIZE", "1"))
+        logger.info("CLI SHARDED = {}".format(num_shard))
+        import subprocess
+
+        cmd = f"deepspeed --num_nodes 1 --num_gpus {num_shard} --no_local_rank {tgi_file} --model_id {model_id} --revision {revision} --sharded {sharded} --dtype {dtype} --uds_path {uds_path}"
+        logger.info("CLI server start deepspeed ={} ".format(cmd))
+        sys.stdout.flush()
+        sys.stderr.flush()
+        with subprocess.Popen(cmd, shell=True, executable="/bin/bash") as proc:
+            proc.wait()
+            sys.stdout.flush()
+            sys.stderr.flush()
+            if proc.returncode != 0:
+                logger.error(f"{cmd}  exited with status = {proc.returncode}")
+                return proc.returncode
+    else:
+        server.serve(model_id, revision, dtype, uds_path, sharded)
 
 
 @app.command()

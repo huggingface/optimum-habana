@@ -24,7 +24,7 @@ from transformers.modeling_utils import ModuleUtilsMixin
 def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> torch.Tensor:
     """
     Same as https://github.com/huggingface/transformers/blob/a9eee2ffecc874df7dd635b2c6abb246fdb318cc/src/transformers/modeling_utils.py#L640
-    except that HMP is disabled for computing:
+    except that mixed precision is disabled for computing:
         encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * torch.finfo(self.dtype).min
     """
     if encoder_attention_mask.dim() == 3:
@@ -51,7 +51,7 @@ def gaudi_get_extended_attention_mask(
 ) -> torch.Tensor:
     """
     Same as https://github.com/huggingface/transformers/blob/a9eee2ffecc874df7dd635b2c6abb246fdb318cc/src/transformers/modeling_utils.py#L692
-    except that HMP is disabled for computing:
+    except that mixed precision is disabled for computing:
         extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(dtype).min
     """
     if dtype is None:

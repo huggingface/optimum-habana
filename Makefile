@@ -22,12 +22,12 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
 # Run code quality checks
 style_check: clean
-	black --check . setup.py
-	ruff . setup.py
+	ruff check . setup.py
+	ruff format --check . setup.py
 
 style: clean
-	black . setup.py
-	ruff . setup.py --fix
+	ruff check . setup.py --fix
+	ruff format . setup.py
 
 # Run unit and integration tests
 fast_tests:
@@ -49,7 +49,7 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
@@ -58,9 +58,8 @@ slow_tests_diffusers: test_installs
 
 # Run text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0
-	python -m pytest tests/test_text_generation_example.py -v -s --token $(TOKEN)
-	python -m pytest tests/test_encoder_decoder_text_summarization.py -v -s
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0
+	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder_text_summarization.py -v -s --token $(TOKEN)
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs
@@ -97,7 +96,7 @@ doc: build_doc_docker_image
 clean:
 	find . -name "habana_log.livealloc.log_*" -type f -delete
 	find . -name .lock -type f -delete
-	find . -name .graph_dumps -type d -delete
+	find . -name .graph_dumps -type d -exec rm -r {} +
 	find . -name save-hpu.pdb -type f -delete
 	find . -name checkpoints.json -type f -delete
 	rm -rf regression/

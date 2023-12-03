@@ -20,7 +20,6 @@ import os
 import random
 import shutil
 import sys
-import tempfile
 import time
 import warnings
 from collections.abc import Mapping
@@ -195,7 +194,6 @@ class GaudiTrainer(Trainer):
 
             if self.args.deepspeed:
                 # Mixed-precision backends are turned off when using DeepSpeed since it manages this itself
-                self.gaudi_config.use_habana_mixed_precision = False
                 self.gaudi_config.use_torch_autocast = False
                 self.use_hpu_amp = False
 
@@ -209,37 +207,9 @@ class GaudiTrainer(Trainer):
                     logger.warning(
                         "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed-precision training with Torch Autocast is enabled."
                     )
-            elif self.gaudi_config.use_habana_mixed_precision and self.use_hpu_amp:
-                self.gaudi_config.use_habana_mixed_precision = False
-                logger.warning(
-                    "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
-                )
 
             if self.use_hpu_amp and "LOWER_LIST" not in os.environ:
                 gaudi_config.declare_autocast_bf16_fp32_ops()
-
-            if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
-                try:
-                    from habana_frameworks.torch.hpex import hmp
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-                    raise error
-                self.hmp = hmp
-
-                # Open temporary files to mixed-precision write ops
-                with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                    with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                        # hmp.convert needs ops to be written in text files
-                        self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                            hmp_bf16_file.name,
-                            hmp_fp32_file.name,
-                        )
-                        self.hmp.convert(
-                            opt_level=self.gaudi_config.hmp_opt_level,
-                            bf16_file_path=hmp_bf16_file.name,
-                            fp32_file_path=hmp_fp32_file.name,
-                            isVerbose=self.gaudi_config.hmp_is_verbose,
-                        )
 
             if self.args.use_lazy_mode:
                 try:
@@ -248,6 +218,16 @@ class GaudiTrainer(Trainer):
                     error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
                     raise error
                 self.htcore = htcore
+
+                try:
+                    import habana_frameworks.torch.hpu as hthpu
+                except ImportError as error:
+                    error.msg = f"Could not import habana_frameworks.torch.hpu. {error.msg}."
+                    raise error
+                if self.gaudi_config.use_dynamic_shapes:
+                    hthpu.enable_dynamic_shape()
+                else:
+                    hthpu.disable_dynamic_shape()
 
             try:
                 from habana_frameworks.torch.hpu import random as hpu_random
@@ -852,6 +832,11 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
+                # attn_softmax_bf16 is enabled only for llama
+                if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
+                    if self.model.config.model_type == "llama" and self.model.generation_config.attn_softmax_bf16:
+                        inputs["attn_softmax_bf16"] = True
+
                 # TODO: keep syncs for fast DDP?
                 with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
@@ -907,31 +892,14 @@ class GaudiTrainer(Trainer):
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
-                            if (
-                                args.use_habana
-                                and (not (self.use_hpu_amp or self.use_cpu_amp))
-                                and self.gaudi_config.use_habana_mixed_precision
-                            ):
-                                with self.hmp.disable_casts():
-                                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                            else:
-                                self.accelerator.clip_grad_norm_(
-                                    model.parameters(),
-                                    args.max_grad_norm,
-                                )
+                            self.accelerator.clip_grad_norm_(
+                                model.parameters(),
+                                args.max_grad_norm,
+                            )
 
                     # Optimizer step
                     optimizer_was_run = True
-                    if (
-                        args.use_habana
-                        and self.gaudi_config.use_habana_mixed_precision
-                        and (not self.gaudi_config.use_fused_adam)
-                        and (not (self.use_hpu_amp or self.use_cpu_amp))
-                    ):
-                        with self.hmp.disable_casts():
-                            self.optimizer.step()
-                    else:
-                        self.optimizer.step()
+                    self.optimizer.step()
                     optimizer_was_run = not self.accelerator.optimizer_step_was_skipped
 
                     if optimizer_was_run:
@@ -1209,7 +1177,7 @@ class GaudiTrainer(Trainer):
         )
         if self.args.should_save and (not self.is_deepspeed_enabled or is_deepspeed_custom_scheduler):
             with warnings.catch_warnings(record=True) as caught_warnings:
-                torch.save(scheduler_dict, os.path.join(output_dir, SCHEDULER_NAME))
+                torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
             reissue_pt_warnings(caught_warnings)
 
         # Determine the new best metric / best model checkpoint
@@ -1561,6 +1529,11 @@ class GaudiTrainer(Trainer):
                 # For batch samplers, batch_size is not known by the dataloader in advance.
                 if batch_size is None:
                     batch_size = observed_batch_size
+
+            # attn_softmax_bf16 is enabled only for llama
+            if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
+                if self.model.config.model_type == "llama" and self.model.generation_config.attn_softmax_bf16:
+                    inputs["attn_softmax_bf16"] = True
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)

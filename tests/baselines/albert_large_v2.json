@@ -8,8 +8,8 @@
                     "learning_rate": 6e-5,
                     "train_batch_size": 32,
                     "eval_f1": 91.7937,
-                    "train_runtime": 3361.56,
-                    "train_samples_per_second": 53.653,
+                    "train_runtime": 3439.7776,
+                    "train_samples_per_second": 52.388,
                     "extra_arguments": [
                         "--max_seq_length 384",
                         "--use_hpu_graphs_for_inference"
@@ -19,8 +19,8 @@
                     "learning_rate": 6e-5,
                     "train_batch_size": 32,
                     "eval_f1": 92.6602,
-                    "train_runtime": 524.4745,
-                    "train_samples_per_second": 433.611,
+                    "train_runtime": 529.2307,
+                    "train_samples_per_second": 422.912,
                     "extra_arguments": [
                         "--max_seq_length 384",
                         "--use_hpu_graphs_for_inference"
