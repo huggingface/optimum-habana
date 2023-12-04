@@ -297,8 +297,7 @@ class GaudiTrainer(Trainer):
         else:
             num_samples = len(self.train_dataset)
             if (
-                self.args.use_lazy_mode
-                and not self.args.dataloader_drop_last
+                not self.args.dataloader_drop_last
                 and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
                 and self.args.parallel_mode != ParallelMode.DISTRIBUTED
             ):
@@ -2076,7 +2075,7 @@ class GaudiTrainer(Trainer):
             dispatch_batches=self.args.dispatch_batches,
             deepspeed_plugin=self.args.deepspeed_plugin,
             gradient_accumulation_plugin=gradient_accumulation_plugin,
-            even_batches=self.args.use_lazy_mode and not self.args.dataloader_drop_last,
+            even_batches= not self.args.dataloader_drop_last,
             distribution_strategy=self.args.distribution_strategy,
         )
 
