@@ -29,13 +29,10 @@ from text_generation_server.models.types import (
     TopTokens,
 )
 from text_generation_server.pb import generate_pb2
-from text_generation_server.utils import NextTokenChooser, StoppingCriteria, Sampling
+from text_generation_server.utils import HeterogeneousNextTokenChooser, StoppingCriteria, Sampling
 from loguru import logger
 
 tracer = trace.get_tracer(__name__)
-
-# set default POST_PROCESS_CPU to enabled
-post_process_cpu = int(os.getenv("POST_PROCESS_CPU", "1"))
 
 @dataclass
 class CausalLMBatch(Batch):
@@ -58,7 +55,7 @@ class CausalLMBatch(Batch):
     read_offsets: List[int]
 
     # Generation helpers
-    next_token_choosers: List[NextTokenChooser]
+    next_token_chooser: HeterogeneousNextTokenChooser
     stopping_criterias: List[StoppingCriteria]
     top_n_tokens: List[int]
     top_n_tokens_tensor: torch.Tensor
@@ -91,7 +88,7 @@ class CausalLMBatch(Batch):
         is_optimized_for_gaudi: bool = False,
     ) -> "CausalLMBatch":
         inputs = []
-        next_token_choosers = []
+        next_token_chooser_parameters = []
         stopping_criterias = []
         top_n_tokens = []
         prefix_offsets = []
@@ -116,13 +113,17 @@ class CausalLMBatch(Batch):
         for i, r in enumerate(pb.requests):
             requests_idx_mapping[r.id] = i
             inputs.append(r.inputs)
-            next_token_choosers.append(NextTokenChooser.from_pb(r.parameters, device))
+            next_token_chooser_parameters.append(r.parameters)
             stopping_criteria = StoppingCriteria.from_pb(r.stopping_parameters, tokenizer)
             stopping_criterias.append(stopping_criteria)
             top_n_tokens.append(r.top_n_tokens)
             max_truncation = max(max_truncation, r.truncate)
             max_decode_tokens += stopping_criteria.max_new_tokens
             padding_right_offset = max(padding_right_offset, stopping_criteria.max_new_tokens)
+
+        next_token_chooser = HeterogeneousNextTokenChooser.from_pb(
+            next_token_chooser_parameters, dtype, device
+        )
 
         tokenized_inputs = tokenizer(
             inputs,
@@ -132,8 +133,6 @@ class CausalLMBatch(Batch):
             truncation=True,
             max_length=max_truncation,
         )
-        if post_process_cpu == 0:
-            tokenized_inputs.to(device)
 
         for _ in pb.requests:
             input_len = tokenized_inputs["input_ids"].shape[1]
@@ -151,25 +150,19 @@ class CausalLMBatch(Batch):
 
         input_ids = tokenized_inputs["input_ids"]
         attention_mask = tokenized_inputs["attention_mask"]
-        if post_process_cpu == 1:
-            # only move model inputs to device
-            attention_mask = attention_mask.to(device)
+        # only move model inputs to device
+        attention_mask = attention_mask.to(device)
 
-            if is_optimized_for_gaudi:
-                input_ids_cpu = torch.nn.functional.pad(
-                    input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id
-                )
-                input_ids = input_ids_cpu.to(device)
-                attention_mask = torch.nn.functional.pad(attention_mask, (0, padding_right_offset), value=0)
-                all_input_ids = input_ids_cpu.T.split(1, dim=1)
-            else:
-                all_input_ids = input_ids.clone().T.split(1, dim=1)
-                input_ids = input_ids.to(device)
+        if is_optimized_for_gaudi:
+            input_ids_cpu = torch.nn.functional.pad(
+                input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id
+            )
+            input_ids = input_ids_cpu.to(device)
+            attention_mask = torch.nn.functional.pad(attention_mask, (0, padding_right_offset), value=0)
+            all_input_ids = input_ids_cpu.T.split(1, dim=1)
         else:
-            if is_optimized_for_gaudi:
-                input_ids = torch.nn.functional.pad(input_ids, (0, padding_right_offset), value=tokenizer.pad_token_id)
-                attention_mask = torch.nn.functional.pad(attention_mask, (0, padding_right_offset), value=0)
-            all_input_ids = input_ids.T.clone().split(1, dim=1)
+            all_input_ids = input_ids.clone().T.split(1, dim=1)
+            input_ids = input_ids.to(device)
 
         position_ids = attention_mask.long().cumsum(-1) - 1
         position_ids.masked_fill_(attention_mask == 0, 1)
@@ -189,7 +182,7 @@ class CausalLMBatch(Batch):
             input_lengths=input_lengths,
             prefix_offsets=prefix_offsets,
             read_offsets=read_offsets,
-            next_token_choosers=next_token_choosers,
+            next_token_chooser=next_token_chooser,
             stopping_criterias=stopping_criterias,
             top_n_tokens=top_n_tokens,
             top_n_tokens_tensor=top_n_tokens_tensor,
@@ -216,7 +209,6 @@ class CausalLMBatch(Batch):
         all_input_ids = []
         max_input_length = 0
 
-        next_token_choosers = []
         stopping_criterias = []
         top_n_tokens = []
 
@@ -237,7 +229,6 @@ class CausalLMBatch(Batch):
             input_lengths.append(request_input_length)
             max_input_length = max(max_input_length, request_input_length)
 
-            next_token_choosers.append(self.next_token_choosers[idx])
             stopping_criteria = self.stopping_criterias[idx]
             stopping_criterias.append(stopping_criteria)
             top_n_tokens.append(self.top_n_tokens[idx])
@@ -248,6 +239,7 @@ class CausalLMBatch(Batch):
         # Apply indices to input_ids, attention mask, past key values and other items that need to be cached
         input_ids = self.input_ids[keep_indices]
         position_ids = self.position_ids[keep_indices]
+        next_token_chooser = self.next_token_chooser.filter(keep_indices)
         if is_optimized_for_gaudi:
             self.attention_mask = self.attention_mask[keep_indices]
         else:
@@ -305,7 +297,7 @@ class CausalLMBatch(Batch):
         self.input_lengths = input_lengths
         self.prefix_offsets = prefix_offsets
         self.read_offsets = read_offsets
-        self.next_token_choosers = next_token_choosers
+        self.next_token_chooser = next_token_chooser
         self.stopping_criterias = stopping_criterias
         self.top_n_tokens = top_n_tokens
         self.top_n_tokens_tensor = top_n_tokens_tensor
@@ -339,7 +331,7 @@ class CausalLMBatch(Batch):
         prefix_offsets = []
         read_offsets = []
         all_input_ids = []
-        next_token_choosers = []
+        next_token_chooser_parameters = []
         stopping_criterias = []
         top_n_tokens = []
         max_tokens = 0
@@ -360,7 +352,7 @@ class CausalLMBatch(Batch):
             prefix_offsets.extend(batch.prefix_offsets)
             read_offsets.extend(batch.read_offsets)
             all_input_ids.extend(batch.all_input_ids)
-            next_token_choosers.extend(batch.next_token_choosers)
+            next_token_chooser_parameters.extend([r.parameters for r in batch.requests])
             stopping_criterias.extend(batch.stopping_criterias)
             top_n_tokens.extend(batch.top_n_tokens)
 
@@ -433,6 +425,12 @@ class CausalLMBatch(Batch):
             max_tokens += batch.max_tokens + (max_input_length - batch.max_input_length) * len(batch)
 
             start_index = end_index
+
+        next_token_chooser = HeterogeneousNextTokenChooser.from_pb(
+            next_token_chooser_parameters,
+            dtype=batches[0].next_token_chooser.dtype,
+            device=batches[0].next_token_chooser.device,
+        )
 
         first_past_kvs = batches[0].past_key_values
         _, num_heads, _, head_dim = first_past_kvs[0][1].shape
@@ -536,7 +534,7 @@ class CausalLMBatch(Batch):
             input_lengths=input_lengths,
             prefix_offsets=prefix_offsets,
             read_offsets=read_offsets,
-            next_token_choosers=next_token_choosers,
+            next_token_chooser=next_token_chooser,
             stopping_criterias=stopping_criterias,
             top_n_tokens=top_n_tokens,
             top_n_tokens_tensor=top_n_tokens_tensor,
@@ -746,21 +744,33 @@ class CausalLM(Model):
             batch.past_key_values,
             bypass_hpu_graph = prefill and self.limit_hpu_graph if self.enable_hpu_graph else None
         )
-        logsoftmax = torch.softmax(logits[:, -1], -1)
 
-        if post_process_cpu:
-            htorch.core.mark_step()
-            logits = logits.to("cpu")
-            logsoftmax = logsoftmax.to("cpu")
         # Results
         generations: List[Generation] = []
         stopped = True
 
+        # Select next token
+        input_length = batch.input_lengths[0]
+        if self.is_optimized_for_gaudi and logits.shape[-2] > 1:
+            next_input_ids, next_token_logprobs, logprobs = batch.next_token_chooser(
+                batch.input_ids[:, :token_idx], logits[:, input_length - 1 : input_length, :].squeeze(-2)
+            )
+        else:
+            next_input_ids, next_token_logprobs, logprobs = batch.next_token_chooser(
+                batch.input_ids[:, :token_idx], logits.squeeze(-2)
+            )
+
         batch_top_token_ids, batch_top_token_logprobs = batch_top_tokens(
             batch.top_n_tokens,
             batch.top_n_tokens_tensor,
-            logsoftmax,
+            logprobs,
         )
+
+        htorch.core.mark_step()
+        logits = logits.to("cpu")
+
+        next_token_logprobs = next_token_logprobs.tolist()
+        next_token_ids = next_input_ids
 
         # Zipped iterator
         iterator = zip(
@@ -769,14 +779,16 @@ class CausalLM(Model):
             batch.prefix_offsets,
             batch.read_offsets,
             logits,
-            batch.next_token_choosers,
+            batch.next_token_chooser.do_sample,
+            batch.next_token_chooser.seeds,
             batch.stopping_criterias,
             batch.all_input_ids,
             batch.top_n_tokens,
+            next_token_ids,
+            next_token_logprobs,
             batch_top_token_ids,
             batch_top_token_logprobs,
         )
-        next_tokens = []
         # For each member of the batch
         for i, (
             request,
@@ -784,21 +796,16 @@ class CausalLM(Model):
             prefix_offset,
             read_offset,
             logits,
-            next_token_chooser,
+            do_sample,
+            seed,
             stopping_criteria,
             all_input_ids,
             top_n_tokens,
+            next_token_id,
+            next_token_logprob,
             top_token_ids,
             top_token_logprobs,
         ) in enumerate(iterator):
-            # Select next token
-            if self.is_optimized_for_gaudi and logits.shape[-2] > 1:
-                next_token_id, logprobs = next_token_chooser(
-                    all_input_ids[0:input_length].view(1, -1), logits[input_length - 1 : input_length, :]
-                )
-            else:
-                next_token_id, logprobs = next_token_chooser(all_input_ids[0:input_length].view(1, -1), logits[-1:, :])
-
             # Append next token to all tokens
             if self.is_optimized_for_gaudi:
                 all_input_ids[input_length] = next_token_id
@@ -807,15 +814,13 @@ class CausalLM(Model):
             new_input_length = input_length + 1
 
             # Generated token
-            next_token_logprob = logprobs[-1, next_token_id]
-            next_token_id_squeezed = next_token_id.squeeze()
             next_token_text, prefix_offset, read_offset = self.decode_token(
                 all_input_ids[0:new_input_length, 0], prefix_offset, read_offset
             )
 
             # Evaluate stopping criteria
             stop, reason = stopping_criteria(
-                next_token_id_squeezed,
+                next_token_id,
                 next_token_text,
             )
 
@@ -830,22 +835,19 @@ class CausalLM(Model):
                     output_text = self.decode(
                         all_input_ids[new_input_length - stopping_criteria.current_tokens : new_input_length, 0]
                     )
-                    # Get seed
-                    if isinstance(next_token_chooser.choice, Sampling):
-                        seed = next_token_chooser.choice.seed
-                    else:
-                        seed = None
-
-                    generated_text = GeneratedText(output_text, stopping_criteria.current_tokens, reason, seed)
+                    generated_text = GeneratedText(
+                        output_text,
+                        stopping_criteria.current_tokens,
+                        reason,
+                        seed if do_sample else None,
+                    )
                 else:
                     generated_text = None
 
                 # Prefill
                 if stopping_criteria.current_tokens == 1 and request.prefill_logprobs:
                     # Remove generated token to only have prefill and add nan for first prompt token
-                    prefill_logprobs = [float("nan")] + torch.log_softmax(logits, -1).gather(
-                        1, all_input_ids[1:new_input_length]
-                    ).squeeze(1)[-new_input_length:-1].tolist()
+                    prefill_logprobs = [float("nan")] + next_token_logprobs
                     prefill_token_ids = all_input_ids[0 : new_input_length - 1]
                     prefill_texts = self.tokenizer.batch_decode(
                         prefill_token_ids,
@@ -875,27 +877,27 @@ class CausalLM(Model):
                 generation = Generation(
                     request.id,
                     prefill_tokens,
-                    next_token_id_squeezed,
+                    next_token_id,
                     next_token_logprob,
                     next_token_text,
-                    next_token_id_squeezed.item() in self.all_special_ids,
+                    next_token_id in self.all_special_ids,
                     generated_text,
                     top_tokens,
                 )
 
                 generations.append(generation)
 
-            next_tokens.append(next_token_id)
             batch.all_input_ids[i] = all_input_ids
             batch.input_lengths[i] = new_input_length
             batch.prefix_offsets[i] = prefix_offset
             batch.read_offsets[i] = read_offset
             batch.max_input_length = max(batch.max_input_length, new_input_length)
-        next_tokens = torch.cat(next_tokens, dim=0)
+
+        next_tokens = torch.tensor(next_token_ids, dtype=torch.int64).to(self.device)
         if token_idx is None:
             batch.input_ids[:, 0] = next_tokens[:, 0]
         else:
-            batch.input_ids.index_copy_(1, token_idx, next_tokens)
+            batch.input_ids[:, token_idx] = next_tokens
         # We finished all generations in the batch; there is no next batch
         if stopped:
             if self.hb_profer_started == True:
