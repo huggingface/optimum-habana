@@ -151,7 +151,7 @@ class DataTrainingArguments:
         default=None, metadata={"help": "A csv or a json file containing the validation data."}
     )
     problem_type: Optional[str] = field(
-        default="multi_label_classification",
+        default="single_label_classification",
         metadata={"help": "Problem type, such as single_label_classification or multi_label_classification"},
     )
     test_file: Optional[str] = field(default=None, metadata={"help": "A csv or a json file containing the test data."})
