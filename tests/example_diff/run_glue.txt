@@ -34,7 +34,7 @@
 < 
 144a153,156
 >     problem_type: Optional[str] = field(
->         default="multi_label_classification",
+>         default="single_label_classification",
 >         metadata={"help": "Problem type, such as single_label_classification or multi_label_classification"},
 >     )
 228c240
