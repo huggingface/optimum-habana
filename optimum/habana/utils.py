@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.12.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.13.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -215,7 +215,7 @@ def get_habana_frameworks_version():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    return version.parse(output.stdout.split("\n")[0].split(" ")[-1])
+    return version.parse(output.stdout.split("\n")[0].split()[-1])
 
 
 def get_driver_version():

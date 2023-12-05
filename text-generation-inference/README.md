@@ -22,14 +22,21 @@ To use [🤗 text-generation-inference](https://github.com/huggingface/text-gene
    ```bash
    docker build -t tgi_gaudi .
    ```
-2. Launch a local server instance with:
+2. Launch a local server instance on 1 Gaudi card:
    ```bash
-   model=bigscience/bloom-560m
+   model=meta-llama/Llama-2-7b-hf
    volume=$PWD/data # share a volume with the Docker container to avoid downloading weights every run
 
    docker run -p 8080:80 -v $volume:/data --runtime=habana -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host tgi_gaudi --model-id $model
    ```
-3. You can then send a request:
+3. Launch a local server instance on 8 Gaudi cards:
+   ```bash
+   model=meta-llama/Llama-2-70b-hf
+   volume=$PWD/data # share a volume with the Docker container to avoid downloading weights every run
+
+   docker run -p 8080:80 -v $volume:/data --runtime=habana -e PT_HPU_ENABLE_LAZY_COLLECTIVES=true -e HABANA_VISIBLE_DEVICES=all -e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host tgi_gaudi --model-id $model --sharded true --num-shard 8
+   ```
+4. You can then send a request:
    ```bash
    curl 127.0.0.1:8080/generate \
      -X POST \
@@ -37,19 +44,39 @@ To use [🤗 text-generation-inference](https://github.com/huggingface/text-gene
      -H 'Content-Type: application/json'
    ```
    > The first call will be slower as the model is compiled.
+5. To run benchmark test, please refer [TGI's benchmark tool](https://github.com/huggingface/text-generation-inference/tree/main/benchmark).
 
+   To run it on the same machine, you can do the following:
+   * `docker exec -it <docker name> bash` , pick the docker started from step 3 or 4 using docker ps
+   * `text-generation-benchmark -t <model-id>` , pass the model-id from docker run command
+   * after the completion of tests, hit ctrl+c to see the performance data summary.
+   
 > For gated models such as [StarCoder](https://huggingface.co/bigcode/starcoder), you will have to pass `-e HUGGING_FACE_HUB_TOKEN=<token>` to the `docker run` command above with a valid Hugging Face Hub read token.
 
 For more information and documentation about Text Generation Inference, checkout [the README](https://github.com/huggingface/text-generation-inference#text-generation-inference) of the original repo.
 
 Not all features of TGI are currently supported as this is still a work in progress.
-It has been tested for batches of 1 sample so far.
-New features will be added soon, including:
-- support for DeepSpeed-inference to use sharded models
-- batching strategy to have less model compilations
-- Added an env var MAX_TOTAL_TOKENS for models that require it to be set during benchmark test.
-  It defaults to 0. To change it please add "ENV MAX_TOTAL_TOKENS=512" (512 is an example) to Dockerfile and rebuild the docker.
-  This workaround is needed as max_total_tokens is currently not being passed from Rust to Python when running launcher app.
+
+New changes are added for the current release:
+- Sharded feature with support for DeepSpeed-inference auto tensor parallism. Also use HPU graph for performance improvement.
+- Torch profile. 
+
+
+Enviroment Variables Added:
+
+<div align="center">
+
+| Name                  | Value(s)       | Default     | Description                       | Usage                                          |
+|------------------     |:---------------|:------------|:--------------------              |:---------------------------------
+|  MAX_TOTAL_TOKENS     | integer        | 0           | Control the padding of input          | add -e in docker run, such         |
+|  ENABLE_HPU_GRAPH     | true/false     | true        | Enable hpu graph or not                                                      |  add -e in docker run command  |
+|  PROF_WARMUPSTEP      | integer        | 0           | Enable/disable profile, control profile warmup step, 0 means disable profile |  add -e in docker run command  |
+|  PROF_STEP            | interger       | 5           | Control profile step                                                         |  add -e in docker run command  |
+|  PROF_PATH            | string         | /root/text-generation-inference                                   | Define profile folder  | add -e in docker run command  |
+| LIMIT_HPU_GRAPH       | True/False     | False       | Skip HPU graph usage for prefill to save memory | add -e in docker run command |
+
+</div>
+
 
 > The license to use TGI on Habana Gaudi is the one of TGI: https://github.com/huggingface/text-generation-inference/blob/main/LICENSE
 >

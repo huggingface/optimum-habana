@@ -14,17 +14,11 @@ from transformers.models.llama.modeling_llama import (
     logger,
 )
 
-from ....utils import get_device_name
 
-
-# TODO: remove this workaround when FusedRoPE properly works on Gaudi
-if get_device_name() == "gaudi2":
-    try:
-        from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-    except ImportError:
-        print("Not using HPU fused kernel for apply_rotary_pos_emb")
-        FusedRoPE = None
-else:
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
 try:
@@ -36,13 +30,16 @@ except ImportError:
 
 def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
+    cur = cur.to(dtype=prev.dtype)
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
         prev[:, :, :inp_seq_len, :].copy_(cur)
         return orig_cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
-        return prev.index_copy_(dim, idx - 1, cur)
+        prev.index_copy_(dim, idx - 1, cur)
+        prev_cast = prev.to(orig_cur.dtype)
+        return prev_cast
     else:
         return torch.cat((prev, cur), dim=dim)
 
@@ -88,13 +85,15 @@ class GaudiLlamaAttention(LlamaAttention):
         self.past_value = None
         self.inp_seq_len = -1
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         key_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
         value_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
         if self.past_key is None or self.past_key.shape != key_shape:
             self.inp_seq_len = inp_seq_len
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
+            if kv_cache_fp8:
+                dtype = torch.float8_e4m3fn
             self.past_key = torch.zeros(key_shape, dtype=dtype, device=device)
             self.past_value = torch.zeros(value_shape, dtype=dtype, device=device)
         else:
@@ -258,8 +257,8 @@ class GaudiLlamaAttention(LlamaAttention):
 
 
 class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
-        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
+        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.self_attn.reorder_kv_cache(beam_idx)
@@ -321,9 +320,9 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
 
 
 class GaudiLlamaModel(LlamaModel):
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         for layer in self.layers:
-            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.layers)
@@ -484,8 +483,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - add new args reuse_cache
     """
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
-        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)

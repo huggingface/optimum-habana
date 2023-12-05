@@ -52,6 +52,7 @@ MODELS_TO_TEST_MAPPING = {
     "gpt_neox": [("EleutherAI/gpt-neox-20b", "Habana/gpt2")],
     "llama": [("huggyllama/llama-7b", "Habana/gpt2")],
     "falcon": [("tiiuae/falcon-40b", "Habana/gpt2")],
+    "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -69,7 +70,7 @@ MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     # "distilbert",
 ]
 
-MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox"]
+MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom"]
 
 MODELS_TO_TEST_FOR_SEQ2SEQ = ["t5"]
 

@@ -53,7 +53,8 @@ python run_qa.py \
   --use_habana \
   --use_lazy_mode \
   --use_hpu_graphs_for_inference \
-  --throughput_warmup_steps 3
+  --throughput_warmup_steps 3 \
+  --bf16
 ```
 
 
@@ -79,7 +80,8 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 
@@ -148,7 +150,8 @@ python run_qa.py \
   --output_dir /tmp/squad/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs_for_inference
+  --use_hpu_graphs_for_inference \
+  --bf16
 ```
 
 
@@ -198,7 +201,8 @@ python run_seq2seq_qa.py \
   --ignore_pad_token_for_loss False \
   --pad_to_max_length \
   --save_strategy epoch \
-  --throughput_warmup_steps 3
+  --throughput_warmup_steps 3 \
+  --bf16
 ```
 
 For multi-card and DeepSpeed runs, you can use `python ../gaudi_spawn.py --world_size 8 --use_mpi` and `python ../gaudi_spawn.py --world_size 8 --use_deepspeed` as shown in the previous sections.
