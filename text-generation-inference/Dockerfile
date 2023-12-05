@@ -73,13 +73,13 @@ RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
     pip install . --no-cache-dir && \
-    pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0 && \
+    #pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0 && \
     pip install git+https://github.com/huggingface/optimum-habana.git && \
     pip install transformers==4.34.1
 
-#ADD . /tmp/
-#RUN cd /tmp/deepspeed-fork && \
-#    pip install -e .
+ADD . /tmp/
+RUN cd /tmp/deepspeed-fork && \
+    pip install -e .
 
 
 # Install benchmarker
@@ -89,9 +89,9 @@ COPY --from=builder /usr/src/target/release/text-generation-router /usr/local/bi
 # Install launcher
 COPY --from=builder /usr/src/target/release/text-generation-launcher /usr/local/bin/text-generation-launcher
 
-#ENV LOG_LEVEL=TRACE
+ENV LOG_LEVEL=DEBUG
 # Final image
 FROM base
 
-ENTRYPOINT ["text-generation-launcher"]
-CMD ["--json-output"]
+#ENTRYPOINT ["text-generation-launcher"]
+#CMD ["--json-output"]
