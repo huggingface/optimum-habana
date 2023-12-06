@@ -30,6 +30,11 @@ except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
 
+try:
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused scaled dot-product attention kernel.")
+    FusedSDPA = None
 
 def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
@@ -150,7 +155,8 @@ class GaudiLlamaAttention(LlamaAttention):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
-    ):
+        use_flash_attention: Optional[bool] = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
         The only differences are:
@@ -222,30 +228,42 @@ class GaudiLlamaAttention(LlamaAttention):
         key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
         value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
 
-        attn_weights = self.matmul_qk(query_states, key_states.transpose(2, 3)) * self.norm_factor
+        if use_flash_attention and FusedSDPA:
+            import habana_frameworks.torch.hpu as ht
+            if q_len == 1:
+                # next token
+                with ht.sdp_kernel(enable_recompute=False):
+                    attn_output = FusedSDPA.apply(query_states, key_states, value_states, attention_mask, 0.0, False, None)
+            else:
+                # first token
+                with ht.sdp_kernel(enable_recompute=False):
+                    attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
 
-        if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-            raise ValueError(
-                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                f" {attn_weights.size()}"
-            )
-
-        if attention_mask is not None:
-            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-                )
-            attn_weights = attn_weights + attention_mask
-
-        if attn_softmax_bf16:
-            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
         else:
-            # upcast attention to fp32
-            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
-                query_states.dtype
-            )
+            attn_weights = self.matmul_qk(query_states, key_states.transpose(2, 3)) * self.norm_factor
 
-        attn_output = self.matmul_av(attn_weights, value_states)
+            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+                raise ValueError(
+                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                    f" {attn_weights.size()}"
+                )
+
+            if attention_mask is not None:
+                if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                    raise ValueError(
+                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                    )
+                attn_weights = attn_weights + attention_mask
+
+            if attn_softmax_bf16:
+                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+            else:
+                # upcast attention to fp32
+                attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
+                    query_states.dtype
+                )
+
+            attn_output = self.matmul_av(attn_weights, value_states)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
@@ -330,6 +348,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -337,6 +356,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new args token_idx
         - add new args attn_softmax_bf16
         - add new args reuse_cache
+        - add new args use_flash_attention
         """
         residual = hidden_states
         output_pre_attn, self_attn_weights, present_key_value = self.pre_attn(
@@ -349,6 +369,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             token_idx,
             attn_softmax_bf16,
             reuse_cache,
+            use_flash_attention=use_flash_attention,
         )
         self.self_attn.attention_all_reduce(output_pre_attn)
         output_post_attn_pre_mlp, residual_mlp = self.post_attn_pre_mlp(output_pre_attn, residual)
@@ -375,6 +396,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         output_attn, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
@@ -387,6 +409,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             token_idx,
             attn_softmax_bf16,
             reuse_cache,
+            use_flash_attention
         )
         return output_attn, attn_weights, present_key_value
 
@@ -433,6 +456,7 @@ class GaudiLlamaModel(LlamaModel):
         token_idx: Optional[torch.Tensor] = None,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -440,6 +464,7 @@ class GaudiLlamaModel(LlamaModel):
         - add new args token_idx
         - add new args attn_softmax_bf16
         - add new args reuse_cache
+        - add new args use_flash_attention
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -532,6 +557,7 @@ class GaudiLlamaModel(LlamaModel):
                     token_idx=token_idx,
                     attn_softmax_bf16=attn_softmax_bf16,
                     reuse_cache=reuse_cache,
+                    use_flash_attention=use_flash_attention,
                 )
 
             hidden_states = layer_outputs[0]
@@ -596,6 +622,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -616,6 +643,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
+            use_flash_attention=use_flash_attention,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape

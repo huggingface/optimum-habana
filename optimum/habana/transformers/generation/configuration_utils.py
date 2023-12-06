@@ -29,6 +29,8 @@ class GaudiGenerationConfig(GenerationConfig):
         Only active if `static_shapes` is used. Can't be used with `reuse_cache`.
     kv_cache_fp8 (`bool`, *optional*):
         Store kv-cache in float8 when kv-cache is used
+    use_flash_attention (`bool`, *optional*):
+        Whether to use flash attention optimization.
     """
 
     def __init__(self, **kwargs):
@@ -41,3 +43,4 @@ class GaudiGenerationConfig(GenerationConfig):
         self.reuse_cache = kwargs.get("reuse_cache", None)
         self.bucket_size = kwargs.get("bucket_size", -1)
         self.kv_cache_fp8 = kwargs.get("kv_cache_fp8", None)
+        self.use_flash_attention = kwargs.get("use_flash_attention", None)
