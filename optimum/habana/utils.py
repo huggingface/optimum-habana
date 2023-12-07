@@ -335,6 +335,12 @@ def check_habana_frameworks_min_version(min_version):
     else:
         return True
 
+def check_habana_frameworks_version(req_version):
+    """
+    Checks if the installed version of `habana_frameworks` is equal to `req_version`.
+    """
+    return get_habana_frameworks_version() == version.parse(req_version)
+
 
 def get_device_name():
     """

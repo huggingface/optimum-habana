@@ -36,7 +36,7 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from optimum.habana.utils import check_habana_frameworks_min_version, check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
 
 
 def override_print(enable):
@@ -132,7 +132,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-        if check_habana_frameworks_min_version("1.13.0"):
+        if check_habana_frameworks_version("1.13.0"):
             if model.config.model_type == "falcon":
                 args.skip_hash_with_views = True
             model = wrap_in_hpu_graph(model, hash_with_views=not args.skip_hash_with_views)
