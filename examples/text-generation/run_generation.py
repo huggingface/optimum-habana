@@ -215,7 +215,7 @@ def setup_parser(parser):
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
-        help="Whether to enable Habana Flash Attention.",
+        help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
 
     args = parser.parse_args()

@@ -539,7 +539,8 @@ class GaudiLlamaModel(LlamaModel):
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         # None for past_key_value
-                        return module(*inputs, past_key_value, output_attentions, attn_softmax_bf16=attn_softmax_bf16)
+                        return module(*inputs, past_key_value, output_attentions, attn_softmax_bf16=attn_softmax_bf16,
+                                      use_flash_attention=use_flash_attention)
 
                     return custom_forward
 
@@ -727,6 +728,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "trim_logits": kwargs.get("trim_logits"),
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
                 "reuse_cache": reuse_cache,
+                "use_flash_attention": kwargs.get("use_flash_attention")
             }
         )
         return model_inputs
