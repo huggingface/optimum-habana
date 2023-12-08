@@ -231,7 +231,7 @@ class DataArguments:
     )
     sql_prompt: bool = field(
         default=False,
-        metadata={"help": "indicate it's sql style prompt"},
+        metadata={"help": "Whether to have a SQL style prompt"},
     )
 
 
