@@ -476,8 +476,7 @@ python ../gaudi_spawn.py \
     --lora_rank 8 \
     --do_eval \
     --validation_split_percentage 10 \
-    --use_cache False \
-
+    --use_cache False
 ```
 
 - Multi-card finetuning of Falcon-40B:
