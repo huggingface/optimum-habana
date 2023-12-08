@@ -120,6 +120,19 @@ def setup_device(args):
     return torch.device(args.device)
 
 
+# patching LinearAllreduce to use ScopedLinearAllReduce
+def patch_scoped_linear_all_reduce(model):
+    from deepspeed.module_inject.layers import LinearAllreduce
+
+    from optimum.habana.transformers.models.modeling_all_models import ScopedLinearAllReduce
+
+    for name, module in model.named_children():
+        if type(module) is LinearAllreduce:
+            SL = ScopedLinearAllReduce(mod=module)
+            setattr(model, name, SL)
+        patch_scoped_linear_all_reduce(module)
+
+
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
 
@@ -194,6 +207,8 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     model = deepspeed.init_inference(model, **ds_inference_kwargs)
     model = model.module
+    if model.config.model_type == "llama":
+        patch_scoped_linear_all_reduce(model)
     return model
 
 

@@ -32,6 +32,7 @@ from .models import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaForCausalLM,
+    GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiMistralForCausalLM,
     GaudiMptForCausalLM,
@@ -240,6 +241,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
     transformers.models.llama.modeling_llama.LlamaModel = GaudiLlamaModel
     transformers.models.llama.modeling_llama.LlamaAttention = GaudiLlamaAttention
+    transformers.models.llama.modeling_llama.LlamaMLP = GaudiLlamaMLP
     transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
 
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
