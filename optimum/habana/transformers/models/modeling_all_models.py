@@ -111,7 +111,7 @@ def gaudi_conv1d_forward(self, x):
     return x
 
 
-# Splitting Deeppspeed LinearAllReduce to three parts to avoid redundant memory consumption
+# Splitting DeepSpeed LinearAllReduce to three parts to avoid redundant memory consumption
 class ScopedLinearAllReduce(torch.nn.Module):
     def __init__(self, mod, *args, **kwargs):
         self.__dict__.update(mod.__dict__)

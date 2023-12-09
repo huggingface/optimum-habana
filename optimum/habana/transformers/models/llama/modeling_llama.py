@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from torch import nn
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
@@ -81,7 +80,7 @@ def gaudi_llama_repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tens
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 
-class Matmul(nn.Module):
+class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
