@@ -582,7 +582,9 @@ class GaudiGenerationMixin(GenerationMixin):
             or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
-        model_kwargs["reduce_recompile"] = (generation_config.reduce_recompile, False)[generation_config.reduce_recompile is None]
+        model_kwargs["reduce_recompile"] = (generation_config.reduce_recompile, False)[
+            generation_config.reduce_recompile is None
+        ]
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
         if generation_config.reuse_cache:
