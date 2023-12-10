@@ -208,9 +208,10 @@ def setup_parser(parser):
     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
     parser.add_argument(
         "--simulate_dyn_prompt",
-        default="",
-        type=str,
-        help="If empty static prompt is used. If a comma separated list of integers are passed, we warmup and use those shapes for prompt length",
+        default=None,
+        type=int,
+        nargs="*",
+        help="If empty, static prompt is used. If a comma separated list of integers is passed, we warmup and use those shapes for prompt length.",
     )
     parser.add_argument(
         "--reduce_recompile",
@@ -303,10 +304,7 @@ def main():
         HabanaProfile.disable()
         # Compilation
         logger.info("Graph compilation...")
-        if len(args.simulate_dyn_prompt) > 0:
-            dyn_prompt_lens = [int(k) for k in args.simulate_dyn_prompt.split(",")]
-        else:
-            dyn_prompt_lens = None
+        dyn_prompt_lens = args.simulate_dyn_prompt
         t0 = time.perf_counter()
         # The first three iterations take longer because of graph compilation
         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
