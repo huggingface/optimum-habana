@@ -270,8 +270,6 @@ def adapt_transformers_to_gaudi():
     # TODO: revisit this when switching to Transformers v4.33
     # see https://github.com/huggingface/transformers/pull/25394
     # Hack for running T5 with DeepSpeed Zero-3
-    transformers.modeling_utils.PreTrainedModel._get_resized_embeddings = _gaudi_get_resized_embeddings
-    transformers.modeling_utils.PreTrainedModel._get_resized_lm_head = _gaudi_get_resized_lm_head
     # Dropout kernel improvement for Flan-T5
     transformers.models.t5.modeling_t5.T5Stack.forward = gaudi_T5Stack_forward
     transformers.models.t5.modeling_t5.T5LayerSelfAttention = gaudi_T5LayerSelfAttention_forward
