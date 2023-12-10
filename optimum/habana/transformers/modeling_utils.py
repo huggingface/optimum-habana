@@ -272,7 +272,7 @@ def adapt_transformers_to_gaudi():
     # Hack for running T5 with DeepSpeed Zero-3
     # Dropout kernel improvement for Flan-T5
     transformers.models.t5.modeling_t5.T5Stack.forward = gaudi_T5Stack_forward
-    transformers.models.t5.modeling_t5.T5LayerSelfAttention = gaudi_T5LayerSelfAttention_forward
+    transformers.models.t5.modeling_t5.T5LayerSelfAttention.forward = gaudi_T5LayerSelfAttention_forward
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.forward = gaudi_T5ForConditionalGeneration_forward
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.prepare_inputs_for_generation = (
         gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation
