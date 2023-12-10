@@ -485,7 +485,6 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
-        torch_dtype=torch.bfloat16 if mixed_precision else torch.float32,
     )
     model = AutoModelForSeq2SeqLM.from_pretrained(
         model_args.model_name_or_path,
@@ -495,7 +494,6 @@ def main():
         revision=model_args.model_revision,
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
-        torch_dtype=torch.bfloat16 if mixed_precision else torch.float32,
     )
 
     is_bart = model.config.model_type == "bart"

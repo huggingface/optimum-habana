@@ -2010,7 +2010,6 @@ class GaudiGenerationMixin(GenerationMixin):
         beam_scores = torch.zeros((batch_size, num_beams), dtype=torch.float, device=input_ids.device)
         beam_scores[:, 1:] = -1e9
         beam_scores = beam_scores.view((batch_size * num_beams,))
-        this_peer_finished = False  # used by synced_gpus only
 
         if self.generation_config.static_shapes:
             beam_trace_scores = torch.zeros(
@@ -2267,7 +2266,7 @@ class GaudiGenerationMixin(GenerationMixin):
             hb_profer.step()
             if self.generation_config.static_shapes:
                 is_min_length_reached = (
-                    self.generation_config.min_length and cur_len > self.generation_config.min_length
+                    self.generation_config.min_length and cur_len >= self.generation_config.min_length
                 )
                 if (
                     self.generation_config.early_stopping

@@ -38,8 +38,6 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
-    GaudiT5LayerSelfAttention,
-    GaudiT5Stack,
     _gaudi_get_resized_embeddings,
     _gaudi_get_resized_lm_head,
     # _gaudi_wav2vec2_compute_mask_indices,
@@ -97,6 +95,8 @@ from .models import (
     gaudi_T5Block_forward,
     gaudi_T5ForConditionalGeneration_forward,
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_T5LayerSelfAttention_forward,
+    gaudi_T5Stack_forward,
     gaudi_vit_self_attention_forward,
     # gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
@@ -275,8 +275,8 @@ def adapt_transformers_to_gaudi():
     transformers.modeling_utils.PreTrainedModel._get_resized_embeddings = _gaudi_get_resized_embeddings
     transformers.modeling_utils.PreTrainedModel._get_resized_lm_head = _gaudi_get_resized_lm_head
     # Dropout kernel improvement for Flan-T5
-    transformers.models.t5.modeling_t5.T5Stack = GaudiT5Stack
-    transformers.models.t5.modeling_t5.T5LayerSelfAttention = GaudiT5LayerSelfAttention
+    transformers.models.t5.modeling_t5.T5Stack.forward = gaudi_T5Stack_forward
+    transformers.models.t5.modeling_t5.T5LayerSelfAttention = gaudi_T5LayerSelfAttention_forward
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.forward = gaudi_T5ForConditionalGeneration_forward
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.prepare_inputs_for_generation = (
         gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation
