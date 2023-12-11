@@ -838,7 +838,7 @@ class GaudiTrainer(Trainer):
                         if self.model.generation_config.attn_softmax_bf16:
                             inputs["attn_softmax_bf16"] = True
                         if self.model.generation_config.use_flash_attention:
-                            inputs["use_flash_attention"] = False
+                            inputs["use_flash_attention"] = True
 
                 # TODO: keep syncs for fast DDP?
                 with self.accelerator.accumulate(model):
@@ -1539,7 +1539,7 @@ class GaudiTrainer(Trainer):
                     if self.model.generation_config.attn_softmax_bf16:
                         inputs["attn_softmax_bf16"] = True
                     if self.model.generation_config.use_flash_attention:
-                        inputs["use_flash_attention"] = False
+                        inputs["use_flash_attention"] = True
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)

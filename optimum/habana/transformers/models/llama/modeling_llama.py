@@ -36,6 +36,7 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
+
 def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
     cur = cur.to(dtype=prev.dtype)
@@ -164,6 +165,7 @@ class GaudiLlamaAttention(LlamaAttention):
         - optimize KV cache
         - add new args attn_softmax_bf16
         - add new args reuse_cache
+        - add new args use_flash_attention
         """
         bsz, q_len, _ = hidden_states.size()
 
@@ -230,10 +232,13 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
+
             if q_len == 1:
                 # next token
                 with ht.sdp_kernel(enable_recompute=False):
-                    attn_output = FusedSDPA.apply(query_states, key_states, value_states, attention_mask, 0.0, False, None)
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
             else:
                 # first token
                 with ht.sdp_kernel(enable_recompute=False):
@@ -409,7 +414,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             token_idx,
             attn_softmax_bf16,
             reuse_cache,
-            use_flash_attention
+            use_flash_attention,
         )
         return output_attn, attn_weights, present_key_value
 
@@ -539,8 +544,13 @@ class GaudiLlamaModel(LlamaModel):
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         # None for past_key_value
-                        return module(*inputs, past_key_value, output_attentions, attn_softmax_bf16=attn_softmax_bf16,
-                                      use_flash_attention=use_flash_attention)
+                        return module(
+                            *inputs,
+                            past_key_value,
+                            output_attentions,
+                            attn_softmax_bf16=attn_softmax_bf16,
+                            use_flash_attention=use_flash_attention,
+                        )
 
                     return custom_forward
 
@@ -728,7 +738,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "trim_logits": kwargs.get("trim_logits"),
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
                 "reuse_cache": reuse_cache,
-                "use_flash_attention": kwargs.get("use_flash_attention")
+                "use_flash_attention": kwargs.get("use_flash_attention"),
             }
         )
         return model_inputs
