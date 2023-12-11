@@ -109,3 +109,25 @@ def gaudi_conv1d_forward(self, x):
     bias = self.bias.view(bias_shape)
     x = x + bias
     return x
+
+
+# Splitting DeepSpeed LinearAllReduce to three parts to avoid redundant memory consumption
+class ScopedLinearAllReduce(torch.nn.Module):
+    def __init__(self, mod, *args, **kwargs):
+        self.__dict__.update(mod.__dict__)
+
+    def forward(self, input):
+        # pre_all_reduce
+
+        output = torch.matmul(input, self.weight.transpose(-1, -2))
+        return output
+
+    def all_reduce(self, input):
+        if self.mp_group is not None:
+            from deepspeed import comm as dist
+
+            dist.inference_all_reduce(input, group=self.mp_group)
+
+    def post_all_reduce(self, input):
+        output = input + self.bias if (self.bias is not None) else input
+        return output
