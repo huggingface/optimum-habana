@@ -572,7 +572,6 @@ class GaudiGenerationMixin(GenerationMixin):
         else:
             model_kwargs["use_cache"] = generation_config.use_cache
         self.generation_config.max_length = generation_config.max_length
-        model_kwargs["max_output_length"] = generation_config.max_length or generation_config.max_new_tokens
         accepts_attention_mask = "attention_mask" in set(inspect.signature(self.forward).parameters.keys())
         requires_attention_mask = "encoder_outputs" not in model_kwargs
 

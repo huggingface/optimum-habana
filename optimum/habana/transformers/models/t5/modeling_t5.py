@@ -59,7 +59,6 @@ def gaudi_T5Attention_forward(
     use_cache=False,
     output_attentions=False,
     token_idx=None,
-    max_output_length=0,
 ):
     # Input is (batch_size, seq_length, dim)
     # Mask is (batch_size, key_length) (non-causal) or (batch_size, key_length, key_length)
@@ -199,7 +198,6 @@ def gaudi_T5LayerSelfAttention_forward(
     use_cache=False,
     output_attentions=False,
     token_idx=None,
-    max_output_length=0,
 ):
     normed_hidden_states = self.layer_norm(hidden_states)
     attention_output = self.SelfAttention(
@@ -211,7 +209,6 @@ def gaudi_T5LayerSelfAttention_forward(
         use_cache=use_cache,
         output_attentions=output_attentions,
         token_idx=token_idx,
-        max_output_length=max_output_length,
     )
     hidden_states = hidden_states + self.dropout(attention_output[0])
     outputs = (hidden_states,) + attention_output[1:]  # add attentions if we output them
@@ -233,7 +230,6 @@ def gaudi_T5Block_forward(
     output_attentions=False,
     return_dict=True,
     token_idx=None,
-    max_output_length=0,
 ):
     if past_key_value is not None:
         if not self.is_decoder:
@@ -261,7 +257,6 @@ def gaudi_T5Block_forward(
         use_cache=use_cache,
         output_attentions=output_attentions,
         token_idx=token_idx,
-        max_output_length=max_output_length,
     )
     hidden_states, present_key_value_state = self_attention_outputs[:2]
     attention_outputs = self_attention_outputs[2:]  # Keep self-attention outputs and relative position weights
@@ -323,7 +318,6 @@ def gaudi_T5Stack_forward(
     output_hidden_states=None,
     return_dict=None,
     token_idx=None,
-    max_output_length=0,
 ):
     use_cache = use_cache if use_cache is not None else self.config.use_cache
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -450,7 +444,6 @@ def gaudi_T5Stack_forward(
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 token_idx=token_idx,
-                max_output_length=max_output_length,
             )
 
         # layer_outputs is a tuple with:
@@ -531,7 +524,6 @@ def gaudi_T5ForConditionalGeneration_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.LongTensor] = None,
-    max_output_length: Optional[int] = 0,
 ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
     use_cache = use_cache if use_cache is not None else self.config.use_cache
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -582,7 +574,6 @@ def gaudi_T5ForConditionalGeneration_forward(
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
         token_idx=token_idx,
-        max_output_length=max_output_length,
     )
 
     sequence_output = decoder_outputs[0]
@@ -631,7 +622,6 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
     use_cache=None,
     encoder_outputs=None,
     token_idx=None,
-    max_output_length=0,
     **kwargs,
 ):
     # cut decoder_input_ids if past is used
@@ -652,5 +642,4 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
         "cross_attn_head_mask": cross_attn_head_mask,
         "use_cache": use_cache,
         "token_idx": token_idx,
-        "max_output_length": max_output_length,
     }
