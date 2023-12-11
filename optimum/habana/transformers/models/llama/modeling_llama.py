@@ -151,6 +151,14 @@ class GaudiLlamaAttention(LlamaAttention):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
     ):
+        """
+        Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+        The only differences are:
+        - add new args token_idx
+        - optimize KV cache
+        - add new args attn_softmax_bf16
+        - add new args reuse_cache
+        """
         bsz, q_len, _ = hidden_states.size()
 
         if self.config.pretraining_tp > 1:
