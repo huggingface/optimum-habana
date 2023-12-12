@@ -11,6 +11,16 @@ class TestGaudiTextGenPipeline(unittest.TestCase):
         self.max_new_tokens = 100
         self.pipe = GaudiTextGenerationPipeline(
             model_name_or_path="meta-llama/Llama-2-7b-chat-hf",
+            use_bf16=True,
+            max_new_tokens=self.max_new_tokens,
+            temperature=0.2,
+            top_p=0.95,
+            repetition_penalty=1.15,
+            do_sample=True,
+        )
+        self.pipe_float = GaudiTextGenerationPipeline(
+            model_name_or_path="meta-llama/Llama-2-7b-chat-hf",
+            use_bf16=False,
             max_new_tokens=self.max_new_tokens,
             temperature=0.2,
             top_p=0.95,
@@ -39,7 +49,7 @@ Answer: """
     def test_short_prompt_input(self):
         """Test llm with short prompt and measure latency and throughput"""
         start_time = time.perf_counter()
-        output = self.pipe(self.short_prompt)
+        output = self.pipe_float(self.short_prompt)
         end_time = time.perf_counter()
         print(f"Generated Text: {repr(output[0]['generated_text'])}")
         print(f"Latency: {end_time-start_time} seconds")
@@ -60,6 +70,17 @@ Answer: """
         """Test llm with question answering prompt and measure latency and throughput"""
         start_time = time.perf_counter()
         output = self.pipe(self.qa_prompt)
+        end_time = time.perf_counter()
+        print(f"Generated Text: {repr(output[0]['generated_text'])}")
+        print(f"Latency: {end_time-start_time} seconds")
+        throughput = self.max_new_tokens / (end_time - start_time)
+        print(f"Throughput (including tokenization): {throughput} tokens/second")
+
+    def test_float_pipeline(self):
+        """Test pipeline with float dtype"""
+        self.pipe_float.compile_graph()
+        start_time = time.perf_counter()
+        output = self.pipe_float(self.short_prompt)
         end_time = time.perf_counter()
         print(f"Generated Text: {repr(output[0]['generated_text'])}")
         print(f"Latency: {end_time-start_time} seconds")

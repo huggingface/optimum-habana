@@ -19,8 +19,12 @@ def setup_parser(parser):
     parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
     parser.add_argument("--temperature", type=float, default=1.0, help="Temperature value for text generation.")
     parser.add_argument("--top_p", type=float, default=1.0, help="Top_p value for sampling output probabilities.")
-    parser.add_argument("--repetition_penalty", type=float, default=1.0, help="Repetition penalty for text generation.")
-    parser.add_argument("--do_sample", action="store_true", help="Whether to perfrom sampling instead of greedy decoding.")
+    parser.add_argument(
+        "--repetition_penalty", type=float, default=1.0, help="Repetition penalty for text generation."
+    )
+    parser.add_argument(
+        "--do_sample", action="store_true", help="Whether to perfrom sampling instead of greedy decoding."
+    )
     parser.add_argument("--prompt", type=str, required=True, help="Input prompt for text generation.")
 
     args = parser.parse_args()
@@ -32,19 +36,21 @@ def main():
     args = setup_parser(parser)
 
     if args.do_sample:
-        pipe = GaudiTextGenerationPipeline(model_name_or_path=args.model_name_or_path, 
-                                           use_bf16=args.bf16, 
-                                           max_new_tokens=args.max_new_tokens, 
-                                           temperature=args.temperature, 
-                                           top_p=args.top_p,
-                                           repetition_penalty=args.repetition_penalty,
-                                           do_sample=True,
+        pipe = GaudiTextGenerationPipeline(
+            model_name_or_path=args.model_name_or_path,
+            use_bf16=args.bf16,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            repetition_penalty=args.repetition_penalty,
+            do_sample=True,
         )
     else:
-        pipe = GaudiTextGenerationPipeline(model_name_or_path=args.model_name_or_path, 
-                                           use_bf16=args.bf16, 
-                                           max_new_tokens=args.max_new_tokens, 
-                                           repetition_penalty=args.repetition_penalty,
+        pipe = GaudiTextGenerationPipeline(
+            model_name_or_path=args.model_name_or_path,
+            use_bf16=args.bf16,
+            max_new_tokens=args.max_new_tokens,
+            repetition_penalty=args.repetition_penalty,
         )
     pipe.compile_graph()
 
@@ -55,4 +61,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
