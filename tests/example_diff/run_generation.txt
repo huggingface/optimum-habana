@@ -337,13 +337,20 @@
 >         default=None,
 >         type=str,
 >         help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
-314c92,164
+314c92,94
 <         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
 ---
 >         "--do_sample",
 >         action="store_true",
 >         help="Whether to use sampling for generation.",
->     )
+316,321c96,207
+<     parser.add_argument("--k", type=int, default=0)
+<     parser.add_argument("--p", type=float, default=0.9)
+< 
+<     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
+<     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
+<     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
+---
 >     parser.add_argument(
 >         "--num_beams",
 >         default=1,
@@ -413,29 +420,14 @@
 >         default="main",
 >         type=str,
 >         help="The specific model version to use (can be a branch name, tag name or commit id).",
-316,323d165
-<     parser.add_argument("--k", type=int, default=0)
-<     parser.add_argument("--p", type=float, default=0.9)
-< 
-<     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
-<     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
-<     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
-< 
-<     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
-325c167
-<         "--use_cpu",
----
+>     )
+>     parser.add_argument(
 >         "--attn_softmax_bf16",
-327c169,170
-<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
----
+>         action="store_true",
 >         help="Whether to run attention softmax layer in lower precision provided that the model supports it and "
 >         "is also running in lower precision.",
-329d171
-<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
-331c173,193
-<         "--fp16",
----
+>     )
+>     parser.add_argument(
 >         "--output_dir",
 >         default=None,
 >         type=str,
@@ -457,14 +449,9 @@
 >     )
 >     parser.add_argument(
 >         "--limit_hpu_graphs",
-333c195
-<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
----
+>         action="store_true",
 >         help="Skip HPU Graph usage for first token to save memory",
-335,336c197,207
-<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
-<     args = parser.parse_args()
----
+>     )
 >     parser.add_argument(
 >         "--reuse_cache",
 >         action="store_true",
@@ -476,27 +463,47 @@
 >         help="Whether to skip hash with views for HPU graphs. When skip_hash_with_views is not used, the input to HPU graphs includes both view and base tensors.",
 >     )
 >     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
-338,339c209,214
+323d208
+<     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
+325c210
+<         "--use_cpu",
+---
+>         "--kv_cache_fp8",
+327c212
+<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
+---
+>         help="Store kv-cache in float8 when kv-cache is used",
+329c214
+<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+---
+>     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
+331c216
+<         "--fp16",
+---
+>         "--use_flash_attention",
+333c218
+<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
+---
+>         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
+335,336d219
+<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
+<     args = parser.parse_args()
+338,339c221
 <     # Initialize the distributed state.
 <     distributed_state = PartialState(cpu=args.use_cpu)
 ---
->     parser.add_argument(
->         "--kv_cache_fp8",
->         action="store_true",
->         help="Store kv-cache in float8 when kv-cache is used",
->     )
->     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
-341c216
-<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
----
 >     args = parser.parse_args()
-343,344c218,219
-<     if args.seed is not None:
-<         set_seed(args.seed)
+341c223,224
+<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
 >     if not args.use_hpu_graphs:
 >         args.limit_hpu_graphs = False
-346,373c221
+343,344c226
+<     if args.seed is not None:
+<         set_seed(args.seed)
+---
+>     return args
+346,373d227
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -525,14 +532,17 @@
 <     if requires_preprocessing:
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
----
->     return args
-375,378d222
+375,378c229,232
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
 <         else:
 <             tokenizer_kwargs = {}
-380,386c224,229
+---
+> def main():
+>     parser = argparse.ArgumentParser()
+>     args = setup_parser(parser)
+>     model, tokenizer, generation_config = initialize_model(args, logger)
+380,386c234
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
@@ -541,13 +551,8 @@
 <         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
 <     encoded_prompt = encoded_prompt.to(distributed_state.device)
 ---
-> def main():
->     parser = argparse.ArgumentParser()
->     args = setup_parser(parser)
->     model, tokenizer, generation_config = initialize_model(args, logger)
-> 
 >     import habana_frameworks.torch.hpu as torch_hpu
-388,389c231,342
+388,389c236,347
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
@@ -663,7 +668,7 @@
 >         print(f"Graph compilation duration          = {compilation_duration} seconds")
 >         print(separator)
 >         print()
-391c344,359
+391c349,364
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -682,7 +687,7 @@
 >             .shuffle()
 >             .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
 >         )
-393,399c361,368
+393,399c366,373
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -699,7 +704,7 @@
 >             logger.info(
 >                 f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >             )
-401,439c370,390
+401,439c375,395
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -761,7 +766,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-440a392,469
+440a397,474
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
@@ -840,13 +845,13 @@
 >             )
 >             print(separator)
 >         t_end = time.time()
-442,443c471,472
+442,443c476,477
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
 >         throughput = total_new_tokens_generated / duration
 >         # Print Stats
-445c474,486
+445c479,491
 <     return generated_sequences
 ---
 >         stats = f"Throughput (including tokenization) = {throughput} tokens/second"
