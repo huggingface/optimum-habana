@@ -1,3 +1,4 @@
+import os
 import json
 import math
 import re
@@ -67,8 +68,9 @@ def _test_text_generation(
 
     if prompt:
         path_to_baseline = BASELINE_DIRECTORY / Path(model_name.split("/")[-1].replace("-", "_")).with_suffix(".json")
+        device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi"
         with path_to_baseline.open("r") as json_file:
-            baseline = json.load(json_file)["prompt"]
+            baseline = json.load(json_file)[device]["prompt"]
 
         distribution = "single_card" if not deepspeed else "deepspeed"
 
