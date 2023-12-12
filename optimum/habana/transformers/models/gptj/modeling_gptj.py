@@ -390,7 +390,7 @@ def gaudi_gptj_model_forward(
             def create_custom_forward(module):
                 def custom_forward(*inputs):
                     # None for past_key_value
-                    return module(*inputs, use_cache, output_attentions, token_idx, sin, cos)
+                    return module(*inputs, use_cache, output_attentions, None, sin, cos)
 
                 return custom_forward
 
