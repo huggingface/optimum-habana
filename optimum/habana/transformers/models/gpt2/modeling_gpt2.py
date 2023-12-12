@@ -3,76 +3,15 @@ from typing import Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel, logger
-from transformers.pytorch_utils import Conv1D, find_pruneable_heads_and_indices, prune_conv1d_layer
+from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2LMHeadModel, logger
 
 
-class GaudiGPT2Attention(torch.nn.Module):
+class GaudiGPT2Attention(GPT2Attention):
     """
     Copied from GPT2Attention: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
     The only differences are:
-    - `self.bias` is a torch.uint8 and not a torch.bool
-    - it is casted to bool before being used in torch.where
     - optimize KV cache
     """
-
-    def __init__(self, config, is_cross_attention=False, layer_idx=None):
-        super().__init__()
-
-        max_positions = config.max_position_embeddings
-        self.register_buffer(
-            "bias",
-            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.uint8)).view(
-                1, 1, max_positions, max_positions
-            ),
-            persistent=False,
-        )
-        self.register_buffer("masked_bias", torch.tensor(-1e4), persistent=False)
-
-        self.embed_dim = config.hidden_size
-        self.num_heads = config.num_attention_heads
-        self.head_dim = self.embed_dim // self.num_heads
-        self.split_size = self.embed_dim
-        if self.head_dim * self.num_heads != self.embed_dim:
-            raise ValueError(
-                f"`embed_dim` must be divisible by num_heads (got `embed_dim`: {self.embed_dim} and `num_heads`:"
-                f" {self.num_heads})."
-            )
-
-        self.scale_attn_weights = config.scale_attn_weights
-        self.is_cross_attention = is_cross_attention
-
-        # Layer-wise attention scaling, reordering, and upcasting
-        self.scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx
-        self.layer_idx = layer_idx
-        self.reorder_and_upcast_attn = config.reorder_and_upcast_attn
-
-        if self.is_cross_attention:
-            self.c_attn = Conv1D(2 * self.embed_dim, self.embed_dim)
-            self.q_attn = Conv1D(self.embed_dim, self.embed_dim)
-        else:
-            self.c_attn = Conv1D(3 * self.embed_dim, self.embed_dim)
-        self.c_proj = Conv1D(self.embed_dim, self.embed_dim)
-
-        self.attn_dropout = torch.nn.Dropout(config.attn_pdrop)
-        self.resid_dropout = torch.nn.Dropout(config.resid_pdrop)
-
-        self.pruned_heads = set()
-
-    def prune_heads(self, heads):
-        if len(heads) == 0:
-            return
-        heads, index = find_pruneable_heads_and_indices(heads, self.num_heads, self.head_dim, self.pruned_heads)
-        index_attn = torch.cat([index, index + self.split_size, index + (2 * self.split_size)])
-
-        # Prune conv1d layers
-        self.c_attn = prune_conv1d_layer(self.c_attn, index_attn, dim=1)
-        self.c_proj = prune_conv1d_layer(self.c_proj, index, dim=0)
-
-        # Update hyper params
-        self.split_size = (self.split_size // self.num_heads) * (self.num_heads - len(heads))
-        self.num_heads = self.num_heads - len(heads)
-        self.pruned_heads = self.pruned_heads.union(heads)
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None):
         key = key.contiguous()
@@ -91,7 +30,7 @@ class GaudiGPT2Attention(torch.nn.Module):
         if not self.is_cross_attention:
             # if only "normal" attention layer implements causal mask
             query_length, key_length = query.size(-2), key.size(-2)
-            causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
+            causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length]
             mask_value = torch.finfo(attn_weights.dtype).min
             # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
             # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
@@ -141,7 +80,7 @@ class GaudiGPT2Attention(torch.nn.Module):
         if not self.is_cross_attention:
             # if only "normal" attention layer implements causal mask
             query_length, key_length = query.size(-2), key.size(-2)
-            causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
+            causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length]
             mask_value = torch.finfo(attn_weights.dtype).min
             # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
             # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
@@ -167,22 +106,6 @@ class GaudiGPT2Attention(torch.nn.Module):
         attn_output = torch.matmul(attn_weights, value)
 
         return attn_output, attn_weights
-
-    def _split_heads(self, tensor, num_heads, attn_head_size):
-        """
-        Splits hidden_size dim into attn_head_size and num_heads
-        """
-        new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
-        tensor = tensor.view(new_shape)
-        return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
-
-    def _merge_heads(self, tensor, num_heads, attn_head_size):
-        """
-        Merges attn_head_size dim and num_attn_heads dim into hidden_size
-        """
-        tensor = tensor.permute(0, 2, 1, 3).contiguous()
-        new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
-        return tensor.view(new_shape)
 
     def forward(
         self,
