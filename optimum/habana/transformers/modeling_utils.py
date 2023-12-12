@@ -59,6 +59,7 @@ from .models import (
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
     gaudi_conv1d_forward,
+    gaudi_distilbert_multiheadselfattention_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_attention_forward,
@@ -268,3 +269,8 @@ def adapt_transformers_to_gaudi():
     transformers.models.mistral.modeling_mistral.MistralModel.forward = gaudi_mistral_model_forward
     transformers.models.mistral.modeling_mistral.MistralAttention.forward = gaudi_mistral_attn_forward
     transformers.models.mistral.modeling_mistral.MistralDecoderLayer.forward = gaudi_mistral_decoder_layer_forward
+
+    # Optimization for distilbert on Gaudi for torch.compile
+    transformers.models.distilbert.modeling_distilbert.MultiHeadSelfAttention.forward = (
+        gaudi_distilbert_multiheadselfattention_forward
+    )

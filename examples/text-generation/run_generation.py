@@ -304,6 +304,14 @@ def main():
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
+        print(
+            "LIBIN DEBUG THROUGHPUT ",
+            throughput,
+            " total_new_tokens_generated ",
+            total_new_tokens_generated,
+            ", duration ",
+            duration,
+        )
 
         print()
         print("Input/outputs:")

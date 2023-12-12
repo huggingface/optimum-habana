@@ -25,6 +25,9 @@ from .codegen import (
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
 )
+from .distilbert import (
+    gaudi_distilbert_multiheadselfattention_forward,
+)
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
