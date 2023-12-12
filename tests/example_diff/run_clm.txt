@@ -92,13 +92,13 @@
 >         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
 499a527
 > 
-594c622
+597c625
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-595a624
+598a627
 >         gaudi_config=gaudi_config,
-602,605c631,632
+605,608c634,635
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -106,7 +106,7 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-620,623c647,653
+623,626c650,656
 <         max_train_samples = (
 <             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 <         )
@@ -119,9 +119,9 @@
 >                 data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-632d661
+635d664
 < 
-635,636c664,669
+638,639c667,672
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 ---
@@ -131,7 +131,7 @@
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 > 
-659,663d691
+662,666d694
 < 
 < 
 < def _mp_fn(index):
