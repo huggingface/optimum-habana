@@ -260,17 +260,6 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for t5 on Gaudi
     transformers.models.t5.modeling_t5.T5LayerNorm.forward = gaudi_t5_layernorm_forward
-
-    # Optimization for mpt on Gaudi
-    transformers.models.mpt.modeling_mpt.MptForCausalLM = GaudiMptForCausalLM
-    transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
-    transformers.models.mpt.modeling_mpt.MptAttention.forward = gaudi_mpt_attention_forward
-    transformers.models.mpt.modeling_mpt.MptBlock.forward = gaudi_mpt_block_forward
-
-    # TODO: revisit this when switching to Transformers v4.33
-    # see https://github.com/huggingface/transformers/pull/25394
-    # Hack for running T5 with DeepSpeed Zero-3
-    # Dropout kernel improvement for Flan-T5
     transformers.models.t5.modeling_t5.T5Stack.forward = gaudi_T5Stack_forward
     transformers.models.t5.modeling_t5.T5LayerSelfAttention.forward = gaudi_T5LayerSelfAttention_forward
     transformers.models.t5.modeling_t5.T5ForConditionalGeneration.forward = gaudi_T5ForConditionalGeneration_forward
@@ -279,6 +268,12 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
     transformers.models.t5.modeling_t5.T5Block.forward = gaudi_T5Block_forward
+
+    # Optimization for mpt on Gaudi
+    transformers.models.mpt.modeling_mpt.MptForCausalLM = GaudiMptForCausalLM
+    transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
+    transformers.models.mpt.modeling_mpt.MptAttention.forward = gaudi_mpt_attention_forward
+    transformers.models.mpt.modeling_mpt.MptBlock.forward = gaudi_mpt_block_forward
 
     # Optimization for mistral on Gaudi
     transformers.models.mistral.modeling_mistral.MistralForCausalLM = GaudiMistralForCausalLM
