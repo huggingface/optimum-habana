@@ -28,7 +28,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
     An end-to-end text-generation pipeline that can used to initialize LangChain classes. It supports both single-hpu and multi-hpu inference.
     """
 
-    def __init__(self, model_name_or_path=None, **kwargs):
+    def __init__(self, model_name_or_path=None, use_bf16=True, **kwargs):
         self.use_deepspeed = "deepspeed" in os.environ["_"]
 
         if self.use_deepspeed:
@@ -48,7 +48,10 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
 
-        model_dtype = torch.bfloat16
+        if self.use_deepspeed or use_bf16:
+            model_dtype = torch.bfloat16
+        else:
+            model_dtype = torch.float
 
         if self.use_deepspeed:
             config = AutoConfig.from_pretrained(model_name_or_path)
