@@ -141,6 +141,14 @@ class ModelArguments:
             )
         },
     )
+    use_flash_attention: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to use Habana flash attention for fine-tuning. The current support is limited to Llama only.",
+            )
+        },
+    )
     load_meta_device: bool = field(
         default=False,
         metadata={
@@ -519,6 +527,8 @@ def main():
         model.generation_config.eos_token_id = 2
         if model_args.attn_softmax_bf16:
             model.generation_config.attn_softmax_bf16 = True
+        if model_args.use_flash_attention:
+            model.generation_config.use_flash_attention = True
 
     if hasattr(model.generation_config, "pad_token_id") and model.generation_config.pad_token_id is not None:
         tokenizer.pad_token_id = model.generation_config.pad_token_id
