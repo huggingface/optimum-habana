@@ -38,7 +38,7 @@ def main():
     if args.do_sample:
         pipe = GaudiTextGenerationPipeline(
             model_name_or_path=args.model_name_or_path,
-            use_bf16=args.bf16,
+            bf16=args.bf16,
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             top_p=args.top_p,
@@ -48,7 +48,7 @@ def main():
     else:
         pipe = GaudiTextGenerationPipeline(
             model_name_or_path=args.model_name_or_path,
-            use_bf16=args.bf16,
+            bf16=args.bf16,
             max_new_tokens=args.max_new_tokens,
             repetition_penalty=args.repetition_penalty,
         )

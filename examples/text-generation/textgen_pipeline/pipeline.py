@@ -1,5 +1,6 @@
 import copy
 import os
+import tempfile
 
 import habana_frameworks.torch.hpu as torch_hpu
 import torch
@@ -28,7 +29,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
     An end-to-end text-generation pipeline that can used to initialize LangChain classes. It supports both single-hpu and multi-hpu inference.
     """
 
-    def __init__(self, model_name_or_path=None, use_bf16=True, **kwargs):
+    def __init__(self, model_name_or_path=None, bf16=True, **kwargs):
         self.use_deepspeed = "deepspeed" in os.environ["_"]
 
         if self.use_deepspeed:
@@ -48,7 +49,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
 
-        if self.use_deepspeed or use_bf16:
+        if self.use_deepspeed or bf16:
             model_dtype = torch.bfloat16
         else:
             model_dtype = torch.float
@@ -76,7 +77,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
 
             if load_to_meta:
                 # model loaded to meta is managed differently
-                checkpoints_json = "checkpoints.json"
+                checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
                 write_checkpoints_json(model_name_or_path, self.local_rank, checkpoints_json)
 
             # Make sure all devices/nodes have access to the model checkpoints
@@ -84,7 +85,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
 
             ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
             if load_to_meta:
-                ds_inference_kwargs["checkpoint"] = checkpoints_json
+                ds_inference_kwargs["checkpoint"] = checkpoints_json.name
 
             model = deepspeed.init_inference(model, **ds_inference_kwargs)
             model = model.module
