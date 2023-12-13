@@ -31,6 +31,8 @@ class GaudiGenerationConfig(GenerationConfig):
         Store kv-cache in float8 when kv-cache is used
     use_flash_attention (`bool`, *optional*):
         Whether to use flash attention optimization.
+    flash_attention_recompute (`bool`, *optional*):
+        Whether to enable recompute if use Habana flash attention.
     """
 
     def __init__(self, **kwargs):
@@ -44,3 +46,4 @@ class GaudiGenerationConfig(GenerationConfig):
         self.bucket_size = kwargs.get("bucket_size", -1)
         self.kv_cache_fp8 = kwargs.get("kv_cache_fp8", None)
         self.use_flash_attention = kwargs.get("use_flash_attention", None)
+        self.flash_attention_recompute = kwargs.get("flash_attention_recompute", None)
