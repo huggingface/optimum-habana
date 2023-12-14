@@ -590,7 +590,7 @@ class GaudiTrainingArguments(TrainingArguments):
                         os.environ[f"{prefix}TRANSFORMER_CLS_TO_WRAP"] = ",".join(
                             self.fsdp_config["transformer_layer_cls_to_wrap"]
                         )
-            prefetch_policy = self.fsdp_config.get("fsdp_backward_prefetch", "NO_PREFETCH")
+            prefetch_policy = self.fsdp_config.get("backward_prefetch", "NO_PREFETCH")
             os.environ[f"{prefix}BACKWARD_PREFETCH"] = prefetch_policy.upper()
             os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefect", "false"))
             os.environ[f"{prefix}SYNC_MODULE_STATES"] = str(self.fsdp_config.get("sync_module_states", "true"))
