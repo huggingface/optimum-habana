@@ -157,6 +157,7 @@ class GaudiLlamaAttention(LlamaAttention):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -166,6 +167,7 @@ class GaudiLlamaAttention(LlamaAttention):
         - add new args attn_softmax_bf16
         - add new args reuse_cache
         - add new args use_flash_attention
+        - add new arg flash_attention_recompute
         """
         bsz, q_len, _ = hidden_states.size()
 
@@ -241,7 +243,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     )
             else:
                 # first token
-                with ht.sdp_kernel(enable_recompute=False):
+                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                     attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
 
         else:
@@ -354,6 +356,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -362,6 +365,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new args attn_softmax_bf16
         - add new args reuse_cache
         - add new args use_flash_attention
+        - add new arg flash_attention_recompute
         """
         residual = hidden_states
         output_pre_attn, self_attn_weights, present_key_value = self.pre_attn(
@@ -375,6 +379,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             attn_softmax_bf16,
             reuse_cache,
             use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
         )
         self.self_attn.attention_all_reduce(output_pre_attn)
         output_post_attn_pre_mlp, residual_mlp = self.post_attn_pre_mlp(output_pre_attn, residual)
@@ -402,6 +407,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         output_attn, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
@@ -415,6 +421,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             attn_softmax_bf16,
             reuse_cache,
             use_flash_attention,
+            flash_attention_recompute,
         )
         return output_attn, attn_weights, present_key_value
 
@@ -462,6 +469,7 @@ class GaudiLlamaModel(LlamaModel):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -470,6 +478,7 @@ class GaudiLlamaModel(LlamaModel):
         - add new args attn_softmax_bf16
         - add new args reuse_cache
         - add new args use_flash_attention
+        - add new arg flash_attention_recompute
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -550,6 +559,7 @@ class GaudiLlamaModel(LlamaModel):
                             output_attentions,
                             attn_softmax_bf16=attn_softmax_bf16,
                             use_flash_attention=use_flash_attention,
+                            flash_attention_recompute=flash_attention_recompute,
                         )
 
                     return custom_forward
@@ -569,6 +579,7 @@ class GaudiLlamaModel(LlamaModel):
                     attn_softmax_bf16=attn_softmax_bf16,
                     reuse_cache=reuse_cache,
                     use_flash_attention=use_flash_attention,
+                    flash_attention_recompute=flash_attention_recompute,
                 )
 
             hidden_states = layer_outputs[0]
@@ -634,6 +645,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -655,6 +667,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
             use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -739,6 +752,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
                 "reuse_cache": reuse_cache,
                 "use_flash_attention": kwargs.get("use_flash_attention"),
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
             }
         )
         return model_inputs
