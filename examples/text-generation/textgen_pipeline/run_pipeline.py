@@ -193,8 +193,10 @@ def main():
             "Peace is the only way",
         ]
 
+    logger.info("Initializing text-generation pipeline...")
     pipe = GaudiTextGenerationPipeline(args, logger)
 
+    logger.info("Running inference...")
     for input_sentence in input_sentences:
         print(f"Prompt: {input_sentence}")
         t0 = time.perf_counter()

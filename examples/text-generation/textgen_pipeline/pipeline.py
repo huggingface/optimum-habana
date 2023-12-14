@@ -13,10 +13,6 @@ except:
 
 
 class GaudiTextGenerationPipeline(TextGenerationPipeline):
-    """
-    An end-to-end text-generation pipeline that can used to initialize LangChain classes. It supports both single-hpu and multi-hpu inference.
-    """
-
     def __init__(self, args, logger):
         self.model, self.tokenizer, self.generation_config = initialize_model(args, logger)
 
