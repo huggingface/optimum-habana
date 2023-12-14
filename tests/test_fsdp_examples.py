@@ -10,20 +10,12 @@ import pytest
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    # Gaudi2 CI baselines
-    MODELS_TO_TEST = {
-        "bf16": [
-            ("bert-base-uncased", "Habana/bert-base-uncased", 2807, 85.4688, "question-answering", 24, 8, "run_qa.py", "full_shard"),
-        ],
-    }
-else:
-    # Gaudi1 CI baselines
-    MODELS_TO_TEST = {
-        "bf16": [
-            ("bert-base-uncased", "Habana/bert-base-uncased", 2807/3.0, 85.4688, "question-answering", 24, 8, "run_qa.py", "full_shard"),
-        ],
-    }
+# Gaudi2 CI baselines
+MODELS_TO_TEST = {
+    "bf16": [
+        ("bert-base-uncased", "Habana/bert-base-uncased", 2807, 85.4688, "question-answering", 24, 8, "run_qa.py", "full_shard"),
+    ],
+}
 
 
 def _test_fsdp(
@@ -38,6 +30,9 @@ def _test_fsdp(
     policy: str,
     world_size: int = 8,
 ):
+    os.environ["PT_HPU_LAZY_MODE"] = "0"
+    os.environ["PT_HPU_EAGER_4_STAGE_PIPELINE_ENABLE"] = "0"  #To be removed later
+    os.environ["PT_HPU_EAGER_PIPELINE_ENABLE"] = "0" #To be removed later
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
 
     # Install question-answering example requirements
