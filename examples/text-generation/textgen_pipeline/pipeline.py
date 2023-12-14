@@ -33,7 +33,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
 
         import habana_frameworks.torch.hpu as torch_hpu
 
-        # Compile Graph
+        logger.info("Graph compilation...")
         for _ in range(3):
             self("Here is my prompt")
         torch_hpu.synchronize()

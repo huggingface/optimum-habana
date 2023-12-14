@@ -34,12 +34,8 @@ def setup_parser(parser):
         type=int,
         default=0,
         help="If > 0 then pad and truncate the input sequences to this specified length of tokens. \
-            if == 0, then truncate to 16 (original default) \
-            if < 0, then do not truncate, use full input prompt",
+            if == 0, then truncate to 100 (default)",
     )
-    parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
-    parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
-    parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     parser.add_argument("--local_rank", type=int, default=0, metavar="N", help="Local process rank.")
     parser.add_argument(
         "--use_kv_cache",
@@ -50,18 +46,6 @@ def setup_parser(parser):
         "--use_hpu_graphs",
         action="store_true",
         help="Whether to use HPU graphs or not. Using HPU graphs should give better latencies.",
-    )
-    parser.add_argument(
-        "--dataset_name",
-        default=None,
-        type=str,
-        help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
-    )
-    parser.add_argument(
-        "--column_name",
-        default=None,
-        type=str,
-        help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
     )
     parser.add_argument(
         "--do_sample",
@@ -124,7 +108,6 @@ def setup_parser(parser):
         type=str,
         help="Optional argument to give a path to a PEFT model.",
     )
-    parser.add_argument("--num_return_sequences", type=int, default=1)
     parser.add_argument(
         "--token",
         default=None,
@@ -145,24 +128,12 @@ def setup_parser(parser):
         "is also running in lower precision.",
     )
     parser.add_argument(
-        "--output_dir",
-        default=None,
-        type=str,
-        help="Output directory to store results in.",
-    )
-    parser.add_argument(
         "--bucket_size",
         default=-1,
         type=int,
         help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
             then we use `shape = prompt_length + max_new_tokens`. If a positive number is passed \
             we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
-    )
-    parser.add_argument(
-        "--dataset_max_samples",
-        default=-1,
-        type=int,
-        help="If a negative number is passed (default = -1) perform inference on the whole dataset, else use only `dataset_max_samples` samples.",
     )
     parser.add_argument(
         "--limit_hpu_graphs",
@@ -180,7 +151,6 @@ def setup_parser(parser):
         help="Whether to skip hash with views for HPU graphs. When skip_hash_with_views is not used, the input to HPU graphs includes both view and base tensors.",
     )
     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
-
     parser.add_argument(
         "--kv_cache_fp8",
         action="store_true",
@@ -199,6 +169,8 @@ def setup_parser(parser):
 
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
+
+    args.num_return_sequences = 1
 
     return args
 
