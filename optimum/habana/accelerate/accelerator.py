@@ -421,6 +421,7 @@ class GaudiAccelerator(Accelerator):
                     }
                     model = FSDP(model, **kwargs)
                     if fsdp_plugin.activation_checkpointing:
+                        import functools
                         from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
                             CheckpointImpl,
                             apply_activation_checkpointing,

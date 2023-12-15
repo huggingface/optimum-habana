@@ -595,6 +595,7 @@ class GaudiTrainingArguments(TrainingArguments):
             os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefect", "false"))
             os.environ[f"{prefix}SYNC_MODULE_STATES"] = str(self.fsdp_config.get("sync_module_states", "true"))
             os.environ[f"{prefix}USE_ORIG_PARAMS"] = str(self.fsdp_config.get("use_orig_params", "false"))
+            os.environ[f"{prefix}ACTIVATION_CHECKPOINTING"] = str(self.fsdp_config.get("activation_checkpointing", "false"))
 
 
         if isinstance(self.debug, str):
