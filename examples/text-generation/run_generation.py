@@ -225,6 +225,11 @@ def setup_parser(parser):
         help="Store kv-cache in float8 when kv-cache is used",
     )
     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
+    parser.add_argument(
+        "--use_flash_attention",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention, provided that the model supports it.",
+    )
 
     args = parser.parse_args()
 

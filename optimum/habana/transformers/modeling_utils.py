@@ -32,6 +32,7 @@ from .models import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaForCausalLM,
+    GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiMistralForCausalLM,
     GaudiMptForCausalLM,
@@ -178,9 +179,8 @@ def adapt_transformers_to_gaudi():
     transformers.models.bart.modeling_bart.BartForConditionalGeneration.prepare_inputs_for_generation = (
         gaudi_BartForConditionalGeneration_prepare_inputs_for_generation
     )
+
     # Optimization for codegen generation on Gaudi
-    # The bias in the CodeGenAttention layer is a Boolean
-    # Since HCCL cannot handle this dtype, we revert it back to uint8
     transformers.models.codegen.modeling_codegen.CodeGenAttention = GaudiCodeGenAttention
     transformers.models.codegen.modeling_codegen.CodeGenForCausalLM = GaudiCodeGenForCausalLM
     transformers.models.codegen.modeling_codegen.CodeGenModel.forward = gaudi_codegen_model_forward
@@ -193,8 +193,7 @@ def adapt_transformers_to_gaudi():
     # AlbertModel.forward does not rely on get_extended_attention_mask so it also needs to be replaced
     transformers.models.albert.modeling_albert.AlbertModel.forward = gaudi_albert_forward
 
-    # From Transformers 4.27, the bias in the GPT2Attention layer is a Boolean
-    # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
+    # Optimization for GPT2 on Gaudi
     transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
     transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
     transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
@@ -215,8 +214,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding = GaudiOPTLearnedPositionalEmbedding
 
     # Optimization for GPTJ on Gaudi
-    # The bias in the GPTJAttention layer is a Boolean
-    # Since HCCL cannot handle this dtype, we revert it back to uint8 (same behaviour as Transformers <= 4.26)
     transformers.models.gptj.modeling_gptj.GPTJAttention = GaudiGPTJAttention
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
     transformers.models.gptj.modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
@@ -240,6 +237,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
     transformers.models.llama.modeling_llama.LlamaModel = GaudiLlamaModel
     transformers.models.llama.modeling_llama.LlamaAttention = GaudiLlamaAttention
+    transformers.models.llama.modeling_llama.LlamaMLP = GaudiLlamaMLP
     transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
 
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward

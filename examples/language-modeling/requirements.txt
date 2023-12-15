@@ -4,4 +4,4 @@ sentencepiece != 0.1.92
 protobuf
 evaluate
 scikit-learn
-peft
+peft == 0.6.2
