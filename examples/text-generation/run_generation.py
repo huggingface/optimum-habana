@@ -23,8 +23,8 @@ import json
 import logging
 import math
 import time
-from pathlib import Path
 from itertools import cycle
+from pathlib import Path
 
 import torch
 from utils import adjust_batch, count_hpu_graphs, initialize_model
