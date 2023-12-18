@@ -44,6 +44,7 @@ class GaudiGenerationConfig(GenerationConfig):
         self.limit_hpu_graphs = kwargs.get("limit_hpu_graphs", None)
         self.reuse_cache = kwargs.get("reuse_cache", None)
         self.bucket_size = kwargs.get("bucket_size", -1)
+        self.reduce_recompile = kwargs.get("reduce_recompile", None)
         self.kv_cache_fp8 = kwargs.get("kv_cache_fp8", None)
         self.use_flash_attention = kwargs.get("use_flash_attention", None)
         self.flash_attention_recompute = kwargs.get("flash_attention_recompute", None)

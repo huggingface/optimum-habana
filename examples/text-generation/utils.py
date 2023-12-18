@@ -39,6 +39,24 @@ from optimum.habana.checkpoint_utils import (
 from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
 
 
+def adjust_batch(batch, size):
+    curr_size = batch["input_ids"].shape[1]
+    if curr_size >= size:
+        adjusted_batch = {
+            "input_ids": batch["input_ids"][:, :size],
+            "attention_mask": batch["attention_mask"][:, :size],
+        }
+    else:
+        adjusted_batch = {}
+        for k in batch.keys():
+            last_colm = batch[k][:, -1]
+            expanded = last_colm.tile((size - curr_size, 1)).T
+            adjusted_batch[k] = torch.concat([batch[k], expanded], 1)
+    assert adjusted_batch["input_ids"].shape[1] == size
+    assert adjusted_batch["attention_mask"].shape[1] == size
+    return adjusted_batch
+
+
 def override_print(enable):
     import builtins as __builtin__
 
@@ -306,6 +324,9 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
     generation_config.reuse_cache = args.reuse_cache
+    generation_config.reduce_recompile = args.reduce_recompile
+    if generation_config.reduce_recompile:
+        assert generation_config.bucket_size > 0
     generation_config.kv_cache_fp8 = args.kv_cache_fp8
     return generation_config
 
