@@ -16,6 +16,8 @@
       title: Run Inference
     - local: tutorials/stable_diffusion
       title: Stable Diffusion
+    - local: tutorials/stable_diffusion_ldm3d
+      title: LDM3D
     title: Tutorials
   - sections:
     - local: usage_guides/overview

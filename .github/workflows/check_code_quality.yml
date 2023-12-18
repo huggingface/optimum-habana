@@ -3,26 +3,17 @@ name: Check code quality
 on:
   push:
     branches: [ main ]
-    paths:
-      - "optimum/**.py"
-      - "tests/**.py"
-      - "examples/**.py"
-
   pull_request:
     branches: [ main ]
-    paths:
-      - "optimum/**.py"
-      - "tests/**.py"
-      - "examples/**.py"
 
 jobs:
-  build:
+  check:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.8]
-        os: [ubuntu-20.04]
-
+        python-version: ['3.10']
+        os: [ubuntu-22.04]
+    name: Check code quality
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
@@ -38,12 +29,9 @@ jobs:
       run: |
         source venv/bin/activate
         pip install --upgrade pip
-        pip install black ruff
-    - name: Check style with black
-      run: |
-        source venv/bin/activate
-        black --check .
+        pip install ruff
     - name: Check style with ruff
       run: |
         source venv/bin/activate
-        ruff .
+        ruff check . setup.py
+        ruff format --check . setup.py

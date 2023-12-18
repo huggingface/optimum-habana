@@ -44,10 +44,11 @@ python run_image_classification.py \
     --seed 1337 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
-    --dataloader_num_workers 1
+    --dataloader_num_workers 1 \
+    --bf16
 ```
 
 For Swin, you need to change/add the following arguments:
@@ -92,10 +93,11 @@ python run_image_classification.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
-    --dataloader_num_workers 1
+    --dataloader_num_workers 1 \
+    --bf16
 ```
 
 Internally, the script will use the [`ImageFolder`](https://huggingface.co/docs/datasets/v2.0.0/en/image_process#imagefolder) feature which will automatically turn the folders into 🤗 Dataset objects.
@@ -193,10 +195,11 @@ python ../gaudi_spawn.py \
     --seed 1337 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
-    --dataloader_num_workers 1
+    --dataloader_num_workers 1 \
+    --bf16
 ```
 
 For Swin, you need to change/add the following arguments:
@@ -231,7 +234,7 @@ python ../gaudi_spawn.py \
     --seed 1337 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 1 \
@@ -277,6 +280,7 @@ python run_image_classification.py \
     --per_device_eval_batch_size 64 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
-    --dataloader_num_workers 1
+    --dataloader_num_workers 1 \
+    --bf16

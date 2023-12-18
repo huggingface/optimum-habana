@@ -52,8 +52,9 @@ python run_glue.py \
   --output_dir ./output/mrpc/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs \
-  --throughput_warmup_steps 3
+  --use_hpu_graphs_for_inference \
+  --throughput_warmup_steps 3 \
+  --bf16
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
@@ -79,8 +80,9 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/mrpc_output/ \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
-    --throughput_warmup_steps 3
+    --use_hpu_graphs_for_inference \
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
@@ -106,7 +108,7 @@ python ../gaudi_spawn.py \
     --output_dir /tmp/mrpc_output/ \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --throughput_warmup_steps 3 \
     --deepspeed path_to_my_deepspeed_config
 ```
@@ -150,5 +152,6 @@ python run_glue.py \
   --output_dir ./output/mrpc/ \
   --use_habana \
   --use_lazy_mode \
-  --use_hpu_graphs
+  --use_hpu_graphs_for_inference \
+  --bf16
 ```

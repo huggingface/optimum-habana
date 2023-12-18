@@ -1,9 +1,7 @@
-20d19
-< import warnings
-28,29d26
+28,29d27
 < from datasets import DatasetDict, load_dataset
 < 
-31,39c28,29
+31,39c29,30
 < from transformers import (
 <     AutoConfig,
 <     AutoFeatureExtractor,
@@ -16,39 +14,50 @@
 ---
 > from datasets import DatasetDict, load_dataset
 > from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser
-43a34,36
+43a35,45
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
-48c41
-< check_min_version("4.29.0.dev0")
+> 
+> try:
+>     from optimum.habana.utils import check_optimum_habana_min_version
+> except ImportError:
+> 
+>     def check_optimum_habana_min_version(*a, **b):
+>         return ()
+> 
+47,48c49,51
+< # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+< check_min_version("4.37.0.dev0")
 ---
-> check_min_version("4.28.0")
-164,166d156
+> # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
+> check_min_version("4.34.0")
+> check_optimum_habana_min_version("1.8.1")
+180,182d182
 <     freeze_feature_extractor: Optional[bool] = field(
 <         default=None, metadata={"help": "Whether to freeze the feature extractor layers of the model."}
 <     )
-172,186d161
+188,202d187
 <     def __post_init__(self):
 <         if not self.freeze_feature_extractor and self.freeze_feature_encoder:
 <             warnings.warn(
 <                 "The argument `--freeze_feature_extractor` is deprecated and "
-<                 "will be removed in a future version. Use `--freeze_feature_encoder`"
+<                 "will be removed in a future version. Use `--freeze_feature_encoder` "
 <                 "instead. Setting `freeze_feature_encoder==True`.",
 <                 FutureWarning,
 <             )
 <         if self.freeze_feature_extractor and not self.freeze_feature_encoder:
 <             raise ValueError(
 <                 "The argument `--freeze_feature_extractor` is deprecated and "
-<                 "should not be used in combination with `--freeze_feature_encoder`."
+<                 "should not be used in combination with `--freeze_feature_encoder`. "
 <                 "Only make use of `--freeze_feature_encoder`."
 <             )
 < 
-193c168
+209c194
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-221a197,203
+246a232,238
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -56,20 +65,22 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-224,225c206,208
-<         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu} "
-<         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+247a240
+>     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
+249,250c242,244
+<         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
+<         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
->         + f"distributed training: {bool(training_args.local_rank != -1)}, "
->         + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
-291a275,277
+>         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
+>         + f"mixed-precision training: {mixed_precision}"
+317a312,314
 >     # Max input length
 >     max_length = int(round(feature_extractor.sampling_rate * data_args.max_length_seconds))
 > 
-296a283
+322a320
 > 
-302c289,295
+328c326,332
 <         inputs = feature_extractor(subsampled_wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
 >         inputs = feature_extractor(
@@ -79,7 +90,7 @@
 >             padding="max_length",
 >             truncation=True,
 >         )
-311c304,310
+337c341,347
 <         inputs = feature_extractor(wavs, sampling_rate=feature_extractor.sampling_rate)
 ---
 >         inputs = feature_extractor(
@@ -89,9 +100,9 @@
 >             padding="max_length",
 >             truncation=True,
 >         )
-376c375
+404c414
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-377a377
+405a416
 >         gaudi_config=gaudi_config,

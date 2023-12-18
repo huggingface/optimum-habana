@@ -1,43 +1,57 @@
 {
-    "librispeech_asr": {
-        "num_train_epochs": 3,
-        "eval_batch_size": 8,
-        "distribution": {
-            "single_card": {
-                "learning_rate": 3e-4,
-                "train_batch_size": 4,
-                "eval_wer": 0.0398,
-                "train_runtime": 19291.3489,
-                "train_samples_per_second": 4.448,
-                "extra_arguments": [
-                    "--dataset_config_name clean",
-                    "--train_split_name train.100",
-                    "--eval_split_name validation",
-                    "--preprocessing_num_workers 64",
-                    "--warmup_steps 500",
-                    "--text_column_name text",
-                    "--layerdrop 0.0",
-                    "--freeze_feature_encoder",
-                    "--chars_to_ignore , ? . ! - ; : \" “ % ‘ ”"
-                ]
-            },
-            "multi_card": {
-                "learning_rate": 3e-4,
-                "train_batch_size": 4,
-                "eval_wer": 0.0393,
-                "train_runtime": 3068.3684,
-                "train_samples_per_second": 29.743,
-                "extra_arguments": [
-                    "--dataset_config_name clean",
-                    "--train_split_name train.100",
-                    "--eval_split_name validation",
-                    "--preprocessing_num_workers 64",
-                    "--warmup_steps 500",
-                    "--text_column_name text",
-                    "--layerdrop 0.0",
-                    "--freeze_feature_encoder",
-                    "--chars_to_ignore ',?.!-;:\"“%‘”'"
-                ]
+    "gaudi": {
+        "regisss/librispeech_asr_for_optimum_habana_ci": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 8,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 6e-4,
+                    "train_batch_size": 8,
+                    "eval_wer": 0.0543,
+                    "train_runtime": 935.2505,
+                    "train_samples_per_second": 66.563,
+                    "eval_samples_per_second": 67.677,
+                    "extra_arguments": [
+                        "--dataset_config_name clean",
+                        "--train_split_name train.100",
+                        "--eval_split_name validation",
+                        "--preprocessing_num_workers 64",
+                        "--warmup_steps 500",
+                        "--text_column_name text",
+                        "--layerdrop 0.0",
+                        "--freeze_feature_encoder",
+                        "--dataloader_num_workers 8",
+                        "--chars_to_ignore ',?.!-;:\"“%‘”'"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "regisss/librispeech_asr_for_optimum_habana_ci": {
+            "num_train_epochs": 2,
+            "eval_batch_size": 8,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 6e-4,
+                    "train_batch_size": 8,
+                    "eval_wer": 0.0464,
+                    "train_runtime": 371.36,
+                    "train_samples_per_second": 175.129,
+                    "eval_samples_per_second": 153.24,
+                    "extra_arguments": [
+                        "--dataset_config_name clean",
+                        "--train_split_name train.100",
+                        "--eval_split_name validation",
+                        "--preprocessing_num_workers 1",
+                        "--warmup_steps 500",
+                        "--text_column_name text",
+                        "--layerdrop 0.0",
+                        "--freeze_feature_encoder",
+                        "--dataloader_num_workers 8",
+                        "--chars_to_ignore ',?.!-;:\"“%‘”'"
+                    ]
+                }
             }
         }
     }

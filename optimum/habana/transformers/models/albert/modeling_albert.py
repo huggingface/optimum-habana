@@ -28,13 +28,13 @@ def gaudi_albert_forward(
     position_ids: Optional[torch.LongTensor] = None,
     head_mask: Optional[torch.FloatTensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
-    output_attentions: Optional[None] = None,
-    output_hidden_states: Optional[None] = None,
-    return_dict: Optional[None] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
 ) -> Union[BaseModelOutputWithPooling, Tuple]:
     """
     Same as https://github.com/huggingface/transformers/blob/a9eee2ffecc874df7dd635b2c6abb246fdb318cc/src/transformers/models/albert/modeling_albert.py#L689
-    except that HMP is disabled for computing:
+    except that mixed precision is disabled for computing:
         extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(self.dtype).min
     """
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -46,6 +46,7 @@ def gaudi_albert_forward(
     if input_ids is not None and inputs_embeds is not None:
         raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
     elif input_ids is not None:
+        self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
         input_shape = input_ids.size()
     elif inputs_embeds is not None:
         input_shape = inputs_embeds.size()[:-1]
@@ -69,7 +70,8 @@ def gaudi_albert_forward(
     # torch.finfo must take the dtype of encoder_extended_attention_mask
     extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # bf16 compatibility
     extended_attention_mask = 1.0 - extended_attention_mask
-    extended_attention_mask = extended_attention_mask * torch.finfo(extended_attention_mask.dtype).min
+    with torch.autocast(enabled=False, device_type="hpu"):
+        extended_attention_mask = extended_attention_mask * torch.finfo(extended_attention_mask.dtype).min
     head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
     embedding_output = self.embeddings(

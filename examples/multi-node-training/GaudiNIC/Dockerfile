@@ -1,14 +1,8 @@
-FROM vault.habana.ai/gaudi-docker/1.9.0/ubuntu20.04/habanalabs/pytorch-installer-1.13.1:latest
+FROM vault.habana.ai/gaudi-docker/1.13.0/ubuntu20.04/habanalabs/pytorch-installer-2.1.0:latest
 
 # Installs pdsh and upgrade pip
 RUN apt-get update && apt-get install -y pdsh && \
    python -m pip install --upgrade pip
-
-# Installs hccl_ofi_wrapper to interact with libfabric to utilize HW and networking mode (EFA)
-ARG OFI_WRAPPER_WS="/root/hccl_ofi_wrapper"
-RUN git clone "https://github.com/HabanaAI/hccl_ofi_wrapper.git" "${OFI_WRAPPER_WS}" && \
-   cd "${OFI_WRAPPER_WS}" && \
-   LIBFABRIC_ROOT=/opt/amazon/efa make
 
 # Docker ssh port setup
 RUN sed -i 's/#Port 22/Port 3022/g' /etc/ssh/sshd_config && \
@@ -18,7 +12,7 @@ RUN sed -i 's/#Port 22/Port 3022/g' /etc/ssh/sshd_config && \
 
 # Installs Optimum Habana and Habana's fork of DeepSpeed
 RUN pip install optimum[habana] && \
-   pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.9.0
+   pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0
 
 CMD ssh-keygen -t rsa -b 4096 -N '' -f ~/.ssh/id_rsa && \
    chmod 600 ~/.ssh/id_rsa && \

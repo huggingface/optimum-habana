@@ -19,11 +19,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import torch
 from torch.utils.data import Dataset
-from transformers.deepspeed import is_deepspeed_zero3_enabled
-from transformers.generation.configuration_utils import GenerationConfig
+from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 
 from optimum.utils import logging
 
+from .generation import GaudiGenerationConfig
 from .trainer import GaudiTrainer
 
 
@@ -79,20 +79,20 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             self.model.generation_config = gen_config
 
     @staticmethod
-    def load_generation_config(gen_config_arg: Union[str, GenerationConfig]) -> GenerationConfig:
+    def load_generation_config(gen_config_arg: Union[str, GaudiGenerationConfig]) -> GaudiGenerationConfig:
         """
-        Loads a `~generation.GenerationConfig` from the `GaudiSeq2SeqTrainingArguments.generation_config` arguments.
+        Loads a `~generation.GaudiGenerationConfig` from the `GaudiSeq2SeqTrainingArguments.generation_config` arguments.
 
         Args:
-            gen_config_arg (`str` or [`~generation.GenerationConfig`]):
+            gen_config_arg (`str` or [`~generation.GaudiGenerationConfig`]):
                 `GaudiSeq2SeqTrainingArguments.generation_config` argument.
 
         Returns:
-            A `~generation.GenerationConfig`.
+            A `~generation.GaudiGenerationConfig`.
         """
 
         # GenerationConfig provided, nothing to do
-        if isinstance(gen_config_arg, GenerationConfig):
+        if isinstance(gen_config_arg, GaudiGenerationConfig):
             return deepcopy(gen_config_arg)
 
         # str or Path
@@ -111,7 +111,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         else:
             pretrained_model_name = gen_config_arg
 
-        gen_config = GenerationConfig.from_pretrained(pretrained_model_name, config_file_name)
+        gen_config = GaudiGenerationConfig.from_pretrained(pretrained_model_name, config_file_name)
         return gen_config
 
     def evaluate(
@@ -150,11 +150,17 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         """
 
         gen_kwargs = gen_kwargs.copy()
-        if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
+
+        # Use legacy argument setting if a) the option is not explicitly passed; and b) the argument is set in the
+        # training args
+        if (
+            gen_kwargs.get("max_length") is None
+            and gen_kwargs.get("max_new_tokens") is None
+            and self.args.generation_max_length is not None
+        ):
             gen_kwargs["max_length"] = self.args.generation_max_length
-        gen_kwargs["num_beams"] = (
-            gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
-        )
+        if gen_kwargs.get("num_beams") is None and self.args.generation_num_beams is not None:
+            gen_kwargs["num_beams"] = self.args.generation_num_beams
         self._gen_kwargs = gen_kwargs
 
         return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
@@ -200,20 +206,18 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         """
 
         gen_kwargs = gen_kwargs.copy()
-        if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            gen_kwargs["max_length"] = self.args.generation_max_length
-        gen_kwargs["num_beams"] = (
-            gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.args.generation_num_beams
-        )
-        self._gen_kwargs = gen_kwargs
 
-        if self.args.use_hpu_graphs:
-            # Disable HPU graphs as generation needs to be fixed
-            self.args.use_hpu_graphs = False
-            logger.warning(
-                "HPU graphs have not been validated for generation yet. Disabling it, generation will be"
-                " performed in lazy mode."
-            )
+        # Use legacy argument setting if a) the option is not explicitly passed; and b) the argument is set in the
+        # training args
+        if (
+            gen_kwargs.get("max_length") is None
+            and gen_kwargs.get("max_new_tokens") is None
+            and self.args.generation_max_length is not None
+        ):
+            gen_kwargs["max_length"] = self.args.generation_max_length
+        if gen_kwargs.get("num_beams") is None and self.args.generation_num_beams is not None:
+            gen_kwargs["num_beams"] = self.args.generation_num_beams
+        self._gen_kwargs = gen_kwargs
 
         return super().predict(test_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
@@ -223,6 +227,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         inputs: Dict[str, Union[torch.Tensor, Any]],
         prediction_loss_only: bool,
         ignore_keys: Optional[List[str]] = None,
+        **gen_kwargs,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         """
         Perform an evaluation step on `model` using `inputs`.
@@ -236,6 +241,8 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
                 argument `labels`. Check your model's documentation for all accepted arguments.
             prediction_loss_only (`bool`):
                 Whether or not to return the loss only.
+            gen_kwargs:
+                Additional `generate` specific kwargs.
         Return:
             Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss, logits and
             labels (each being optional).
@@ -249,15 +256,15 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         has_labels = "labels" in inputs
         inputs = self._prepare_inputs(inputs)
 
-        # XXX: adapt synced_gpus for fairscale as well
         # Priority (handled in generate):
-        # gen_kwargs > model.generation_config > default GenerationConfig()
-        gen_kwargs = self._gen_kwargs.copy()
-        if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
-            gen_kwargs["max_length"] = self.model.config.max_length
-        gen_kwargs["num_beams"] = (
-            gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.model.config.num_beams
-        )
+        # non-`None` gen_kwargs > model.generation_config > default GenerationConfig()
+        if len(gen_kwargs) == 0 and hasattr(self, "_gen_kwargs"):
+            gen_kwargs = self._gen_kwargs.copy()
+        if "num_beams" in gen_kwargs and gen_kwargs["num_beams"] is None:
+            gen_kwargs.pop("num_beams")
+        if "max_length" in gen_kwargs and gen_kwargs["max_length"] is None:
+            gen_kwargs.pop("max_length")
+
         default_synced_gpus = True if is_deepspeed_zero3_enabled() else False
         gen_kwargs["synced_gpus"] = (
             gen_kwargs["synced_gpus"] if gen_kwargs.get("synced_gpus") is not None else default_synced_gpus
@@ -266,19 +273,35 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         gen_kwargs["lazy_mode"] = (
             gen_kwargs["lazy_mode"] if gen_kwargs.get("lazy_mode") is not None else self.args.use_lazy_mode
         )
+        gen_kwargs["ignore_eos"] = (
+            gen_kwargs["ignore_eos"] if gen_kwargs.get("ignore_eos") is not None else self.args.ignore_eos
+        )
         gen_kwargs["hpu_graphs"] = (
-            gen_kwargs["hpu_graphs"] if gen_kwargs.get("hpu_graphs") is not None else self.args.use_hpu_graphs
+            gen_kwargs["hpu_graphs"]
+            if gen_kwargs.get("hpu_graphs") is not None
+            else self.args.use_hpu_graphs_for_inference
         )
 
-        # TODO (Joao): the following line is needed to keep a consistent result on SQUAD. Ideally, we should not block
-        # users from preparing a dataset with `decoder_input_ids`.
-        inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
+        generation_inputs = inputs.copy()
+        # If the `decoder_input_ids` was created from `labels`, evict the former, so that the model can freely generate
+        # (otherwise, it would continue generating from the padded `decoder_input_ids`)
+        if (
+            "labels" in generation_inputs
+            and "decoder_input_ids" in generation_inputs
+            and generation_inputs["labels"].shape == generation_inputs["decoder_input_ids"].shape
+        ):
+            generation_inputs = {k: v for k, v in inputs.items() if k != "decoder_input_ids"}
         try:
-            generated_tokens = self.model.generate(**inputs, **gen_kwargs)
+            with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.use_hpu_amp):
+                generated_tokens = self.model.generate(
+                    **generation_inputs,
+                    generation_config=self.model.generation_config,
+                    **gen_kwargs,
+                )
         except RuntimeError as error:
             if "cpu fallback is not supported during hpu graph capturing" in str(error):
                 error.args = (
-                    f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                    f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs_for_inference=False`.",
                 )
             raise error
 
@@ -291,7 +314,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
         # Retrieves GenerationConfig from model.generation_config
         gen_config = self.model.generation_config
         # in case the batch is shorter than max length, the output should be padded
-        if generated_tokens.shape[-1] < gen_config.max_length:
+        if gen_config.max_length is not None and generated_tokens.shape[-1] < gen_config.max_length:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_config.max_length)
         elif gen_config.max_new_tokens is not None and generated_tokens.shape[-1] < gen_config.max_new_tokens + 1:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_config.max_new_tokens + 1)
@@ -314,11 +337,11 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
             except RuntimeError as error:
                 if "cpu fallback is not supported during hpu graph capturing" in str(error):
                     error.args = (
-                        f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs=False`.",
+                        f"{error}. You should run inference in lazy mode only with `use_lazy_mode=True` and `use_hpu_graphs_for_inference=False`.",
                     )
                 raise error
 
-        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs and not self.is_in_train):
+        if self.args.use_lazy_mode and not (self.args.use_hpu_graphs_for_inference and not self.is_in_train):
             self.htcore.mark_step()
 
         if self.args.prediction_loss_only:
@@ -326,7 +349,7 @@ class GaudiSeq2SeqTrainer(GaudiTrainer):
 
         if has_labels:
             labels = inputs["labels"]
-            if labels.shape[-1] < gen_config.max_length:
+            if gen_config.max_length is not None and labels.shape[-1] < gen_config.max_length:
                 labels = self._pad_tensors_to_max_len(labels, gen_config.max_length)
             elif gen_config.max_new_tokens is not None and labels.shape[-1] < gen_config.max_new_tokens + 1:
                 labels = self._pad_tensors_to_max_len(labels, gen_config.max_new_tokens + 1)

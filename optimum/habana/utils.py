@@ -20,8 +20,6 @@ from typing import Any, Dict
 
 import numpy as np
 import torch
-from habana_frameworks.torch.hpu import memory_stats
-from habana_frameworks.torch.hpu import random as hpu_random
 from packaging import version
 from transformers.utils import is_torch_available
 
@@ -33,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.9.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.13.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -69,10 +67,13 @@ def speed_metrics(
     start_time: float,
     num_samples: int = None,
     num_steps: int = None,
+    num_tokens: int = None,
     start_time_after_warmup: float = None,
+    log_evaluate_save_time: float = None,
 ) -> Dict[str, float]:
     """
     Measure and return speed performance metrics.
+
     This function requires a time snapshot `start_time` before the operation to be measured starts and this function
     should be run immediately after the operation to be measured has completed.
 
@@ -81,7 +82,9 @@ def speed_metrics(
         start_time (float): operation start time
         num_samples (int, optional): number of samples processed. Defaults to None.
         num_steps (int, optional): number of steps performed. Defaults to None.
+        num_tokens (int, optional): number of tokens processed. Defaults to None.
         start_time_after_warmup (float, optional): time after warmup steps have been performed. Defaults to None.
+        log_evaluate_save_time (float, optional): time spent to log, evaluate and save. Defaults to None.
 
     Returns:
         Dict[str, float]: dictionary with performance metrics.
@@ -89,6 +92,12 @@ def speed_metrics(
 
     runtime = time.time() - start_time
     result = {f"{split}_runtime": round(runtime, 4)}
+    if runtime == 0:
+        return result
+
+    # Adjust runtime if log_evaluate_save_time should not be included
+    if log_evaluate_save_time is not None:
+        runtime = runtime - log_evaluate_save_time
 
     # Adjust runtime if there were warmup steps
     if start_time_after_warmup is not None:
@@ -101,6 +110,9 @@ def speed_metrics(
     if num_steps is not None:
         steps_per_second = num_steps / runtime
         result[f"{split}_steps_per_second"] = round(steps_per_second, 3)
+    if num_tokens is not None:
+        tokens_per_second = num_tokens / runtime
+        result[f"{split}_tokens_per_second"] = round(tokens_per_second, 3)
 
     return result
 
@@ -118,7 +130,7 @@ def to_gb_rounded(mem: float) -> float:
     return np.round(mem / 1024**3, 2)
 
 
-def get_hpu_memory_stats() -> Dict[str, float]:
+def get_hpu_memory_stats(device=None) -> Dict[str, float]:
     """
     Returns memory stats of HPU as a dictionary:
     - current memory allocated (GB)
@@ -128,7 +140,9 @@ def get_hpu_memory_stats() -> Dict[str, float]:
     Returns:
         Dict[str, float]: memory stats.
     """
-    mem_stats = memory_stats()
+    from habana_frameworks.torch.hpu import memory_stats
+
+    mem_stats = memory_stats(device)
 
     mem_dict = {
         "memory_allocated (GB)": to_gb_rounded(mem_stats["InUse"]),
@@ -148,6 +162,8 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     if is_torch_available():
+        from habana_frameworks.torch.hpu import random as hpu_random
+
         torch.manual_seed(seed)
         hpu_random.manual_seed_all(seed)
 
@@ -199,7 +215,7 @@ def get_habana_frameworks_version():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    return version.parse(output.stdout.split("\n")[0].split(" ")[-1])
+    return version.parse(output.stdout.split("\n")[0].split()[-1])
 
 
 def get_driver_version():
@@ -216,3 +232,130 @@ def get_driver_version():
     if output.returncode == 0:
         return version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
     return None
+
+
+class HabanaProfile(object):
+    """
+    HPU profiler only could be run once, so HABANA_PROFILE_ENABLED, a class static variable shared by all the instances of HabanaProfile, is used to control which part will be captured.
+    """
+
+    HABANA_PROFILE_ENABLED = True
+
+    def __init__(
+        self,
+        warmup: int = 0,
+        active: int = 0,
+        record_shapes: bool = True,
+        output_dir: str = "./hpu_profile",
+        wait: int = 0,
+    ):
+        if active <= 0 or warmup <= 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
+
+            def noop():
+                pass
+
+            self.start = noop
+            self.stop = noop
+            self.step = noop
+        else:
+            HabanaProfile.HABANA_PROFILE_ENABLED = False
+            schedule = torch.profiler.schedule(wait=wait, warmup=warmup, active=active, repeat=1)
+            activities = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.HPU]
+
+            profiler = torch.profiler.profile(
+                schedule=schedule,
+                activities=activities,
+                on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
+                record_shapes=record_shapes,
+                with_stack=True,
+            )
+            self.start = profiler.start
+            self.stop = profiler.stop
+            self.step = profiler.step
+            HabanaProfile.enable.invalid = True
+            HabanaProfile.disable.invalid = True
+
+    def stop(self):
+        self.stop()
+
+    def start(self):
+        self.start()
+
+    def step(self):
+        self.step()
+
+    @staticmethod
+    def disable():
+        """
+        Runs only once and must happen before doing profiling.
+        """
+        if hasattr(HabanaProfile.disable, "invalid"):
+            if not HabanaProfile.disable.invalid:
+                HabanaProfile.HABANA_PROFILE_ENABLED = False
+        else:
+            HabanaProfile.HABANA_PROFILE_ENABLED = False
+
+    @staticmethod
+    def enable():
+        """
+        Runs only once and must happen before doing profiling.
+        """
+        if hasattr(HabanaProfile.enable, "invalid"):
+            if not HabanaProfile.enable.invalid:
+                HabanaProfile.HABANA_PROFILE_ENABLED = True
+        else:
+            HabanaProfile.HABANA_PROFILE_ENABLED = True
+
+
+def check_optimum_habana_min_version(min_version):
+    """
+    Checks if the installed version of `optimum-habana` is larger than or equal to `min_version`.
+
+    Copied from: https://github.com/huggingface/transformers/blob/c41291965f078070c5c832412f5d4a5f633fcdc4/src/transformers/utils/__init__.py#L212
+    """
+    if version.parse(__version__) < version.parse(min_version):
+        error_message = (
+            f"This example requires `optimum-habana` to have a minimum version of {min_version},"
+            f" but the version found is {__version__}.\n"
+        )
+        if "dev" in min_version:
+            error_message += (
+                "You can install it from source with: "
+                "`pip install git+https://github.com/huggingface/optimum-habana.git`."
+            )
+        raise ImportError(error_message)
+
+
+def check_habana_frameworks_min_version(min_version):
+    """
+    Checks if the installed version of `habana_frameworks` is larger than or equal to `min_version`.
+    """
+    if get_habana_frameworks_version() < version.parse(min_version):
+        return False
+    else:
+        return True
+
+
+def check_habana_frameworks_version(req_version):
+    """
+    Checks if the installed version of `habana_frameworks` is equal to `req_version`.
+    """
+    return get_habana_frameworks_version() == version.parse(req_version)
+
+
+def get_device_name():
+    """
+    Returns the name of the current device: Gaudi or Gaudi2.
+
+    Inspired from: https://github.com/HabanaAI/Model-References/blob/a87c21f14f13b70ffc77617b9e80d1ec989a3442/PyTorch/computer_vision/classification/torchvision/utils.py#L274
+    """
+    import habana_frameworks.torch.utils.experimental as htexp
+
+    device_type = htexp._get_device_type()
+
+    if device_type == htexp.synDeviceType.synDeviceGaudi:
+        return "gaudi"
+    elif device_type == htexp.synDeviceType.synDeviceGaudi2:
+        return "gaudi2"
+    else:
+        raise ValueError(f"Unsupported device: the device type is {device_type}.")

@@ -18,24 +18,37 @@ import json
 import os
 import subprocess
 import tempfile
+from io import BytesIO
 from pathlib import Path
 from unittest import TestCase
 
 import numpy as np
+import requests
 import torch
 from diffusers import AutoencoderKL, UNet2DConditionModel
-from habana_frameworks.torch.hpex import hmp
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
+from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from transformers.testing_utils import slow
 
 from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline, GaudiStableDiffusionPipeline
+from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiDiffusionPipeline,
+    GaudiStableDiffusionLDM3DPipeline,
+    GaudiStableDiffusionPipeline,
+    GaudiStableDiffusionUpscalePipeline,
+)
 from optimum.habana.utils import set_seed
 
 
-THROUGHPUT_BASELINE = 0.282
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    THROUGHPUT_BASELINE_BF16 = 1.019
+    THROUGHPUT_BASELINE_AUTOCAST = 0.389
+else:
+    THROUGHPUT_BASELINE_BF16 = 0.301
+    THROUGHPUT_BASELINE_AUTOCAST = 0.108
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -102,18 +115,6 @@ class GaudiPipelineUtilsTester(TestCase):
         self.assertTrue(hasattr(pipeline, "hpu_stream"))
         self.assertTrue(hasattr(pipeline, "cache"))
 
-    def test_habana_mixed_precision(self):
-        gaudi_config = GaudiConfig(
-            use_habana_mixed_precision=True,
-        )
-
-        pipeline = GaudiDiffusionPipeline(
-            use_habana=True,
-            gaudi_config=gaudi_config,
-        )
-
-        self.assertTrue(hasattr(pipeline, "hmp"))
-
     def test_save_pretrained(self):
         model_name = "hf-internal-testing/tiny-stable-diffusion-torch"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
@@ -134,17 +135,19 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     Tests the StableDiffusionPipeline for Gaudi.
     """
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
+            block_out_channels=(4, 8),
+            layers_per_block=1,
             sample_size=32,
+            time_cond_proj_dim=time_cond_proj_dim,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
+            norm_num_groups=2,
         )
         scheduler = GaudiDDIMScheduler(
             beta_start=0.00085,
@@ -155,22 +158,23 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=[4, 8],
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=32,
-            intermediate_size=37,
+            intermediate_size=64,
             layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
+            num_attention_heads=8,
+            num_hidden_layers=3,
             pad_token_id=1,
             vocab_size=1000,
         )
@@ -200,32 +204,31 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         return inputs
 
     def test_stable_diffusion_ddim(self):
-        with hmp.disable_casts():
-            device = "cpu"
+        device = "cpu"
 
-            components = self.get_dummy_components()
-            gaudi_config = GaudiConfig(use_habana_mixed_precision=False)
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
 
-            sd_pipe = GaudiStableDiffusionPipeline(
-                use_habana=True,
-                gaudi_config=gaudi_config,
-                **components,
-            )
-            sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = GaudiStableDiffusionPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
 
-            inputs = self.get_dummy_inputs(device)
-            output = sd_pipe(**inputs)
-            image = output.images[0]
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images[0]
 
-            image_slice = image[-3:, -3:, -1]
+        image_slice = image[-3:, -3:, -1]
 
-            self.assertEqual(image.shape, (64, 64, 3))
-            expected_slice = np.array([0.5756, 0.6118, 0.5005, 0.5041, 0.5471, 0.4726, 0.4976, 0.4865, 0.4864])
+        self.assertEqual(image.shape, (64, 64, 3))
+        expected_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
 
-            self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
     def test_stable_diffusion_no_safety_checker(self):
-        gaudi_config = GaudiConfig(use_habana_mixed_precision=False)
+        gaudi_config = GaudiConfig()
         scheduler = GaudiDDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -513,7 +516,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
     @slow
-    def test_no_throughput_regression(self):
+    def test_no_throughput_regression_bf16(self):
         prompts = [
             "An image of a squirrel in Picasso style",
             "High quality photo of an astronaut riding a horse in space",
@@ -529,6 +532,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_habana=True,
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
+            torch_dtype=torch.bfloat16,
         )
         set_seed(27)
         outputs = pipeline(
@@ -537,35 +541,198 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             batch_size=batch_size,
         )
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
-        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE)
+        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_BF16)
+
+    @slow
+    def test_no_throughput_regression_autocast(self):
+        prompts = [
+            "An image of a squirrel in Picasso style",
+            "High quality photo of an astronaut riding a horse in space",
+        ]
+        num_images_per_prompt = 11
+        batch_size = 4
+        model_name = "stabilityai/stable-diffusion-2-1"
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion-2"),
+        )
+        set_seed(27)
+        outputs = pipeline(
+            prompt=prompts,
+            num_images_per_prompt=num_images_per_prompt,
+            batch_size=batch_size,
+            height=768,
+            width=768,
+        )
+        self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
+        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_AUTOCAST)
 
     @slow
     def test_no_generation_regression(self):
         model_name = "CompVis/stable-diffusion-v1-4"
         # fp32
-        with hmp.disable_casts():
-            scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
-            pipeline = GaudiStableDiffusionPipeline.from_pretrained(
-                model_name,
-                scheduler=scheduler,
-                safety_checker=None,
-                use_habana=True,
-                use_hpu_graphs=True,
-                gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
-            )
-            set_seed(27)
-            outputs = pipeline(
-                prompt="An image of a squirrel in Picasso style",
-                output_type="np",
-            )
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            safety_checker=None,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+        set_seed(27)
+        outputs = pipeline(
+            prompt="An image of a squirrel in Picasso style",
+            output_type="np",
+        )
 
+        if os.environ.get("GAUDI2_CI", "0") == "1":
+            expected_slice = np.array(
+                [
+                    0.68306947,
+                    0.6812112,
+                    0.67309505,
+                    0.70057267,
+                    0.6582885,
+                    0.6325019,
+                    0.6708976,
+                    0.6226433,
+                    0.58038336,
+                ]
+            )
+        else:
             expected_slice = np.array(
                 [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
             )
-            image = outputs.images[0]
+        image = outputs.images[0]
 
-            self.assertEqual(image.shape, (512, 512, 3))
-            self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
+        self.assertEqual(image.shape, (512, 512, 3))
+        self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
+
+    @slow
+    def test_no_generation_regression_ldm3d(self):
+        model_name = "Intel/ldm3d-4c"
+        # fp32
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+        pipeline = GaudiStableDiffusionLDM3DPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            safety_checker=None,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(),
+        )
+        set_seed(27)
+        outputs = pipeline(
+            prompt="An image of a squirrel in Picasso style",
+            output_type="np",
+        )
+
+        if os.environ.get("GAUDI2_CI", "0") == "1":
+            expected_slice_rgb = np.array(
+                [
+                    0.2099357,
+                    0.16664368,
+                    0.08352646,
+                    0.20643419,
+                    0.16748399,
+                    0.08781305,
+                    0.21379063,
+                    0.19943115,
+                    0.04389626,
+                ]
+            )
+            expected_slice_depth = np.array(
+                [
+                    0.68369114,
+                    0.6827824,
+                    0.6852779,
+                    0.6836072,
+                    0.6888298,
+                    0.6895473,
+                    0.6853674,
+                    0.67561126,
+                    0.660434,
+                ]
+            )
+        else:
+            expected_slice_rgb = np.array([0.7083766, 1.0, 1.0, 0.70610344, 0.9867363, 1.0, 0.7214538, 1.0, 1.0])
+            expected_slice_depth = np.array(
+                [
+                    0.919621,
+                    0.92072034,
+                    0.9184986,
+                    0.91994286,
+                    0.9242079,
+                    0.93387043,
+                    0.92345214,
+                    0.93558526,
+                    0.9223714,
+                ]
+            )
+        rgb = outputs.rgb[0]
+        depth = outputs.depth[0]
+
+        self.assertEqual(rgb.shape, (512, 512, 3))
+        self.assertEqual(depth.shape, (512, 512, 1))
+        self.assertLess(np.abs(expected_slice_rgb - rgb[-3:, -3:, -1].flatten()).max(), 5e-3)
+        self.assertLess(np.abs(expected_slice_depth - depth[-3:, -3:, -1].flatten()).max(), 5e-3)
+
+    @slow
+    def test_no_generation_regression_upscale(self):
+        model_name = "stabilityai/stable-diffusion-x4-upscaler"
+        # fp32
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+        pipeline = GaudiStableDiffusionUpscalePipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+        set_seed(27)
+
+        url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
+        response = requests.get(url)
+        low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
+        low_res_img = low_res_img.resize((128, 128))
+        prompt = "a white cat"
+        upscaled_image = pipeline(prompt=prompt, image=low_res_img, output_type="np").images[0]
+        if os.environ.get("GAUDI2_CI", "0") == "1":
+            expected_slice = np.array(
+                [
+                    0.16527882,
+                    0.161616,
+                    0.15665859,
+                    0.1660901,
+                    0.1594379,
+                    0.14936888,
+                    0.1578255,
+                    0.15342498,
+                    0.14590919,
+                ]
+            )
+        else:
+            expected_slice = np.array(
+                [
+                    0.1652787,
+                    0.16161594,
+                    0.15665877,
+                    0.16608998,
+                    0.1594378,
+                    0.14936894,
+                    0.15782538,
+                    0.15342498,
+                    0.14590913,
+                ]
+            )
+        self.assertEqual(upscaled_image.shape, (512, 512, 3))
+        self.assertLess(np.abs(expected_slice - upscaled_image[-3:, -3:, -1].flatten()).max(), 5e-3)
 
     @slow
     def test_textual_inversion(self):
@@ -619,30 +786,31 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 self.assertLessEqual(results["train_runtime"], 1.05 * 208.38)
 
                 # Assess generated image
-                with hmp.disable_casts():
-                    pipe = GaudiStableDiffusionPipeline.from_pretrained(
-                        run_dir,
-                        torch_dtype=torch.bfloat16,
-                        use_habana=True,
-                        use_hpu_graphs=True,
-                        gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
-                    )
-                    prompt = "A <cat-toy> backpack"
-                    set_seed(27)
-                    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5, output_type="np").images[0]
+                pipe = GaudiStableDiffusionPipeline.from_pretrained(
+                    run_dir,
+                    torch_dtype=torch.bfloat16,
+                    use_habana=True,
+                    use_hpu_graphs=True,
+                    gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+                )
+                prompt = "A <cat-toy> backpack"
+                set_seed(27)
+                image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5, output_type="np").images[0]
 
-                    expected_slice = np.array(
-                        [
-                            0.08398438,
-                            0.0859375,
-                            0.11523438,
-                            0.08789062,
-                            0.09765625,
-                            0.09570312,
-                            0.11328125,
-                            0.1171875,
-                            0.13085938,
-                        ]
-                    )
-                    print("HERE", image[-3:, -3:, -1].flatten())
-                    self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
+                expected_slice = np.array(
+                    [
+                        0.08398438,
+                        0.0859375,
+                        0.11523438,
+                        0.08789062,
+                        0.09765625,
+                        0.09570312,
+                        0.11328125,
+                        0.1171875,
+                        0.13085938,
+                    ]
+                )
+                print("HERE", image[-3:, -3:, -1].flatten())
+                self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
+                self.assertEqual(image.shape, (512, 512, 3))
+                self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)

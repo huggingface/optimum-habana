@@ -25,12 +25,14 @@ Text models: BERT, ROBERTa (https://huggingface.co/models?filter=fill-mask)
 import logging
 import os
 import sys
+import warnings
 from dataclasses import dataclass, field
 from typing import Optional
 
 import torch
 import transformers
 from datasets import load_dataset
+from habana_dataloader_trainer import HabanaDataloaderTrainer
 from PIL import Image
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
@@ -49,10 +51,19 @@ from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
 
 
+try:
+    from optimum.habana.utils import check_optimum_habana_min_version
+except ImportError:
+
+    def check_optimum_habana_min_version(*a, **b):
+        return ()
+
+
 logger = logging.getLogger(__name__)
 
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.28.0")
+# Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
+check_min_version("4.34.0")
+check_optimum_habana_min_version("1.8.1")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
 
@@ -84,12 +95,28 @@ class ModelArguments:
         default=True,
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
     )
+    token: str = field(
+        default=None,
+        metadata={
+            "help": (
+                "The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+                "generated when running `huggingface-cli login` (stored in `~/.huggingface`)."
+            )
+        },
+    )
     use_auth_token: bool = field(
+        default=None,
+        metadata={
+            "help": "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead."
+        },
+    )
+    trust_remote_code: bool = field(
         default=False,
         metadata={
             "help": (
-                "Will use the token generated when running `huggingface-cli login` (necessary to use this script "
-                "with private models)."
+                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
+                "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
+                "execute code present on the Hub on your local machine."
             )
         },
     )
@@ -167,6 +194,9 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
+    mediapipe_dataloader: bool = field(
+        default=False, metadata={"help": "Turn on MediaPipe hardware-based accelerated data loading."}
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -233,6 +263,15 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    if model_args.use_auth_token is not None:
+        warnings.warn(
+            "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead.",
+            FutureWarning,
+        )
+        if model_args.token is not None:
+            raise ValueError("`token` and `use_auth_token` are both specified. Please set only the argument `token`.")
+        model_args.token = model_args.use_auth_token
+
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_clip", model_args, data_args)
@@ -262,10 +301,11 @@ def main():
     )
 
     # Log on each process the small summary:
+    mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
-        + f"distributed training: {bool(training_args.local_rank != -1)}, "
-        + f"mixed-precision training: {gaudi_config.use_habana_mixed_precision}"
+        + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
+        + f"mixed-precision training: {mixed_precision}"
     )
     logger.info(f"Training/evaluation parameters {training_args}")
 
@@ -300,7 +340,7 @@ def main():
             cache_dir=model_args.cache_dir,
             keep_in_memory=False,
             data_dir=data_args.data_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
         )
     else:
         data_files = {}
@@ -317,23 +357,31 @@ def main():
             extension,
             data_files=data_files,
             cache_dir=model_args.cache_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
         )
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
-    # https://huggingface.co/docs/datasets/loading_datasets.html.
+    # https://huggingface.co/docs/datasets/loading_datasets.
 
     # 5. Load pretrained model, tokenizer, and image processor
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
+            model_args.tokenizer_name,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            token=model_args.token,
+            trust_remote_code=model_args.trust_remote_code,
         )
     elif model_args.model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
+            model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            token=model_args.token,
+            trust_remote_code=model_args.trust_remote_code,
         )
     else:
         raise ValueError(
-            "You are instantiating a new tokenizer from scratch. This is not supported by this script."
+            "You are instantiating a new tokenizer from scratch. This is not supported by this script. "
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
@@ -342,14 +390,16 @@ def main():
         model_args.image_processor_name or model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
+        token=model_args.token,
+        trust_remote_code=model_args.trust_remote_code,
     )
 
     model = AutoModel.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
+        token=model_args.token,
+        trust_remote_code=model_args.trust_remote_code,
     )
     config = model.config
 
@@ -448,8 +498,15 @@ def main():
             desc="Running tokenizer on train dataset",
         )
 
-        # Transform images on the fly as doing it on the whole dataset takes too much time.
-        train_dataset.set_transform(transform_images)
+        if data_args.mediapipe_dataloader:
+            train_dataset.image_mean = image_processor.image_mean
+            train_dataset.image_std = image_processor.image_std
+            train_dataset.text_max_length = data_args.max_seq_length
+            train_dataset.image_resize = config.vision_config.image_size
+            train_dataset.transform_func = transform_images
+        else:
+            # Transform images on the fly as doing it on the whole dataset takes too much time.
+            train_dataset.set_transform(transform_images)
 
     if training_args.do_eval:
         if "validation" not in dataset:
@@ -471,8 +528,15 @@ def main():
             desc="Running tokenizer on validation dataset",
         )
 
-        # Transform images on the fly as doing it on the whole dataset takes too much time.
-        eval_dataset.set_transform(transform_images)
+        if data_args.mediapipe_dataloader:
+            eval_dataset.image_mean = image_processor.image_mean
+            eval_dataset.image_std = image_processor.image_std
+            eval_dataset.text_max_length = data_args.max_seq_length
+            eval_dataset.image_resize = config.vision_config.image_size
+            eval_dataset.transform_func = transform_images
+        else:
+            # Transform images on the fly as doing it on the whole dataset takes too much time.
+            eval_dataset.set_transform(transform_images)
 
     if training_args.do_predict:
         if "test" not in dataset:
@@ -496,9 +560,19 @@ def main():
 
         # Transform images on the fly as doing it on the whole dataset takes too much time.
         test_dataset.set_transform(transform_images)
+        if data_args.mediapipe_dataloader:
+            test_dataset.image_mean = image_processor.image_mean
+            test_dataset.image_std = image_processor.image_std
+            test_dataset.text_max_length = data_args.max_seq_length
+            test_dataset.image_resize = config.vision_config.image_size
+            test_dataset.transform_func = transform_images
+        else:
+            # Transform images on the fly as doing it on the whole dataset takes too much time.
+            test_dataset.set_transform(transform_images)
 
     # 8. Initalize our trainer
-    trainer = GaudiTrainer(
+    trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
+    trainer = trainer_cls(
         model=model,
         gaudi_config=gaudi_config,
         args=training_args,

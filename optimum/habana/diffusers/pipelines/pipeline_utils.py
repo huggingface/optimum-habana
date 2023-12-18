@@ -19,12 +19,12 @@ import importlib
 import inspect
 import os
 import sys
-import tempfile
 from typing import Optional, Union
 
 import torch
 from diffusers.pipelines import DiffusionPipeline
-from diffusers.utils import is_compiled_module
+from diffusers.utils.torch_utils import is_compiled_module
+from huggingface_hub import create_repo
 
 from optimum.utils import logging
 
@@ -73,6 +73,9 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
+        bf16_full_eval (bool, defaults to `False`):
+            Whether to use full bfloat16 evaluation instead of 32-bit.
+            This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
     """
 
     def __init__(
@@ -80,6 +83,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
+        bf16_full_eval: bool = False,
     ):
         super().__init__()
 
@@ -104,6 +108,24 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     f"`gaudi_config` must be a string or a GaudiConfig object but is {type(gaudi_config)}."
                 )
 
+            if self.gaudi_config.use_torch_autocast:
+                if bf16_full_eval:
+                    logger.warning(
+                        "`use_torch_autocast` is True in the given Gaudi configuration but "
+                        "`torch_dtype=torch.blfloat16` was given. Disabling mixed precision and continuing in bf16 only."
+                    )
+                    self.gaudi_config.use_torch_autocast = False
+                else:
+                    self.gaudi_config.declare_autocast_bf16_fp32_ops()
+
+            # Workaround for Synapse 1.11 for full bf16 and Torch Autocast
+            if bf16_full_eval or self.gaudi_config.use_torch_autocast:
+                import diffusers
+
+                from ..models import gaudi_unet_2d_condition_model_forward
+
+                diffusers.models.unet_2d_condition.UNet2DConditionModel.forward = gaudi_unet_2d_condition_model_forward
+
             if self.use_hpu_graphs:
                 try:
                     import habana_frameworks.torch as ht
@@ -120,29 +142,6 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
                     raise error
                 self.htcore = htcore
-
-            if self.gaudi_config.use_habana_mixed_precision:
-                try:
-                    from habana_frameworks.torch.hpex import hmp
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-                    raise error
-                self.hmp = hmp
-
-                # Open temporary files to mixed-precision write ops
-                with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                    with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                        # hmp.convert needs ops to be written in text files
-                        self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                            hmp_bf16_file.name,
-                            hmp_fp32_file.name,
-                        )
-                        self.hmp.convert(
-                            opt_level=self.gaudi_config.hmp_opt_level,
-                            bf16_file_path=hmp_bf16_file.name,
-                            fp32_file_path=hmp_fp32_file.name,
-                            isVerbose=self.gaudi_config.hmp_is_verbose,
-                        )
         else:
             if use_hpu_graphs:
                 raise ValueError(
@@ -166,27 +165,33 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             if module is None:
                 register_dict = {name: (None, None)}
             else:
-                # register the original module, not the dynamo compiled one
+                # register the config from the original module, not the dynamo compiled one
                 if is_compiled_module(module):
-                    module = module._orig_mod
+                    not_compiled_module = module._orig_mod
+                else:
+                    not_compiled_module = module
 
-                library = module.__module__.split(".")[0]
+                library = not_compiled_module.__module__.split(".")[0]
                 if library == "optimum":
                     library = "optimum.habana.diffusers.schedulers"
 
                 # check if the module is a pipeline module
-                pipeline_dir = module.__module__.split(".")[-2] if len(module.__module__.split(".")) > 2 else None
-                path = module.__module__.split(".")
+                module_path_items = not_compiled_module.__module__.split(".")
+                pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
+
+                path = not_compiled_module.__module__.split(".")
                 is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
                 # if library is not in GAUDI_LOADABLE_CLASSES, then it is a custom module.
                 # Or if it's a pipeline module, then the module is inside the pipeline
                 # folder so we set the library to module name.
-                if library not in GAUDI_LOADABLE_CLASSES or is_pipeline_module:
+                if is_pipeline_module:
                     library = pipeline_dir
+                elif library not in GAUDI_LOADABLE_CLASSES:
+                    library = not_compiled_module.__module__
 
                 # retrieve class_name
-                class_name = module.__class__.__name__
+                class_name = not_compiled_module.__class__.__name__
 
                 register_dict = {name: (library, class_name)}
 
@@ -199,8 +204,10 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
         variant: Optional[str] = None,
+        push_to_hub: bool = False,
+        **kwargs,
     ):
         """
         Save the pipeline and Gaudi configurations.
@@ -209,15 +216,30 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
+            safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
             variant (`str`, *optional*):
                 If specified, weights are saved in the format pytorch_model.<variant>.bin.
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         model_index_dict = dict(self.config)
         model_index_dict.pop("_class_name", None)
         model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
+        model_index_dict.pop("_name_or_path", None)
+
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", False)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
@@ -285,6 +307,15 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         if hasattr(self, "gaudi_config"):
             self.gaudi_config.save_pretrained(save_directory)
 
+        if push_to_hub:
+            self._upload_folder(
+                save_directory,
+                repo_id,
+                token=token,
+                commit_message=commit_message,
+                create_pr=create_pr,
+            )
+
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         """
@@ -305,6 +336,10 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
         diffusers.pipelines.pipeline_utils.LOADABLE_CLASSES = GAUDI_LOADABLE_CLASSES
         diffusers.pipelines.pipeline_utils.ALL_IMPORTABLE_CLASSES = GAUDI_ALL_IMPORTABLE_CLASSES
+
+        # Define a new kwarg here to know in the __init__ whether to use full bf16 precision or not
+        bf16_full_eval = kwargs.get("torch_dtype", None) == torch.bfloat16
+        kwargs["bf16_full_eval"] = bf16_full_eval
 
         return super().from_pretrained(
             pretrained_model_name_or_path,

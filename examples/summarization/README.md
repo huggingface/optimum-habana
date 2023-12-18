@@ -18,9 +18,9 @@ limitations under the License.
 
 This directory contains examples for finetuning and evaluating transformers on summarization tasks.
 
-`run_summarization.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune T5 on it.
+`run_summarization.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune and evaluate T5 (or predict using BART) on it.
 
-For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files.
+For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets#json-files.
 You will also find examples of these below.
 
 ## Single-card Training
@@ -42,12 +42,13 @@ python run_summarization.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 Only T5 models `t5-small`, `t5-base`, `t5-large`, `t5-3b` and `t5-11b` must use an additional argument: `--source_prefix "summarize: "`.
@@ -74,11 +75,12 @@ python run_summarization.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 The task of summarization also supports custom CSV and JSONLINES formats.
@@ -158,63 +160,49 @@ python ../gaudi_spawn.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
-    --gaudi_config_name Habana/t5 \
-    --ignore_pad_token_for_loss False \
-    --pad_to_max_length \
-    --save_strategy epoch \
-    --throughput_warmup_steps 3
-```
-
-
-## Using DeepSpeed
-
-Here is an example with DeepSpeed on 8 HPUs:
-```bash
-python ../gaudi_spawn.py \
-    --world_size 8 --use_deepspeed run_summarization.py \
-    --model_name_or_path t5-small \
-    --do_train \
-    --do_eval \
-    --dataset_name cnn_dailymail \
-    --dataset_config '"3.0.0"' \
-    --source_prefix '"summarize: "' \
-    --output_dir /tmp/tst-summarization \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --overwrite_output_dir \
-    --predict_with_generate \
-    --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
     --throughput_warmup_steps 3 \
-    --deepspeed path_to_my_deepspeed_config
+    --bf16
+```
+
+
+## Using DeepSpeed
+
+Here is an example on 8 HPUs on Gaudi2 with DeepSpeed-ZeRO3 to fine-tune [FLAN-T5 XXL](https://huggingface.co/google/flan-t5-xxl):
+```bash
+PT_HPU_MAX_COMPOUND_OP_SIZE=512 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_summarization.py \
+    --model_name_or_path google/flan-t5-xxl \
+    --do_train \
+    --do_eval \
+    --dataset_name cnn_dailymail \
+    --dataset_config '"3.0.0"' \
+    --source_prefix '"summarize: "' \
+    --output_dir ./tst-summarization \
+    --per_device_train_batch_size 22 \
+    --per_device_eval_batch_size 22 \
+    --learning_rate 1e-4 \
+    --num_train_epochs 3 \
+    --overwrite_output_dir \
+    --predict_with_generate \
+    --use_habana \
+    --use_lazy_mode \
+    --gaudi_config_name Habana/t5 \
+    --ignore_pad_token_for_loss False \
+    --pad_to_max_length \
+    --generation_max_length 129 \
+    --save_strategy epoch \
+    --throughput_warmup_steps 3 \
+    --gradient_checkpointing \
+    --adam_epsilon 1e-08 --logging_steps 1 \
+    --deepspeed ds_flan_t5_z3_config_bf16.json
 ```
 
 You can look at the [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/deepspeed) for more information about how to use DeepSpeed in Optimum Habana.
-Here is a DeepSpeed configuration you can use to train your models on Gaudi:
-```json
-{
-    "steps_per_print": 64,
-    "train_batch_size": "auto",
-    "train_micro_batch_size_per_gpu": "auto",
-    "gradient_accumulation_steps": "auto",
-    "bf16": {
-        "enabled": true
-    },
-    "gradient_clipping": 1.0,
-    "zero_optimization": {
-        "stage": 2,
-        "overlap_comm": false,
-        "reduce_scatter": false,
-        "contiguous_gradients": false
-    }
-}
-```
 
 
 ## Inference
@@ -235,8 +223,32 @@ python run_summarization.py \
     --predict_with_generate \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs \
+    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
-    --pad_to_max_length
+    --pad_to_max_length \
+    --bf16
 ```
+
+You can run inference with BART on the CNN-DailyMail dataset on 1 Gaudi card with the following command:
+```bash
+python run_summarization.py \
+    --model_name_or_path facebook/bart-large-cnn \
+    --do_predict \
+    --dataset_name cnn_dailymail \
+    --dataset_config "3.0.0" \
+    --output_dir /tmp/tst-summarization \
+    --per_device_eval_batch_size 2 \
+    --overwrite_output_dir \
+    --predict_with_generate \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --gaudi_config_name Habana/bart \
+    --ignore_pad_token_for_loss False \
+    --pad_to_max_length \
+    --num_beams 1
+```
+
+
+Only `--num_beams 1` is supported for BART.

@@ -1,0 +1,21 @@
+# Remember that the last applicable rule for any given file is the only one
+# that applies.
+
+# Default rule: @regisss gets everything.
+*                                                   @regisss
+
+/optimum/habana/transformers/models/albert	    @skaulintel	          @ANSHUMAN87		
+/optimum/habana/transformers/models/bloom	    @dvarshney-habana			
+/optimum/habana/transformers/models/esm	            @bzhu-habana			
+/optimum/habana/transformers/models/falcon	    @libinta	          @mandy-li	       @dvarshney-habana	
+/optimum/habana/transformers/models/gpt2	    @ZhaiFeiyue			
+/optimum/habana/transformers/models/gpt_bigcode	    @ZhaiFeiyue			
+/optimum/habana/transformers/models/gpt_neox	    @ZhaiFeiyue	          @mandy-li		
+/optimum/habana/transformers/models/gptj	    @ZhaiFeiyue			
+/optimum/habana/transformers/models/llama	    @mandy-li	          @libinta	       @dvarshney-habana	
+/optimum/habana/transformers/models/mpt	            @mandy-li			
+/optimum/habana/transformers/models/opt	            @ZhaiFeiyue			
+/optimum/habana/transformers/models/t5	            @bhargaveede		
+/optimum/habana/transformers/models/vit             @ZhaiFeiyue           @jychen-habana		
+/optimum/habana/transformers/models/wav2vec2	    @hlahkar	          @vivekgoe		
+/optimum/habana/transformers/generation/	    @ssarkar2	          @bhargaveede	       @vivekgoe	

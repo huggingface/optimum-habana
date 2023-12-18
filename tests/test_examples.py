@@ -33,6 +33,7 @@ from transformers import (
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
+    MODEL_MAPPING,
 )
 from transformers.testing_utils import slow
 
@@ -40,6 +41,7 @@ from .utils import (
     MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION,
     MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING,
     MODELS_TO_TEST_FOR_IMAGE_CLASSIFICATION,
+    MODELS_TO_TEST_FOR_IMAGE_TEXT,
     MODELS_TO_TEST_FOR_MASKED_LANGUAGE_MODELING,
     MODELS_TO_TEST_FOR_QUESTION_ANSWERING,
     MODELS_TO_TEST_FOR_SEQ2SEQ,
@@ -52,8 +54,8 @@ from .utils import (
 BASELINE_DIRECTORY = Path(__file__).parent.resolve() / Path("baselines")
 # Models should reach at least 99% of their baseline accuracy
 ACCURACY_PERF_FACTOR = 0.99
-# Trainings should last at most 5% longer than the baseline
-TRAINING_TIME_PERF_FACTOR = 1.05
+# Trainings/Evaluations should last at most 5% longer than the baseline
+TIME_PERF_FACTOR = 1.05
 
 
 def _get_supported_models_for_script(
@@ -130,6 +132,21 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
         MODELS_TO_TEST_FOR_SEQ2SEQ,
     ),
+    "run_clip": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        MODELS_TO_TEST_FOR_IMAGE_TEXT,
+    ),
+    "run_bridgetower": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        ["bridgetower"],
+    ),
+    "run_lora_clm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama", "falcon"],
+    ),
 }
 
 
@@ -141,31 +158,68 @@ class ExampleTestMeta(type):
     """
 
     @staticmethod
-    def to_test(model_name: str, multi_card: bool, deepspeed: bool):
-        if model_name not in ["albert-xxlarge-v1", "gpt2-xl"] and not deepspeed:
+    def to_test(model_name: str, multi_card: bool, deepspeed: bool, example_name: str):
+        models_with_specific_rules = [
+            "albert-xxlarge-v1",
+            "gpt2-xl",
+            "facebook/wav2vec2-base",
+            "facebook/wav2vec2-large-lv60",
+            "BridgeTower/bridgetower-large-itm-mlm-itc",
+            "EleutherAI/gpt-neox-20b",
+            "google/flan-t5-xxl",
+            "tiiuae/falcon-40b",
+            "bigscience/bloom-7b1",
+        ]
+
+        if model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
+            return True
+        elif "gpt-neox" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+            # GPT-NeoX is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "flan-t5" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+            # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
                 # ALBERT XXL 1X is tested only if the required flag is present because it takes long
                 return True
+        elif "wav2vec2-base" in model_name and example_name == "run_audio_classification":
+            return True
+        elif "wav2vec2-large" in model_name and example_name == "run_speech_recognition_ctc":
+            return True
+        elif "bridgetower" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
+            return True
+        elif "falcon" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
+            return True
+        elif "bloom" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "0":
+            return True
 
         return False
 
     def __new__(cls, name, bases, attrs, example_name=None, multi_card=False, deepspeed=False):
+        distribution = "single_card"
+        if multi_card:
+            distribution = "multi_card"
+        elif deepspeed:
+            distribution = "deepspeed"
+
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
-                raise AttributeError(f"Could not create class because no model was found for example {example_name}")
+                if example_name in ["run_esmfold", "run_lora_clm"]:
+                    attrs[f"test_{example_name}_{distribution}"] = cls._create_test(None, None, None, None)
+                    attrs["EXAMPLE_NAME"] = example_name
+                    return super().__new__(cls, name, bases, attrs)
+                else:
+                    raise AttributeError(
+                        f"Could not create class because no model was found for example {example_name}"
+                    )
+
         for model_name, gaudi_config_name in models_to_test:
-            if cls.to_test(model_name, multi_card, deepspeed):
-                distribution = "single_card"
-                if multi_card:
-                    distribution = "multi_card"
-                elif deepspeed:
-                    distribution = "deepspeed"
+            if cls.to_test(model_name, multi_card, deepspeed, example_name):
                 attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
                     model_name, gaudi_config_name, multi_card, deepspeed
                 )
@@ -200,19 +254,56 @@ class ExampleTestMeta(type):
             else:
                 example_script = example_script[0]
 
+            # The ESMFold example has no arguments, so we can execute it right away
+            if self.EXAMPLE_NAME == "run_esmfold":
+                p = subprocess.Popen(["python3", example_script])
+                return_code = p.wait()
+
+                # Ensure the run finished without any issue
+                self.assertEqual(return_code, 0)
+                return
+            elif self.EXAMPLE_NAME == "run_clip":
+                from .clip_coco_utils import create_clip_roberta_model, download_coco
+
+                download_coco()
+                create_clip_roberta_model()
+
             self._install_requirements(example_script.parent / "requirements.txt")
 
             path_to_baseline = BASELINE_DIRECTORY / Path(model_name.split("/")[-1].replace("-", "_")).with_suffix(
                 ".json"
             )
             with path_to_baseline.open("r") as json_file:
-                baseline = json.load(json_file)[self.TASK_NAME]
+                device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi"
+                baseline = json.load(json_file)[device]
+                if isinstance(self.TASK_NAME, list):
+                    for key in self.TASK_NAME:
+                        if key in baseline:
+                            baseline = baseline[key]
+                            break
+                    if "num_train_epochs" not in baseline:
+                        raise ValueError(
+                            f"Couldn't find a baseline associated to any of these tasks: {self.TASK_NAME}."
+                        )
+                    self.TASK_NAME = key
+                else:
+                    baseline = baseline[self.TASK_NAME]
 
             distribution = "single_card"
             if multi_card:
                 distribution = "multi_card"
             elif deepspeed:
                 distribution = "deepspeed"
+
+            env_variables = os.environ.copy()
+            if "falcon" in model_name:
+                env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+            elif "flan" in model_name:
+                env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "512"
+            elif "bloom" in model_name:
+                env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
+                env_variables["PT_HPU_MAX_COMPOUND_OP_SYNC"] = "1"
+                env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
@@ -232,7 +323,7 @@ class ExampleTestMeta(type):
                     .get("extra_arguments", []),
                 )
 
-                p = subprocess.Popen(cmd_line)
+                p = subprocess.Popen(cmd_line, env=env_variables)
                 return_code = p.wait()
 
                 # Ensure the run finished without any issue
@@ -242,7 +333,7 @@ class ExampleTestMeta(type):
                     results = json.load(fp)
 
                 # Ensure performance requirements (accuracy, training time) are met
-                self.assert_no_regression(results, baseline.get("distribution").get(distribution))
+                self.assert_no_regression(results, baseline.get("distribution").get(distribution), model_name)
 
             # TODO: is a cleanup of the dataset cache needed?
             # self._cleanup_dataset_cache()
@@ -272,9 +363,10 @@ class ExampleTesterBase(TestCase):
         "eval_accuracy": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "perplexity": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
         "eval_rougeLsum": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
-        "train_runtime": (TestCase.assertLessEqual, TRAINING_TIME_PERF_FACTOR),
+        "train_runtime": (TestCase.assertLessEqual, TIME_PERF_FACTOR),
         "eval_wer": (TestCase.assertLessEqual, 2 - ACCURACY_PERF_FACTOR),
-        "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TRAINING_TIME_PERF_FACTOR),
+        "train_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
+        "eval_samples_per_second": (TestCase.assertGreaterEqual, 2 - TIME_PERF_FACTOR),
     }
 
     def _create_command_line(
@@ -313,7 +405,6 @@ class ExampleTesterBase(TestCase):
             f"--gaudi_config_name {gaudi_config_name}",
             f"{task_option}",
             "--do_train",
-            "--do_eval",
             f"--output_dir {output_dir}",
             "--overwrite_output_dir",
             f"--learning_rate {lr}",
@@ -322,9 +413,12 @@ class ExampleTesterBase(TestCase):
             f" --num_train_epochs {num_epochs}",
             "--use_habana",
             "--use_lazy_mode",
-            "--use_hpu_graphs",
             "--throughput_warmup_steps 3",
+            "--save_strategy no",
         ]
+
+        if "bloom" not in model_name:
+            cmd_line.append("--do_eval")
 
         if extra_command_line_arguments is not None:
             cmd_line += extra_command_line_arguments
@@ -345,7 +439,7 @@ class ExampleTesterBase(TestCase):
         return_code = p.wait()
         self.assertEqual(return_code, 0)
 
-    def assert_no_regression(self, results: Dict, baseline: Dict):
+    def assert_no_regression(self, results: Dict, baseline: Dict, model_name: str):
         """
         Assert whether all possible performance requirements are met.
         Attributes:
@@ -358,11 +452,16 @@ class ExampleTesterBase(TestCase):
             if metric_name in baseline and metric_name in results:
                 metrics_to_assess.append(metric_name)
 
+        # There is no accuracy metric for `run_clip.py`, `run_bridgetower.py` and BLOOM
+        min_number_metrics = 3
+        if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower"] or "bloom" in model_name:
+            min_number_metrics = 2
+
         # Check that at least 3 metrics are assessed:
         # training time + throughput + accuracy metric (F1, accuracy, perplexity,...)
         self.assertGreaterEqual(
             len(metrics_to_assess),
-            3,
+            min_number_metrics,
             (
                 f"{len(metrics_to_assess)} asserted metric(s) while at least 3 are expected (throughput + training"
                 f" time + accuracy). Metrics to assert: {self.REGRESSION_METRICS.keys()}. Metrics received:"
@@ -449,14 +548,10 @@ class MultiCardAudioClassificationExampleTester(
     TASK_NAME = "common_language"
 
 
-# class SpeechRecognitionExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc"):
-#     TASK_NAME = "librispeech_asr"
-
-
-# class MultiCardSpeechRecognitionExampleTester(
-#     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
-# ):
-#     TASK_NAME = "librispeech_asr"
+class MultiCardSpeechRecognitionExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
+):
+    TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
 
 
 class MultiCardSummarizationExampleTester(
@@ -465,7 +560,35 @@ class MultiCardSummarizationExampleTester(
     TASK_NAME = "cnn_dailymail"
 
 
+class DeepspeedSummarizationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", deepspeed=True
+):
+    TASK_NAME = "cnn_dailymail"
+
+
 class MultiCardSeq2SeqQuestionAnsweringExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_seq2seq_qa", multi_card=True
 ):
     TASK_NAME = "squad_v2"
+
+
+class MultiCardVisionLanguageExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clip", multi_card=True
+):
+    TASK_NAME = "ydshieh/coco_dataset_script"
+
+
+class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_esmfold"):
+    pass
+
+
+class MultiCardCausalLanguageModelingLORAExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = ["tatsu-lab/alpaca", "timdettmers/openassistant-guanaco"]
+
+
+class MultiCardBridgetowerExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_bridgetower", multi_card=True
+):
+    TASK_NAME = "jmhessel/newyorker_caption_contest"

@@ -62,7 +62,7 @@ if is_torch_available():
 
 
 class TestGaudiTrainerDistributed(TestCasePlus):
-    def test_gaudi_trainer_distributed(self):
+    def _test_gaudi_trainer_distributed(self, kwargs={}):
         output_dir = self.get_auto_remove_tmp_dir()
 
         command_list = [f"{self.test_file_dir}/test_trainer_distributed.py"]
@@ -70,7 +70,8 @@ class TestGaudiTrainerDistributed(TestCasePlus):
         command_list += [output_dir]
         command_list += ["--use_habana"]
         command_list += ["--use_lazy_mode"]
-        command_list += ["--use_hpu_graphs"]
+        for key, value in kwargs.items():
+            command_list += [f"--{key} {value}"]
         command = [" ".join(command_list)]
 
         distributed_runner = DistributedRunner(
@@ -84,6 +85,18 @@ class TestGaudiTrainerDistributed(TestCasePlus):
         # ret_code equals 0 or None if successful run
         self.assertTrue(ret_code == 0 or ret_code is None)
 
+    def test_gaudi_trainer_distributed(self):
+        self._test_gaudi_trainer_distributed()
+
+    def test_gaudi_trainer_distributed_hpu_graphs(self):
+        self._test_gaudi_trainer_distributed(
+            {
+                "use_hpu_graphs_for_training": "",
+                "use_hpu_graphs_for_inference": "",
+                "distribution_strategy": "fast_ddp",
+            }
+        )
+
 
 if __name__ == "__main__":
     # The script below is meant to be run under mpirun, on a machine with multiple HPUs:
@@ -93,7 +106,8 @@ if __name__ == "__main__":
     parser = HfArgumentParser((GaudiTrainingArguments,))
     training_args = parser.parse_args_into_dataclasses()[0]
 
-    gaudi_config = GaudiConfig.from_pretrained(Path("tests", "configs", "gaudi_config_trainer_test.json"))
+    gaudi_config_file = Path(__file__).parent.resolve() / Path("configs/gaudi_config_trainer_test.json")
+    gaudi_config = GaudiConfig.from_pretrained(gaudi_config_file)
 
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_hpu: {training_args.world_size},"

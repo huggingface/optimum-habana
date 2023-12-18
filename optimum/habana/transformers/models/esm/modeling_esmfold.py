@@ -14,9 +14,8 @@
 # limitations under the License.
 from typing import Optional
 
-import numpy as np
 import torch
-from transformers.models.esm.modeling_esmfold import EsmForProteinFoldingOutput, categorical_lddt, flatten_final_dims
+from transformers.models.esm.modeling_esmfold import EsmForProteinFoldingOutput, categorical_lddt
 from transformers.models.esm.openfold_utils import (
     compute_predicted_aligned_error,
     compute_tm,
@@ -105,11 +104,11 @@ def gaudi_esmfolding_trunk_forward(self, seq_feats, pair_feats, true_aa, residx,
 def gaudi_esm_for_protein_folding_forward(
     self,
     input_ids: torch.Tensor,
-    attention_mask: torch.Tensor = None,
+    attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.Tensor] = None,
     masking_pattern: Optional[torch.Tensor] = None,
     num_recycles: Optional[int] = None,
-):
+) -> EsmForProteinFoldingOutput:
     r"""
     Returns:
 
@@ -237,90 +236,6 @@ def gaudi_esm_for_protein_folding_forward(
     structure.update(compute_predicted_aligned_error(ptm_logits, max_bin=31, no_bins=self.distogram_bins))
 
     return EsmForProteinFoldingOutput(**structure)
-
-
-def _gaudi_esmfold_attention_wrap_up(self, o: torch.Tensor, q_x: torch.Tensor) -> torch.Tensor:
-    """
-    Copied from EsmFoldAttention._wrap_up:
-    https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
-    The change is:
-    - Add extra mark_step after sigmoid
-    """
-
-    if self.linear_g is not None:
-        g = self.sigmoid(self.linear_g(q_x))
-        # TODO: WA on HPU accuracy issue. Will be fixed after 1.10.0 releases.
-        if g.device.type == "hpu":
-            import habana_frameworks.torch.core as htcore
-
-            htcore.mark_step()
-
-        # [*, Q, H, C_hidden]
-        g = g.view(g.shape[:-1] + (self.no_heads, -1))
-        o = o * g
-
-    # [*, Q, H * C_hidden]
-    o = flatten_final_dims(o, 2)
-
-    # [*, Q, C_q]
-    o = self.linear_o(o)
-
-    return o
-
-
-def gaudi_esmfold_self_attention_forward(self, x, mask=None, bias=None, indices=None):
-    """
-    Basic self attention with optional mask and external pairwise bias. To handle sequences of different lengths,
-    use mask.
-
-    Inputs:
-        x: batch of input sequneces (.. x L x C) mask: batch of boolean masks where 1=valid, 0=padding position (..
-        x L_k) bias: batch of scalar pairwise attention biases (.. x Lq x Lk x num_heads)
-
-    Outputs:
-        sequence projection (B x L x embed_dim), attention maps (B x L x L x num_heads)
-
-    Copied from EsmFoldSelfAttention.forward:
-    https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
-    The change is:
-    - Add extra mark_step after sigmoid
-    """
-
-    t = self.proj(x).view(*x.shape[:2], self.num_heads, -1)
-    t = t.permute(0, 2, 1, 3)
-    q, k, v = t.chunk(3, dim=-1)
-
-    q = self.rescale_factor * q
-    a = torch.einsum("...qc,...kc->...qk", q, k)
-
-    # Add external attention bias.
-    if bias is not None:
-        a = a + bias.permute(0, 3, 1, 2)
-
-    # Do not attend to padding tokens.
-    if mask is not None:
-        mask = mask[:, None, None]
-        a = a.masked_fill(mask == False, -np.inf)  # noqa: E712
-
-    a = torch.nn.functional.softmax(a, dim=-1)
-
-    y = torch.einsum("...hqk,...hkc->...qhc", a, v)
-    y = y.reshape(*y.shape[:2], -1)
-
-    if self.gated:
-        # TODO: WA on HPU accuracy issue. Will be fixed after 1.10.0 releases.
-        if y.device.type == "hpu":
-            temp = self.g_proj(x)
-            temp = temp.sigmoid()
-            import habana_frameworks.torch.core as htcore
-
-            htcore.mark_step()
-            y = temp * y
-        else:
-            y = self.g_proj(x).sigmoid() * y
-    y = self.o_proj(y)
-
-    return y, a.permute(0, 3, 1, 2)
 
 
 def gaudi_rot_vec_mul(r: torch.Tensor, t: torch.Tensor) -> torch.Tensor:

@@ -21,17 +21,17 @@ import random
 import re
 import subprocess
 import tempfile
-import time
 import unittest
 from itertools import product
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
-from huggingface_hub import HfFolder, Repository, delete_repo
+from huggingface_hub import HfFolder, delete_repo, list_repo_commits
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
+from transformers.hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS
 from transformers.testing_utils import (
     ENDPOINT_STAGING,
     TOKEN,
@@ -47,7 +47,7 @@ from transformers.testing_utils import (
     require_tokenizers,
     require_torch,
 )
-from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
+from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend
 from transformers.training_args import OptimizerNames
 from transformers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -97,15 +97,35 @@ class RegressionDataset:
         return result
 
 
+class RegressionDatasetDynamic:
+    def __init__(self, a=2, b=3, length=128, seed=42, label_names=None):
+        np.random.seed(seed)
+        self.label_names = ["labels"] if label_names is None else label_names
+        self.length = length
+        self.a = a
+        self.b = b
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, i):
+        self.x = np.random.normal(size=(self.length + i,)).astype(np.float32)
+        self.ys = self.a * self.x + self.b + np.random.normal(scale=0.1, size=(self.length + i,)).astype(np.float32)
+        result = {}
+        result["labels"] = self.ys
+        result["input_x"] = self.x
+        return result
+
+
 @dataclasses.dataclass
 class RegressionGaudiTrainingArguments(GaudiTrainingArguments):
     a: float = 0.0
     b: float = 0.0
 
     def __post_init__(self):
-        super().__post_init__()
         # save resources not dealing with reporting (also avoids the warning when it's not set)
         self.report_to = []
+        super().__post_init__()
 
 
 class RepeatDataset:
@@ -118,6 +138,22 @@ class RepeatDataset:
 
     def __getitem__(self, i):
         return {"input_ids": self.x, "labels": self.x}
+
+
+class DynamicShapesDataset:
+    def __init__(self, length=64, seed=42, batch_size=8):
+        self.length = length
+        np.random.seed(seed)
+        sizes = np.random.randint(1, 20, (length // batch_size,))
+        # For easy batching, we make every batch_size consecutive samples the same size.
+        self.xs = [np.random.normal(size=(s,)) for s in sizes.repeat(batch_size)]
+        self.ys = [np.random.normal(size=(s,)) for s in sizes.repeat(batch_size)]
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, i):
+        return {"input_x": self.xs[i], "labels": self.ys[i]}
 
 
 class AlmostAccuracy:
@@ -268,7 +304,9 @@ if is_torch_available():
 
     def get_gaudi_config(gaudi_config_name_or_path: Optional[Union[str, Path]] = None) -> GaudiConfig:
         if gaudi_config_name_or_path is None:
-            gaudi_config_name_or_path = os.path.join("tests", "configs", "gaudi_config_trainer_test.json")
+            gaudi_config_name_or_path = Path(__file__).parent.resolve() / Path(
+                "configs/gaudi_config_trainer_test.json"
+            )
         return GaudiConfig.from_pretrained(gaudi_config_name_or_path)
 
     def get_regression_trainer(a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, **kwargs):
@@ -428,11 +466,15 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         trainer.train()
         self.alternate_trained_model = (trainer.model.a, trainer.model.b)
 
-    def check_trained_model(self, model, alternate_seed=False):
+    def check_trained_model(self, model, alternate_seed=False, bf16=False):
         # Checks a training seeded with learning_rate = 0.1
         (a, b) = self.alternate_trained_model if alternate_seed else self.default_trained_model
-        self.assertTrue(torch.allclose(model.a, a))
-        self.assertTrue(torch.allclose(model.b, b))
+        if not bf16:
+            self.assertTrue(torch.allclose(model.a, a))
+            self.assertTrue(torch.allclose(model.b, b))
+        else:
+            self.assertTrue(torch.allclose(model.a, a, atol=1e-03, rtol=0))
+            self.assertTrue(torch.allclose(model.b, b, atol=1e-03, rtol=0))
 
     def test_reproducible_training(self):
         # Checks that training worked, model trained and seed made a reproducible training.
@@ -543,6 +585,87 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         self.assertFalse(torch.allclose(trainer.model.b, b))
         self.assertEqual(trainer.optimizer.state_dict()["param_groups"][0]["lr"], 1.0)
 
+    def test_reduce_lr_on_plateau_args(self):
+        # test passed arguments for a custom ReduceLROnPlateau scheduler
+        train_dataset = RegressionDataset(length=64)
+        eval_dataset = RegressionDataset(length=64)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_fused_adam = False
+        args = GaudiTrainingArguments(
+            "./regression",
+            evaluation_strategy="epoch",
+            metric_for_best_model="eval_loss",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        model = RegressionModel()
+        optimizer = torch.optim.SGD(model.parameters(), lr=1.0)
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, cooldown=2)
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            optimizers=(optimizer, lr_scheduler),
+        )
+        trainer.train()
+
+        self.assertIsInstance(trainer.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
+        self.assertEqual(trainer.lr_scheduler.factor, 0.2)
+        self.assertEqual(trainer.lr_scheduler.patience, 5)
+        self.assertEqual(trainer.lr_scheduler.cooldown, 2)
+
+    def test_reduce_lr_on_plateau(self):
+        # test the ReduceLROnPlateau scheduler
+
+        class TrainerWithLRLogs(GaudiTrainer):
+            def log(self, logs):
+                # the LR is computed after metrics and does not exist for the first epoch
+                if hasattr(self.lr_scheduler, "_last_lr"):
+                    logs["learning_rate"] = self.lr_scheduler._last_lr
+                super().log(logs)
+
+        train_dataset = RegressionDataset(length=64)
+        eval_dataset = RegressionDataset(length=64)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_fused_adam = False
+
+        args = GaudiTrainingArguments(
+            "./regression",
+            lr_scheduler_type="reduce_lr_on_plateau",
+            evaluation_strategy="epoch",
+            metric_for_best_model="eval_loss",
+            num_train_epochs=10,
+            learning_rate=0.2,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        model = RegressionModel()
+        trainer = TrainerWithLRLogs(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer.train()
+
+        self.assertIsInstance(trainer.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
+        patience = trainer.lr_scheduler.patience
+
+        logs = trainer.state.log_history[1:]
+        best_loss = logs[0]["eval_loss"]
+        bad_epochs = 0
+        for i, log in enumerate(logs[:-1]):  # Compare learning rate to next epoch's
+            loss = log["eval_loss"]
+            just_decreased = False
+            if loss > best_loss:
+                bad_epochs += 1
+                if bad_epochs > patience:
+                    self.assertLess(logs[i + 1]["learning_rate"][0], log["learning_rate"][0])
+                    just_decreased = True
+                    bad_epochs = 0
+            else:
+                best_loss = loss
+                bad_epochs = 0
+            if not just_decreased:
+                self.assertEqual(logs[i + 1]["learning_rate"][0], log["learning_rate"][0])
+
     def test_adafactor_lr_none(self):
         # test the special case where lr=None, since Trainer can't not have lr_scheduler
 
@@ -566,15 +689,11 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         self.assertGreater(trainer.optimizer.state_dict()["param_groups"][0]["lr"], 0)
 
     def test_mixed_bf16(self):
-        # TODO: test HMP when it is easily possible to undo hmp.convert
-        # # very basic test
-        # trainer = get_regression_trainer(learning_rate=0.1, bf16=True)
-        # trainer.train()
-        # self.check_trained_model(trainer.model)
-
-        # --bf16 is not supported and should raise an error
-        with self.assertRaises(ValueError):
-            get_regression_trainer(learning_rate=0.1, bf16=True)
+        # very basic test
+        trainer = get_regression_trainer(learning_rate=0.1, bf16=True)
+        self.assertTrue(trainer.use_hpu_amp)
+        trainer.train()
+        self.check_trained_model(trainer.model, bf16=True)
 
 
 @require_torch
@@ -603,7 +722,15 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         eval_dataset = RegressionDataset()
         model = RegressionModel()
         gaudi_config = get_gaudi_config()
-        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True, use_hpu_graphs=True)
+        args = GaudiTrainingArguments(
+            "./regression",
+            use_habana=True,
+            use_lazy_mode=True,
+            use_hpu_graphs_for_training=True,
+            use_hpu_graphs_for_inference=True,
+            disable_tensor_cache_hpu_graphs=True,
+            max_hpu_graphs=1,
+        )
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         trainer.train()
         _ = trainer.evaluate()
@@ -704,9 +831,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
     def test_train_and_eval_dataloaders(self):
         trainer = get_regression_trainer(learning_rate=0.1, per_device_train_batch_size=16)
-        self.assertEqual(trainer.get_train_dataloader().batch_size, 16)
+        self.assertEqual(trainer.get_train_dataloader().total_batch_size, 16)
         trainer = get_regression_trainer(learning_rate=0.1, per_device_eval_batch_size=16)
-        self.assertEqual(trainer.get_eval_dataloader().batch_size, 16)
+        self.assertEqual(trainer.get_eval_dataloader().total_batch_size, 16)
 
         # Check drop_last works
         trainer = get_regression_trainer(
@@ -744,70 +871,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         trainer.train()
         trainer.evaluate()
 
-    def test_sampler_seed(self):
-        # nb: we don't want to inherit from IterableDataset to hit the right code path
-        class DummyDataset(torch.utils.data.Dataset):
-            def __init__(self, length: int = 101):
-                self.length = length
-
-            def __len__(self):
-                return self.length
-
-            def __getitem__(self, i):
-                if (i < 0) or (i >= self.length):
-                    raise IndexError
-                return {"input_ids": [i]}
-
-        class DummyModel(PreTrainedModel):
-            def __init__(self, num_params: int):
-                super().__init__(PretrainedConfig())
-                # Add some (unused) params. the point here is that randomness in model_init shouldn't influence
-                # data loader order.
-                self.params = nn.Parameter(torch.randn(num_params))
-
-            def forward(self, input_ids, labels=None):
-                if labels is not None:
-                    return torch.tensor(0.0, device=input_ids.device), input_ids
-                else:
-                    return input_ids
-
-        def _get_first_data_sample(num_params, seed, data_seed, **kwargs):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                trainer = GaudiTrainer(
-                    model_init=lambda: DummyModel(num_params),
-                    gaudi_config=get_gaudi_config(),
-                    args=GaudiTrainingArguments(
-                        output_dir=tmpdir,
-                        **kwargs,
-                        seed=seed,
-                        data_seed=data_seed,
-                        local_rank=-1,
-                        use_habana=True,
-                        use_lazy_mode=True,
-                    ),
-                    train_dataset=DummyDataset(),
-                )
-
-                return next(iter(trainer.get_train_dataloader()))
-
-        # test that the seed is passed to the sampler
-        # the codepath we want to hit is world_size <= 1, and both group_by_length
-        for group_by_length in [True, False]:
-            sample42_1 = _get_first_data_sample(num_params=10, seed=42, data_seed=42, group_by_length=group_by_length)
-            sample42_2 = _get_first_data_sample(num_params=11, seed=42, data_seed=42, group_by_length=group_by_length)
-            self.assertTrue(torch.equal(sample42_1["input_ids"], sample42_2["input_ids"]))
-
-            # should get same samples with different seed, so long as data_seed is the same
-            sample42_3 = _get_first_data_sample(num_params=11, seed=11, data_seed=42, group_by_length=group_by_length)
-            self.assertTrue(torch.equal(sample42_1["input_ids"], sample42_3["input_ids"]))
-
-            # make sure we have some randomness in the samples if data_seed is different
-            others = [
-                _get_first_data_sample(num_params=i, seed=42, data_seed=i, group_by_length=group_by_length)
-                for i in range(10)
-            ]
-            self.assertTrue(any(not torch.equal(sample42_1["input_ids"], sample["input_ids"]) for sample in others))
-
     def test_data_is_not_parallelized_when_model_is_parallel(self):
         model = RegressionModel()
         # Make the Trainer believe it's a parallelized model
@@ -829,9 +892,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertEqual(trainer.args.n_gpu, 1)
 
         # The batch size of the training and evaluation dataloaders should be 16, not 16 * n_gpu
-        self.assertEqual(trainer.get_train_dataloader().batch_size, 16)
+        self.assertEqual(trainer.get_train_dataloader().total_batch_size, 16)
         self.assertEqual(len(trainer.get_train_dataloader()), 64 // 16)
-        self.assertEqual(trainer.get_eval_dataloader().batch_size, 16)
+        self.assertEqual(trainer.get_eval_dataloader().total_batch_size, 16)
         self.assertEqual(len(trainer.get_eval_dataloader()), 64 // 16)
 
     def test_evaluate(self):
@@ -904,41 +967,83 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertTrue(np.array_equal(labels[0], trainer.eval_dataset.ys[0]))
         self.assertTrue(np.array_equal(labels[1], trainer.eval_dataset.ys[1]))
 
-    # def test_dynamic_shapes(self):
-    #     eval_dataset = DynamicShapesDataset(batch_size=self.batch_size)
-    #     model = RegressionModel(a=2, b=1)
-    #     args = TrainingArguments("./regression")
-    #     trainer = Trainer(model, args, eval_dataset=eval_dataset)
+    def test_dynamic_shapes(self):
+        eval_dataset = DynamicShapesDataset(batch_size=self.batch_size)
+        model = RegressionModel(a=2, b=1)
+        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = True
+        trainer = GaudiTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
 
-    #     # Check evaluation can run to completion
-    #     _ = trainer.evaluate()
+        # Check evaluation can run to completion
+        _ = trainer.evaluate()
 
-    #     # Check predictions
-    #     preds = trainer.predict(eval_dataset)
-    #     for expected, seen in zip(eval_dataset.ys, preds.label_ids):
-    #         self.assertTrue(np.array_equal(expected, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        # Check predictions
+        preds = trainer.predict(eval_dataset)
+        for expected, seen in zip(eval_dataset.ys, preds.label_ids):
+            self.assertTrue(np.allclose(expected, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    #     for expected, seen in zip(eval_dataset.xs, preds.predictions):
-    #         self.assertTrue(np.array_equal(2 * expected + 1, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        for expected, seen in zip(eval_dataset.xs, preds.predictions):
+            self.assertTrue(np.allclose(2 * expected + 1, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    #     # Same tests with eval accumulation
-    #     args = TrainingArguments("./regression", eval_accumulation_steps=2)
-    #     trainer = Trainer(model, args, eval_dataset=eval_dataset)
+        # Same tests with eval accumulation
+        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True, eval_accumulation_steps=2)
+        trainer = GaudiTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
 
-    #     # Check evaluation can run to completion
-    #     _ = trainer.evaluate()
+        # Check evaluation can run to completion
+        _ = trainer.evaluate()
 
-    #     # Check predictions
-    #     preds = trainer.predict(eval_dataset)
-    #     for expected, seen in zip(eval_dataset.ys, preds.label_ids):
-    #         self.assertTrue(np.array_equal(expected, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        # Check predictions
+        preds = trainer.predict(eval_dataset)
+        for expected, seen in zip(eval_dataset.ys, preds.label_ids):
+            self.assertTrue(np.allclose(expected, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    #     for expected, seen in zip(eval_dataset.xs, preds.predictions):
-    #         self.assertTrue(np.array_equal(2 * expected + 1, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        for expected, seen in zip(eval_dataset.xs, preds.predictions):
+            self.assertTrue(np.allclose(2 * expected + 1, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+
+    def test_dynamic_shape_feature(self):
+        # Run training with variable length inputs and enable dynamic shapes support
+        train_dataset = RegressionDatasetDynamic(length=256)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = True
+        args = GaudiTrainingArguments(
+            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
+        )
+        model = RegressionModel()
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+        )
+        train_output_ds = trainer.train()
+
+        # Run training again with variable length inputs and disable dynamic shapes support
+        train_dataset = RegressionDatasetDynamic(length=256)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = False
+        args = GaudiTrainingArguments(
+            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
+        )
+        model = RegressionModel()
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+        )
+        train_output_static = trainer.train()
+
+        # Check if performance with dynamic shapes support is at least 5 times that without dynamic shapes
+        # Note "5x" number is not applicable across models, it is tuned for this particular dummy model
+        self.assertGreaterEqual(
+            train_output_ds.metrics["train_samples_per_second"],
+            5 * train_output_static.metrics["train_samples_per_second"],
+        )
 
     def test_log_level(self):
         # testing only --log_level (--log_level_replica requires multiple gpus and DDP and is tested elsewhere)
@@ -1384,29 +1489,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertIsInstance(loader, torch.utils.data.DataLoader)
         self.assertIsInstance(loader.sampler, torch.utils.data.dataloader._InfiniteConstantSampler)
 
-    def test_training_finite_iterable_dataset(self):
-        config = RegressionModelConfig()
-        model = RegressionPreTrainedModel(config)
-
-        batch_size = 1
-        num_samples = 10
-
-        available_steps = num_samples // batch_size
-
-        data = FiniteIterableDataset(length=num_samples)
-        train_args = GaudiTrainingArguments(
-            "..",
-            max_steps=available_steps + 1,  # set a higher number than actually available
-            per_device_train_batch_size=batch_size,
-            use_habana=True,
-            use_lazy_mode=True,
-        )
-        gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(model, gaudi_config=gaudi_config, train_dataset=data, args=train_args)
-        with self.assertLogs("optimum.habana.transformers.trainer", level="WARNING") as logs:
-            trainer.train()
-        self.assertIn(f"stopping training at step {available_steps}!", logs.output[0])
-
     def test_evaluation_iterable_dataset(self):
         config = RegressionModelConfig(a=1.5, b=2.5)
         model = RegressionPreTrainedModel(config)
@@ -1601,13 +1683,16 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         args = GaudiTrainingArguments(output_dir="./test", use_habana=True, use_lazy_mode=True)
         trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args)
         trainer.create_optimizer_and_scheduler(10)
-        # fmt: off
-        wd_names = ['0.linear1.weight', '0.linear2.weight', '1.0.linear1.weight', '1.0.linear2.weight', '1.1.linear1.weight', '1.1.linear2.weight']
-        # fmt: on
+        wd_names = ['0.linear1.weight', '0.linear2.weight', '1.0.linear1.weight', '1.0.linear2.weight', '1.1.linear1.weight', '1.1.linear2.weight']  # fmt: skip
         wd_params = [p for n, p in model.named_parameters() if n in wd_names]
         no_wd_params = [p for n, p in model.named_parameters() if n not in wd_names]
         self.assertListEqual(trainer.optimizer.param_groups[0]["params"], wd_params)
         self.assertListEqual(trainer.optimizer.param_groups[1]["params"], no_wd_params)
+
+    def test_profiling(self):
+        # 24 total steps and compilation takes place during the 1st three steps
+        trainer = get_regression_trainer(profiling_warmup_steps=3, profiling_steps=21)
+        trainer.train()
 
 
 @require_torch
@@ -1691,21 +1776,17 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
                 output_dir=os.path.join(tmp_dir, "test-trainer-epoch"),
                 push_to_hub=True,
                 hub_token=self._token,
+                # To avoid any flakiness if the training goes faster than the uploads.
+                hub_always_push=True,
                 save_strategy="epoch",
             )
             trainer.train()
 
-            # Wait for the async pushes to be finished
-            while trainer.push_in_progress is not None and not trainer.push_in_progress.is_done:
-                time.sleep(0.5)
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            _ = Repository(tmp_dir, clone_from=f"{USER}/test-trainer-epoch", use_auth_token=self._token)
-            commits = self.get_commit_history(tmp_dir)
-            self.assertIn("initial commit", commits)
-            # We can't test that epoch 2 and 3 are in the commits without being flaky as those might be skipped if
-            # the push for epoch 1 wasn't finished at the time.
-            self.assertIn("Training in progress, epoch 1", commits)
+        commits = list_repo_commits(f"{USER}/test-trainer-epoch", token=self._token)
+        commits = [c.title for c in commits]
+        self.assertIn("initial commit", commits)
+        for i in range(1, 4):
+            self.assertIn(f"Training in progress, epoch {i}", commits)
 
     def test_push_to_hub_with_saves_each_n_steps(self):
         num_gpus = max(1, get_gpu_count())
@@ -1717,22 +1798,21 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
                 output_dir=os.path.join(tmp_dir, "test-trainer-step"),
                 push_to_hub=True,
                 hub_token=self._token,
+                # To avoid any flakiness if the training goes faster than the uploads.
+                hub_always_push=True,
                 save_strategy="steps",
                 save_steps=5,
             )
             trainer.train()
 
-            # Wait for the async pushes to be finished
-            while trainer.push_in_progress is not None and not trainer.push_in_progress.is_done:
-                time.sleep(0.5)
+        commits = list_repo_commits(f"{USER}/test-trainer-step", token=self._token)
+        commits = [c.title for c in commits]
+        self.assertIn("initial commit", commits)
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            _ = Repository(tmp_dir, clone_from=f"{USER}/test-trainer-step", use_auth_token=self._token)
-            commits = self.get_commit_history(tmp_dir)
-            self.assertIn("initial commit", commits)
-            # We can't test that epoch 2 and 3 are in the commits without being flaky as those might be skipped if
-            # the push for epoch 1 wasn't finished at the time.
-            self.assertIn("Training in progress, step 5", commits)
+        # max_steps depend on the number of available GPUs
+        max_steps = math.ceil(trainer.args.num_train_epochs * len(trainer.get_train_dataloader()))
+        for i in range(5, max_steps, 5):
+            self.assertIn(f"Training in progress, step {i}", commits)
 
 
 @require_torch
@@ -1779,6 +1859,62 @@ class GaudiTrainerHyperParameterOptunaIntegrationTest(unittest.TestCase):
                 model_init=model_init,
             )
             trainer.hyperparameter_search(direction="minimize", hp_space=hp_space, hp_name=hp_name, n_trials=4)
+
+
+@require_torch
+@require_optuna
+class TrainerHyperParameterMultiObjectOptunaIntegrationTest(unittest.TestCase):
+    def setUp(self):
+        args = GaudiTrainingArguments("..", use_habana=True, use_lazy_mode=True)
+        self.n_epochs = args.num_train_epochs
+        self.batch_size = args.train_batch_size
+
+    def test_hyperparameter_search(self):
+        class MyTrialShortNamer(TrialShortNamer):
+            DEFAULTS = {"a": 0, "b": 0}
+
+        def hp_space(trial):
+            return {}
+
+        def model_init(trial):
+            if trial is not None:
+                a = trial.suggest_int("a", -4, 4)
+                b = trial.suggest_int("b", -4, 4)
+            else:
+                a = 0
+                b = 0
+            config = RegressionModelConfig(a=a, b=b, double_output=False)
+
+            return RegressionPreTrainedModel(config)
+
+        def hp_name(trial):
+            return MyTrialShortNamer.shortname(trial.params)
+
+        def compute_objective(metrics: Dict[str, float]) -> List[float]:
+            return metrics["eval_loss"], metrics["eval_accuracy"]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(
+                output_dir=tmp_dir,
+                learning_rate=0.1,
+                logging_steps=1,
+                evaluation_strategy=IntervalStrategy.EPOCH,
+                save_strategy=IntervalStrategy.EPOCH,
+                num_train_epochs=10,
+                disable_tqdm=True,
+                load_best_model_at_end=True,
+                logging_dir="runs",
+                run_name="test",
+                model_init=model_init,
+                compute_metrics=AlmostAccuracy(),
+            )
+            trainer.hyperparameter_search(
+                direction=["minimize", "maximize"],
+                hp_space=hp_space,
+                hp_name=hp_name,
+                n_trials=4,
+                compute_objective=compute_objective,
+            )
 
 
 # TODO: crashes because `TypeError: cannot pickle 'PyCapsule' object`
@@ -2011,3 +2147,11 @@ class GaudiTrainerOptimizerChoiceTest(unittest.TestCase):
 #             trainer.hyperparameter_search(
 #                 direction="minimize", hp_space=hp_space, hp_name=hp_name, backend="wandb", n_trials=4, anonymous="must"
 #             )
+
+
+class HyperParameterSearchBackendsTest(unittest.TestCase):
+    def test_hyperparameter_search_backends(self):
+        self.assertEqual(
+            list(ALL_HYPERPARAMETER_SEARCH_BACKENDS.keys()),
+            list(HPSearchBackend),
+        )
