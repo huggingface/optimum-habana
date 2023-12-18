@@ -74,6 +74,11 @@ def setup_parser(parser):
         help="Whether to use the key/value cache for decoding. It should speed up generation.",
     )
     parser.add_argument(
+        "--use_torch_compile",
+        action="store_true",
+        help="Whether to use torch compiled model or not.",
+    )
+    parser.add_argument(
         "--use_hpu_graphs",
         action="store_true",
         help="Whether to use HPU graphs or not. Using HPU graphs should give better latencies.",
@@ -234,6 +239,9 @@ def setup_parser(parser):
 
     args = parser.parse_args()
 
+    if args.use_torch_compile:
+        args.use_hpu_graphs = False
+
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
 
@@ -297,7 +305,8 @@ def main():
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
-                lazy_mode=True,
+                lazy_mode=True if not args.use_torch_compile else False,
+                torch_compile = args.use_torch_compile,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
@@ -477,7 +486,8 @@ def main():
             outputs = model.generate(
                 **batch,
                 generation_config=generation_config,
-                lazy_mode=True,
+                lazy_mode=True if not args.use_torch_compile else False,
+                torch_compile = args.use_torch_compile,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,

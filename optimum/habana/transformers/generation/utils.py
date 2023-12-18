@@ -406,6 +406,7 @@ class GaudiGenerationMixin(GenerationMixin):
         negative_prompt_ids: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         lazy_mode: Optional[bool] = False,
+        torch_compile: Optional[bool] = False,
         hpu_graphs: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
@@ -474,6 +475,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Attention_mask for `negative_prompt_ids`.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
+            torch_compile (`bool`, *optional*, defaults to `False`):
+                Whether the run is executed with torch.compile model or not.
             hpu_graphs (`bool`, *optional*, defaults to `False`):
                 Whether to use HPU graphs for inference.
             profiling_warmup_steps (`int`, *optional*, defaults to 0):
@@ -512,6 +515,10 @@ class GaudiGenerationMixin(GenerationMixin):
         if hpu_graphs and not lazy_mode:
             raise ValueError(
                 "`hpu_graphs` is True but `lazy_mode` is False. HPU graphs require `lazy_mode` to be set to True."
+            )
+        if torch_compile and (lazy_mode or hpu_graphs):
+            raise ValueError(
+                "`torch_compile` is True. This requires both `lazy_mode` and `hpu_graphs` to be set to False."
             )
 
         # priority: `generation_config` argument > `model.generation_config` (the default generation config)
@@ -838,6 +845,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 synced_gpus=synced_gpus,
                 streamer=streamer,
                 lazy_mode=lazy_mode,
+                torch_compile=torch_compile,
                 ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
@@ -1214,6 +1222,7 @@ class GaudiGenerationMixin(GenerationMixin):
         synced_gpus: bool = False,
         streamer: Optional["BaseStreamer"] = None,
         lazy_mode: Optional[bool] = False,
+        torch_compile: Optional[bool] = False,
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
@@ -1265,6 +1274,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
+            torch_compile (`bool`, *optional*, defaults to `False`):
+                Whether the run is executed with torch.compile model or not.
             ignore_eos (`bool`, *optional*, defaults to `False`):
                 Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
             profiling_warmup_steps (`int`, *optional*, defaults to 0):
@@ -1403,14 +1414,26 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
-            # forward pass to get next token
-            outputs = self(
-                **model_inputs,
-                return_dict=True,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                **hpu_graphs_kwargs,
-            )
+            if torch_compile:
+                # apply torch.compile
+                compiled_model = torch.compile(self, backend="aot_hpu_inference_backend")
+                # forward pass to get next token
+                outputs = compiled_model(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    **hpu_graphs_kwargs,
+                )
+            else:
+                # forward pass to get next token
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    **hpu_graphs_kwargs,
+                )
 
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
