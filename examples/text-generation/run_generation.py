@@ -24,6 +24,7 @@ import logging
 import math
 import time
 from pathlib import Path
+from itertools import cycle
 
 import torch
 from utils import adjust_batch, count_hpu_graphs, initialize_model
@@ -346,9 +347,11 @@ def main():
             for i in range(args.n_iterations):
                 generated = generate(None, args.reduce_recompile)
         else:
+            repeated_prompt_len = cycle(dyn_prompt_lens)
             for i in range(args.n_iterations):
-                print("Generating for shape,", dyn_prompt_lens[i])
-                generated = generate(dyn_prompt_lens[i], args.reduce_recompile)
+                prompt_len = next(repeated_prompt_len)
+                print("Generating for shape,", prompt_len)
+                generated = generate(prompt_len, args.reduce_recompile)
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
