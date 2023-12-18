@@ -39,9 +39,11 @@ def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> t
     # torch.finfo must take the dtype of encoder_extended_attention_mask
     encoder_extended_attention_mask = encoder_extended_attention_mask.to(dtype=self.dtype)  # bf16 compatibility
     encoder_extended_attention_mask = 1.0 - encoder_extended_attention_mask
-    encoder_extended_attention_mask = (
-        encoder_extended_attention_mask * torch.finfo(encoder_extended_attention_mask.dtype).min
-    )
+    #  Fixes issue where the model is not in bf16 and mul is casting it to values out of range resulting in nan
+    with torch.autocast(enabled=False, device_type="hpu"):
+        encoder_extended_attention_mask = (
+            encoder_extended_attention_mask * torch.finfo(encoder_extended_attention_mask.dtype).min
+        )
 
     return encoder_extended_attention_mask
 

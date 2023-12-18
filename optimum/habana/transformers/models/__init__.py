@@ -87,7 +87,15 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
-from .t5 import gaudi_t5_layernorm_forward
+from .t5 import (
+    gaudi_t5_layernorm_forward,
+    gaudi_T5Attention_forward,
+    gaudi_T5Block_forward,
+    gaudi_T5ForConditionalGeneration_forward,
+    gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_T5LayerSelfAttention_forward,
+    gaudi_T5Stack_forward,
+)
 from .vit import gaudi_vit_self_attention_forward
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,

@@ -30,6 +30,7 @@ import datasets
 import evaluate
 import nltk  # Here to have a nice missing dependency error message early on
 import numpy as np
+import torch
 import transformers
 from datasets import load_dataset
 from filelock import FileLock
@@ -635,6 +636,46 @@ def main():
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
+    def preprocess_bucketing_function(examples):
+        # remove pairs where at least one record is None
+
+        inputs, targets = [], []
+        for i in range(len(examples[text_column])):
+            if examples[text_column][i] and examples[summary_column][i]:
+                inputs.append(examples[text_column][i])
+                targets.append(examples[summary_column][i])
+            else:
+                raise ValueError("Found case where either text or summary is missing.")
+
+        inputs = [prefix + inp + suffix for inp in inputs]
+        model_inputs = tokenizer(inputs, return_tensors="pt", padding=True)
+        new_model_inputs = {"input_ids": []}
+        for i in range(len(model_inputs["input_ids"])):
+            cur_len = model_inputs["input_ids"][i].shape[-1]
+            max_length = (cur_len + 128 - 1) // 128 * 128
+            if max_length > data_args.max_source_length:
+                max_length = data_args.max_source_length
+                new_model_inputs["input_ids"].append(model_inputs["input_ids"][i][:max_length])
+            else:
+                new_model_inputs["input_ids"].append(
+                    torch.nn.functional.pad(
+                        model_inputs["input_ids"][i], (0, max_length - cur_len), value=tokenizer.pad_token_id
+                    )
+                )
+        model_inputs = new_model_inputs
+        # Tokenize targets with the `text_target` keyword argument
+        labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)
+
+        # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
+        # padding in the loss.
+        if padding == "max_length" and data_args.ignore_pad_token_for_loss:
+            labels["input_ids"] = [
+                [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
+            ]
+
+        model_inputs["labels"] = labels["input_ids"]
+        return model_inputs
+
     if training_args.do_train:
         train_dataset = raw_datasets["train"]
         if data_args.max_train_samples is not None:
@@ -650,6 +691,12 @@ def main():
                 desc="Running tokenizer on train dataset",
             )
 
+    def wrapper_preprocess_function(examples):
+        if model.config.is_encoder_decoder:
+            return preprocess_bucketing_function(examples)
+        else:
+            return preprocess_function(examples)
+
     if training_args.do_eval:
         max_target_length = data_args.val_max_target_length
         eval_dataset = raw_datasets["validation"]
@@ -658,7 +705,7 @@ def main():
             eval_dataset = eval_dataset.select(range(max_eval_samples))
         with training_args.main_process_first(desc="validation dataset map pre-processing"):
             eval_dataset = eval_dataset.map(
-                preprocess_function,
+                wrapper_preprocess_function,
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 remove_columns=column_names,
@@ -674,7 +721,7 @@ def main():
             predict_dataset = predict_dataset.select(range(max_predict_samples))
         with training_args.main_process_first(desc="prediction dataset map pre-processing"):
             predict_dataset = predict_dataset.map(
-                preprocess_function,
+                wrapper_preprocess_function,
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 remove_columns=column_names,

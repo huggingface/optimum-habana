@@ -90,6 +90,12 @@ from .models import (
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_t5_layernorm_forward,
+    gaudi_T5Attention_forward,
+    gaudi_T5Block_forward,
+    gaudi_T5ForConditionalGeneration_forward,
+    gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_T5LayerSelfAttention_forward,
+    gaudi_T5Stack_forward,
     gaudi_vit_self_attention_forward,
     # gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
@@ -252,6 +258,14 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for t5 on Gaudi
     transformers.models.t5.modeling_t5.T5LayerNorm.forward = gaudi_t5_layernorm_forward
+    transformers.models.t5.modeling_t5.T5Stack.forward = gaudi_T5Stack_forward
+    transformers.models.t5.modeling_t5.T5LayerSelfAttention.forward = gaudi_T5LayerSelfAttention_forward
+    transformers.models.t5.modeling_t5.T5ForConditionalGeneration.forward = gaudi_T5ForConditionalGeneration_forward
+    transformers.models.t5.modeling_t5.T5ForConditionalGeneration.prepare_inputs_for_generation = (
+        gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation
+    )
+    transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
+    transformers.models.t5.modeling_t5.T5Block.forward = gaudi_T5Block_forward
 
     # Optimization for mpt on Gaudi
     transformers.models.mpt.modeling_mpt.MptForCausalLM = GaudiMptForCausalLM
