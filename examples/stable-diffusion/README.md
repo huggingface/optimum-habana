@@ -153,25 +153,14 @@ python textual_inversion.py \
   --lr_scheduler constant \
   --lr_warmup_steps 0 \
   --output_dir /tmp/textual_inversion_cat \
-  --use_lazy_mode \
   --gaudi_config_name Habana/stable-diffusion \
   --throughput_warmup_steps 3 \
   --dataloader_drop_last
 ```
 
-**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+> Change `--resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
 
-**Note**: As described in [the official paper](https://arxiv.org/abs/2208.01618)
-only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
-However, one can also add multiple embedding vectors for the placeholder token
-to increase the number of fine-tuneable parameters. This can help the model to learn
-more complex details. To use multiple embedding vectors, you can define `--num_vectors`
-to a number larger than one, *e.g.*:
-```
---num_vectors 5
-```
-
-The saved textual inversion vectors will then be larger in size compared to the default case.
+> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`. However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters. This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one, *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
 
 
 ### Multi-card Run
