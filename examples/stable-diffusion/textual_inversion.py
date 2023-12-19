@@ -970,7 +970,7 @@ def main():
             "train_samples_per_second": throughput,
             "train_runtime": duration,
         }
-        with (args.output_dir / "speed_metrics.json").open(mode="w") as file:
+        with open(f"{args.output_dir}/speed_metrics.json", mode="w") as file:
             json.dump(metrics, file)
         if args.push_to_hub and not args.save_as_full_pipeline:
             logger.warning("Enabling full model saving because --push_to_hub=True was specified.")
@@ -984,6 +984,7 @@ def main():
                 vae=vae,
                 unet=unet,
                 tokenizer=tokenizer,
+                scheduler=noise_scheduler,
             )
             pipeline.save_pretrained(args.output_dir)
         # Save the newly trained embeddings

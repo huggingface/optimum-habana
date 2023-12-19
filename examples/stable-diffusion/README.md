@@ -147,12 +147,13 @@ python textual_inversion.py \
   --initializer_token toy \
   --resolution 512 \
   --train_batch_size 4 \
-  --num_train_epochs 20 \
+  --max_train_steps 3000 \
   --learning_rate 5.0e-04 \
   --scale_lr \
   --lr_scheduler constant \
   --lr_warmup_steps 0 \
   --output_dir /tmp/textual_inversion_cat \
+  --save_as_full_pipeline \
   --gaudi_config_name Habana/stable-diffusion \
   --throughput_warmup_steps 3 \
   --dataloader_drop_last

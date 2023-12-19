@@ -184,8 +184,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
         Args:
             model_output (`torch.FloatTensor`):
                 The direct output from learned diffusion model.
-            timestep (`float`):
-                The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
             eta (`float`):
