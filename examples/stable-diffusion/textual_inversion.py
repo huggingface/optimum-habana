@@ -261,7 +261,7 @@ def parse_args():
     parser.add_argument(
         "--max_train_steps",
         type=int,
-        default=5000,
+        default=None,
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
@@ -587,10 +587,10 @@ def main():
 
     accelerator = GaudiAccelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision="bf16" if gaudi_config.use_torch_autocast else "no",
+        mixed_precision="bf16" if gaudi_config.use_torch_autocast or args.bf16 else "no",
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        force_autocast=gaudi_config.use_torch_autocast,
+        force_autocast=gaudi_config.use_torch_autocast or args.bf16,
     )
 
     if args.report_to == "wandb":
@@ -765,7 +765,7 @@ def main():
     # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
-    if gaudi_config.use_torch_autocast:
+    if gaudi_config.use_torch_autocast or args.bf16:
         weight_dtype = torch.bfloat16
 
     # Move vae and unet to device and cast to weight_dtype
