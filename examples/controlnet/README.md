@@ -24,6 +24,15 @@ ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffus
 ## Text-to-image Generation with Canny Control
 
 ```python
-python example_canny2image.py
+python text_to_image_generation_canny.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion
 ```
 
