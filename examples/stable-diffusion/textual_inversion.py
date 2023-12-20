@@ -57,7 +57,7 @@ from optimum.habana.utils import set_seed
 
 
 if is_wandb_available():
-    pass
+    import wandb
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
@@ -143,18 +143,18 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
         image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
         images.append(image)
 
-    # for tracker in accelerator.trackers:
-    #     if tracker.name == "tensorboard":
-    #         np_images = np.stack([np.asarray(img) for img in images])
-    #         tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-    #     if tracker.name == "wandb":
-    #         tracker.log(
-    #             {
-    #                 "validation": [
-    #                     wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
-    #                 ]
-    #             }
-    #         )
+    for tracker in accelerator.trackers:
+        if tracker.name == "tensorboard":
+            np_images = np.stack([np.asarray(img) for img in images])
+            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+        if tracker.name == "wandb":
+            tracker.log(
+                {
+                    "validation": [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                    ]
+                }
+            )
 
     del pipeline
     return images
@@ -334,14 +334,12 @@ def parse_args():
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
         ),
     )
-    # parser.add_argument(
-    #     "--bf16",
-    #     action="store_true",
-    #     default=False,
-    #     help=(
-    #         "Whether to use bf16 mixed precision."
-    #     ),
-    # )
+    parser.add_argument(
+        "--bf16",
+        action="store_true",
+        default=False,
+        help=("Whether to use bf16 mixed precision."),
+    )
     parser.add_argument(
         "--report_to",
         type=str,
@@ -428,11 +426,6 @@ def parse_args():
             " first N steps will not be considered in the calculation of the throughput. This is especially useful in"
             " lazy mode."
         ),
-    )
-    parser.add_argument(
-        "--dataloader_drop_last",
-        action="store_true",
-        help="Whether to drop the last batch. This will avoid an extra graph compilation in lazy mode if the dataset size is not a multiple of the product of the batch size and the number of devices.",
     )
 
     args = parser.parse_args()
@@ -644,7 +637,7 @@ def main():
     noise_scheduler = GaudiDDIMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
-    )
+    ).to(accelerator.device)
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
     )
