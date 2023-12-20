@@ -54,7 +54,8 @@ gaudi_config="Habana/stable-diffusion",
 generator = torch.manual_seed(0)
 
 outputs = pipe(
-"futuristic-looking woman", num_inference_steps=50, generator=generator, input_image=canny_image, num_images_per_prompt=20, batch_size=4
+"futuristic-looking woman", num_inference_steps=50, generator=generator, input_image=canny_image, num_images_per_prompt=20, batch_size=4,
+profiling_warmup_steps = 100, profiling_steps=50,
 )
 
 for i, image in enumerate(outputs.images):

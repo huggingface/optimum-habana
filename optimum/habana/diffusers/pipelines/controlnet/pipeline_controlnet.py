@@ -38,7 +38,7 @@ from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from diffusers.utils.torch_utils import is_compiled_module
-from ....utils import speed_metrics
+from ....utils import speed_metrics, HabanaProfile
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -848,6 +848,8 @@ class GaudiStableDiffusionControlNetPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps : Optional[int] = 0,
         **kwargs,
     ):
         r"""
@@ -932,6 +934,11 @@ class GaudiStableDiffusionControlNetPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeine class.
+            profiling_warmup_steps (`int`, *optional*):
+                Number of steps to ignore for profling.
+            profiling_steps (`int`, *optional*):
+                Number of steps to be captured when enabling profiling.
+    )
 
         Returns:
             [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] or `tuple`:
@@ -1110,6 +1117,13 @@ class GaudiStableDiffusionControlNetPipeline(
 
             self._num_timesteps = len(timesteps)
 
+            hb_profiler = HabanaProfile(
+              warmup=profiling_warmup_steps,
+              active=profiling_steps,
+              record_shapes=False,
+            )
+            hb_profiler.start()
+
             # 8. Denoising loop
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
@@ -1216,6 +1230,8 @@ class GaudiStableDiffusionControlNetPipeline(
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, timestep, latents_batch)
 
+                    hb_profiler.step()
+
                 if not output_type == "latent":
                     # 8. Post-processing
                     image = self.vae.decode(
@@ -1229,6 +1245,8 @@ class GaudiStableDiffusionControlNetPipeline(
 
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
+
+            hb_profiler.stop()
 
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
