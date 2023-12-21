@@ -105,33 +105,13 @@ There are two different checkpoints for Stable Diffusion 2:
 </Tip>
 
 
-## Tips
-
-To accelerate your Stable Diffusion pipeline, you can run it in full *bfloat16* precision.
-This will also save memory.
-You just need to pass `torch_dtype=torch.bfloat16` to `from_pretrained` when instantiating your pipeline.
-Here is how to do it:
-
-```py
-import torch
-
-pipeline = GaudiStableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
-    scheduler=scheduler,
-    use_habana=True,
-    use_hpu_graphs=True,
-    gaudi_config="Habana/stable-diffusion",
-    torch_dtype=torch.bfloat16
-)
-```
-
-# Super-resolution
+## Super-resolution
 
 The Stable Diffusion upscaler diffusion model was created by the researchers and engineers from CompVis, Stability AI, and LAION. It is used to enhance the resolution of input images by a factor of 4.
 
 See [here](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/upscale) for more information.
 
-## How to upscale low resolution images?
+### How to upscale low resolution images?
 
 To generate RGB and depth images with Stable Diffusion Upscale on Gaudi, you need to instantiate two instances:
 - A pipeline with [`GaudiStableDiffusionUpscalePipeline`](../package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiStableDiffusionUpscalePipeline).
@@ -173,3 +153,31 @@ upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
 upscaled_image.save("upsampled_cat.png")
 
 ```
+
+
+## Tips
+
+To accelerate your Stable Diffusion pipeline, you can run it in full *bfloat16* precision.
+This will also save memory.
+You just need to pass `torch_dtype=torch.bfloat16` to `from_pretrained` when instantiating your pipeline.
+Here is how to do it:
+
+```py
+import torch
+
+pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    scheduler=scheduler,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+    torch_dtype=torch.bfloat16
+)
+```
+
+
+## Textual Inversion Fine-Tuning
+
+[Textual Inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like Stable Diffusion on your own images using just 3-5 examples.
+
+You can find [here](https://github.com/huggingface/optimum-habana/blob/main/examples/stable-diffusion/textual_inversion.py) an example script that implements this training method.

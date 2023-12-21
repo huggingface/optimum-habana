@@ -14,7 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import os
+import re
+import subprocess
 import tempfile
 from io import BytesIO
 from pathlib import Path
@@ -24,6 +27,7 @@ import numpy as np
 import requests
 import torch
 from diffusers import AutoencoderKL, UNet2DConditionModel
+from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -46,6 +50,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
 else:
     THROUGHPUT_BASELINE_BF16 = 0.301
     THROUGHPUT_BASELINE_AUTOCAST = 0.108
+
+TEXTUAL_INVERSION_THROUGHPUT = 58.16156989437878
+TEXTUAL_INVERSION_RUNTIME = 206.32180358597543
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -730,3 +737,74 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             )
         self.assertEqual(upscaled_image.shape, (512, 512, 3))
         self.assertLess(np.abs(expected_slice - upscaled_image[-3:, -3:, -1].flatten()).max(), 5e-3)
+
+    @slow
+    def test_textual_inversion(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "textual_inversion.py"
+        )
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            snapshot_download(
+                "diffusers/cat_toy_example", local_dir=data_dir, repo_type="dataset", ignore_patterns=".gitattributes"
+            )
+            with tempfile.TemporaryDirectory() as run_dir:
+                cmd_line = [
+                    "python3",
+                    f"{path_to_script.parent.parent / 'gaudi_spawn.py'}",
+                    "--use_mpi",
+                    "--world_size",
+                    "8",
+                    f"{path_to_script}",
+                    "--pretrained_model_name_or_path runwayml/stable-diffusion-v1-5",
+                    f"--train_data_dir {data_dir}",
+                    '--learnable_property "object"',
+                    '--placeholder_token "<cat-toy>"',
+                    '--initializer_token "toy"',
+                    "--resolution 512",
+                    "--train_batch_size 4",
+                    "--max_train_steps 375",
+                    "--learning_rate 5.0e-04",
+                    "--scale_lr",
+                    '--lr_scheduler "constant"',
+                    "--lr_warmup_steps 0",
+                    f"--output_dir {run_dir}",
+                    "--save_as_full_pipeline",
+                    "--gaudi_config_name Habana/stable-diffusion",
+                    "--throughput_warmup_steps 3",
+                    "--seed 27",
+                ]
+                pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
+                cmd_line = [x for y in cmd_line for x in re.split(pattern, y) if x]
+
+                # Run textual inversion
+                p = subprocess.Popen(cmd_line)
+                return_code = p.wait()
+
+                # Ensure the run finished without any issue
+                self.assertEqual(return_code, 0)
+
+                # Assess throughput
+                with open(Path(run_dir) / "speed_metrics.json") as fp:
+                    results = json.load(fp)
+                self.assertGreaterEqual(results["train_samples_per_second"], 0.95 * TEXTUAL_INVERSION_THROUGHPUT)
+                self.assertLessEqual(results["train_runtime"], 1.05 * TEXTUAL_INVERSION_RUNTIME)
+
+                # Assess generated image
+                pipe = GaudiStableDiffusionPipeline.from_pretrained(
+                    run_dir,
+                    torch_dtype=torch.bfloat16,
+                    use_habana=True,
+                    use_hpu_graphs=True,
+                    gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+                )
+                prompt = "A <cat-toy> backpack"
+                set_seed(27)
+                image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5, output_type="np").images[0]
+
+                # TODO: see how to generate images in a reproducible way
+                # expected_slice = np.array(
+                #     [0.57421875, 0.5703125, 0.58203125, 0.58203125, 0.578125, 0.5859375, 0.578125, 0.57421875, 0.56640625]
+                # )
+                self.assertEqual(image.shape, (512, 512, 3))
+                # self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)

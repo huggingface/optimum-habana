@@ -41,9 +41,13 @@ class GaudiPartialState(PartialState):
             self.device = torch.device(env_device) if env_device is not None else None
             self.debug = parse_flag_from_env("ACCELERATE_DEBUG_MODE")
 
-            if int(os.environ.get("LOCAL_RANK", -1)) != -1 and not cpu:
-                from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+            # initialize_distributed_hpu is already called in the __init__ of
+            # habana_frameworks.torch.distributed.hccl
+            # It is necessary so that the env variable LOCAL_RANK is set before the
+            # conditional statement right below
+            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
+            if int(os.environ.get("LOCAL_RANK", -1)) != -1 and not cpu:
                 world_size, rank, local_rank = initialize_distributed_hpu()
                 self.backend = kwargs.pop("backend", "hccl")
 
