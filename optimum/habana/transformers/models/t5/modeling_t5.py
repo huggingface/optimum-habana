@@ -620,7 +620,16 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
         if token_idx is not None:
             input_ids = torch.index_select(input_ids, 1, token_idx - 1)
         else:
-            input_ids = input_ids[:, -1:].unsqueeze(-1)
+            past_length = past_key_values[0][0].shape[2]
+
+            # Some generation methods already pass only the last input ID
+            if input_ids.shape[1] > past_length:
+                remove_prefix_length = past_length
+            else:
+                # Default to old behavior: keep only final ID
+                remove_prefix_length = input_ids.shape[1] - 1
+
+            input_ids = input_ids[:, remove_prefix_length:]
 
     return {
         "decoder_input_ids": input_ids,

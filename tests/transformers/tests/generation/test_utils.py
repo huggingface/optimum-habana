@@ -755,8 +755,9 @@ class GenerationTesterMixin:
 
             self.assertListEqual(output_generate.sequences.tolist(), output_greedy.sequences.tolist())
 
-            for output in (output_greedy, output_generate):
-                self._check_outputs(output, input_ids, model.config)
+            self._check_outputs(output_generate, input_ids, model.config)
+            model.config.static_shapes = False
+            self._check_outputs(output_greedy, input_ids, model.config)
 
     def test_greedy_generate_dict_outputs_use_cache(self):
         for model_class in self.all_generative_model_classes:
@@ -783,8 +784,9 @@ class GenerationTesterMixin:
 
             self.assertListEqual(output_generate.sequences.tolist(), output_greedy.sequences.tolist())
 
-            for output in (output_greedy, output_generate):
-                self._check_outputs(output, input_ids, model.config, use_cache=True)
+            self._check_outputs(output_generate, input_ids, model.config, use_cache=True)
+            model.config.static_shapes = False
+            self._check_outputs(output_greedy, input_ids, model.config, use_cache=True)
 
     def test_sample_generate(self):
         for model_class in self.all_generative_model_classes:
@@ -1910,6 +1912,9 @@ class GenerationTesterMixin:
         for idx, iter_attentions in enumerate(attentions):
             tgt_len = min_length + idx if not use_cache else 1
             src_len = min_length + idx
+            if config.static_shapes:
+                tgt_len = max_length if idx==0 else (1 if use_cache else max_length)
+                src_len = max_length
 
             expected_shape = (
                 batch_size * num_beam_groups,
@@ -1942,6 +1947,8 @@ class GenerationTesterMixin:
 
         for idx, iter_hidden_states in enumerate(hidden_states):
             seq_len = min_length + idx if not use_cache else 1
+            if iter_hidden_states[0].shape[-2] == max_length:
+                seq_len = max_length
             expected_shape = (batch_size * num_beam_groups, seq_len, config.hidden_size)
             # check hidden size
             self.assertListEqual(

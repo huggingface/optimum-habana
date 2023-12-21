@@ -110,7 +110,7 @@ def incrementor(bucket_size, prompt_len):
 class StaticMaxLengthCriteria(StoppingCriteria):
     def __init__(self, max_steps: int):
         self.max_steps = max_steps
-        self.cur_step = 0
+        self.cur_step = 1
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
         self.cur_step += 1
@@ -212,15 +212,15 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["attention_mask"] = attention_mask
         else:
             # update decoder attention mask
-            if "attention_mask" in model_kwargs:
-                attention_mask = model_kwargs["attention_mask"]
-                if token_idx is not None:
-                    attention_mask.index_fill_(1, token_idx, 1)
-                else:
-                    attention_mask = torch.cat(
-                        [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
-                    )
-                model_kwargs["attention_mask"] = attention_mask
+            # if "attention_mask" in model_kwargs:
+            #     attention_mask = model_kwargs["attention_mask"]
+            #     if token_idx is not None:
+            #         attention_mask.index_fill_(1, token_idx, 1)
+            #     else:
+            #         attention_mask = torch.cat(
+            #             [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
+            #         )
+            #     model_kwargs["attention_mask"] = attention_mask
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
                 if token_idx is not None:
@@ -527,8 +527,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
         generation_config = copy.deepcopy(generation_config)
         if generation_config.static_shapes is None:
-            generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+            generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES and not kwargs.get("return_dict_in_generate", False)
             self.generation_config.static_shapes = generation_config.static_shapes
+            self.config.static_shapes = generation_config.static_shapes
         if generation_config.ignore_eos is None:
             generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode)
         generation_config.validate()
@@ -584,6 +585,7 @@ class GaudiGenerationMixin(GenerationMixin):
             self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
             or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
         )
+        is_greedy_or_beam = self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
         if generation_config.reuse_cache:
             assert generation_config.bucket_size <= 0, "reuse_cache and bucketing flags set together"
@@ -608,15 +610,16 @@ class GaudiGenerationMixin(GenerationMixin):
                             )
             else:
                 assert generation_config.bucket_size <= 0, "Untested path for bucket>0"
-                token_idx = 1
-                model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
-                if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
-                    model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
-                        generation_config.max_length,
-                        inputs_tensor.shape[0],
-                        generation_config.pad_token_id,
-                        inputs_tensor.device,
-                    )
+                if is_greedy_or_beam:
+                    token_idx = 1
+                    model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
+                    if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
+                        model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
+                            generation_config.max_length,
+                            inputs_tensor.shape[0],
+                            generation_config.pad_token_id,
+                            inputs_tensor.device,
+                        )
 
         # decoder-only models should use left-padding for generation
         if not self.config.is_encoder_decoder:
@@ -1986,6 +1989,8 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
+        else:
+            self.generation_config.static_shapes = False
 
         if num_beams * batch_size != batch_beam_size:
             raise ValueError(
@@ -2016,13 +2021,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if self.generation_config.static_shapes:
             beam_trace_scores = torch.zeros(
-                (input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.float32
+                (input_ids.shape[0], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.float32
             )
             beam_trace_indices = torch.zeros(
-                (input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
+                (input_ids.shape[0], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
             )
             beam_trace_tokens = torch.zeros(
-                (input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
+                (input_ids.shape[0], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
             )
             beam_trace_idx = torch.tensor(0, device=input_ids.device)
             num_eos_tokens = torch.zeros((1), device=input_ids.device, dtype=torch.int64)
@@ -2208,8 +2213,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
                 if self.generation_config.early_stopping:
                     num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
-
-                beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
+                if eos_token_id is not None:
+                    beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
                 beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
                 _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
                 offset = torch.arange(0, torch.numel(beam_scores), beam_scores.shape[-1]).unsqueeze(-1)
