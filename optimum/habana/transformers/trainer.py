@@ -428,6 +428,11 @@ class GaudiTrainer(Trainer):
 
         self.is_in_train = True
 
+        # do_train is not a reliable argument, as it might not be set and .train() still called, so
+        # the following is a workaround:
+        if (args.fp16_full_eval or args.bf16_full_eval) and not args.do_train:
+            self._move_model_to_device(self.model, args.device)
+
         if "model_path" in kwargs:
             resume_from_checkpoint = kwargs.pop("model_path")
             warnings.warn(
@@ -1510,6 +1515,12 @@ class GaudiTrainer(Trainer):
                 )
                 self.already_wrapped_for_hpu_graphs = True
 
+        # if full fp16 or bf16 eval is wanted and this ``evaluation`` or ``predict`` isn't called
+        # while ``train`` is running, cast it to the right dtype first and then put on device
+        if not self.is_in_train:
+            if args.bf16_full_eval:
+                model = model.to(dtype=torch.bfloat16, device=args.device)
+
         batch_size = self.args.eval_batch_size
 
         logger.info(f"***** Running {description} *****")
@@ -1902,6 +1913,12 @@ class GaudiTrainer(Trainer):
                     model, disable_tensor_cache=args.disable_tensor_cache_hpu_graphs, max_graphs=args.max_hpu_graphs
                 )
                 self.already_wrapped_for_hpu_graphs = True
+
+        # if full fp16 or bf16 eval is wanted and this ``evaluation`` or ``predict`` isn't called
+        # while ``train`` is running, cast it to the right dtype first and then put on device
+        if not self.is_in_train:
+            if args.bf16_full_eval:
+                model = model.to(dtype=torch.bfloat16, device=args.device)
 
         batch_size = dataloader.batch_size
         num_examples = self.num_examples(dataloader)
