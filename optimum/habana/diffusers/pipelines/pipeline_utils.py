@@ -85,7 +85,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
-        super().__init__()
+        DiffusionPipeline.__init__(self)
 
         self.use_habana = use_habana
         if self.use_habana:
