@@ -52,7 +52,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDiffusionPipeline, GaudiStableDiffusionPipeline
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 from optimum.habana.utils import set_seed
 
 
@@ -118,7 +118,7 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
         f" {args.validation_prompt}."
     )
     # create pipeline (note: unet and vae are loaded again in float32)
-    pipeline = GaudiDiffusionPipeline.from_pretrained(
+    pipeline = GaudiStableDiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         text_encoder=accelerator.unwrap_model(text_encoder),
         tokenizer=tokenizer,
@@ -127,13 +127,11 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
         safety_checker=None,
         revision=args.revision,
         variant=args.variant,
-        torch_dtype=weight_dtype,
         use_habana=True,
         use_hpu_graphs=True,
         gaudi_config=args.gaudi_config_name,
     )
     pipeline.scheduler = GaudiDDIMScheduler.from_config(pipeline.scheduler.config)
-    # pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
