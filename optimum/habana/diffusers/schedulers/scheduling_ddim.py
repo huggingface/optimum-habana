@@ -120,7 +120,17 @@ class GaudiDDIMScheduler(DDIMScheduler):
         self.alpha_prod_t_prev_list = []
         self.variance_list = []
 
-    def get_params(self):
+    def get_params(self, timestep):
+        """
+        Initialize the time-dependent parameters, and roll tensors to update
+        the values of the time-dependent parameters at each timestep.
+
+        Args:
+            timestep (`float`):
+                The current discrete timestep in the diffusion chain. Optionally used to
+                initialize parameters in cases which start in the middle of the
+                denoising schedule (e.g. for image-to-image)
+        """
         if not self.are_timestep_dependent_params_set:
             prev_timesteps = self.timesteps - self.config.num_train_timesteps // self.num_inference_steps
             for timestep, prev_timestep in zip(self.timesteps, prev_timesteps):
@@ -170,6 +180,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
     def step(
         self,
         model_output: torch.FloatTensor,
+        timestep: int,
         sample: torch.FloatTensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
@@ -226,7 +237,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
         # Done in self.get_params() below
 
         # 2. compute alphas, betas
-        alpha_prod_t, alpha_prod_t_prev, variance = self.get_params()
+        alpha_prod_t, alpha_prod_t_prev, variance = self.get_params(timestep)
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
