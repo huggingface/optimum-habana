@@ -53,7 +53,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
     """
     Pipeline for text-guided image super-resolution using Stable Diffusion 2.
 
-    Extends the [`StableDiffusionUpscalePipeline`](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionUpscalePipeline) class:
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.23.1/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_upscale.py#L70
     - Generation is performed by batches
     - Two `mark_step()` were added to add support for lazy mode
     - Added support for HPU graphs

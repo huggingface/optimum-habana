@@ -49,7 +49,7 @@ class GaudiStableDiffusionLDM3DPipelineOutput(BaseOutput):
 
 class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionLDM3DPipeline):
     """
-    Extends the [`StableDiffusionPipeline`](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionPipeline) class:
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.23.1/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_ldm3d.py#L84
     - Generation is performed by batches
     - Two `mark_step()` were added to add support for lazy mode
     - Added support for HPU graphs
