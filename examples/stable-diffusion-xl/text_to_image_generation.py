@@ -20,7 +20,7 @@ from pathlib import Path
 
 import torch
 
-from optimum.habana.diffusers import GaudiDDIMScheduler
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiEulerAncestralDiscreteScheduler
 from optimum.habana.utils import set_seed
 
 
@@ -47,6 +47,14 @@ def main():
         default="stabilityai/stable-diffusion-xl-base-1.0",
         type=str,
         help="Path to pre-trained model",
+    )
+
+    parser.add_argument(
+        "--scheduler",
+        default="ddim",
+        choices=["ddim", "euler_ancestral"],
+        type=str,
+        help="Name of scheduler",
     )
 
     # Pipeline arguments
@@ -161,15 +169,21 @@ def main():
     logger.setLevel(logging.INFO)
 
     # Initialize the scheduler and the generation pipeline
-    scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+    if args.scheduler == "euler_ancestral":
+        scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+    else:
+        scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+
     kwargs = {
         "scheduler": scheduler,
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
     }
+
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
+
     pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
         args.model_name_or_path,
         **kwargs,

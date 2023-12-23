@@ -122,8 +122,10 @@ class GaudiDDIMScheduler(DDIMScheduler):
 
     def get_params(self, timestep):
         """
-        Initialize the time-dependent parameters, and roll tensors to update
-        the values of the time-dependent parameters at each timestep.
+        Initialize the time-dependent parameters, and retrieve the time-dependent
+        parameters at each timestep. The tensors are rolled in a separate function
+        at the end of the scheduler step in case parameters are retrieved multiple
+        times in a timestep, e.g., when scaling model inputs and in the scheduler step.
 
         Args:
             timestep (`float`):
@@ -149,13 +151,22 @@ class GaudiDDIMScheduler(DDIMScheduler):
             self.are_timestep_dependent_params_set = True
 
         alpha_prod_t = self.alpha_prod_t_list[0]
-        self.alpha_prod_t_list = torch.roll(self.alpha_prod_t_list, shifts=-1, dims=0)
         alpha_prod_t_prev = self.alpha_prod_t_prev_list[0]
-        self.alpha_prod_t_prev_list = torch.roll(self.alpha_prod_t_prev_list, shifts=-1, dims=0)
         variance = self.variance_list[0]
-        self.variance_list = torch.roll(self.variance_list, shifts=-1, dims=0)
 
         return alpha_prod_t, alpha_prod_t_prev, variance
+
+    def roll_params(self):
+        """
+        Roll tensors to update the values of the time-dependent parameters at each timestep.
+        """
+        if self.are_timestep_dependent_params_set:
+            self.alpha_prod_t_list = torch.roll(self.alpha_prod_t_list, shifts=-1, dims=0)
+            self.alpha_prod_t_prev_list = torch.roll(self.alpha_prod_t_prev_list, shifts=-1, dims=0)
+            self.variance_list = torch.roll(self.variance_list, shifts=-1, dims=0)
+        else:
+            raise ValueError("Time-dependent parameters should be set first.")
+        return
 
     # def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
     #     """
@@ -296,6 +307,9 @@ class GaudiDDIMScheduler(DDIMScheduler):
                     variance_noise = variance_noise.to(device)
 
             prev_sample = prev_sample + std_dev_t * variance_noise
+
+        # Roll parameters for next timestep
+        self.roll_params()
 
         if not return_dict:
             return (prev_sample,)

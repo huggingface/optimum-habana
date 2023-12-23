@@ -20,9 +20,9 @@ import torch
 from diffusers.configuration_utils import register_to_config
 from diffusers.schedulers import EulerAncestralDiscreteScheduler
 from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteSchedulerOutput
-from diffusers.utils.torch_utils import randn_tensor
 from optimum.utils import logging
 logger = logging.get_logger(__name__)
+
 
 class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
     """
@@ -79,6 +79,7 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
             steps_offset
         )
 
+        self._initial_timestep = None
         self.reset_timestep_dependent_params()
 
     def reset_timestep_dependent_params(self):
@@ -89,8 +90,10 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
 
     def get_params(self, timestep):
         """
-        Initialize the time-dependent parameters, and roll tensors to update
-        the values of the time-dependent parameters at each timestep.
+        Initialize the time-dependent parameters, and retrieve the time-dependent
+        parameters at each timestep. The tensors are rolled in a separate function
+        at the end of the scheduler step in case parameters are retrieved multiple
+        times in a timestep, e.g., when scaling model inputs and in the scheduler step.
 
         Args:
             timestep (`float`):
@@ -105,9 +108,6 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
             sigmas_from = self.sigmas[self.step_index:-1]
             sigmas_to = self.sigmas[(self.step_index+1):]
 
-            #logger.info(f"sigmas: {self.sigmas}")
-            #logger.info(f"sigmas_from: {sigmas_from}")
-            #logger.info(f"sigmas_to: {sigmas_to}")
             for sigma_from, sigma_to in zip(sigmas_from, sigmas_to):
                 sigma_up = (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5
                 sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
@@ -119,18 +119,48 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
             self.sigma_t_list = torch.stack(self.sigma_t_list)
             self.sigma_up_t_list = torch.stack(self.sigma_up_t_list)
             self.sigma_down_t_list = torch.stack(self.sigma_down_t_list)
-            #logger.info(f'Shapes: sigma_t_list {self.sigma_t_list.shape} sigma_up_t_list {self.sigma_up_t_list.shape} sigma_down_t_list {self.sigma_down_t_list.shape}')
             self.are_timestep_dependent_params_set = True
 
         sigma = self.sigma_t_list[0]
-        self.sigma_t_list = torch.roll(self.sigma_t_list, shifts=-1, dims=0)
         sigma_up = self.sigma_up_t_list[0]
-        self.sigma_up_t_list = torch.roll(self.sigma_up_t_list, shifts=-1, dims=0)
         sigma_down = self.sigma_down_t_list[0]
-        self.sigma_down_t_list = torch.roll(self.sigma_down_t_list, shifts=-1, dims=0)
 
-        #logger.info(f"step: {self.step_index}, sigma: {sigma}, sigma_up: {sigma_up}, sigma_down: {sigma_down}")
         return sigma, sigma_up, sigma_down
+
+    def roll_params(self):
+        """
+        Roll tensors to update the values of the time-dependent parameters at each timestep.
+        """
+        if self.are_timestep_dependent_params_set:
+            self.sigma_t_list = torch.roll(self.sigma_t_list, shifts=-1, dims=0)
+            self.sigma_up_t_list = torch.roll(self.sigma_up_t_list, shifts=-1, dims=0)
+            self.sigma_down_t_list = torch.roll(self.sigma_down_t_list, shifts=-1, dims=0)
+        else:
+            raise ValueError("Time-dependent parameters should be set first.")
+        return
+
+    def scale_model_input(
+            self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
+    ) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep. Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
+
+        Args:
+            sample (`torch.FloatTensor`):
+                The input sample.
+            timestep (`int`, *optional*):
+                The current timestep in the diffusion chain.
+
+        Returns:
+            `torch.FloatTensor`:
+                A scaled input sample.
+        """
+
+        sigma, _, _ = self.get_params(timestep)
+        sample = sample / ((sigma**2 + 1) ** 0.5)
+        self.is_scale_input_called = True
+        return sample
 
     def step(
         self,
@@ -212,11 +242,12 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
         noise = torch.randn(model_output.shape, dtype=model_output.dtype, device='cpu', generator=generator)
         if device.type == "hpu":
             noise = noise.to(device)
-            
+
         prev_sample = prev_sample + noise * sigma_up
 
         # upon completion increase step index by one
         self._step_index += 1
+        self.roll_params()
 
         if not return_dict:
             return (prev_sample,)
