@@ -1,4 +1,4 @@
-# 0. imports
+# copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama_2/scripts/dpo_llama2.py, enable it for Gaudi2
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 

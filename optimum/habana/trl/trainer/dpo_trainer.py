@@ -31,7 +31,12 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalLoopOutput
 from trl import DPOTrainer, create_reference_model
 from trl.import_utils import is_peft_available, is_wandb_available
-from trl.trainer.utils import DPODataCollatorWithPadding, disable_dropout_in_model, pad_to_length
+from trl.trainer.utils import (
+    DPODataCollatorWithPadding,
+    disable_dropout_in_model,
+    pad_to_length,
+    peft_module_casting_to_bf16,
+)
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
@@ -48,89 +53,25 @@ if is_deepspeed_available():
 
 
 class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
-    r"""
-    Initialize DPOTrainer.
-
-    Args:
-        model (`transformers.PreTrainedModel`):
-            The model to train, preferably an `AutoModelForSequenceClassification`.
-        ref_model (`PreTrainedModelWrapper`):
-            Hugging Face transformer model with a casual language modelling head. Used for implicit reward computation and loss. If no
-            reference model is provided, the trainer will create a reference model with the same architecture as the model to be optimized.
-        beta (`float`, defaults to 0.1):
-            The beta factor in DPO loss. Higher beta means less divergence from the initial policy.
-        loss_type (`str`, defaults to `"sigmoid"`):
-            The type of DPO loss to use. Either `"sigmoid"` the default DPO loss or `"hinge"` loss from SLiC paper.
-        args (`transformers.TrainingArguments`):
-            The arguments to use for training.
-        data_collator (`transformers.DataCollator`):
-            The data collator to use for training. If None is specified, the default data collator (`DPODataCollatorWithPadding`) will be used
-            which will pad the sequences to the maximum length of the sequences in the batch, given a dataset of paired sequences.
-        label_pad_token_id (`int`, defaults to `-100`):
-            The label pad token id. This argument is required if you want to use the default data collator.
-        padding_value (`int`, defaults to `0`):
-            The padding value. This argument is required if you want to use the default data collator.
-        truncation_mode (`str`, defaults to `keep_end`):
-            The truncation mode to use, either `keep_end` or `keep_start`. This argument is required if you want to use the default data collator.
-        train_dataset (`datasets.Dataset`):
-            The dataset to use for training.
-        eval_dataset (`datasets.Dataset`):
-            The dataset to use for evaluation.
-        tokenizer (`transformers.PreTrainedTokenizerBase`):
-            The tokenizer to use for training. This argument is required if you want to use the default data collator.
-        model_init (`Callable[[], transformers.PreTrainedModel]`):
-            The model initializer to use for training. If None is specified, the default model initializer will be used.
-        callbacks (`List[transformers.TrainerCallback]`):
-            The callbacks to use for training.
-        optimizers (`Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]`):
-            The optimizer and scheduler to use for training.
-        preprocess_logits_for_metrics (`Callable[[torch.Tensor, torch.Tensor], torch.Tensor]`):
-            The function to use to preprocess the logits before computing the metrics.
-        max_length (`int`, defaults to `None`):
-            The maximum length of the sequences in the batch. This argument is required if you want to use the default data collator.
-        max_prompt_length (`int`, defaults to `None`):
-            The maximum length of the prompt. This argument is required if you want to use the default data collator.
-        max_target_length (`int`, defaults to `None`):
-            The maximum length of the target. This argument is required if you want to use the default data collator and your model is an encoder-decoder.
-        peft_config (`Dict`, defaults to `None`):
-            The PEFT configuration to use for training. If you pass a PEFT configuration, the model will be wrapped in a PEFT model.
-        is_encoder_decoder (`Optional[bool]`, `optional`, defaults to `None`):
-            If no model is provided, we need to know if the model_init returns an encoder-decoder.
-        disable_dropout (`bool`, defaults to `True`):
-            Whether or not to disable dropouts in `model` and `ref_model`.
-        generate_during_eval (`bool`, defaults to `False`):
-            Whether to sample and log generations during evaluation step.
-        compute_metrics (`Callable[[EvalPrediction], Dict]`, *optional*):
-            The function to use to compute the metrics. Must take a `EvalPrediction` and return
-            a dictionary string to metric values.
-        model_init_kwargs: (`Optional[Dict]`, *optional*):
-            Dict of Optional kwargs to pass when instantiating the model from a string
-        ref_model_init_kwargs: (`Optional[Dict]`, *optional*):
-            Dict of Optional kwargs to pass when instantiating the ref model from a string
-
-    """
-
     def __init__(
         self,
         model: Union[PreTrainedModel, nn.Module, str] = None,
         ref_model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
-        gaudi_config: GaudiConfig = None,
         beta: float = 0.1,
-        loss_type: Literal["sigmoid", "hinge"] = "sigmoid",
+        label_smoothing: float = 0,
+        loss_type: Literal["sigmoid", "hinge", "ipo", "kto"] = "sigmoid",
         args: GaudiTrainingArguments = None,
+        gaudi_config: GaudiConfig = None,
         data_collator: Optional[DataCollator] = None,
         label_pad_token_id: int = -100,
-        padding_value: int = 0,
+        padding_value: int = None,
         truncation_mode: str = "keep_end",
         train_dataset: Optional[Dataset] = None,
         eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
         model_init: Optional[Callable[[], PreTrainedModel]] = None,
         callbacks: Optional[List[TrainerCallback]] = None,
-        optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (
-            None,
-            None,
-        ),
+        optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
         max_length: Optional[int] = None,
         max_prompt_length: Optional[int] = None,
@@ -140,9 +81,18 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         disable_dropout: bool = True,
         generate_during_eval: bool = False,
         compute_metrics: Optional[Callable[[EvalLoopOutput], Dict]] = None,
+        precompute_ref_log_probs: bool = False,
         model_init_kwargs: Optional[Dict] = None,
         ref_model_init_kwargs: Optional[Dict] = None,
     ):
+        """
+        Copied from DPOTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/dpo_trainer.py#L127
+        The only differences are:
+        - add new args gaudi_config
+        - use graph for ref_model
+        - use GaudiTrainer instead of Trainer
+        - cast peft model to bf16.
+        """
         if model_init_kwargs is None:
             model_init_kwargs = {}
         elif not isinstance(model, str):
@@ -203,9 +153,10 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
                     model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
             # get peft model with the given config
-            dtype = model.dtype
             model = get_peft_model(model, peft_config)
-            model = model.to(dtype)
+            if args.bf16:
+                peft_module_casting_to_bf16(model)
+
         # For models that use gradient_checkpoiting, we need to attach a hook that enables input
         # to explicitly have `requires_grad=True`, otherwise training will either silently
         # fail or completely fail.
@@ -237,7 +188,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
 
         if ref_model:
             self.ref_model = ref_model
-        elif self.is_peft_model:
+        elif self.is_peft_model or precompute_ref_log_probs:
             # The `model` with adapters turned off will be used as the reference model
             self.ref_model = None
         else:
@@ -272,14 +223,9 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
                 max_target_length = 128
 
             data_collator = DPODataCollatorWithPadding(
-                tokenizer,
-                max_length=max_length,
-                max_prompt_length=max_prompt_length,
+                pad_token_id=tokenizer.pad_token_id,
                 label_pad_token_id=label_pad_token_id,
-                padding_value=padding_value,
-                truncation_mode=truncation_mode,
                 is_encoder_decoder=self.is_encoder_decoder,
-                max_target_length=max_target_length,
             )
 
             if args.remove_unused_columns:
@@ -303,12 +249,34 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         self.max_length = max_length
         self.generate_during_eval = generate_during_eval
         self.label_pad_token_id = label_pad_token_id
-        self.padding_value = padding_value
+        self.padding_value = padding_value if padding_value is not None else tokenizer.pad_token_id
+        self.max_prompt_length = max_prompt_length
+        self.truncation_mode = truncation_mode
+        self.max_target_length = max_target_length
+        self.tokenizer = tokenizer
+        self.precompute_ref_log_probs = precompute_ref_log_probs
+
+        # Since ref_logs are precomputed on the first call to get_train/eval_dataloader
+        # keep track of first called to avoid computation of future calls
+        self._precomputed_train_ref_log_probs = False
+        self._precomputed_eval_ref_log_probs = False
+
+        if loss_type in ["hinge", "ipo", "kto_pair"] and label_smoothing > 0:
+            warnings.warn(
+                "You are using a loss type that does not support label smoothing. Ignoring label_smoothing parameter."
+            )
 
         self.beta = beta
+        self.label_smoothing = label_smoothing
         self.loss_type = loss_type
 
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
+
+        # tokenize the dataset
+        train_dataset = train_dataset.map(self.tokenize_row)
+        if eval_dataset is not None:
+            eval_dataset = eval_dataset.map(self.tokenize_row)
+
         GaudiTrainer.__init__(
             self,
             model=model,
@@ -330,10 +298,17 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
                 "Your `Trainer` does not have an `accelerator` object. Consider upgrading `transformers`."
             )
 
-        if self.ref_model is None:
-            if not hasattr(self.accelerator.unwrap_model(self.model), "disable_adapter"):
+        # Deepspeed Zero-3 does not support precompute_ref_log_probs
+        if self.is_deepspeed_enabled:
+            if self.accelerator.state.deepspeed_plugin.zero_stage == 3 and self.precompute_ref_log_probs:
                 raise ValueError(
-                    "You are using a `peft` version that does not support `disable_adapter`. Please update your `peft` version to the latest version."
+                    "You cannot use `precompute_ref_log_probs=True` with Deepspeed ZeRO-3. Please set `precompute_ref_log_probs=False`."
+                )
+
+        if self.ref_model is None:
+            if not (self.is_peft_model or self.precompute_ref_log_probs):
+                raise ValueError(
+                    "No reference model and model is not a Peft model. Try setting `precompute_ref_log_probs=True`"
                 )
         else:
             if self.is_deepspeed_enabled:
@@ -341,36 +316,51 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
-            from habana_frameworks.torch.hpu import wrap_in_hpu_graph  # use graph for ref_model
+                from habana_frameworks.torch.hpu import wrap_in_hpu_graph  # use graph for ref_model
 
-            ref_model = self.accelerator.unwrap_model(self.ref_model)
-            ref_model = wrap_in_hpu_graph(ref_model)
+                ref_model = self.accelerator.unwrap_model(self.ref_model)
+                ref_model = wrap_in_hpu_graph(ref_model)
 
-    def concatenated_inputs(self, batch: Dict[str, Union[List, torch.LongTensor]]) -> Dict[str, torch.LongTensor]:
-        """Concatenate the chosen and rejected inputs into a single tensor.
-
-        Args:
-            batch: A batch of data. Must contain the keys 'chosen_input_ids' and 'rejected_input_ids', which are tensors of shape (batch_size, sequence_length).
-
-        Returns:
-            A dictionary containing the concatenated inputs under the key 'concatenated_input_ids'.
+    @staticmethod
+    def concatenated_inputs(
+        batch: Dict[str, Union[List, torch.LongTensor]],
+        is_encoder_decoder: bool = False,
+        label_pad_token_id: int = -100,
+        padding_value: int = 0,
+        device: Optional[torch.device] = None,
+        padded_max_length: int = 0,
+    ) -> Dict[str, torch.LongTensor]:
+        """
+        Copied from DPOTrainer.concatenated_inputs: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/dpo_trainer.py#L701
+        - pad to self.max_length in Gaudi2
         """
         concatenated_batch = {}
-        if self.is_encoder_decoder:
+
+        if is_encoder_decoder:
             max_length = max(batch["chosen_labels"].shape[1], batch["rejected_labels"].shape[1])
         else:
             max_length = max(batch["chosen_input_ids"].shape[1], batch["rejected_input_ids"].shape[1])
 
-        max_length = self.max_length  # pad to max_length in Gaudi
-
+        if padded_max_length != 0:  # pad to max_length in Gaudi
+            max_length = padded_max_length
         for k in batch:
             if k.startswith("chosen") and isinstance(batch[k], torch.Tensor):
-                pad_value = self.label_pad_token_id if "labels" in k or self.is_encoder_decoder else self.padding_value
+                if "labels" in k or is_encoder_decoder:
+                    pad_value = label_pad_token_id
+                elif k.endswith("_input_ids"):
+                    pad_value = padding_value
+                elif k.endswith("_attention_mask"):
+                    pad_value = 0
                 concatenated_key = k.replace("chosen", "concatenated")
                 concatenated_batch[concatenated_key] = pad_to_length(batch[k], max_length, pad_value=pad_value)
         for k in batch:
             if k.startswith("rejected") and isinstance(batch[k], torch.Tensor):
-                pad_value = self.label_pad_token_id if "labels" in k or self.is_encoder_decoder else self.padding_value
+                if "labels" in k or is_encoder_decoder:
+                    pad_value = label_pad_token_id
+                elif k.endswith("_input_ids"):
+                    pad_value = padding_value
+                elif k.endswith("_attention_mask"):
+                    pad_value = 0
                 concatenated_key = k.replace("rejected", "concatenated")
                 concatenated_batch[concatenated_key] = torch.cat(
                     (
@@ -378,10 +368,59 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
                         pad_to_length(batch[k], max_length, pad_value=pad_value),
                     ),
                     dim=0,
-                ).to(self.accelerator.device)
+                ).to(device=device)
 
-        if self.is_encoder_decoder:
-            concatenated_batch["concatenated_input_ids"] = batch["prompt_input_ids"].repeat(2, 1)
-            concatenated_batch["concatenated_attention_mask"] = batch["prompt_attention_mask"].repeat(2, 1)
+        if is_encoder_decoder:
+            concatenated_batch["concatenated_input_ids"] = batch["prompt_input_ids"].repeat(2, 1).to(device=device)
+            concatenated_batch["concatenated_attention_mask"] = (
+                batch["prompt_attention_mask"].repeat(2, 1).to(device=device)
+            )
 
         return concatenated_batch
+
+    def concatenated_forward(
+        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+        """
+        Copied from DPOTrainer.concatenated_forward: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/dpo_trainer.py#L866
+        - pad to self.max_length in Gaudi2
+        """
+        concatenated_batch = self.concatenated_inputs(
+            batch,
+            is_encoder_decoder=self.is_encoder_decoder,
+            label_pad_token_id=self.label_pad_token_id,
+            padding_value=self.padding_value,
+            device=self.accelerator.device,
+            padded_max_length=self.max_length,
+        )
+        len_chosen = batch["chosen_labels"].shape[0]
+
+        model_kwargs = (
+            {
+                "labels": concatenated_batch["concatenated_labels"],
+                "decoder_input_ids": concatenated_batch.pop("concatenated_decoder_input_ids", None),
+            }
+            if self.is_encoder_decoder
+            else {}
+        )
+        all_logits = model(
+            concatenated_batch["concatenated_input_ids"],
+            attention_mask=concatenated_batch["concatenated_attention_mask"],
+            **model_kwargs,
+        ).logits
+
+        all_logps = self.get_batch_logps(
+            all_logits,
+            concatenated_batch["concatenated_labels"],
+            average_log_prob=False,
+            is_encoder_decoder=self.is_encoder_decoder,
+            label_pad_token_id=self.label_pad_token_id,
+        )
+
+        chosen_logps = all_logps[:len_chosen]
+        rejected_logps = all_logps[len_chosen:]
+
+        chosen_logits = all_logits[:len_chosen]
+        rejected_logits = all_logits[len_chosen:]
+
+        return (chosen_logps, rejected_logps, chosen_logits, rejected_logits)

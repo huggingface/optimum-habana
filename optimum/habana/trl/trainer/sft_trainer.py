@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import dataclasses
+import inspect
 import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -31,80 +33,17 @@ from trl import SFTTrainer
 from trl.import_utils import is_peft_available
 from trl.trainer.utils import (
     DataCollatorForCompletionOnlyLM,
-    PeftSavingCallback,
+    peft_module_casting_to_bf16,
 )
 
 
 if is_peft_available():
-    from peft import PeftConfig, PeftModel, get_peft_model
+    from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
 class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
-    r"""
-    Class definition of the Supervised Finetuning Trainer (SFT Trainer).
-    This class is a wrapper around the `transformers.Trainer` class and inherits all of its attributes and methods.
-    The trainer takes care of properly initializing the PeftModel in case a user passes a `PeftConfig` object.
-
-    Args:
-        model (Union[`transformers.PreTrainedModel`, `nn.Module`, `str`]):
-            The model to train, can be a `PreTrainedModel`, a `torch.nn.Module` or a string with the model name to
-            load from cache or download. The model can be also converted to a `PeftModel` if a `PeftConfig` object is
-            passed to the `peft_config` argument.
-        args (Optional[`transformers.TrainingArguments`]):
-            The arguments to tweak for training. Please refer to the official documentation of `transformers.TrainingArguments`
-            for more information.
-        data_collator (Optional[`transformers.DataCollator`]):
-            The data collator to use for training.
-        train_dataset (Optional[`datasets.Dataset`]):
-            The dataset to use for training. We recommend users to use `trl.trainer.ConstantLengthDataset` to create their dataset.
-        eval_dataset (Optional[Union[`datasets.Dataset`, Dict[`str`, `datasets.Dataset`]]]):
-            The dataset to use for evaluation. We recommend users to use `trl.trainer.ConstantLengthDataset` to create their dataset.
-        tokenizer (Optional[`transformers.PreTrainedTokenizer`]):
-            The tokenizer to use for training. If not specified, the tokenizer associated to the model will be used.
-        model_init (`Callable[[], transformers.PreTrainedModel]`):
-            The model initializer to use for training. If None is specified, the default model initializer will be used.
-        compute_metrics (`Callable[[transformers.EvalPrediction], Dict]`, *optional* defaults to None):
-            The function used to compute metrics during evaluation. It should return a dictionary mapping metric names to metric values.
-            If not specified, only the loss will be computed during evaluation.
-        callbacks (`List[transformers.TrainerCallback]`):
-            The callbacks to use for training.
-        optimizers (`Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]`):
-            The optimizer and scheduler to use for training.
-        preprocess_logits_for_metrics (`Callable[[torch.Tensor, torch.Tensor], torch.Tensor]`):
-            The function to use to preprocess the logits before computing the metrics.
-        peft_config (`Optional[PeftConfig]`):
-            The PeftConfig object to use to initialize the PeftModel.
-        dataset_text_field (`Optional[str]`):
-            The name of the text field of the dataset, in case this is passed by a user, the trainer will automatically create a
-            `ConstantLengthDataset` based on the `dataset_text_field` argument.
-        formatting_func (`Optional[Callable]`):
-            The formatting function to be used for creating the `ConstantLengthDataset`.
-        max_seq_length (`Optional[int]`):
-            The maximum sequence length to use for the `ConstantLengthDataset` and for automaticallty creating the Dataset. Defaults to `512`.
-        infinite (`Optional[bool]`):
-            Whether to use an infinite dataset or not. Defaults to `False`.
-        num_of_sequences (`Optional[int]`):
-            The number of sequences to use for the `ConstantLengthDataset`. Defaults to `1024`.
-        chars_per_token (`Optional[float]`):
-            The number of characters per token to use for the `ConstantLengthDataset`. Defaults to `3.6`. You can check how this is computed in the
-            stack-llama example: https://github.com/huggingface/trl/blob/08f550674c553c36c51d1027613c29f14f3676a5/examples/stack_llama/scripts/supervised_finetuning.py#L53.
-        packing (`Optional[bool]`):
-            Used only in case `dataset_text_field` is passed. This argument is used by the `ConstantLengthDataset` to pack the sequences
-            of the dataset.
-        dataset_num_proc (`Optional[int]`):
-            The number of workers to use to tokenize the data. Only used when `packing=False`. Defaults to None.
-        dataset_batch_size (`int`):
-            The number of examples to tokenize per batch. If batch_size <= 0 or batch_size == None,
-            tokenize the full dataset as a single batch. Defaults to 1000.
-        neftune_noise_alpha (`Optional[float]`):
-            If not `None`, this will activate NEFTune noise embeddings. This has been proven to drastically improve model performances for instrcution
-            fine-tuning. Check out the original paper here: https://arxiv.org/abs/2310.05914 and the original code here: https://github.com/neelsjain/NEFTune
-        model_init_kwargs: (`Optional[Dict]`, *optional*):
-            Dict of Optional kwargs to pass when instantiating the model from a string
-    """
-
     def __init__(
         self,
         model: Union[PreTrainedModel, nn.Module, str] = None,
@@ -124,18 +63,31 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         packing: Optional[bool] = False,
         formatting_func: Optional[Callable] = None,
         max_seq_length: Optional[int] = None,
-        infinite: Optional[bool] = False,
+        infinite: Optional[bool] = None,
         num_of_sequences: Optional[int] = 1024,
         chars_per_token: Optional[float] = 3.6,
         dataset_num_proc: Optional[int] = None,
         dataset_batch_size: int = 1000,
         neftune_noise_alpha: Optional[float] = None,
         model_init_kwargs: Optional[Dict] = None,
+        dataset_kwargs: Optional[Dict] = None,
     ):
+        """
+        Copied from SFTTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/sft_trainer.py#L120
+        The only differences are:
+        - add new args gaudi_config
+        - use GaudiTrainer instead of Trainer
+        - cast peft model to bf16.
+        """
         if model_init_kwargs is None:
             model_init_kwargs = {}
         elif not isinstance(model, str):
             raise ValueError("You passed model_kwargs to the SFTTrainer. But your model is already instantiated.")
+
+        if infinite is not None:
+            warnings.warn(
+                "The `infinite` argument is deprecated and will be removed in a future version of TRL. Use `TrainingArguments.max_steps` or `TrainingArguments.num_train_epochs` instead to control training length."
+            )
 
         if isinstance(model, str):
             warnings.warn(
@@ -157,7 +109,28 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                 )
 
             if not isinstance(model, PeftModel):
-                if getattr(args, "gradient_checkpointing", False):
+                _support_gc_kwargs = hasattr(
+                    args, "gradient_checkpointing_kwargs"
+                ) and "gradient_checkpointing_kwargs" in list(
+                    inspect.signature(prepare_model_for_kbit_training).parameters
+                )
+                gradient_checkpointing_kwargs = getattr(args, "gradient_checkpointing_kwargs", None) or {}
+                if getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False):
+                    preprare_model_kwargs = {
+                        "use_gradient_checkpointing": getattr(args, "gradient_checkpointing", False)
+                    }
+
+                    if _support_gc_kwargs:
+                        preprare_model_kwargs["gradient_checkpointing_kwargs"] = gradient_checkpointing_kwargs
+
+                    model = prepare_model_for_kbit_training(model, **preprare_model_kwargs)
+
+                    if args is not None:
+                        args = dataclasses.replace(args, gradient_checkpointing=False)
+                elif getattr(args, "gradient_checkpointing", False) and (
+                    "use_reentrant" not in gradient_checkpointing_kwargs
+                    or gradient_checkpointing_kwargs["use_reentrant"]
+                ):
                     # For backward compatibility with older versions of transformers
                     if hasattr(model, "enable_input_require_grads"):
                         model.enable_input_require_grads()
@@ -168,12 +141,9 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
 
                         model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
-                dtype = model.dtype
                 model = get_peft_model(model, peft_config)
-                model = model.to(dtype)
-
-            if callbacks is None:
-                callbacks = [PeftSavingCallback]
+                if args.bf16:
+                    peft_module_casting_to_bf16(model)
 
         if tokenizer is None:
             tokenizer = AutoTokenizer.from_pretrained(model.config._name_or_path)
@@ -210,6 +180,9 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
 
             if data_collator is None:
                 data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+        if dataset_kwargs is None:
+            dataset_kwargs = {}
         if train_dataset is not None:
             train_dataset = self._prepare_dataset(
                 train_dataset,
@@ -218,9 +191,9 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                 dataset_text_field,
                 max_seq_length,
                 formatting_func,
-                infinite,
                 num_of_sequences,
                 chars_per_token,
+                **dataset_kwargs,
             )
         if eval_dataset is not None:
             _multiple = isinstance(eval_dataset, dict)
@@ -233,9 +206,9 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                     dataset_text_field,
                     max_seq_length,
                     formatting_func,
-                    infinite,
                     num_of_sequences,
                     chars_per_token,
+                    **dataset_kwargs,
                 )
             if not _multiple:
                 eval_dataset = _eval_datasets["singleton"]

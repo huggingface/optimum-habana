@@ -16,22 +16,24 @@ There were two main steps to the DPO training process:
 
     ```
     python ../../gaudi_spawn.py --world_size 8 --use_mpi sft_llama2.py \
-        --training-args.output_dir="./sft" \
-        --training-args.max_steps=500 \
-        --training-args.logging_steps=10 \
-        --training-args.save_steps=10 \
-        --training-args.per_device_train_batch_size=4 \
-        --training-args.per_device_eval_batch_size=1 \
-        --training-args.gradient_accumulation_steps=2 \
-        --training-args.learning_rate=1e-4 \
-        --training-args.lr_scheduler_type="cosine" \
-        --training-args.warmup_steps=100 \
-        --training-args.weight_decay=0.05 \
-        --training-args.optim="paged_adamw_32bit" \
-        --training-args.bf16 \
-        --training-args.remove_unused_columns=False \
-        --training-args.run_name="sft_llama2" \
-        --training-args.report_to=none
+        --output_dir="./sft" \
+        --max_steps=500 \
+        --logging_steps=10 \
+        --save_steps=10 \
+        --per_device_train_batch_size=4 \
+        --per_device_eval_batch_size=1 \
+        --gradient_accumulation_steps=2 \
+        --learning_rate=1e-4 \
+        --lr_scheduler_type="cosine" \
+        --warmup_steps=100 \
+        --weight_decay=0.05 \
+        --optim="paged_adamw_32bit" \
+        --bf16 \
+        --remove_unused_columns=False \
+        --run_name="sft_llama2" \
+        --report_to=none \
+        --use_habana \
+        --use_lazy_mode
     ```
 2. Run the DPO trainer using the model saved by the previous step:
     ```

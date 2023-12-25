@@ -1,3 +1,5 @@
+# copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama/scripts/merge_peft_adapter.py.
+# only difference is removal of model.push_to_hub
 from dataclasses import dataclass, field
 from typing import Optional
 
