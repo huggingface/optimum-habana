@@ -214,7 +214,7 @@ class GaudiTrainer(Trainer):
                     )
 
             if self.use_hpu_amp and "LOWER_LIST" not in os.environ:
-                gaudi_config.declare_autocast_bf16_fp32_ops()
+                self.gaudi_config.declare_autocast_bf16_fp32_ops()
 
             if self.args.use_lazy_mode:
                 try:
