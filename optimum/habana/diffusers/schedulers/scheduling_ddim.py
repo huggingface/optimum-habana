@@ -184,8 +184,6 @@ class GaudiDDIMScheduler(DDIMScheduler):
         Args:
             model_output (`torch.FloatTensor`):
                 The direct output from learned diffusion model.
-            timestep (`float`):
-                The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
             eta (`float`):
@@ -293,25 +291,26 @@ class GaudiDDIMScheduler(DDIMScheduler):
 
         return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
-    # def add_noise(
-    #     self,
-    #     original_samples: torch.FloatTensor,
-    #     noise: torch.FloatTensor,
-    #     timesteps: torch.IntTensor,
-    # ) -> torch.FloatTensor:
-    #     # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-    #     self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
-    #     timesteps = timesteps.to(original_samples.device)
+    def add_noise(
+        self,
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
+    ) -> torch.FloatTensor:
+        # Make sure alphas_cumprod has same device and dtype as original_samples
+        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        timesteps = timesteps.to(original_samples.device)
 
-    #     sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
-    #     sqrt_alpha_prod = sqrt_alpha_prod.flatten()
-    #     while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
-    #         sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
+        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+        while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
+            sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-    #     sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
-    #     sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
-    #     while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
-    #         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
+        while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
+            sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
 
-    #     noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
-    #     return noisy_samples
+        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        return noisy_samples
