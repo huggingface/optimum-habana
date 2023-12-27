@@ -120,7 +120,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
         self.alpha_prod_t_prev_list = []
         self.variance_list = []
 
-    def get_params(self, timestep):
+    def get_params(self, timestep: Optional[int] = None):
         """
         Initialize the time-dependent parameters, and retrieve the time-dependent
         parameters at each timestep. The tensors are rolled in a separate function
@@ -128,7 +128,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
         times in a timestep, e.g., when scaling model inputs and in the scheduler step.
 
         Args:
-            timestep (`float`):
+            timestep (`int`, optional):
                 The current discrete timestep in the diffusion chain. Optionally used to
                 initialize parameters in cases which start in the middle of the
                 denoising schedule (e.g. for image-to-image)
