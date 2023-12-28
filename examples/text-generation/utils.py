@@ -151,6 +151,11 @@ def patch_scoped_linear_all_reduce(model):
         patch_scoped_linear_all_reduce(module)
 
 
+def get_torch_compiled_model(model):
+    model.model = torch.compile(model.model, backend="aot_hpu_inference_backend")
+    return model
+
+
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
 
@@ -170,6 +175,10 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             model = wrap_in_hpu_graph(model, hash_with_views=not args.skip_hash_with_views)
         else:
             model = wrap_in_hpu_graph(model)
+
+    if args.torch_compile:
+        model = get_torch_compiled_model(model)
+
     return model
 
 
