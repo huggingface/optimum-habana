@@ -20,7 +20,7 @@ from pathlib import Path
 
 import torch
 
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiEulerAncestralDiscreteScheduler
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiEulerAncestralDiscreteScheduler, GaudiEulerDiscreteScheduler
 from optimum.habana.utils import set_seed
 
 
@@ -51,8 +51,8 @@ def main():
 
     parser.add_argument(
         "--scheduler",
-        default="ddim",
-        choices=["ddim", "euler_ancestral"],
+        default="euler_discrete",
+        choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
         type=str,
         help="Name of scheduler",
     )
@@ -169,7 +169,9 @@ def main():
     logger.setLevel(logging.INFO)
 
     # Initialize the scheduler and the generation pipeline
-    if args.scheduler == "euler_ancestral":
+    if args.scheduler == "euler_discrete":
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+    elif args.scheduler == "euler_ancestral":
         scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
     else:
         scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
