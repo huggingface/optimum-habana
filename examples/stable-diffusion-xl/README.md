@@ -87,7 +87,7 @@ python text_to_image_generation.py \
 SDXL-Turbo is a distilled version of SDXL 1.0, trained for real-time synthesis. 
 
 Here is how to generate images with multiple prompts:
-```python
+```bash
 python text_to_image_generation.py \
     --model_name_or_path stabilityai/sdxl-turbo \
     --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
