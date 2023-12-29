@@ -40,6 +40,33 @@ To get the most out of it, it should be associated with a scheduler that is opti
     - all
 
 
+# GaudiStableDiffusionXLPipeline
+
+The `GaudiStableDiffusionXLPipeline` class enables to perform text-to-image generation on HPUs using SDXL models.
+It inherits from the `GaudiDiffusionPipeline` class that is the parent to any kind of diffuser pipeline.
+
+To get the most out of it, it should be associated with a scheduler that is optimized for HPUs like `GaudiDDIMScheduler`.
+Recommended schedulers are `GaudiEulerDiscreteScheduler` for SDXL base and `GaudiEulerAncestralDiscreteScheduler` for SDXL turbo.
+
+
+## GaudiStableDiffusionXLPipeline
+
+[[autodoc]] diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.GaudiStableDiffusionXLPipeline
+    - __call__
+
+
+## GaudiEulerDiscreteScheduler
+
+[[autodoc]] diffusers.schedulers.scheduling_euler_discrete.GaudiEulerDiscreteScheduler
+    - all
+
+
+## GaudiEulerAncestralDiscreteScheduler
+
+[[autodoc]] diffusers.schedulers.scheduling_euler_ancestral_discrete.GaudiEulerAncestralDiscreteScheduler
+    - all
+
+
 # GaudiStableDiffusionUpscalePipeline
 
 The `GaudiStableDiffusionUpscalePipeline` is used to enhance the resolution of input images by a factor of 4 on HPUs.
