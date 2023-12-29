@@ -171,7 +171,7 @@ def main():
     # Initialize the scheduler and the generation pipeline
     if args.scheduler == "euler_discrete":
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
-    elif args.scheduler == "euler_ancestral":
+    elif args.scheduler == "euler_ancestral_discrete":
         scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
     else:
         scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
