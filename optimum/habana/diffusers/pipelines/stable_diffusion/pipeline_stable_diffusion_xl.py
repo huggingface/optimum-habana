@@ -1179,7 +1179,6 @@ class GaudiStableDiffusionXLPipeline(
             )
 
             # 4. Prepare timesteps
-            #timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
             self.scheduler.set_timesteps(num_inference_steps, device="cpu")
             timesteps = self.scheduler.timesteps.to(device)
             self.scheduler.reset_timestep_dependent_params()
@@ -1187,7 +1186,7 @@ class GaudiStableDiffusionXLPipeline(
             # 5. Prepare latent variables
             num_channels_latents = self.unet.config.in_channels
             latents = self.prepare_latents(
-                batch_size * num_images_per_prompt,
+                num_prompts * num_images_per_prompt,
                 num_channels_latents,
                 height,
                 width,
@@ -1229,8 +1228,8 @@ class GaudiStableDiffusionXLPipeline(
             negative_prompt_embeds = negative_prompt_embeds.to(device)
             add_text_embeds = add_text_embeds.to(device)
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(device)
-            add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
-            negative_add_time_ids = negative_add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
+            add_time_ids = add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
+            negative_add_time_ids = negative_add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
 
             # 7.5 Split into batches (HPU-specific step)
             latents_batches, text_embeddings_batches, add_text_embeddings_batches, add_time_ids_batches, num_dummy_samples = self._split_inputs_into_batches(
@@ -1273,7 +1272,7 @@ class GaudiStableDiffusionXLPipeline(
             # 8.2 Optionally get Guidance Scale Embedding
             timestep_cond = None
             if self.unet.config.time_cond_proj_dim is not None:
-                guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+                guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(num_prompts * num_images_per_prompt)
                 timestep_cond = self.get_guidance_scale_embedding(
                     guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
                 ).to(device=device, dtype=latents.dtype)
