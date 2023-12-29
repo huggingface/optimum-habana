@@ -83,3 +83,24 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
+### SDXL-Turbo
+SDXL-Turbo is a distilled version of SDXL 1.0, trained for real-time synthesis. 
+
+Here is how to generate images with multiple prompts:
+```python
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/sdxl-turbo \
+    --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
+    --num_images_per_prompt 20 \
+    --batch_size 8 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16 \
+    --scheduler euler_ancestral_discrete
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
