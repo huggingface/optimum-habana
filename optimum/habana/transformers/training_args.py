@@ -54,7 +54,6 @@ logger = logging.get_logger(__name__)
 
 # List of arguments that are not supported by optimum-habana
 UNSUPPORTED_ARGUMENTS = [
-    "bf16_full_eval",
     "fp16",
     "fp16_backend",
     "fp16_full_eval",
@@ -314,8 +313,6 @@ class GaudiTrainingArguments(TrainingArguments):
             raise ValueError("must be using hpu graphs to set max_hpu_graphs.")
 
         # Raise errors for arguments that are not supported by optimum-habana
-        if self.bf16_full_eval:
-            raise ValueError("--bf16_full_eval is not supported by optimum-habana.")
         if self.fp16 or self.fp16_full_eval:
             raise ValueError(
                 "--fp16, --fp16_backend, --fp16_full_eval and --fp16_opt_level are not"
