@@ -231,6 +231,8 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
+    parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
+    parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
 
     args = parser.parse_args()
 
