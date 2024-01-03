@@ -60,9 +60,8 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
         - override RMSNorm with Habana fused RMSNorm
     """
     if hidden_states.device.type == "hpu" and FusedRMSNorm:
-        orig_dtype = hidden_states.dtype
-        hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
-        return hidden_states.to(orig_dtype)
+        hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+        return hidden_states
     else:
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
