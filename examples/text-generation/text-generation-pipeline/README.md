@@ -86,7 +86,7 @@ python run_pipeline.py \
 --do_sample
 ```
 
-If you want to change the temeprature and top_p values, make sure to include the `--do_sample` argument. Here is a sample command.
+If you want to change the temperature and top_p values, make sure to include the `--do_sample` argument. Here is a sample command.
 ```
 python run_pipeline.py \
 --model_name_or_path meta-llama/Llama-2-7b-hf \
