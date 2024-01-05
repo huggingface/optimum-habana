@@ -16,11 +16,11 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import math
 import os
 import sys
 import warnings
-import functools
 from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import make_dataclass
@@ -70,7 +70,12 @@ if is_deepspeed_available():
 
 from .data_loader import gaudi_prepare_data_loader
 from .state import GaudiAcceleratorState, GaudiPartialState
-from .utils import GaudiDistributedType, GaudiDynamoBackend, GaudiTorchDynamoPlugin, GaudiFullyShardedDataParallelPlugin
+from .utils import (
+    GaudiDistributedType,
+    GaudiDynamoBackend,
+    GaudiFullyShardedDataParallelPlugin,
+    GaudiTorchDynamoPlugin,
+)
 
 
 logger = get_logger(__name__)
@@ -148,6 +153,7 @@ class GaudiAccelerator(Accelerator):
             fsdp_plugin, GaudiFullyShardedDataParallelPlugin
         ):
             import importlib.metadata
+
             torch_version = importlib.metadata.version("torch")
             torch_version = torch_version[5:]
             if is_torch_version("<", FSDP_PYTORCH_VERSION + torch_version):
@@ -155,7 +161,9 @@ class GaudiAccelerator(Accelerator):
 
         if fsdp_plugin is None:  # init from env variables
             fsdp_plugin = (
-                GaudiFullyShardedDataParallelPlugin() if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" else None
+                GaudiFullyShardedDataParallelPlugin()
+                if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true"
+                else None
             )
         else:
             if not isinstance(fsdp_plugin, GaudiFullyShardedDataParallelPlugin):
@@ -416,7 +424,7 @@ class GaudiAccelerator(Accelerator):
                         "param_init_fn": fsdp_plugin.param_init_fn,
                         "ignored_modules": fsdp_plugin.ignored_modules,
                         "limit_all_gathers": fsdp_plugin.limit_all_gathers,
-                        "device_id": torch.device("hpu")
+                        "device_id": torch.device("hpu"),
                     }
                     model = FSDP(model, **kwargs)
                     if fsdp_plugin.activation_checkpointing:
@@ -740,7 +748,11 @@ class GaudiAccelerator(Accelerator):
         tensor([0, 1, 2, 3])
         ```
         """
-        if GaudiPartialState().distributed_type in [GaudiDistributedType.MULTI_HPU, GaudiDistributedType.DEEPSPEED, GaudiDistributedType.FSDP]:
+        if GaudiPartialState().distributed_type in [
+            GaudiDistributedType.MULTI_HPU,
+            GaudiDistributedType.DEEPSPEED,
+            GaudiDistributedType.FSDP,
+        ]:
             return _gpu_gather(tensor)
         else:
             return tensor

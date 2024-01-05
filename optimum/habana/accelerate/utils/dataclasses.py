@@ -14,14 +14,15 @@
 # limitations under the License.
 
 import os
-import torch
 from dataclasses import dataclass
 from enum import Enum
 
+import torch
+from accelerate.utils import FullyShardedDataParallelPlugin
+from accelerate.utils.constants import FSDP_BACKWARD_PREFETCH
 from accelerate.utils.dataclasses import BaseEnum, TorchDynamoPlugin
 from accelerate.utils.environment import str_to_bool
-from accelerate.utils.constants import FSDP_BACKWARD_PREFETCH
-from accelerate.utils import FullyShardedDataParallelPlugin
+
 
 class GaudiDistributedType(str, Enum):
     """
@@ -41,6 +42,7 @@ class GaudiDistributedType(str, Enum):
     MULTI_HPU = "MULTI_HPU"
     DEEPSPEED = "DEEPSPEED"
     FSDP = "FSDP"
+
 
 class GaudiDynamoBackend(str, BaseEnum):
     """
@@ -109,6 +111,7 @@ class GaudiTorchDynamoPlugin(TorchDynamoPlugin):
             self.fullgraph = str_to_bool(os.environ.get(prefix + "USE_FULLGRAPH", "False")) == 1
         if self.dynamic is None:
             self.dynamic = str_to_bool(os.environ.get(prefix + "USE_DYNAMIC", "False")) == 1
+
 
 @dataclass
 class GaudiFullyShardedDataParallelPlugin(FullyShardedDataParallelPlugin):

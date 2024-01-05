@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import io
 import json
+import os
 import warnings
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
@@ -42,9 +42,10 @@ from transformers.utils import (
 from optimum.utils import logging
 
 from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
-from ..accelerate.utils import GaudiDistributedType, GaudiFullyShardedDataParallelPlugin
+from ..accelerate.utils import GaudiDistributedType
 from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
+
 
 if is_torch_available():
     import torch
@@ -504,7 +505,7 @@ class GaudiTrainingArguments(TrainingArguments):
                 " during training"
             )
 
-        # Copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/training_args.py#L1563 
+        # Copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/training_args.py#L1563
         # except following changes, (1) Remove XLA specific code & (2) change fsdp_backward_prefetch to backward_prefetch
         if isinstance(self.fsdp, bool):
             self.fsdp = "full_shard" if self.fsdp else ""
@@ -594,8 +595,9 @@ class GaudiTrainingArguments(TrainingArguments):
             os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefect", "false"))
             os.environ[f"{prefix}SYNC_MODULE_STATES"] = str(self.fsdp_config.get("sync_module_states", "true"))
             os.environ[f"{prefix}USE_ORIG_PARAMS"] = str(self.fsdp_config.get("use_orig_params", "false"))
-            os.environ[f"{prefix}ACTIVATION_CHECKPOINTING"] = str(self.fsdp_config.get("activation_checkpointing", "false"))
-
+            os.environ[f"{prefix}ACTIVATION_CHECKPOINTING"] = str(
+                self.fsdp_config.get("activation_checkpointing", "false")
+            )
 
         if isinstance(self.debug, str):
             self.debug = [DebugOption(s) for s in self.debug.split()]

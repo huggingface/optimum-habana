@@ -23,7 +23,6 @@ import shutil
 import sys
 import time
 import warnings
-from packaging import version
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
@@ -118,9 +117,7 @@ if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
 if is_accelerate_available():
-    from accelerate import __version__ as accelerate_version
     from accelerate.utils import (
-        load_fsdp_model,
         load_fsdp_optimizer,
         save_fsdp_model,
         save_fsdp_optimizer,
@@ -144,6 +141,7 @@ OPTIMIZER_NAME = "optimizer.pt"
 OPTIMIZER_NAME_BIN = "optimizer.bin"
 SCHEDULER_NAME = "scheduler.pt"
 SCALER_NAME = "scaler.pt"
+
 
 class GaudiTrainer(Trainer):
     """
@@ -2090,7 +2088,7 @@ class GaudiTrainer(Trainer):
             dispatch_batches=self.args.dispatch_batches,
             deepspeed_plugin=self.args.deepspeed_plugin,
             gradient_accumulation_plugin=gradient_accumulation_plugin,
-            even_batches= not self.args.dataloader_drop_last,
+            even_batches=not self.args.dataloader_drop_last,
             distribution_strategy=self.args.distribution_strategy,
         )
 

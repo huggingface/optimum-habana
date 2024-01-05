@@ -30,12 +30,7 @@ import evaluate
 import torch
 import transformers
 from datasets import load_dataset
-from peft import (
-    LoraConfig,
-    TaskType,
-    get_peft_model,
-    tuners
-)
+from peft import LoraConfig, TaskType, get_peft_model, tuners
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -46,8 +41,9 @@ from transformers import (
 from transformers.trainer_utils import is_main_process
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
 from optimum.habana.peft.layer import GaudiLoraLayerLinearForward
+from optimum.habana.utils import set_seed
+
 
 try:
     from optimum.habana.utils import check_optimum_habana_min_version

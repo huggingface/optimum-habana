@@ -13,7 +13,17 @@ from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 # Gaudi2 CI baselines
 MODELS_TO_TEST = {
     "bf16": [
-        ("bert-base-uncased", "Habana/bert-base-uncased", 2807, 85.4688, "question-answering", 24, 8, "run_qa.py", "full_shard"),
+        (
+            "bert-base-uncased",
+            "Habana/bert-base-uncased",
+            2807,
+            85.4688,
+            "question-answering",
+            24,
+            8,
+            "run_qa.py",
+            "full_shard",
+        ),
     ],
 }
 
@@ -31,8 +41,8 @@ def _test_fsdp(
     world_size: int = 8,
 ):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
-    os.environ["PT_HPU_EAGER_4_STAGE_PIPELINE_ENABLE"] = "0"  #To be removed later
-    os.environ["PT_HPU_EAGER_PIPELINE_ENABLE"] = "0" #To be removed later
+    os.environ["PT_HPU_EAGER_4_STAGE_PIPELINE_ENABLE"] = "0"  # To be removed later
+    os.environ["PT_HPU_EAGER_PIPELINE_ENABLE"] = "0"  # To be removed later
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
 
     # Install question-answering example requirements
@@ -42,7 +52,6 @@ def _test_fsdp(
     assert return_code == 0
 
     command = ["python3"]
-
 
     command += [
         f"{path_to_example_dir / 'gaudi_spawn.py'}",
