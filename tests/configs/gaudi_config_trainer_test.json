@@ -1,12 +1,4 @@
 {
-    "use_habana_mixed_precision": false,
-    "hmp_is_verbose": false,
     "use_fused_adam": true,
-    "use_fused_clip_norm": true,
-    "hmp_bf16_ops": [
-        "add",
-        "mse_loss",
-        "mul"
-    ],
-    "hmp_fp32_ops": []
+    "use_fused_clip_norm": true
 }

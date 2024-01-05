@@ -1,4 +1,4 @@
-FROM vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+FROM vault.habana.ai/gaudi-docker/1.13.0/ubuntu20.04/habanalabs/pytorch-installer-2.1.0:latest
 
 ARG commit_sha
 ARG clone_url
@@ -7,12 +7,12 @@ ARG clone_url
 RUN apt-get update && apt-get install -y \
     software-properties-common \
     npm
-# Needs nodejs >= v14.x but Ubuntu 22 repos are stuck to v12.x
-RUN apt-get remove -y libnode-dev &&\
-    apt-get autoremove -y &&\
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - &&\
-    apt-get install -y nodejs
-RUN npm install npm@latest -g && \
+
+# Need node to build doc HTML. Taken from https://stackoverflow.com/a/67491580
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    npm
+RUN npm install npm@9.8.1 -g && \
     npm install n -g && \
     n latest
 

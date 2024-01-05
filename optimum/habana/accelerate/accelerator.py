@@ -23,6 +23,7 @@ import warnings
 from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import make_dataclass
+from types import MethodType
 
 import torch
 from accelerate import Accelerator
@@ -35,7 +36,6 @@ from accelerate.utils import (
     DeepSpeedPlugin,
     DistributedDataParallelKwargs,
     DistributedType,
-    DynamoBackend,
     FP8RecipeKwargs,
     FullyShardedDataParallelPlugin,
     GradientAccumulationPlugin,
@@ -47,11 +47,13 @@ from accelerate.utils import (
     PrecisionType,
     ProjectConfiguration,
     RNGType,
-    TorchDynamoPlugin,
+    check_os_kernel,
+    convert_outputs_to_fp32,
     is_deepspeed_available,
     parse_choice_from_env,
 )
 from accelerate.utils.operations import _gpu_gather
+from accelerate.utils.other import is_compiled_module
 from torch.optim.lr_scheduler import LRScheduler
 
 
@@ -64,8 +66,9 @@ if is_deepspeed_available():
         DummyScheduler,
     )
 
+from .data_loader import gaudi_prepare_data_loader
 from .state import GaudiAcceleratorState, GaudiPartialState
-from .utils import GaudiDistributedType
+from .utils import GaudiDistributedType, GaudiDynamoBackend, GaudiTorchDynamoPlugin
 
 
 logger = get_logger(__name__)
@@ -95,9 +98,11 @@ class GaudiAccelerator(Accelerator):
         even_batches: bool = True,
         step_scheduler_with_optimizer: bool = True,
         kwargs_handlers: list[KwargsHandler] | None = None,
-        dynamo_backend: DynamoBackend | str | None = None,
+        dynamo_backend: GaudiDynamoBackend | str | None = None,
         distribution_strategy: str = None,
+        force_autocast: bool = False,
     ):
+        self.trackers = []
         if project_config is not None:
             self.project_configuration = project_config
         else:
@@ -113,7 +118,9 @@ class GaudiAccelerator(Accelerator):
             elif mixed_precision == "fp16":
                 raise ValueError("fp16 is not supported on Habana Gaudi.")
 
-        dynamo_plugin = TorchDynamoPlugin() if dynamo_backend is None else TorchDynamoPlugin(backend=dynamo_backend)
+        dynamo_plugin = (
+            GaudiTorchDynamoPlugin() if dynamo_backend is None else GaudiTorchDynamoPlugin(backend=dynamo_backend)
+        )
 
         if deepspeed_plugin is None:  # init from env variables
             deepspeed_plugin = (
@@ -126,7 +133,7 @@ class GaudiAccelerator(Accelerator):
         if deepspeed_plugin:
             if not is_deepspeed_available():
                 raise ImportError(
-                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0`."
+                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0`."
                 )
 
             mixed_precision = (
@@ -244,6 +251,10 @@ class GaudiAccelerator(Accelerator):
 
         self._distribution_strategy = distribution_strategy
 
+        self.force_autocast = force_autocast
+
+        check_os_kernel()
+
     @property
     def use_fp16(self):
         raise ValueError("fp16 is not supported on Habana Gaudi.")
@@ -319,20 +330,18 @@ class GaudiAccelerator(Accelerator):
         elif device_placement and not self.verify_device_map(model):
             model = model.to(self.device)
 
-        # The following block is commented because forward+backward+loss is already wrapped with autocast in Trainer
-        # if self.native_amp:
-        #     model._original_forward = model.forward
-        #     model_forward_func = model.forward.__func__ if hasattr(model.forward, "__func__") else model.forward
-        #     if self.mixed_precision == "bf16":
-        #         new_forward = torch.autocast(device_type=self.state.device.type, dtype=torch.bfloat16)(
-        #             model_forward_func
-        #         )
+        # The following block is executed only when force_autocast is True
+        # because forward+backward+loss is already wrapped with autocast in Trainer
+        if self.native_amp and self.force_autocast:
+            model._original_forward = model.forward
+            model_forward_func = model.forward.__func__ if hasattr(model.forward, "__func__") else model.forward
+            new_forward = torch.autocast(device_type=self.state.device.type, dtype=torch.bfloat16)(model_forward_func)
 
-        #     if hasattr(model.forward, "__func__"):
-        #         model.forward = MethodType(new_forward, model)
-        #         model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
-        #     else:
-        #         model.forward = convert_outputs_to_fp32(new_forward)
+            if hasattr(model.forward, "__func__"):
+                model.forward = MethodType(new_forward, model)
+                model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
+            else:
+                model.forward = convert_outputs_to_fp32(new_forward)
         # FP8 is not supported on Gaudi2 yet
         # elif self.mixed_precision == "fp8":
         #     if not has_transformer_engine_layers(model):
@@ -361,8 +370,8 @@ class GaudiAccelerator(Accelerator):
                 if any(p.requires_grad for p in model.parameters()):
                     kwargs = self.ddp_handler.to_kwargs() if self.ddp_handler is not None else {}
                     model = torch.nn.parallel.DistributedDataParallel(model, **kwargs)
-        # torch.compile should be called last.
-        if self.state.dynamo_plugin.backend != DynamoBackend.NO:
+        # torch.compile should be called last and only if the model isn't already compiled.
+        if self.state.dynamo_plugin.backend != GaudiDynamoBackend.NO and not is_compiled_module(model):
             model = torch.compile(model, **self.state.dynamo_plugin.to_kwargs())
         return model
 
@@ -581,6 +590,57 @@ class GaudiAccelerator(Accelerator):
                     "You can't use same `Accelerator()` instance with multiple models when using DeepSpeed"
                 )
         return tuple(result)
+
+    def prepare_data_loader(
+        self, data_loader: torch.utils.data.DataLoader, device_placement=None, slice_fn_for_dispatch=None
+    ):
+        """
+        Prepares a PyTorch DataLoader for training in any distributed setup. It is recommended to use
+        [`Accelerator.prepare`] instead.
+
+        Args:
+            data_loader (`torch.utils.data.DataLoader`):
+                A vanilla PyTorch DataLoader to prepare
+            device_placement (`bool`, *optional*):
+                Whether or not to place the batches on the proper device in the prepared dataloader. Will default to
+                `self.device_placement`.
+            slice_fn_for_dispatch (`Callable`, *optional*`):
+                If passed, this function will be used to slice tensors across `num_processes`. Will default to
+                [`~utils.slice_tensors`]. This argument is used only when `dispatch_batches` is set to `True` and will
+                be ignored otherwise.
+
+        Example:
+
+        ```python
+        >>> import torch
+        >>> from accelerate import Accelerator
+
+        >>> accelerator = Accelerator()
+        >>> data_loader = torch.utils.data.DataLoader(...)
+        >>> data_loader = accelerator.prepare_data_loader(data_loader, device_placement=True)
+        ```
+        """
+        # Ensure we can't double wrap a DataLoader due to `find_batch_size`
+        if getattr(data_loader, "_is_accelerate_prepared", False):
+            if data_loader not in self._dataloaders:
+                self._dataloaders.append(data_loader)
+            return data_loader
+        if device_placement is None:
+            device_placement = self.device_placement
+        prepared_data_loader = gaudi_prepare_data_loader(
+            data_loader,
+            self.device,
+            num_processes=self.num_processes,
+            process_index=self.process_index,
+            split_batches=self.split_batches,
+            put_on_device=device_placement,
+            rng_types=self.rng_types.copy(),
+            dispatch_batches=self.dispatch_batches,
+            even_batches=self.even_batches,
+            slice_fn_for_dispatch=slice_fn_for_dispatch,
+        )
+        self._dataloaders.append(prepared_data_loader)
+        return prepared_data_loader
 
     def gather(self, tensor):
         """

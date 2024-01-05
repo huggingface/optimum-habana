@@ -84,6 +84,11 @@ class GenerationTesterMixin:
     all_generative_model_classes = ()
     input_name = "input_ids"
 
+    def _update_default_model_kwargs(self, model_kwargs):
+        model_kwargs["limit_hpu_graphs"] = False
+        model_kwargs["reuse_cache"] = False
+        model_kwargs["bucket_size"] = -1
+
     def _get_input_ids_and_config(self, batch_size=2):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         input_ids = inputs_dict[self.input_name]
@@ -268,6 +273,7 @@ class GenerationTesterMixin:
 
         kwargs = {}
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -294,6 +300,7 @@ class GenerationTesterMixin:
 
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+            self._update_default_model_kwargs(model_kwargs)
             output_greedy = model.greedy_search(
                 input_ids,
                 max_length=max_length,
@@ -325,6 +332,7 @@ class GenerationTesterMixin:
     ):
         torch.manual_seed(0)
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+        self._update_default_model_kwargs(model_kwargs)
         output_generate = model.generate(
             input_ids,
             do_sample=True,
@@ -361,6 +369,7 @@ class GenerationTesterMixin:
 
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+            self._update_default_model_kwargs(model_kwargs)
             output_sample = model.sample(
                 input_ids.repeat_interleave(num_return_sequences, dim=0),
                 max_length=max_length,
@@ -392,6 +401,7 @@ class GenerationTesterMixin:
         return_dict_in_generate=False,
     ):
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+        self._update_default_model_kwargs(model_kwargs)
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -423,6 +433,7 @@ class GenerationTesterMixin:
 
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+            self._update_default_model_kwargs(model_kwargs)
             output_beam_search = model.beam_search(
                 input_ids.repeat_interleave(beam_scorer.num_beams, dim=0),
                 beam_scorer,
@@ -454,6 +465,7 @@ class GenerationTesterMixin:
     ):
         torch.manual_seed(0)
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+        self._update_default_model_kwargs(model_kwargs)
         output_generate = model.generate(
             input_ids,
             do_sample=True,
@@ -489,6 +501,7 @@ class GenerationTesterMixin:
 
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+            self._update_default_model_kwargs(model_kwargs)
             output_beam_sample = model.beam_sample(
                 input_ids.repeat_interleave(beam_scorer.num_beams, dim=0),
                 beam_scorer,
@@ -521,6 +534,7 @@ class GenerationTesterMixin:
         return_dict_in_generate=False,
     ):
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+        self._update_default_model_kwargs(model_kwargs)
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -552,6 +566,7 @@ class GenerationTesterMixin:
 
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+            self._update_default_model_kwargs(model_kwargs)
             output_group_beam_search = model.group_beam_search(
                 input_ids.repeat_interleave(beam_scorer.num_beams, dim=0),
                 beam_scorer,
@@ -583,6 +598,7 @@ class GenerationTesterMixin:
         return_dict_in_generate=False,
     ):
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+        self._update_default_model_kwargs(model_kwargs)
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -615,6 +631,7 @@ class GenerationTesterMixin:
 
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+            self._update_default_model_kwargs(model_kwargs)
             output_group_beam_search = model.constrained_beam_search(
                 input_ids.repeat_interleave(constrained_beam_scorer.num_beams, dim=0),
                 constrained_beam_scorer,
@@ -657,6 +674,7 @@ class GenerationTesterMixin:
 
         kwargs = {}
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+        self._update_default_model_kwargs(model_kwargs)
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -684,6 +702,7 @@ class GenerationTesterMixin:
 
         with torch.no_grad():
             model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
+            self._update_default_model_kwargs(model_kwargs)
             stopping_criteria = StoppingCriteriaList([MaxLengthCriteria(max_length=max_length)])
             output_contrastive = model.contrastive_search(
                 input_ids,

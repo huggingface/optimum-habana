@@ -15,12 +15,12 @@
 
 import contextlib
 import copy
+import inspect
 import math
 import os
 import random
 import shutil
 import sys
-import tempfile
 import time
 import warnings
 from collections.abc import Mapping
@@ -38,9 +38,8 @@ from transformers import Trainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.integrations import hp_params
-from transformers.integrations.deepspeed import deepspeed_load_checkpoint
+from transformers.integrations.deepspeed import deepspeed_load_checkpoint, is_deepspeed_available
 from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint, unwrap_model
-from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_callback import TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
@@ -49,8 +48,8 @@ from transformers.trainer_pt_utils import (
     LengthGroupedSampler,
     SequentialDistributedSampler,
     find_batch_size,
+    get_dataloader_sampler,
     get_model_param_count,
-    get_parameter_names,
     nested_concat,
     nested_detach,
     nested_numpify,
@@ -113,8 +112,16 @@ if is_peft_available():
     from peft import PeftModel
 
 
+if is_deepspeed_available():
+    from accelerate.utils import DeepSpeedSchedulerWrapper
+
+
 if TYPE_CHECKING:
     import optuna
+
+
+def _is_peft_model(model):
+    return is_peft_available() and isinstance(model, PeftModel)
 
 
 logger = logging.get_logger(__name__)
@@ -192,7 +199,6 @@ class GaudiTrainer(Trainer):
 
             if self.args.deepspeed:
                 # Mixed-precision backends are turned off when using DeepSpeed since it manages this itself
-                self.gaudi_config.use_habana_mixed_precision = False
                 self.gaudi_config.use_torch_autocast = False
                 self.use_hpu_amp = False
 
@@ -206,37 +212,9 @@ class GaudiTrainer(Trainer):
                     logger.warning(
                         "The argument `--bf16` was not given but `use_torch_autocast` is True in the Gaudi configuration so mixed-precision training with Torch Autocast is enabled."
                     )
-            elif self.gaudi_config.use_habana_mixed_precision and self.use_hpu_amp:
-                self.gaudi_config.use_habana_mixed_precision = False
-                logger.warning(
-                    "`--bf16` was given and `use_habana_mixed_precision` is True in the Gaudi configuration. Using Torch Autocast as mixed-precision backend."
-                )
 
             if self.use_hpu_amp and "LOWER_LIST" not in os.environ:
-                gaudi_config.declare_autocast_bf16_fp32_ops()
-
-            if self.gaudi_config.use_habana_mixed_precision and not (self.use_hpu_amp or self.use_cpu_amp):
-                try:
-                    from habana_frameworks.torch.hpex import hmp
-                except ImportError as error:
-                    error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-                    raise error
-                self.hmp = hmp
-
-                # Open temporary files to mixed-precision write ops
-                with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                    with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                        # hmp.convert needs ops to be written in text files
-                        self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                            hmp_bf16_file.name,
-                            hmp_fp32_file.name,
-                        )
-                        self.hmp.convert(
-                            opt_level=self.gaudi_config.hmp_opt_level,
-                            bf16_file_path=hmp_bf16_file.name,
-                            fp32_file_path=hmp_fp32_file.name,
-                            isVerbose=self.gaudi_config.hmp_is_verbose,
-                        )
+                self.gaudi_config.declare_autocast_bf16_fp32_ops()
 
             if self.args.use_lazy_mode:
                 try:
@@ -245,6 +223,16 @@ class GaudiTrainer(Trainer):
                     error.msg = f"Could not import habana_frameworks.torch.core. {error.msg}."
                     raise error
                 self.htcore = htcore
+
+                try:
+                    import habana_frameworks.torch.hpu as hthpu
+                except ImportError as error:
+                    error.msg = f"Could not import habana_frameworks.torch.hpu. {error.msg}."
+                    raise error
+                if self.gaudi_config.use_dynamic_shapes:
+                    hthpu.enable_dynamic_shape()
+                else:
+                    hthpu.disable_dynamic_shape()
 
             try:
                 from habana_frameworks.torch.hpu import random as hpu_random
@@ -318,8 +306,7 @@ class GaudiTrainer(Trainer):
         Trainer's init through `optimizers`, or subclass and override this method in a subclass.
         """
         if self.optimizer is None:
-            decay_parameters = get_parameter_names(self.model, ALL_LAYERNORM_LAYERS)
-            decay_parameters = [name for name in decay_parameters if "bias" not in name]
+            decay_parameters = self.get_decay_parameter_names(self.model)
 
             optimizer_grouped_parameters = []
             for t_params, t_weight_decay in zip(
@@ -441,6 +428,11 @@ class GaudiTrainer(Trainer):
 
         self.is_in_train = True
 
+        # do_train is not a reliable argument, as it might not be set and .train() still called, so
+        # the following is a workaround:
+        if (args.fp16_full_eval or args.bf16_full_eval) and not args.do_train:
+            self._move_model_to_device(self.model, args.device)
+
         if "model_path" in kwargs:
             resume_from_checkpoint = kwargs.pop("model_path")
             warnings.warn(
@@ -529,6 +521,7 @@ class GaudiTrainer(Trainer):
         total_train_batch_size = self._train_batch_size * args.gradient_accumulation_steps * args.world_size
 
         len_dataloader = None
+        num_train_tokens = None
         if has_length(train_dataloader):
             len_dataloader = len(train_dataloader)
             num_update_steps_per_epoch = len(train_dataloader) // args.gradient_accumulation_steps
@@ -542,10 +535,16 @@ class GaudiTrainer(Trainer):
                 # May be slightly incorrect if the last batch in the training dataloader has a smaller size but it's
                 # the best we can do.
                 num_train_samples = args.max_steps * total_train_batch_size
+                if args.include_tokens_per_second:
+                    num_train_tokens = (
+                        self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
+                    )
             else:
                 max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
                 num_train_epochs = math.ceil(args.num_train_epochs)
                 num_train_samples = self.num_examples(train_dataloader) * args.num_train_epochs
+                if args.include_tokens_per_second:
+                    num_train_tokens = self.num_tokens(train_dataloader) * args.num_train_epochs
         elif args.max_steps > 0:  # Rely on max_steps when dataloader does not have a working size
             max_steps = args.max_steps
             # Setting a very large number of epochs so we go as many times as necessary over the iterator.
@@ -553,6 +552,8 @@ class GaudiTrainer(Trainer):
             num_update_steps_per_epoch = max_steps
             num_examples = total_train_batch_size * args.max_steps
             num_train_samples = args.max_steps * total_train_batch_size
+            if args.include_tokens_per_second:
+                num_train_tokens = self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
         else:
             raise ValueError(
                 "args.max_steps must be set to a positive value if dataloader does not have a length, was"
@@ -622,6 +623,10 @@ class GaudiTrainer(Trainer):
                 import transformers.models.t5.modeling_t5 as modeling_t5
 
                 modeling_t5.checkpoint = torch.utils.checkpoint.checkpoint
+        else:
+            # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
+            if hasattr(self.model, "gradient_checkpointing_disable"):
+                self.model.gradient_checkpointing_disable()
 
         model = self._wrap_model(self.model_wrapped)
 
@@ -758,8 +763,17 @@ class GaudiTrainer(Trainer):
         # Skip the first epochs_trained epochs to get the random state of the dataloader at the right point.
         if not args.ignore_data_skip:
             for epoch in range(epochs_trained):
-                for _ in train_dataloader:
-                    break
+                sampler = get_dataloader_sampler(train_dataloader)
+                is_random_sampler = isinstance(sampler, RandomSampler)
+                if not is_random_sampler:
+                    # We just need to begin an iteration to create the randomization of the sampler.
+                    for _ in train_dataloader:
+                        break
+                else:
+                    # Otherwise we need to call the whooooole sampler cause there is some random operation added
+                    # AT THE VERY END!
+                    sampler = sampler if sampler is not None else []
+                    _ = list(sampler)
 
         if self.args.adjust_throughput:
             self.log_evaluate_save_time = 0
@@ -828,6 +842,16 @@ class GaudiTrainer(Trainer):
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
+                # attn_softmax_bf16 and use_flash_attention is enabled only for llama
+                if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
+                    if self.model.config.model_type == "llama":
+                        if self.model.generation_config.attn_softmax_bf16:
+                            inputs["attn_softmax_bf16"] = True
+                        if self.model.generation_config.use_flash_attention:
+                            inputs["use_flash_attention"] = True
+                        if self.model.generation_config.flash_attention_recompute:
+                            inputs["flash_attention_recompute"] = True
+
                 # TODO: keep syncs for fast DDP?
                 with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
@@ -883,31 +907,14 @@ class GaudiTrainer(Trainer):
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
                             # Revert to normal clipping otherwise
-                            if (
-                                args.use_habana
-                                and (not (self.use_hpu_amp or self.use_cpu_amp))
-                                and self.gaudi_config.use_habana_mixed_precision
-                            ):
-                                with self.hmp.disable_casts():
-                                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                            else:
-                                self.accelerator.clip_grad_norm_(
-                                    model.parameters(),
-                                    args.max_grad_norm,
-                                )
+                            self.accelerator.clip_grad_norm_(
+                                model.parameters(),
+                                args.max_grad_norm,
+                            )
 
                     # Optimizer step
                     optimizer_was_run = True
-                    if (
-                        args.use_habana
-                        and self.gaudi_config.use_habana_mixed_precision
-                        and (not self.gaudi_config.use_fused_adam)
-                        and (not (self.use_hpu_amp or self.use_cpu_amp))
-                    ):
-                        with self.hmp.disable_casts():
-                            self.optimizer.step()
-                    else:
-                        self.optimizer.step()
+                    self.optimizer.step()
                     optimizer_was_run = not self.accelerator.optimizer_step_was_skipped
 
                     if optimizer_was_run:
@@ -970,6 +977,7 @@ class GaudiTrainer(Trainer):
             start_time,
             num_samples=num_samples_for_speed_metrics,
             num_steps=num_steps_for_speed_metrics,
+            num_tokens=num_train_tokens,
             start_time_after_warmup=start_time_after_warmup,
             log_evaluate_save_time=self.log_evaluate_save_time,
         )
@@ -1018,7 +1026,7 @@ class GaudiTrainer(Trainer):
             or os.path.exists(best_safe_adapter_model_path)
         ):
             has_been_loaded = True
-            if is_peft_available() and isinstance(model, PeftModel):
+            if _is_peft_model(model):
                 # If train a model using PEFT & LoRA, assume that adapter have been saved properly.
                 if hasattr(model, "active_adapter") and hasattr(model, "load_adapter"):
                     if os.path.exists(best_adapter_model_path) or os.path.exists(best_safe_adapter_model_path):
@@ -1157,14 +1165,19 @@ class GaudiTrainer(Trainer):
 
         if self.hp_search_backend is None and trial is None:
             self.store_flos()
-
         run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
         self.save_model(output_dir, _internal_call=True)
         if self.is_deepspeed_enabled:
             # under zero3 model file itself doesn't get saved since it's bogus! Unless deepspeed
             # config `stage3_gather_16bit_weights_on_model_save` is True
-            self.model_wrapped.save_checkpoint(output_dir)
+            accept_exclude_frozen_parameters = "exclude_frozen_parameters" in set(
+                inspect.signature(self.model_wrapped.save_checkpoint).parameters.keys()
+            )
+            if accept_exclude_frozen_parameters and _is_peft_model(self.model):
+                self.model_wrapped.save_checkpoint(output_dir, exclude_frozen_parameters=True)
+            else:
+                self.model_wrapped.save_checkpoint(output_dir)
 
         # Save optimizer and scheduler
         if self.args.should_save and not self.is_deepspeed_enabled:
@@ -1178,9 +1191,13 @@ class GaudiTrainer(Trainer):
                 scheduler_dict = to_device_dtype(scheduler_dict, target_device=torch.device("cpu"))
             torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
 
-            # Save SCHEDULER & SCALER
+        # Save SCHEDULER & SCALER
+        is_deepspeed_custom_scheduler = self.is_deepspeed_enabled and not isinstance(
+            self.lr_scheduler, DeepSpeedSchedulerWrapper
+        )
+        if self.args.should_save and (not self.is_deepspeed_enabled or is_deepspeed_custom_scheduler):
             with warnings.catch_warnings(record=True) as caught_warnings:
-                torch.save(scheduler_dict, os.path.join(output_dir, SCHEDULER_NAME))
+                torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
             reissue_pt_warnings(caught_warnings)
 
         # Determine the new best metric / best model checkpoint
@@ -1244,10 +1261,23 @@ class GaudiTrainer(Trainer):
 
         if self.is_deepspeed_enabled:
             # deepspeed loads optimizer/lr_scheduler together with the model in deepspeed_init
+            if not isinstance(self.lr_scheduler, DeepSpeedSchedulerWrapper):
+                with warnings.catch_warnings(record=True) as caught_warnings:
+                    self.lr_scheduler.load_state_dict(torch.load(os.path.join(checkpoint, SCHEDULER_NAME)))
+                reissue_pt_warnings(caught_warnings)
             return
 
-        checkpoint_file_exists = os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME)) or os.path.isfile(
-            os.path.join(checkpoint, OPTIMIZER_NAME_BIN)
+        checkpoint_file_exists = (
+            os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME))
+            or os.path.isfile(os.path.join(checkpoint, OPTIMIZER_NAME_BIN))
+            or (
+                os.path.isdir(checkpoint)
+                and any(
+                    OPTIMIZER_NAME_BIN.split(".")[0] in folder_name
+                    for folder_name in os.listdir(checkpoint)
+                    if os.path.isdir(os.path.join(checkpoint, folder_name))
+                )
+            )
         )
 
         if checkpoint_file_exists and os.path.isfile(os.path.join(checkpoint, SCHEDULER_NAME)):
@@ -1377,10 +1407,17 @@ class GaudiTrainer(Trainer):
                     " stage3_gather_16bit_weights_on_model_save=false. Saving the full checkpoint instead, use"
                     " zero_to_fp32.py to recover weights"
                 )
-                self._save(output_dir, state_dict={})
+                if self.args.should_save:
+                    self._save(output_dir, state_dict={})
                 # remove the dummy state_dict
                 remove_dummy_checkpoint(self.args.should_save, output_dir, [WEIGHTS_NAME, SAFE_WEIGHTS_NAME])
-                self.model_wrapped.save_checkpoint(output_dir)
+                accept_exclude_frozen_parameters = "exclude_frozen_parameters" in set(
+                    inspect.signature(self.model_wrapped.save_checkpoint).parameters.keys()
+                )
+                if accept_exclude_frozen_parameters and _is_peft_model(self.model):
+                    self.model_wrapped.save_checkpoint(output_dir, exclude_frozen_parameters=True)
+                else:
+                    self.model_wrapped.save_checkpoint(output_dir)
         elif self.args.should_save:
             self._save(output_dir)
 
@@ -1473,8 +1510,18 @@ class GaudiTrainer(Trainer):
             if not self.already_wrapped_for_hpu_graphs:
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-                model = wrap_in_hpu_graph(model)
+                model = wrap_in_hpu_graph(
+                    model, disable_tensor_cache=args.disable_tensor_cache_hpu_graphs, max_graphs=args.max_hpu_graphs
+                )
                 self.already_wrapped_for_hpu_graphs = True
+
+        # if full fp16 or bf16 eval is wanted and this ``evaluation`` or ``predict`` isn't called
+        # while ``train`` is running, cast it to the right dtype first and then put on device
+        if not self.is_in_train:
+            if args.fp16_full_eval:
+                model = model.to(dtype=torch.float16, device=args.device)
+            elif args.bf16_full_eval:
+                model = model.to(dtype=torch.bfloat16, device=args.device)
 
         batch_size = self.args.eval_batch_size
 
@@ -1516,6 +1563,16 @@ class GaudiTrainer(Trainer):
                 # For batch samplers, batch_size is not known by the dataloader in advance.
                 if batch_size is None:
                     batch_size = observed_batch_size
+
+            # attn_softmax_bf16 and use_flash_attention are enabled only for llama
+            if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
+                if self.model.config.model_type == "llama":
+                    if self.model.generation_config.attn_softmax_bf16:
+                        inputs["attn_softmax_bf16"] = True
+                    if self.model.generation_config.use_flash_attention:
+                        inputs["use_flash_attention"] = True
+                    if self.model.generation_config.flash_attention_recompute:
+                        inputs["flash_attention_recompute"] = True
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
@@ -1854,8 +1911,18 @@ class GaudiTrainer(Trainer):
             if not self.already_wrapped_for_hpu_graphs:
                 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-                model = wrap_in_hpu_graph(model)
+                model = wrap_in_hpu_graph(
+                    model, disable_tensor_cache=args.disable_tensor_cache_hpu_graphs, max_graphs=args.max_hpu_graphs
+                )
                 self.already_wrapped_for_hpu_graphs = True
+
+        # if full fp16 or bf16 eval is wanted and this ``evaluation`` or ``predict`` isn't called
+        # while ``train`` is running, cast it to the right dtype first and then put on device
+        if not self.is_in_train:
+            if args.fp16_full_eval:
+                model = model.to(dtype=torch.float16, device=args.device)
+            elif args.bf16_full_eval:
+                model = model.to(dtype=torch.bfloat16, device=args.device)
 
         batch_size = dataloader.batch_size
         num_examples = self.num_examples(dataloader)

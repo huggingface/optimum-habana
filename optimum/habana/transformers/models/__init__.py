@@ -28,8 +28,6 @@ from .codegen import (
 from .esm import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
-    gaudi_esmoutput_forward,
-    gaudi_esmselfoutput_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
 )
@@ -64,8 +62,15 @@ from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
     GaudiLlamaForCausalLM,
+    GaudiLlamaMLP,
     GaudiLlamaModel,
     gaudi_llama_rmsnorm_forward,
+)
+from .mistral import (
+    GaudiMistralForCausalLM,
+    gaudi_mistral_attn_forward,
+    gaudi_mistral_decoder_layer_forward,
+    gaudi_mistral_model_forward,
 )
 from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
 from .mpt import (
@@ -82,11 +87,20 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
-from .t5 import gaudi_t5_layernorm_forward
+from .t5 import (
+    gaudi_t5_layernorm_forward,
+    gaudi_T5Attention_forward,
+    gaudi_T5Block_forward,
+    gaudi_T5ForConditionalGeneration_forward,
+    gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_T5LayerSelfAttention_forward,
+    gaudi_T5Stack_forward,
+)
 from .vit import gaudi_vit_self_attention_forward
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     _gaudi_wav2vec2_sample_negative_indices,
+    gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
 )

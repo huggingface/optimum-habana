@@ -24,7 +24,7 @@ from transformers.modeling_utils import ModuleUtilsMixin
 def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> torch.Tensor:
     """
     Same as https://github.com/huggingface/transformers/blob/a9eee2ffecc874df7dd635b2c6abb246fdb318cc/src/transformers/modeling_utils.py#L640
-    except that HMP is disabled for computing:
+    except that mixed precision is disabled for computing:
         encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * torch.finfo(self.dtype).min
     """
     if encoder_attention_mask.dim() == 3:
@@ -39,9 +39,11 @@ def gaudi_invert_attention_mask(self, encoder_attention_mask: torch.Tensor) -> t
     # torch.finfo must take the dtype of encoder_extended_attention_mask
     encoder_extended_attention_mask = encoder_extended_attention_mask.to(dtype=self.dtype)  # bf16 compatibility
     encoder_extended_attention_mask = 1.0 - encoder_extended_attention_mask
-    encoder_extended_attention_mask = (
-        encoder_extended_attention_mask * torch.finfo(encoder_extended_attention_mask.dtype).min
-    )
+    #  Fixes issue where the model is not in bf16 and mul is casting it to values out of range resulting in nan
+    with torch.autocast(enabled=False, device_type="hpu"):
+        encoder_extended_attention_mask = (
+            encoder_extended_attention_mask * torch.finfo(encoder_extended_attention_mask.dtype).min
+        )
 
     return encoder_extended_attention_mask
 
@@ -51,7 +53,7 @@ def gaudi_get_extended_attention_mask(
 ) -> torch.Tensor:
     """
     Same as https://github.com/huggingface/transformers/blob/a9eee2ffecc874df7dd635b2c6abb246fdb318cc/src/transformers/modeling_utils.py#L692
-    except that HMP is disabled for computing:
+    except that mixed precision is disabled for computing:
         extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(dtype).min
     """
     if dtype is None:
@@ -109,3 +111,25 @@ def gaudi_conv1d_forward(self, x):
     bias = self.bias.view(bias_shape)
     x = x + bias
     return x
+
+
+# Splitting DeepSpeed LinearAllReduce to three parts to avoid redundant memory consumption
+class ScopedLinearAllReduce(torch.nn.Module):
+    def __init__(self, mod, *args, **kwargs):
+        self.__dict__.update(mod.__dict__)
+
+    def forward(self, input):
+        # pre_all_reduce
+
+        output = torch.matmul(input, self.weight.transpose(-1, -2))
+        return output
+
+    def all_reduce(self, input):
+        if self.mp_group is not None:
+            from deepspeed import comm as dist
+
+            dist.inference_all_reduce(input, group=self.mp_group)
+
+    def post_all_reduce(self, input):
+        output = input + self.bias if (self.bias is not None) else input
+        return output

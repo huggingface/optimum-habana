@@ -178,7 +178,8 @@ python run_mlm.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 To run on your own training and validation files, use the following command:
@@ -197,7 +198,8 @@ python run_mlm.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 If your dataset is organized with one sample per line, you can use the `--line_by_line` flag (otherwise the script
@@ -223,7 +225,8 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/roberta-base \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 
@@ -247,7 +250,8 @@ python run_clm.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 
@@ -298,6 +302,29 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 }
 ```
 
+Here is another example with Bloom-7B1:
+
+```bash
+DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 PT_HPU_MAX_COMPOUND_OP_SYNC=1 PT_HPU_MAX_COMPOUND_OP_SIZE=1 python ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_clm.py \
+    --model_name_or_path bigscience/bloom-7b1 \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 8 \
+    --do_train \
+    --output_dir /tmp/test-clm \
+    --gaudi_config_name Habana/roberta-base \
+    --use_habana \
+    --use_lazy_mode \
+    --gradient_checkpointing \
+    --use_cache False \
+    --throughput_warmup_steps 3 \
+    --save_strategy "no" \
+    --learning_rate 1e-04 \
+    --deepspeed path_to_my_deepspeed_config
+```
+[This](https://github.com/huggingface/optimum-habana/blob/main/tests/configs/deepspeed_zero_3_gaudi1.json) is a DeepSpeed configuration you can use to train this model on Gaudi1.
+
 
 ## Inference
 
@@ -315,13 +342,16 @@ python run_clm.py \
     --gaudi_config_name Habana/gpt2 \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs_for_inference
+    --use_hpu_graphs_for_inference \
+    --bf16
 ```
 
 
 ## PEFT
 
-To run LoRA finetuning and inference. you could use `run_lora_clm.py` as an example. Multi-card examples can be simply adapted to run LoRA finetuning. Here is the CLM example with Llama1-7B and Falcon-40B:
+To run LoRA finetuning, you can use `run_lora_clm.py`.
+Here are single-/multi-device command examples for Llama1-7B, Falcon-40B and Llama2-70B.
+You can also use multicard version for Falcon-180B:
 
 - Single-card finetuning of Llama1-7B:
 ```bash
@@ -416,9 +446,39 @@ python ../gaudi_spawn.py \
     --dataset_concatenation \
     --max_seq_length 512 \
     --ddp_bucket_cap_mb 50 \
-    --adam_epsilon 1e-08
+    --adam_epsilon 1e-08 \
     --low_cpu_mem_usage True
 ```
+
+- Multi-card finetuning of codegen-16B-mono:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_lora_clm.py \
+    --model_name_or_path Salesforce/codegen-16B-mono \
+    --dataset_name b-mc2/sql-create-context \
+    --sql_prompt \
+    --bf16 True \
+    --output_dir ./finetuned-models/codegen-finetune-on-sql-create-context-hpu8-lora8-bs4 \
+    --num_train_epochs 5 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --evaluation_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 1e-4 \
+    --logging_steps 1 \
+    --dataset_concatenation \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 3 \
+    --use_hpu_graphs_for_inference \
+    --lora_target_modules "qkv_proj" \
+    --lora_rank 8 \
+    --do_eval \
+    --validation_split_percentage 10 \
+    --use_cache False
+```
+
 - Multi-card finetuning of Falcon-40B:
 ```bash
 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
@@ -455,6 +515,79 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --low_cpu_mem_usage True
 ```
 
+- Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization and LoRA:
+
+  > The following command requires Habana DeepSpeed 1.13.0 or later.
+
+```bash
+PT_HPU_MAX_COMPOUND_OP_SIZE=10 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 \
+python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
+  --model_name_or_path meta-llama/Llama-2-70b-hf \
+  --deepspeed llama2_ds_zero3_config.json \
+  --dataset_name tatsu-lab/alpaca \
+  --bf16 True \
+  --output_dir ./lora_out \
+  --num_train_epochs 2 \
+  --max_seq_len 2048 \
+  --per_device_train_batch_size 10 \
+  --per_device_eval_batch_size 10 \
+  --gradient_checkpointing \
+  --evaluation_strategy epoch \
+  --eval_delay 2 \
+  --save_strategy no \
+  --learning_rate 0.0018 \
+  --warmup_ratio 0.03 \
+  --lr_scheduler_type "cosine" \
+  --logging_steps 1 \
+  --dataset_concatenation \
+  --attn_softmax_bf16 True \
+  --do_train \
+  --do_eval \
+  --use_habana \
+  --use_lazy_mode \
+  --pipelining_fwd_bwd \
+  --throughput_warmup_steps 3 \
+  --lora_rank 4 \
+  --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
+  --validation_split_percentage 4
+```
+
+- Multi-card finetuning of Falcon-180B:
+  - Falcon-180B example command saves only the LoRA parameters at end
+  - For inference we need to merge the pretrained model and LoRA weights
+```bash
+DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
+    --world_size 8 --use_deepspeed run_lora_clm.py \
+    --model_name_or_path tiiuae/falcon-180B \
+    --dataset_name timdettmers/openassistant-guanaco \
+    --bf16 True \
+    --output_dir ./model_lora_falcon_ddp \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 16 \
+    --evaluation_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 4e-4 \
+    --max_grad_norm  0.3 \
+    --warmup_ratio  0.03 \
+    --lr_scheduler_type "constant" \
+    --logging_steps 1 \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --pipelining_fwd_bwd \
+    --throughput_warmup_steps 3 \
+    --lora_rank=64 \
+    --lora_alpha=16 \
+    --lora_dropout=0.1 \
+    --lora_target_modules "query_key_value" "dense" "dense_h_to_4h" "dense_4h_to_h" \
+    --dataset_concatenation \
+    --max_seq_length 256 \
+    --adam_epsilon 1e-08 \
+    --do_eval \
+    --deepspeed ds_falcon_180b_z3.json
+```
 ## Streaming
 
 To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified in the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.

@@ -41,6 +41,7 @@ from optimum.utils import logging
 
 from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
 from ..accelerate.utils import GaudiDistributedType
+from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
 
@@ -53,7 +54,6 @@ logger = logging.get_logger(__name__)
 
 # List of arguments that are not supported by optimum-habana
 UNSUPPORTED_ARGUMENTS = [
-    "bf16_full_eval",
     "fp16",
     "fp16_backend",
     "fp16_full_eval",
@@ -84,7 +84,7 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use Habana's HPU for running the model.
         gaudi_config_name (`str`, *optional*):
             Pretrained Gaudi config name or path.
-        use_lazy_mode (`bool`, *optional*, defaults to `False`):
+        use_lazy_mode (`bool`, *optional*, defaults to `True`):
             Whether to use lazy mode for running the model.
         use_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Deprecated, use `use_hpu_graphs_for_inference` instead. Whether to use HPU graphs for performing inference.
@@ -92,6 +92,10 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use HPU graphs for performing inference. It will speed up latency but may not be compatible with some operations.
         use_hpu_graphs_for_training (`bool`, *optional*, defaults to `False`):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
+        disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
+            Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
+        max_hpu_graphs (`int`, *optional*):
+            Maximum number of hpu graphs to be cached. Reduce to save device memory.
         distribution_strategy (`str`, *optional*, defaults to `ddp`):
             Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
@@ -122,7 +126,7 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     use_lazy_mode: Optional[bool] = field(
-        default=False,
+        default=True,
         metadata={"help": "Whether to use lazy mode for running the model."},
     )
 
@@ -145,6 +149,16 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={
             "help": "Whether to use HPU graphs for performing training. It will speed up training but may not be compatible with some operations."
         },
+    )
+
+    disable_tensor_cache_hpu_graphs: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use a tensor cache for hpu graphs."},
+    )
+
+    max_hpu_graphs: Optional[int] = field(
+        default=None,
+        metadata={"help": "Maximum number of HPU graphs to use."},
     )
 
     distribution_strategy: Optional[str] = field(
@@ -183,6 +197,11 @@ class GaudiTrainingArguments(TrainingArguments):
                 "host backward building and HPU forward computing."
             )
         },
+    )
+
+    ignore_eos: Optional[bool] = field(
+        default=True,
+        metadata={"help": ("Whether to disable stopping with eos token when calling `generate`.")},
     )
 
     non_blocking_data_copy: Optional[bool] = field(
@@ -266,8 +285,7 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.use_hpu_graphs:
             warnings.warn(
                 (
-                    "`--use_hpu_graphs` is deprecated and will be removed in a future version of 🤗 Optimum Habana. Use "
-                    "`--use_hpu_graphs_for_inference` instead."
+                    "`--use_hpu_graphs` is deprecated and will be removed in a future version of 🤗 Optimum Habana. Use `--use_hpu_graphs_for_training` or `--use_hpu_graphs_for_inference` instead."
                 ),
                 FutureWarning,
             )
@@ -278,8 +296,7 @@ class GaudiTrainingArguments(TrainingArguments):
             raise ValueError(
                 "`--use_lazy_mode`, `--use_hpu_graphs_for_inference`, `--use_hpu_graphs_for_training` and `--gaudi_config_name` cannot be used without `--use_habana`."
             )
-
-        if use_hpu_graphs and not self.use_lazy_mode:
+        if use_hpu_graphs and (not self.use_lazy_mode and not self.torch_compile_backend):
             raise ValueError(
                 "`--use_hpu_graphs_for_inference` and `--use_hpu_graphs_for_training` cannot be used in eager mode. Please set `--use_lazy_mode` to True."
             )
@@ -289,9 +306,13 @@ class GaudiTrainingArguments(TrainingArguments):
                 f"`--distribution_strategy` is {self.distribution_strategy} which is an invalid or unsupported value. Possible choices are: {', '.join(SUPPORTED_DISTRIBUTION_STRATEGIES)}."
             )
 
+        if self.disable_tensor_cache_hpu_graphs and not use_hpu_graphs:
+            raise ValueError("must be using hpu graphs to set disable_tensor_cache_hpu_graphs.")
+
+        if self.max_hpu_graphs is not None and not use_hpu_graphs:
+            raise ValueError("must be using hpu graphs to set max_hpu_graphs.")
+
         # Raise errors for arguments that are not supported by optimum-habana
-        if self.bf16_full_eval:
-            raise ValueError("--bf16_full_eval is not supported by optimum-habana.")
         if self.fp16 or self.fp16_full_eval:
             raise ValueError(
                 "--fp16, --fp16_backend, --fp16_full_eval and --fp16_opt_level are not"
@@ -436,6 +457,23 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.optim == OptimizerNames.ADAMW_TORCH_FUSED and is_torch_available():
             if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
                 raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
+
+        if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
+            assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
+            self.torch_compile = True
+            assert not os.getenv("PT_HPU_LAZY_MODE", "1") != "0", "Dynamo and lazy are mutually exclusive."
+            # Note: PT_HPU_LAZY_MODE=0 needs to be set before library is loaded,
+            #       setting it here would be too late - hence assertion.
+        if self.torch_compile and self.torch_compile_backend is None:
+            self.torch_compile_backend = "inductor"
+
+        # accelerate integration for torch compile
+        if self.torch_compile:
+            # set env vars for accelerate
+            prefix = "ACCELERATE_DYNAMO_"
+            os.environ[prefix + "BACKEND"] = self.torch_compile_backend
+            if self.torch_compile_mode is not None:
+                os.environ[prefix + "MODE"] = self.torch_compile_mode
 
         # if training args is specified, it will override the one specified in the accelerate config
         mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
@@ -610,8 +648,11 @@ class GaudiTrainingArguments(TrainingArguments):
 
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
-            else:
-                os.environ["PT_HPU_LAZY_MODE"] = "2"
+            # TODO: remove the block below when upgrade to SynapseAI 1.13 is done
+            # as eager mode will not be available anymore
+            elif not self.torch_compile:
+                if os.getenv("PT_HPU_LAZY_MODE", "1") != "0":
+                    os.environ["PT_HPU_LAZY_MODE"] = "2"
                 logger.info("Enabled eager mode because use_lazy_mode=False.")
 
             if self.deepspeed:

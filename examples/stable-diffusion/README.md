@@ -90,14 +90,14 @@ python text_to_image_generation.py \
 
 ### Latent Diffusion Model for 3D (LDM3D)
 
-[LDM3D](https://arxiv.org/abs/2305.10853) generates both image and depth map data from a given text prompt, allowing users to generate RGBD images from text prompts. 
+[LDM3D](https://arxiv.org/abs/2305.10853) generates both image and depth map data from a given text prompt, allowing users to generate RGBD images from text prompts.
 
 [Original checkpoint](https://huggingface.co/Intel/ldm3d) and [latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) are open source.
 A [demo](https://huggingface.co/spaces/Intel/ldm3d) is also available. Here is how to run this model:
 
 ```python
 python text_to_image_generation.py \
-    --ldm3d_model_name_or_path "Intel/ldm3d-4c" \
+    --model_name_or_path "Intel/ldm3d-4c" \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 10 \
     --batch_size 2 \
@@ -115,3 +115,98 @@ python text_to_image_generation.py \
 > - use [the latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) for generating improved results
 > - use [the pano checkpoint](https://huggingface.co/Intel/ldm3d-pano) to generate panoramic view
 
+
+## Textual Inversion
+
+[Textual Inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like Stable Diffusion on your own images using just 3-5 examples.
+The `textual_inversion.py` script shows how to implement the training procedure on Habana Gaudi.
+
+
+### Cat toy example
+
+Let's get our dataset. For this example, we will use some cat images: https://huggingface.co/datasets/diffusers/cat_toy_example .
+
+Let's first download it locally:
+
+```py
+from huggingface_hub import snapshot_download
+
+local_dir = "./cat"
+snapshot_download("diffusers/cat_toy_example", local_dir=local_dir, repo_type="dataset", ignore_patterns=".gitattributes")
+```
+
+This will be our training data.
+Now we can launch the training using:
+
+```bash
+python textual_inversion.py \
+  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --train_data_dir ./cat \
+  --learnable_property object \
+  --placeholder_token "<cat-toy>" \
+  --initializer_token toy \
+  --resolution 512 \
+  --train_batch_size 4 \
+  --max_train_steps 3000 \
+  --learning_rate 5.0e-04 \
+  --scale_lr \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir /tmp/textual_inversion_cat \
+  --save_as_full_pipeline \
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3
+```
+
+> Change `--resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
+
+> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`. However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters. This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one, *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
+
+
+### Multi-card Run
+
+You can run this fine-tuning script in a distributed fashion as follows:
+```bash
+python ../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
+  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --train_data_dir ./cat \
+  --learnable_property object \
+  --placeholder_token '"<cat-toy>"' \
+  --initializer_token toy \
+  --resolution 512 \
+  --train_batch_size 4 \
+  --max_train_steps 375 \
+  --learning_rate 5.0e-04 \
+  --scale_lr \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir /tmp/textual_inversion_cat \
+  --save_as_full_pipeline \
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3
+```
+
+
+### Inference
+
+Once you have trained a model as described right above, inference can be done simply using the `GaudiStableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
+
+```python
+import torch
+from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+
+model_id = "path-to-your-trained-model"
+pipe = GaudiStableDiffusionPipeline.from_pretrained(
+  model_id,
+  torch_dtype=torch.bfloat16,
+  use_habana=True,
+  use_hpu_graphs=True,
+  gaudi_config="Habana/stable-diffusion",
+)
+
+prompt = "A <cat-toy> backpack"
+
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+
+image.save("cat-backpack.png")
+```
