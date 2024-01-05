@@ -889,10 +889,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+        generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
@@ -960,11 +957,6 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         )
 
         self.assertEqual(len(outputs.images), 2 * 3)
-        # TODO: enable safety checker
-        # if output_type == "latent":
-        #     self.assertIsNone(outputs.nsfw_content_detected)
-        # else:
-        #     self.assertEqual(len(outputs.nsfw_content_detected), 2 * 3)
 
     def test_stable_diffusion_xl_num_images_per_prompt(self):
         components = self.get_dummy_components()
