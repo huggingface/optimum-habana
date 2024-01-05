@@ -590,9 +590,11 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 negative_add_time_ids = add_time_ids
 
             prompt_embeds = prompt_embeds.to(device)
-            negative_prompt_embeds = negative_prompt_embeds.to(device)
+            if negative_prompt_embeds is not None:
+                negative_prompt_embeds = negative_prompt_embeds.to(device)
             add_text_embeds = add_text_embeds.to(device)
-            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(device)
+            if negative_pooled_prompt_embeds is not None:
+                negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(device)
             add_time_ids = add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
             negative_add_time_ids = negative_add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
 
