@@ -168,8 +168,10 @@ def main():
         res["height"] = args.height
 
     # Import selected pipeline
-    if args.model_name_or_path in ["stabilityai/stable-diffusion-xl-base-1.0",
-                                   "stabilityai/sdxl-turbo"]:
+    sdxl_models = ["stable-diffusion-xl-base-1.0",
+                   "sdxl-turbo"]
+
+    if any(model in args.model_name_or_path for model in sdxl_models):
         from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
         sdxl = True
     else:
