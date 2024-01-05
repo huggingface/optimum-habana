@@ -307,7 +307,15 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         negative_target_size: Optional[Tuple[int, int]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents_batch"],
+        callback_on_step_end_tensor_inputs: List[str] = [
+            "latents",
+            "prompt_embeds",
+            "negative_prompt_embeds",
+            "add_text_embeds",
+            "add_time_ids",
+            "negative_pooled_prompt_embeds",
+            "negative_add_time_ids",
+        ],
         **kwargs,
     ):
         r"""
@@ -709,12 +717,19 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                             callback_kwargs[k] = locals()[k]
                         callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
 
-                        latents_batch = callback_outputs.pop("latents_batch", latents_batch)
-                        text_embeddings_batch = callback_outputs.pop("text_embeddings_batch", text_embeddings_batch)
-                        add_text_embeddings_batch = callback_outputs.pop(
-                            "add_text_embeddings_batch", add_text_embeddings_batch
-                        )
-                        add_time_ids_batch = callback_outputs.pop("add_time_ids_batch", add_text_embeddings_batch)
+                        latents_batch = callback_outputs.pop("latents", latents_batch)
+                        _prompt_embeds = callback_outputs.pop("prompt_embeds", None)
+                        _negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", None)
+                        if _prompt_embeds is not None and _negative_prompt_embeds is not None:
+                            text_embeddings_batch = torch.cat([_negative_prompt_embeds, _prompt_embeds])
+                        _add_text_embeds = callback_outputs.pop("add_text_embeds", None)
+                        _negative_pooled_prompt_embeds = callback_outputs.pop("negative_pooled_prompt_embeds", None)
+                        if _add_text_embeds is not None and _negative_pooled_prompt_embeds is not None:
+                            add_text_embeddings_batch = torch.cat([_negative_pooled_prompt_embeds, _add_text_embeds])
+                        _add_time_ids = callback_outputs.pop("add_time_ids", None)
+                        _negative_add_time_ids = callback_outputs.pop("negative_add_time_ids", None)
+                        if _add_time_ids is not None and _negative_add_time_ids is not None:
+                            add_time_ids_batch = torch.cat([_add_time_ids, _negative_add_time_ids])
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
