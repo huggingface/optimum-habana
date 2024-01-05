@@ -21,8 +21,9 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from transformers.models.mpt.modeling_mpt import MptForCausalLM, MptModel, _expand_mask, _make_causal_mask
+from transformers.models.mpt.modeling_mpt import MptForCausalLM, MptModel
 from transformers.utils import logging
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
 
 logger = logging.get_logger(__name__)
@@ -150,34 +151,6 @@ def gaudi_mpt_block_forward(
 
 
 class GaudiMptModel(MptModel):
-    def _prepare_attn_mask(
-        self, attention_mask: torch.Tensor, input_shape: Tuple[int, int], past_key_values_length: int
-    ) -> torch.BoolTensor:
-        # create causal mask
-        # [batch_size, seq_length] -> [batch_size, 1, tgt_length, src_length]
-        if past_key_values_length > 0 and input_shape[1] + past_key_values_length != attention_mask.shape[1]:
-            raise ValueError(
-                "Attention mask shape should be (batch_size, seq_length + past_key_values_length)"
-                f" but is {attention_mask.shape} with input_ids shape {input_shape} and past length"
-                f" {past_key_values_length}."
-            )
-        combined_attention_mask = None
-        device = attention_mask.device
-        _, src_length = input_shape
-
-        if src_length > 1:
-            combined_attention_mask = _make_causal_mask(
-                input_shape, device=device, past_key_values_length=past_key_values_length
-            )
-
-        # [batch_size, seq_length] -> [batch_size, 1, tgt_length, src_length]
-        expanded_attn_mask = _expand_mask(attention_mask, tgt_length=src_length)
-        combined_attention_mask = (
-            expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask | combined_attention_mask
-        )
-
-        return combined_attention_mask
-
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -243,11 +216,10 @@ class GaudiMptModel(MptModel):
 
         alibi = self.build_mpt_alibi_tensor(self.num_heads, self.config.max_seq_len, device=hidden_states.device)
 
-        causal_mask = self._prepare_attn_mask(
-            attention_mask,
-            input_shape=(batch_size, seq_length),
-            past_key_values_length=past_key_values_length,
+        causal_mask = _prepare_4d_causal_attention_mask(
+            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
         )
+        causal_mask = causal_mask.bool()
 
         for i, (block, layer_past) in enumerate(zip(self.blocks, past_key_values)):
             if output_hidden_states:

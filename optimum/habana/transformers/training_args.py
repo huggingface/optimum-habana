@@ -506,6 +506,10 @@ class GaudiTrainingArguments(TrainingArguments):
                 " during training"
             )
 
+        if self.fsdp_config is None:
+            self.fsdp_config = {}
+        self.fsdp_config["xla"] = self.fsdp_config.get("xla", False)
+
         if isinstance(self.debug, str):
             self.debug = [DebugOption(s) for s in self.debug.split()]
         elif self.debug is None:
