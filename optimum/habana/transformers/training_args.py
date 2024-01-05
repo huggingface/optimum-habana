@@ -59,7 +59,6 @@ UNSUPPORTED_ARGUMENTS = [
     "fp16_backend",
     "fp16_full_eval",
     "fp16_opt_level",
-    "fsdp",
     "mp_parameters",
     "tf32",
     "tpu_metrics_debug",
@@ -319,8 +318,6 @@ class GaudiTrainingArguments(TrainingArguments):
                 "--fp16, --fp16_backend, --fp16_full_eval and --fp16_opt_level are not"
                 " supported by optimum-habana. Mixed-precision can be enabled in your Gaudi configuration."
             )
-        #if self.fsdp:
-        #    raise ValueError("--fsdp is not supported by optimum-habana.")
         if self.tpu_num_cores or self.tpu_metrics_debug:
             raise ValueError("TPUs are not supported by optimum-habana.")
         if self.mp_parameters:
@@ -507,6 +504,8 @@ class GaudiTrainingArguments(TrainingArguments):
                 " during training"
             )
 
+        # Copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/training_args.py#L1563 
+        # except following changes, (1) Remove XLA specific code & (2) change fsdp_backward_prefetch to backward_prefetch
         if isinstance(self.fsdp, bool):
             self.fsdp = "full_shard" if self.fsdp else ""
         if isinstance(self.fsdp, str):

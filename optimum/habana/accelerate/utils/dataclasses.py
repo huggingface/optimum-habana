@@ -33,7 +33,7 @@ class GaudiDistributedType(str, Enum):
         - **NO** -- Not a distributed environment, just a single process.
         - **MULTI_HPU** -- Distributed on multiple HPUs.
         - **DEEPSPEED** -- Using DeepSpeed.
-        - **DEEPSPEED** -- Using FSDP.
+        - **FSDP** -- Using FSDP.
     """
 
     # Subclassing str as well as Enum allows the `GaudiDistributedType` to be JSON-serializable out of the box.

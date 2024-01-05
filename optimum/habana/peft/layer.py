@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from transformers.pytorch_utils import Conv1D
 
 
-def GaudiLoraLayerLinearforward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+def GaudiLoraLayerLinearForward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
     #https://github.com/huggingface/peft/blob/4b02148af252c17e36b0a4b995f9e8519806fbb5/src/peft/tuners/lora/layer.py#L354C1-L376C22
     #only differences are avoiding inplace update of "result" to prevent error from torch Dynamo in torch.compile mode of execution
     #and replacing self.base_layer by self._linear

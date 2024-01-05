@@ -56,7 +56,6 @@ def _test_fsdp(
         "--do_train",
         "--dataset_name squad",
         "--max_seq_length 384",
-        "--use_lazy_mode",
         f"--per_device_eval_batch_size {batch_size_eval}",
         f"--per_device_train_batch_size {batch_size_train}",
         "--learning_rate 3e-05",
@@ -73,7 +72,7 @@ def _test_fsdp(
         f"--fsdp '{policy}'",
         "--do_eval",
         "--torch_compile_backend aot_hpu_training_backend",
-        "--torch_compile"
+        "--torch_compile",
     ]
 
     with TemporaryDirectory() as tmp_dir:

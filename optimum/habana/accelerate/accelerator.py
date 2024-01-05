@@ -20,6 +20,7 @@ import math
 import os
 import sys
 import warnings
+import functools
 from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import make_dataclass
@@ -304,8 +305,6 @@ class GaudiAccelerator(Accelerator):
         ```
         """
         if device_placement is None:
-            # This is different from base accelerator package code where in case of FSDP device_placement is None
-            # Further investigation needed to figure out why this does not work on HPU
             device_placement = self.device_placement and self.distributed_type != DistributedType.FSDP
             if not evaluation_mode and self.distributed_type == GaudiDistributedType.MULTI_HPU:
                 device_placement = None
@@ -421,7 +420,6 @@ class GaudiAccelerator(Accelerator):
                     }
                     model = FSDP(model, **kwargs)
                     if fsdp_plugin.activation_checkpointing:
-                        import functools
                         from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
                             CheckpointImpl,
                             apply_activation_checkpointing,

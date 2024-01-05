@@ -144,7 +144,6 @@ OPTIMIZER_NAME = "optimizer.pt"
 OPTIMIZER_NAME_BIN = "optimizer.bin"
 SCHEDULER_NAME = "scheduler.pt"
 SCALER_NAME = "scaler.pt"
-FSDP_MODEL_NAME = "pytorch_model_fsdp"
 
 class GaudiTrainer(Trainer):
     """
@@ -647,6 +646,11 @@ class GaudiTrainer(Trainer):
         # FSDP-XLA, SageMaker MP/DP, DataParallel, IPEX
         use_accelerator_prepare = True if model is self.model else False
 
+        if delay_optimizer_creation:
+            if use_accelerator_prepare:
+                self.model = self.accelerator.prepare(self.model)
+            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+
         # prepare using `accelerator` prepare
         if use_accelerator_prepare:
             self.model.train()
@@ -657,10 +661,6 @@ class GaudiTrainer(Trainer):
                 model, self.optimizer, self.lr_scheduler = self.accelerator.prepare(
                     self.model, self.optimizer, self.lr_scheduler
                 )
-
-        if delay_optimizer_creation:
-            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
-
 
         if self.is_fsdp_enabled:
             self.model = self.model_wrapped = model
@@ -1207,8 +1207,13 @@ class GaudiTrainer(Trainer):
             else:
                 self.model_wrapped.save_checkpoint(output_dir)
 
+        if self.is_fsdp_enabled:
+            save_fsdp_optimizer(
+                self.accelerator.state.fsdp_plugin, self.accelerator, self.optimizer, self.model, output_dir
+            )
+
         # Save optimizer and scheduler
-        if self.args.should_save and not self.is_deepspeed_enabled:
+        if self.args.should_save and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
             # deepspeed.save_checkpoint above saves model/optim/sched
             # This block is exectuted by the main process only
             optim_dict = self.optimizer.state_dict()
@@ -1313,10 +1318,18 @@ class GaudiTrainer(Trainer):
             # In distributed training however, we load directly on each GPU and risk the GPU OOM as it's more
             # likely to get OOM on CPU (since we load num_gpu times the optimizer state
             map_location = "cpu" if self.args.use_habana else self.args.device
-
-            self.optimizer.load_state_dict(
-                torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
-            )
+            if self.is_fsdp_enabled:
+                load_fsdp_optimizer(
+                    self.accelerator.state.fsdp_plugin,
+                    self.accelerator,
+                    self.optimizer,
+                    self.model,
+                    checkpoint,
+                )
+            else:
+                self.optimizer.load_state_dict(
+                    torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
+                )
 
             with warnings.catch_warnings(record=True) as caught_warnings:
                 self.lr_scheduler.load_state_dict(
@@ -1423,13 +1436,15 @@ class GaudiTrainer(Trainer):
         """
         if output_dir is None:
             output_dir = self.args.output_dir
+        # copy from https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/trainer.py#L2870
         if self.is_fsdp_enabled:
-            if ("FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type)) and (
-                version.parse(accelerate_version) > version.parse("0.24.1")
-            ):
-                state_dict = self.accelerator.get_state_dict(self.model)
-                if self.args.should_save:
-                    self._save(output_dir, state_dict=state_dict)
+            state_dict = self.model.state_dict() if not self.is_fsdp_enabled else {}
+            if self.args.should_save:
+                self._save(output_dir, state_dict=state_dict)
+            if self.is_fsdp_enabled:
+                # remove the dummy state_dict
+                remove_dummy_checkpoint(self.args.should_save, output_dir, [WEIGHTS_NAME, SAFE_WEIGHTS_NAME])
+                save_fsdp_model(self.accelerator.state.fsdp_plugin, self.accelerator, self.model, output_dir)
         elif self.is_deepspeed_enabled:
             # this takes care of everything as long as we aren't under zero3
             try:
@@ -2093,6 +2108,7 @@ class GaudiTrainer(Trainer):
                 ds_plugin.hf_ds_config = GaudiTrainerDeepSpeedConfig(ds_plugin.hf_ds_config.config)
                 ds_plugin.deepspeed_config = ds_plugin.hf_ds_config.config
 
+        # copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/trainer.py#L3991
         # post accelerator creation setup
         if self.is_fsdp_enabled:
             fsdp_plugin = self.accelerator.state.fsdp_plugin

@@ -1,1 +1,1 @@
-from .layer import GaudiLoraLayerLinearforward
+from .layer import GaudiLoraLayerLinearForward
