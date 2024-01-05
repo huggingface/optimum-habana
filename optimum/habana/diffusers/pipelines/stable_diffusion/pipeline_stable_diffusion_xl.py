@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#import inspect
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -21,19 +20,17 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL
 import torch
-
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipeline
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import rescale_noise_cfg
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate
-from diffusers.utils.torch_utils import randn_tensor
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPTextModelWithProjection
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from optimum.utils import logging
 
-from ....utils import speed_metrics
 from ....transformers.gaudi_configuration import GaudiConfig
+from ....utils import speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -128,7 +125,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         "add_time_ids_batch",
     ]
 
-
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -142,7 +138,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
-        bf16_full_eval: bool = False
+        bf16_full_eval: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(
             self,
@@ -205,9 +201,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         add_text_embeds,
         negative_pooled_prompt_embeds,
         add_time_ids,
-        negative_add_time_ids
+        negative_add_time_ids,
     ):
-
         # Use torch.split to generate num_batches batches of size batch_size
         latents_batches = list(torch.split(latents, batch_size))
         prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
@@ -251,7 +246,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             # Pad negative_pooled_prompt_embeds_batches if necessary
             if negative_pooled_prompt_embeds is not None:
                 sequence_to_stack = (negative_pooled_prompt_embeds_batches[-1],) + tuple(
-                    torch.zeros_like(negative_pooled_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
+                    torch.zeros_like(negative_pooled_prompt_embeds_batches[-1][0][None, :])
+                    for _ in range(num_dummy_samples)
                 )
                 negative_pooled_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
             # Pad add_time_ids_batches if necessary
@@ -288,7 +284,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 for i, (negative_pooled_prompt_embeds_batch, add_text_embeds_batch) in enumerate(
                     zip(negative_pooled_prompt_embeds_batches, add_text_embeds_batches[:])
                 ):
-                    add_text_embeds_batches[i] = torch.cat([negative_pooled_prompt_embeds_batch, add_text_embeds_batch])
+                    add_text_embeds_batches[i] = torch.cat(
+                        [negative_pooled_prompt_embeds_batch, add_text_embeds_batch]
+                    )
             add_text_embeds_batches = torch.stack(add_text_embeds_batches)
         else:
             add_text_embeds_batches = None
@@ -625,7 +623,13 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             negative_add_time_ids = negative_add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
 
             # 7.5 Split into batches (HPU-specific step)
-            latents_batches, text_embeddings_batches, add_text_embeddings_batches, add_time_ids_batches, num_dummy_samples = self._split_inputs_into_batches(
+            (
+                latents_batches,
+                text_embeddings_batches,
+                add_text_embeddings_batches,
+                add_time_ids_batches,
+                num_dummy_samples,
+            ) = self._split_inputs_into_batches(
                 batch_size,
                 latents,
                 prompt_embeds,
@@ -665,7 +669,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             # 8.2 Optionally get Guidance Scale Embedding
             timestep_cond = None
             if self.unet.config.time_cond_proj_dim is not None:
-                guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(num_prompts * num_images_per_prompt)
+                guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(
+                    num_prompts * num_images_per_prompt
+                )
                 timestep_cond = self.get_guidance_scale_embedding(
                     guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
                 ).to(device=device, dtype=latents.dtype)
@@ -695,7 +701,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                     capture = True if self.use_hpu_graphs and j == 0 and i < 2 else False
 
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    latent_model_input = (
+                        torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    )
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
 
                     # predict the noise residual
@@ -717,10 +725,14 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
                     if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                         # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                        noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+                        noise_pred = rescale_noise_cfg(
+                            noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale
+                        )
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents_batch = self.scheduler.step(noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False)[0]
+                    latents_batch = self.scheduler.step(
+                        noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False
+                    )[0]
 
                     if not self.use_hpu_graphs:
                         self.htcore.mark_step()
@@ -733,7 +745,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
                         latents_batch = callback_outputs.pop("latents_batch", latents_batch)
                         text_embeddings_batch = callback_outputs.pop("text_embeddings_batch", text_embeddings_batch)
-                        add_text_embeddings_batch = callback_outputs.pop("add_text_embeddings_batch", add_text_embeddings_batch)
+                        add_text_embeddings_batch = callback_outputs.pop(
+                            "add_text_embeddings_batch", add_text_embeddings_batch
+                        )
                         add_time_ids_batch = callback_outputs.pop("add_time_ids_batch", add_text_embeddings_batch)
 
                     # call the callback, if provided
@@ -783,20 +797,34 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             self.maybe_free_model_hooks()
 
             if not return_dict:
-                return (outputs["images"])
+                return outputs["images"]
 
             return GaudiStableDiffusionXLPipelineOutput(
                 images=outputs["images"],
                 throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
             )
 
-
     @torch.no_grad()
     def unet_hpu(
-        self, latent_model_input, timestep, encoder_hidden_states, timestep_cond, cross_attention_kwargs, added_cond_kwargs, capture
+        self,
+        latent_model_input,
+        timestep,
+        encoder_hidden_states,
+        timestep_cond,
+        cross_attention_kwargs,
+        added_cond_kwargs,
+        capture,
     ):
         if self.use_hpu_graphs:
-            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, timestep_cond, cross_attention_kwargs, added_cond_kwargs, capture)
+            return self.capture_replay(
+                latent_model_input,
+                timestep,
+                encoder_hidden_states,
+                timestep_cond,
+                cross_attention_kwargs,
+                added_cond_kwargs,
+                capture,
+            )
         else:
             return self.unet(
                 latent_model_input,
@@ -808,10 +836,25 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 return_dict=False,
             )[0]
 
-
     @torch.no_grad()
-    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, timestep_cond, cross_attention_kwargs, added_cond_kwargs, capture):
-        inputs = [latent_model_input, timestep, encoder_hidden_states, timestep_cond, cross_attention_kwargs, added_cond_kwargs]
+    def capture_replay(
+        self,
+        latent_model_input,
+        timestep,
+        encoder_hidden_states,
+        timestep_cond,
+        cross_attention_kwargs,
+        added_cond_kwargs,
+        capture,
+    ):
+        inputs = [
+            latent_model_input,
+            timestep,
+            encoder_hidden_states,
+            timestep_cond,
+            cross_attention_kwargs,
+            added_cond_kwargs,
+        ]
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
@@ -828,7 +871,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                     timestep_cond=inputs[3],
                     cross_attention_kwargs=inputs[4],
                     added_cond_kwargs=inputs[5],
-                    return_dict=False
+                    return_dict=False,
                 )[0]
 
                 graph.capture_end()

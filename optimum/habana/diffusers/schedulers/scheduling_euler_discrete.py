@@ -16,11 +16,13 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-
 from diffusers.configuration_utils import register_to_config
 from diffusers.schedulers import EulerDiscreteScheduler
 from diffusers.schedulers.scheduling_euler_discrete import EulerDiscreteSchedulerOutput
+
 from optimum.utils import logging
+
+
 logger = logging.get_logger(__name__)
 
 
@@ -90,22 +92,18 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         self._initial_timestep = None
         self.reset_timestep_dependent_params()
 
-
     def reset_timestep_dependent_params(self):
         self.are_timestep_dependent_params_set = False
         self.sigma_list = []
         self.sigma_next_list = []
 
-
     def get_params(self, timestep: Union[float, torch.FloatTensor]):
-
         if self.step_index is None:
             self._init_step_index(timestep)
 
         if not self.are_timestep_dependent_params_set:
-
-            sigmas = self.sigmas[self.step_index:-1]
-            sigmas_next = self.sigmas[(self.step_index+1):]
+            sigmas = self.sigmas[self.step_index : -1]
+            sigmas_next = self.sigmas[(self.step_index + 1) :]
 
             for sigma, sigma_next in zip(sigmas, sigmas_next):
                 self.sigma_list.append(sigma)
@@ -120,7 +118,6 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
 
         return sigma, sigma_next
 
-
     def roll_params(self):
         """
         Roll tensors to update the values of the time-dependent parameters at each timestep.
@@ -132,9 +129,8 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
             raise ValueError("Time-dependent parameters should be set first.")
         return
 
-
     def scale_model_input(
-            self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
+        self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
     ) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -155,7 +151,6 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
         return sample
-
 
     def step(
         self,
@@ -223,7 +218,7 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         device = model_output.device
 
         # torch.randn is broken on HPU so running it on CPU
-        noise = torch.randn(model_output.shape, dtype=model_output.dtype, device='cpu', generator=generator)
+        noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator)
         if device.type == "hpu":
             noise = noise.to(device)
 

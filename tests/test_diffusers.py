@@ -30,21 +30,20 @@ from diffusers import AutoencoderKL, UNet2DConditionModel
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, CLIPTextModelWithProjection
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.testing_utils import slow
 
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
-    GaudiEulerDiscreteScheduler,
-    GaudiEulerAncestralDiscreteScheduler,
     GaudiDiffusionPipeline,
+    GaudiEulerAncestralDiscreteScheduler,
+    GaudiEulerDiscreteScheduler,
     GaudiStableDiffusionLDM3DPipeline,
     GaudiStableDiffusionPipeline,
     GaudiStableDiffusionUpscalePipeline,
     GaudiStableDiffusionXLPipeline,
 )
-
 from optimum.habana.utils import set_seed
 
 
@@ -907,11 +906,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig(use_torch_autocast=False)
-        sd_pipe = GaudiStableDiffusionXLPipeline(
-            use_habana=True,
-            gaudi_config=gaudi_config,
-            **components
-        )
+        sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
@@ -928,11 +923,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         gaudi_config = GaudiConfig(use_torch_autocast=False)
-        sd_pipe = GaudiStableDiffusionXLPipeline(
-            use_habana=True,
-            gaudi_config=gaudi_config,
-            **components
-        )
+        sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
         sd_pipe.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -966,7 +957,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             num_images_per_prompt=num_images_per_prompt,
             num_inference_steps=2,
             output_type=output_type,
-            )
+        )
 
         self.assertEqual(len(outputs.images), 2 * 3)
         # TODO: enable safety checker
@@ -1017,7 +1008,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             num_inference_steps=2,
             output_type="np",
             num_images_per_prompt=num_images_per_prompt,
-            ).images
+        ).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
@@ -1056,7 +1047,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             output_type="np",
             batch_size=batch_size,
             num_images_per_prompt=num_images_per_prompt,
-            ).images
+        ).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
@@ -1082,7 +1073,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             output_type="np",
             batch_size=batch_size,
             num_images_per_prompt=num_images_per_prompt,
-            ).images
+        ).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
@@ -1124,7 +1115,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             output_type="np",
             batch_size=3,
             num_images_per_prompt=5,
-            ).images
+        ).images
 
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
@@ -1149,7 +1140,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             output_type="np",
             batch_size=3,
             num_images_per_prompt=5,
-            ).images
+        ).images
 
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))

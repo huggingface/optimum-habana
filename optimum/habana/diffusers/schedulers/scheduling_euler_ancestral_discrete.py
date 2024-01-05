@@ -16,11 +16,13 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-
 from diffusers.configuration_utils import register_to_config
 from diffusers.schedulers import EulerAncestralDiscreteScheduler
 from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteSchedulerOutput
+
 from optimum.utils import logging
+
+
 logger = logging.get_logger(__name__)
 
 
@@ -55,7 +57,6 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
             Diffusion.
     """
 
-
     @register_to_config
     def __init__(
         self,
@@ -76,7 +77,7 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
             trained_betas,
             prediction_type,
             timestep_spacing,
-            steps_offset
+            steps_offset,
         )
 
         self._initial_timestep = None
@@ -105,8 +106,8 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
             self._init_step_index(timestep)
 
         if not self.are_timestep_dependent_params_set:
-            sigmas_from = self.sigmas[self.step_index:-1]
-            sigmas_to = self.sigmas[(self.step_index+1):]
+            sigmas_from = self.sigmas[self.step_index : -1]
+            sigmas_to = self.sigmas[(self.step_index + 1) :]
 
             for sigma_from, sigma_to in zip(sigmas_from, sigmas_to):
                 sigma_up = (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5
@@ -140,7 +141,7 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
         return
 
     def scale_model_input(
-            self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
+        self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
     ) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -239,7 +240,7 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
         device = model_output.device
 
         # torch.randn is broken on HPU so running it on CPU
-        noise = torch.randn(model_output.shape, dtype=model_output.dtype, device='cpu', generator=generator)
+        noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator)
         if device.type == "hpu":
             noise = noise.to(device)
 
@@ -255,4 +256,3 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
         return EulerAncestralDiscreteSchedulerOutput(
             prev_sample=prev_sample, pred_original_sample=pred_original_sample
         )
-

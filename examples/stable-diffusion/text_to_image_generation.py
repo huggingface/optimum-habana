@@ -20,7 +20,11 @@ from pathlib import Path
 
 import torch
 
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiEulerAncestralDiscreteScheduler, GaudiEulerDiscreteScheduler
+from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiEulerAncestralDiscreteScheduler,
+    GaudiEulerDiscreteScheduler,
+)
 from optimum.habana.utils import set_seed
 
 
@@ -76,8 +80,18 @@ def main():
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
     )
     parser.add_argument("--batch_size", type=int, default=1, help="The number of images in a batch.")
-    parser.add_argument("--height", type=int, default=0, help="The height in pixels of the generated images (0=default from model config).")
-    parser.add_argument("--width", type=int, default=0, help="The width in pixels of the generated images (0=default from model config).")
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=0,
+        help="The height in pixels of the generated images (0=default from model config).",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=0,
+        help="The width in pixels of the generated images (0=default from model config).",
+    )
     parser.add_argument(
         "--num_inference_steps",
         type=int,
@@ -168,15 +182,16 @@ def main():
         res["height"] = args.height
 
     # Import selected pipeline
-    sdxl_models = ["stable-diffusion-xl-base-1.0",
-                   "sdxl-turbo"]
+    sdxl_models = ["stable-diffusion-xl-base-1.0", "sdxl-turbo"]
 
     if any(model in args.model_name_or_path for model in sdxl_models):
         from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
+
         sdxl = True
     else:
         if args.ldm3d:
             from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
+
             if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
                 args.model_name_or_path = "Intel/ldm3d-4c"
         else:
@@ -195,7 +210,9 @@ def main():
     if args.scheduler == "euler_discrete":
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
     elif args.scheduler == "euler_ancestral_discrete":
-        scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+        scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler"
+        )
     else:
         scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
 
@@ -229,7 +246,7 @@ def main():
             negative_prompt_2=args.negative_prompts_2,
             eta=args.eta,
             output_type=args.output_type,
-            **res
+            **res,
         )
     else:
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
@@ -245,7 +262,7 @@ def main():
             negative_prompt=args.negative_prompts,
             eta=args.eta,
             output_type=args.output_type,
-            **res
+            **res,
         )
 
     # Save the pipeline in the specified directory if not None
