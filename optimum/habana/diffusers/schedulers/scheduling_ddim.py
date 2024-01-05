@@ -131,15 +131,13 @@ class GaudiDDIMScheduler(DDIMScheduler):
             timestep (`int`, optional):
                 The current discrete timestep in the diffusion chain. Optionally used to
                 initialize parameters in cases which start in the middle of the
-                denoising schedule (e.g. for image-to-image)
+                denoising schedule (e.g. for image-to-image).
         """
         if not self.are_timestep_dependent_params_set:
             prev_timesteps = self.timesteps - self.config.num_train_timesteps // self.num_inference_steps
-            for timestep, prev_timestep in zip(self.timesteps, prev_timesteps):
-                alpha_prod_t = self.alphas_cumprod[timestep]
-                alpha_prod_t_prev = (
-                    self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
-                )
+            for t, prev_t in zip(self.timesteps, prev_timesteps):
+                alpha_prod_t = self.alphas_cumprod[t]
+                alpha_prod_t_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.final_alpha_cumprod
 
                 self.alpha_prod_t_list.append(alpha_prod_t)
                 self.alpha_prod_t_prev_list.append(alpha_prod_t_prev)

@@ -34,38 +34,13 @@ from ....utils import speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
 @dataclass
 class GaudiStableDiffusionXLPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
     throughput: float
-
-
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-EXAMPLE_DOC_STRING = """
-    Examples:
-        ```py
-        >>> import torch
-        >>> from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline, GaudiDDIMScheduler
-
-        >>> kwargs = {
-        >>>     "scheduler": GaudiDDIMScheduler.from_pretrained(
-        >>>         "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler"
-        >>>     ),
-        >>>     "use_habana": True,
-        >>>     "use_hpu_graphs": True,
-        >>>     "gaudi_config": "Habana/stable-diffusion",
-        >>>     "torch_dtype": torch.bfloat16
-        >>> }
-
-        >>> pipe = GaudiStableDiffusionXLPipeline.from_pretrained(
-        >>>     "stabilityai/stable-diffusion-xl-base-1.0", **kwargs,
-        >>> )
-
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
-        ```
-"""
 
 
 class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPipeline):
@@ -115,15 +90,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             Whether to use full bfloat16 evaluation instead of 32-bit.
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
     """
-
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
-    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
-    _callback_tensor_inputs = [
-        "latents_batch",
-        "text_embeddings_batch",
-        "add_text_embeddings_batch",
-        "add_time_ids_batch",
-    ]
 
     def __init__(
         self,
@@ -785,6 +751,11 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             for i, image in enumerate(outputs["images"][:]):
                 if i == 0:
                     outputs["images"].clear()
+
+                if not output_type == "latent":
+                    # apply watermark if available
+                    if self.watermark is not None:
+                        image = self.watermark.apply_watermark(image)
 
                 image = self.image_processor.postprocess(image, output_type=output_type)
 
