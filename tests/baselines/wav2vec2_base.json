@@ -7,7 +7,7 @@
                 "multi_card": {
                     "learning_rate": 5e-4,
                     "train_batch_size": 32,
-                    "eval_accuracy": 0.8025,
+                    "eval_accuracy": 0.8045,
                     "train_runtime": 361.08,
                     "train_samples_per_second": 714.447,
                     "eval_samples_per_second": 294.293,
@@ -35,7 +35,7 @@
                 "multi_card": {
                     "learning_rate": 5e-4,
                     "train_batch_size": 32,
-                    "eval_accuracy": 0.7829483695652174,
+                    "eval_accuracy": 0.7972,
                     "train_runtime": 103.66,
                     "train_samples_per_second": 2986.012,
                     "eval_samples_per_second": 535.281,
