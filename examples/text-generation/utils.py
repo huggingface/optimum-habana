@@ -176,7 +176,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         else:
             model = wrap_in_hpu_graph(model)
 
-    if args.torch_compile:
+    if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
 
     return model
