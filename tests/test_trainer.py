@@ -22,6 +22,7 @@ import re
 import subprocess
 import tempfile
 import unittest
+from pytest import mark
 from itertools import product
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -706,6 +707,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.n_epochs = args.num_train_epochs
         self.batch_size = args.train_batch_size
 
+    @mark.skip("Skip this test until PT_HPU_LAZY_MODE=0 is set as default for all tests")
     def test_eager_mode(self):
         train_dataset = RegressionDataset()
         eval_dataset = RegressionDataset()
