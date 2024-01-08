@@ -22,7 +22,6 @@ import re
 import subprocess
 import tempfile
 import unittest
-from pytest import mark
 from itertools import product
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -30,6 +29,7 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 from huggingface_hub import HfFolder, delete_repo, list_repo_commits
 from parameterized import parameterized
+from pytest import mark
 from requests.exceptions import HTTPError
 from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
 from transformers.hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS
