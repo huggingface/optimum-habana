@@ -227,7 +227,8 @@ python run_summarization.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --bf16
+    --bf16 \
+    --bf16_full_eval
 ```
 
 You can run inference with BART on the CNN-DailyMail dataset on 1 Gaudi card with the following command:

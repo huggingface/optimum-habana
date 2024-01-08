@@ -15,7 +15,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "bf16": [
             ("facebook/bart-large-cnn", "Habana/bart", 4.691, 26.0688, 2, 1),
-            ("t5-3b", "Habana/t5", 2.28, 21.56, 2, 1),
+            ("t5-3b", "Habana/t5", 2.88, 21.56, 2, 1),
         ],
     }
 else:
@@ -23,7 +23,7 @@ else:
     MODELS_TO_TEST = {
         "bf16": [
             ("facebook/bart-large-cnn", "Habana/bart", 2.588, 26.0688, 2, 1),
-            ("t5-3b", "Habana/t5", 0.585, 21.72, 2, 1),
+            ("t5-3b", "Habana/t5", 0.98, 21.56, 2, 1),
         ],
     }
 
@@ -76,6 +76,8 @@ def _test_text_summarization(
 
     if not deepspeed:
         command.append("--bf16")
+        if model_name == "t5-3b":
+            command.append("--bf16_full_eval")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")

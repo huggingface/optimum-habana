@@ -60,9 +60,8 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
         - override RMSNorm with Habana fused RMSNorm
     """
     if hidden_states.device.type == "hpu" and FusedRMSNorm:
-        orig_dtype = hidden_states.dtype
-        hidden_states = FusedRMSNorm.apply(hidden_states.float(), self.weight.float(), self.variance_epsilon)
-        return hidden_states.to(orig_dtype)
+        hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+        return hidden_states
     else:
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
@@ -244,7 +243,9 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 # first token
                 with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
 
         else:
             attn_weights = self.matmul_qk(query_states, key_states.transpose(2, 3)) * self.norm_factor
@@ -760,6 +761,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
+        # TODO: remove `.clone()` when SynapseAI v1.15 is released
+        return FusedRoPE.apply(q, cos.clone(), sin.clone(), position_ids), FusedRoPE.apply(
+            k, cos.clone(), sin.clone(), position_ids
+        )
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
