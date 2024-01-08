@@ -243,7 +243,9 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 # first token
                 with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
 
         else:
             attn_weights = self.matmul_qk(query_states, key_states.transpose(2, 3)) * self.norm_factor
