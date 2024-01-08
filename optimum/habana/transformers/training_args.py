@@ -650,9 +650,8 @@ class GaudiTrainingArguments(TrainingArguments):
                 logger.info("Enabled lazy mode.")
             elif not self.torch_compile:
                 if os.getenv("PT_HPU_LAZY_MODE", "1") != "0":
-                    assert (
-                        False
-                    ), "Lazy mode or compile mode not enabled => eager mode should be enabled using PT_HPU_LAZY_MODE=0"
+                    raise ValueError(
+                        "Lazy mode or compile mode not enabled => eager mode should be enabled using PT_HPU_LAZY_MODE=0")
 
             if self.deepspeed:
                 # Need to do similar for Accelerator init
