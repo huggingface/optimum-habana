@@ -16,6 +16,6 @@ RUN npm install npm@9.8.1 -g && \
     npm install n -g && \
     n latest
 
-RUN git clone $clone_url && cd optimum-habana && git checkout $commit_sha
+RUN git clone $clone_url optimum-habana && cd optimum-habana && git checkout $commit_sha
 RUN python3 -m pip install --no-cache-dir --upgrade pip
 RUN python3 -m pip install --no-cache-dir ./optimum-habana[quality]
