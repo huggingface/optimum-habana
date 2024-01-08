@@ -257,6 +257,7 @@ class GaudiGenerationMixin(GenerationMixin):
         decoder_start_token_id: int = None,
         bos_token_id: int = None,
         device: torch.device = None,
+        max_new_tokens: int = None,
     ) -> Tuple[torch.LongTensor, Dict[str, torch.Tensor]]:
         """Prepares `decoder_input_ids` for generation with encoder-decoder models"""
         # 1. Check whether the user has defined `decoder_input_ids` manually. To facilitate in terms of input naming,
@@ -281,9 +282,9 @@ class GaudiGenerationMixin(GenerationMixin):
             )
         else:
             # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
+            max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
             decoder_input_ids_start = (
-                torch.ones((batch_size, self.generation_config.max_length), dtype=torch.long, device=device)
-                * decoder_start_token_id
+                torch.ones((batch_size, max_length), dtype=torch.long, device=device) * decoder_start_token_id
             )
 
         # no user input -> use decoder_start_token_id as decoder_input_ids
@@ -536,7 +537,7 @@ class GaudiGenerationMixin(GenerationMixin):
         generation_config = copy.deepcopy(generation_config)
         if generation_config.static_shapes is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
-            self.generation_config.static_shapes = generation_config.static_shapes
+        self.generation_config.static_shapes = generation_config.static_shapes
         if generation_config.ignore_eos is None:
             generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode)
         generation_config.validate()
@@ -625,8 +626,13 @@ class GaudiGenerationMixin(GenerationMixin):
                 token_idx = 1
                 model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
                 if model_kwargs.get("decoder_attention_mask", None) is None and generation_config.use_cache:
+                    max_length = (
+                        generation_config.max_new_tokens + 1
+                        if generation_config.max_new_tokens is not None
+                        else generation_config.max_length
+                    )
                     model_kwargs["decoder_attention_mask"] = self._prepare_decoder_attention_mask(
-                        generation_config.max_length,
+                        max_length,
                         inputs_tensor.shape[0],
                         generation_config.pad_token_id,
                         inputs_tensor.device,
@@ -654,7 +660,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 inputs_tensor, model_kwargs, model_input_name
             )
         # 5. Prepare `input_ids` which will be used for auto-regressive generation
-
         if self.config.is_encoder_decoder:
             input_ids, model_kwargs = self._prepare_decoder_input_ids_for_generation(
                 batch_size=batch_size,
@@ -663,6 +668,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 decoder_start_token_id=generation_config.decoder_start_token_id,
                 bos_token_id=generation_config.bos_token_id,
                 device=inputs_tensor.device,
+                max_new_tokens=generation_config.max_new_tokens,
             )
         else:
             input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop("input_ids")
@@ -681,7 +687,11 @@ class GaudiGenerationMixin(GenerationMixin):
                     "Please refer to the documentation for more information. "
                     "(https://huggingface.co/docs/transformers/main/en/main_classes/text_generation)"
                 )
-            generation_config.max_length = generation_config.max_new_tokens + input_ids_length
+            if "token_idx" in model_kwargs:
+                generation_config.max_length = input_ids_length
+            else:
+                generation_config.max_length = generation_config.max_new_tokens + input_ids_length
+
         self._validate_generated_length(generation_config, input_ids_length, has_default_max_length)
 
         # determine whether introduce trim_logits feature
@@ -2048,7 +2058,6 @@ class GaudiGenerationMixin(GenerationMixin):
 
         def finalize_beams(initial_ids, beam_trace, model_config, length_penalty):
             beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens = beam_trace
-
             bs = initial_ids.shape[0]
             num_beams = beam_trace_scores.shape[1] // (2 * bs)
 
@@ -2068,7 +2077,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 rest.append(tok)
                 return rest
 
-            prev_beams = [[root]] * bs
+            prev_beams = [[root] * num_beams] * bs
             best = [root] * bs
 
             def beam_score(beam):
@@ -2131,6 +2140,8 @@ class GaudiGenerationMixin(GenerationMixin):
             inc = iter(incrementor(bucket_size, prompt_len))
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
+        if self.generation_config.static_shapes:
+            initial_ids = input_ids[::num_beams, 0:cur_len]
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -2154,7 +2165,6 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
-
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -2296,11 +2306,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 if (
                     self.generation_config.early_stopping
                     and is_min_length_reached
-                    and cur_len % self.generation_config.early_stopping_interval == 0
                     and num_eos_tokens >= num_beams_tensor
                 ):
                     break
-                elif cur_len == self.generation_config.max_length:
+                elif stopping_criteria(input_ids[:, :token_idx], scores):
                     break
             elif stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
                 if not synced_gpus:
@@ -2328,7 +2337,6 @@ class GaudiGenerationMixin(GenerationMixin):
             def move(obj, device):
                 return map_tensors(obj, lambda t: t.to(device))
 
-            initial_ids = torch.zeros((batch_size, 1), dtype=torch.int64, device=input_ids.device)
             sequence_outputs = {}
             sequence_outputs["sequences"] = finalize_beams(
                 initial_ids.cpu(), move(beam_trace, "cpu"), self.config, self.generation_config.length_penalty
