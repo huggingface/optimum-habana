@@ -61,6 +61,13 @@ def main():
         help="Name of scheduler",
     )
 
+    parser.add_argument(
+        "--timestep_spacing",
+        default="linspace",
+        choices=["linspace", "leading", "trailing"],
+        type=str,
+        help="The way the timesteps should be scaled.",
+    )
     # Pipeline arguments
     parser.add_argument(
         "--prompts",
@@ -207,14 +214,21 @@ def main():
     logger.setLevel(logging.INFO)
 
     # Initialize the scheduler and the generation pipeline
+    kwargs = {
+        "timestep_spacing": args.timestep_spacing
+    }
     if args.scheduler == "euler_discrete":
-        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
     elif args.scheduler == "euler_ancestral_discrete":
         scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
-            args.model_name_or_path, subfolder="scheduler"
+            args.model_name_or_path, subfolder="scheduler", **kwargs
         )
     else:
-        scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+        scheduler = GaudiDDIMScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+		)
 
     kwargs = {
         "scheduler": scheduler,
