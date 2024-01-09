@@ -33,7 +33,6 @@ from trl import SFTTrainer
 from trl.import_utils import is_peft_available
 from trl.trainer.utils import (
     DataCollatorForCompletionOnlyLM,
-    peft_module_casting_to_bf16,
 )
 
 
@@ -143,7 +142,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
 
                 model = get_peft_model(model, peft_config)
                 if args.bf16:
-                    peft_module_casting_to_bf16(model)
+                    model = model.to(torch.bfloat16)
 
         if tokenizer is None:
             tokenizer = AutoTokenizer.from_pretrained(model.config._name_or_path)
