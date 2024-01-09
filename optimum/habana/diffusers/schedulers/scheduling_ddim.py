@@ -120,14 +120,24 @@ class GaudiDDIMScheduler(DDIMScheduler):
         self.alpha_prod_t_prev_list = []
         self.variance_list = []
 
-    def get_params(self):
+    def get_params(self, timestep: Optional[int] = None):
+        """
+        Initialize the time-dependent parameters, and retrieve the time-dependent
+        parameters at each timestep. The tensors are rolled in a separate function
+        at the end of the scheduler step in case parameters are retrieved multiple
+        times in a timestep, e.g., when scaling model inputs and in the scheduler step.
+
+        Args:
+            timestep (`int`, optional):
+                The current discrete timestep in the diffusion chain. Optionally used to
+                initialize parameters in cases which start in the middle of the
+                denoising schedule (e.g. for image-to-image).
+        """
         if not self.are_timestep_dependent_params_set:
             prev_timesteps = self.timesteps - self.config.num_train_timesteps // self.num_inference_steps
-            for timestep, prev_timestep in zip(self.timesteps, prev_timesteps):
-                alpha_prod_t = self.alphas_cumprod[timestep]
-                alpha_prod_t_prev = (
-                    self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
-                )
+            for t, prev_t in zip(self.timesteps, prev_timesteps):
+                alpha_prod_t = self.alphas_cumprod[t]
+                alpha_prod_t_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.final_alpha_cumprod
 
                 self.alpha_prod_t_list.append(alpha_prod_t)
                 self.alpha_prod_t_prev_list.append(alpha_prod_t_prev)
@@ -139,13 +149,22 @@ class GaudiDDIMScheduler(DDIMScheduler):
             self.are_timestep_dependent_params_set = True
 
         alpha_prod_t = self.alpha_prod_t_list[0]
-        self.alpha_prod_t_list = torch.roll(self.alpha_prod_t_list, shifts=-1, dims=0)
         alpha_prod_t_prev = self.alpha_prod_t_prev_list[0]
-        self.alpha_prod_t_prev_list = torch.roll(self.alpha_prod_t_prev_list, shifts=-1, dims=0)
         variance = self.variance_list[0]
-        self.variance_list = torch.roll(self.variance_list, shifts=-1, dims=0)
 
         return alpha_prod_t, alpha_prod_t_prev, variance
+
+    def roll_params(self):
+        """
+        Roll tensors to update the values of the time-dependent parameters at each timestep.
+        """
+        if self.are_timestep_dependent_params_set:
+            self.alpha_prod_t_list = torch.roll(self.alpha_prod_t_list, shifts=-1, dims=0)
+            self.alpha_prod_t_prev_list = torch.roll(self.alpha_prod_t_prev_list, shifts=-1, dims=0)
+            self.variance_list = torch.roll(self.variance_list, shifts=-1, dims=0)
+        else:
+            raise ValueError("Time-dependent parameters should be set first.")
+        return
 
     # def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
     #     """
@@ -170,6 +189,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
     def step(
         self,
         model_output: torch.FloatTensor,
+        timestep: int,
         sample: torch.FloatTensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
@@ -226,7 +246,7 @@ class GaudiDDIMScheduler(DDIMScheduler):
         # Done in self.get_params() below
 
         # 2. compute alphas, betas
-        alpha_prod_t, alpha_prod_t_prev, variance = self.get_params()
+        alpha_prod_t, alpha_prod_t_prev, variance = self.get_params(timestep)
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
@@ -285,6 +305,9 @@ class GaudiDDIMScheduler(DDIMScheduler):
                     variance_noise = variance_noise.to(device)
 
             prev_sample = prev_sample + std_dev_t * variance_noise
+
+        # Roll parameters for next timestep
+        self.roll_params()
 
         if not return_dict:
             return (prev_sample,)

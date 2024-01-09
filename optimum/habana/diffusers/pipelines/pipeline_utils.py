@@ -51,6 +51,8 @@ GAUDI_LOADABLE_CLASSES = {
     },
     "optimum.habana.diffusers.schedulers": {
         "GaudiDDIMScheduler": ["save_pretrained", "from_pretrained"],
+        "GaudiEulerDiscreteScheduler": ["save_pretrained", "from_pretrained"],
+        "GaudiEulerAncestralDiscreteScheduler": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -112,7 +114,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                 if bf16_full_eval:
                     logger.warning(
                         "`use_torch_autocast` is True in the given Gaudi configuration but "
-                        "`torch_dtype=torch.blfloat16` was given. Disabling mixed precision and continuing in bf16 only."
+                        "`torch_dtype=torch.bfloat16` was given. Disabling mixed precision and continuing in bf16 only."
                     )
                     self.gaudi_config.use_torch_autocast = False
                 else:

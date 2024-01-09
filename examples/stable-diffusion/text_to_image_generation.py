@@ -20,7 +20,11 @@ from pathlib import Path
 
 import torch
 
-from optimum.habana.diffusers import GaudiDDIMScheduler
+from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiEulerAncestralDiscreteScheduler,
+    GaudiEulerDiscreteScheduler,
+)
 from optimum.habana.utils import set_seed
 
 
@@ -49,6 +53,14 @@ def main():
         help="Path to pre-trained model",
     )
 
+    parser.add_argument(
+        "--scheduler",
+        default="ddim",
+        choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
+        type=str,
+        help="Name of scheduler",
+    )
+
     # Pipeline arguments
     parser.add_argument(
         "--prompts",
@@ -58,11 +70,28 @@ def main():
         help="The prompt or prompts to guide the image generation.",
     )
     parser.add_argument(
+        "--prompts_2",
+        type=str,
+        nargs="*",
+        default=None,
+        help="The second prompt or prompts to guide the image generation (applicable to SDXL).",
+    )
+    parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
     )
     parser.add_argument("--batch_size", type=int, default=1, help="The number of images in a batch.")
-    parser.add_argument("--height", type=int, default=512, help="The height in pixels of the generated images.")
-    parser.add_argument("--width", type=int, default=512, help="The width in pixels of the generated images.")
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=0,
+        help="The height in pixels of the generated images (0=default from model config).",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=0,
+        help="The width in pixels of the generated images (0=default from model config).",
+    )
     parser.add_argument(
         "--num_inference_steps",
         type=int,
@@ -88,6 +117,13 @@ def main():
         nargs="*",
         default=None,
         help="The prompt or prompts not to guide the image generation.",
+    )
+    parser.add_argument(
+        "--negative_prompts_2",
+        type=str,
+        nargs="*",
+        default=None,
+        help="The second prompt or prompts not to guide the image generation (applicable to SDXL).",
     )
     parser.add_argument(
         "--eta",
@@ -139,13 +175,28 @@ def main():
 
     args = parser.parse_args()
 
-    if args.ldm3d:
-        from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
+    # Set image resolution
+    res = {}
+    if args.width > 0 and args.height > 0:
+        res["width"] = args.width
+        res["height"] = args.height
 
-        if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
-            args.model_name_or_path = "Intel/ldm3d-4c"
+    # Import selected pipeline
+    sdxl_models = ["stable-diffusion-xl-base-1.0", "sdxl-turbo"]
+
+    if any(model in args.model_name_or_path for model in sdxl_models):
+        from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
+
+        sdxl = True
     else:
-        from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+        if args.ldm3d:
+            from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
+
+            if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
+                args.model_name_or_path = "Intel/ldm3d-4c"
+        else:
+            from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+        sdxl = False
 
     # Setup logging
     logging.basicConfig(
@@ -156,36 +207,63 @@ def main():
     logger.setLevel(logging.INFO)
 
     # Initialize the scheduler and the generation pipeline
-    scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+    if args.scheduler == "euler_discrete":
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+    elif args.scheduler == "euler_ancestral_discrete":
+        scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler"
+        )
+    else:
+        scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+
     kwargs = {
         "scheduler": scheduler,
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
     }
+
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
-    pipeline = GaudiStableDiffusionPipeline.from_pretrained(
-        args.model_name_or_path,
-        **kwargs,
-    )
 
     # Set seed before running the model
     set_seed(args.seed)
 
     # Generate images
-    outputs = pipeline(
-        prompt=args.prompts,
-        num_images_per_prompt=args.num_images_per_prompt,
-        batch_size=args.batch_size,
-        height=args.height,
-        width=args.width,
-        num_inference_steps=args.num_inference_steps,
-        guidance_scale=args.guidance_scale,
-        negative_prompt=args.negative_prompts,
-        eta=args.eta,
-        output_type=args.output_type,
-    )
+    if sdxl:
+        pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        outputs = pipeline(
+            prompt=args.prompts,
+            prompt_2=args.prompts_2,
+            num_images_per_prompt=args.num_images_per_prompt,
+            batch_size=args.batch_size,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            negative_prompt=args.negative_prompts,
+            negative_prompt_2=args.negative_prompts_2,
+            eta=args.eta,
+            output_type=args.output_type,
+            **res,
+        )
+    else:
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        outputs = pipeline(
+            prompt=args.prompts,
+            num_images_per_prompt=args.num_images_per_prompt,
+            batch_size=args.batch_size,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            negative_prompt=args.negative_prompts,
+            eta=args.eta,
+            output_type=args.output_type,
+            **res,
+        )
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
