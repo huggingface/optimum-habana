@@ -818,7 +818,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
     Tests the StableDiffusionXLPipeline for Gaudi.
     """
 
-    def get_dummy_components(self, time_cond_proj_dim=None):
+    def get_dummy_components(self, time_cond_proj_dim=None, timestep_spacing="leading"):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(2, 4),
@@ -844,7 +844,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
             beta_end=0.012,
             steps_offset=1,
             beta_schedule="scaled_linear",
-            timestep_spacing="leading",
+            timestep_spacing=timestep_spacing,
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
@@ -922,6 +922,25 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         gaudi_config = GaudiConfig(use_torch_autocast=False)
         sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
         sd_pipe.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images[0]
+
+        image_slice = image[-3:, -3:, -1]
+
+        self.assertEqual(image.shape, (64, 64, 3))
+        expected_slice = np.array([0.4675, 0.5173, 0.4611, 0.4067, 0.5250, 0.4674, 0.5446, 0.5094, 0.4791])
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+
+    def test_stable_diffusion_xl_turbo_euler_ancestral(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components(timestep_spacing="trailing")
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+
+        sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        sd_pipe.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
