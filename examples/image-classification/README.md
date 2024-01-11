@@ -31,6 +31,7 @@ python run_image_classification.py \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
+    --image_column_name img \
     --do_train \
     --do_eval \
     --learning_rate 3e-5 \
@@ -182,6 +183,7 @@ python ../gaudi_spawn.py \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
+    --image_column_name img \
     --do_train \
     --do_eval \
     --learning_rate 2e-4 \
@@ -221,6 +223,7 @@ python ../gaudi_spawn.py \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
+    --image_column_name img \
     --do_train \
     --do_eval \
     --learning_rate 2e-4 \
@@ -276,6 +279,7 @@ python run_image_classification.py \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
+    --image_column_name img \
     --do_eval \
     --per_device_eval_batch_size 64 \
     --use_habana \
