@@ -3,7 +3,7 @@
     "mode": "MEASURE",
     "observer": "maxabs",
     "whitelist": {"types": [], "names":  []},
-    "blacklist": {"types": [], "names":  []},
-    "dump_stats_path": "./llama_output/7b_measure",
-    "dump_stats_xlsx_path": "./llama_output/7b_measure/7b_fp8stats.xlsx"
+    "blacklist": {"types": [], "names":  ["lm_head"]},
+    "dump_stats_path": "./hqt_output/measure",
+    "dump_stats_xlsx_path": "./hqt_output/measure/fp8stats.xlsx"
 }
