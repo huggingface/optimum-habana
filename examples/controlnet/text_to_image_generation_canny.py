@@ -191,7 +191,8 @@ def main():
 
     # Initialize the scheduler and the generation pipeline
     scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
-    controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
+    model_dtype = torch.bfloat16 if args.bf16 else None
+    controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path, torch_dtype=model_dtype)
     kwargs = {
         "scheduler": scheduler,
         "use_habana": args.use_habana,

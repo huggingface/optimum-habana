@@ -33,6 +33,7 @@ python text_to_image_generation_canny.py \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
 ```
 
