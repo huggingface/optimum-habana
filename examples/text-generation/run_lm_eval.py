@@ -78,6 +78,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         if self.model.config.model_type == "llama":
             self.model_inputs.update(
                 {
+                    "reuse_cache" : self.options.reuse_cache,
                     "attn_softmax_bf16": self.options.attn_softmax_bf16,
                 }
             )
@@ -125,10 +126,17 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         return [b for b in self.buckets if b >= length][0]
 
     def _model_call(self, inps):
-        seq_length = inps.shape[-1]
+        bs, seq_length = inps.shape
         padding_length = 0
         if self.options.static_shapes:
             bucket_length = self.find_bucket(seq_length)
+            if self.options.use_cache and self.options.reuse_cache:
+                self.model.allocate_kv_cache(
+                    bs,
+                    bucket_length + 1,
+                    bucket_length,
+                    False,
+                )
             padding_length = bucket_length - seq_length
             inps = F.pad(inps, (0, padding_length), value=self.model.config.pad_token_id)
         logits = self.model(inps.to(self._device), **self.model_inputs)["logits"].cpu()
@@ -164,6 +172,9 @@ def main():
                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
         json.dump(results, open(args.output_file, "w"), indent=2)
         print(json.dumps(results, indent=2))
+    if args.quant_config:
+        import habana_quantization_toolkit
+        habana_quantization_toolkit.finish_measurements(model)
 
 
 if __name__ == "__main__":
