@@ -13,8 +13,8 @@ $ pip install -U -r requirements.txt
 
 ### Training
 
-The following example is for the creation of StackLlaMa 2: a Stack exchange llama-v2-7b model
-There were two main steps to the DPO training process:
+The following example is for the creation of StackLlaMa 2: a Stack exchange llama-v2-7b model.
+There are two main steps to the DPO training process:
 1. Supervised fine-tuning of the base llama-v2-7b model to create llama-v2-7b-se:
 
     ```
@@ -64,17 +64,12 @@ which will also push the model to your HuggingFace hub account.
 
 ### Running the model
 
-We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and load them via:
+We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and run it through example/text-generation folder.
 
-```py
-from peft import AutoPeftModelForCausalLM
+```
+python run_generation.py \
+--model_name_or_path ../trl/stack-llama-2/ \
+--use_hpu_graphs --use_kv_cache --batch_size 1 --bf16 --max_new_tokens 100 \
+--prompt "Here is my prompt" 
 
-
-model = AutoPeftModelForCausalLM.from_pretrained(
-    "dpo/final_checkpoint",
-    low_cpu_mem_usage=True,
-    torch_dtype=torch.bfloat16,
-)
-
-model.generate(...)
 ```
