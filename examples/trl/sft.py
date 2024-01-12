@@ -3,7 +3,7 @@
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import List, Optional
 
 import torch
 import transformers
@@ -42,6 +42,7 @@ class ScriptArguments:
         default_factory=lambda: None,
         metadata={"help": "Target modules for the LoRA method."},
     )
+
 
 parser = HfArgumentParser((ScriptArguments, GaudiTrainingArguments))
 script_args, training_args = parser.parse_args_into_dataclasses()
