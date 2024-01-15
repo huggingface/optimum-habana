@@ -108,6 +108,13 @@ def incrementor(bucket_size, prompt_len):
             "need_expansion": need_expansion,
         }
 
+import habana_frameworks.torch as htorch
+def mem_usage(tag):
+    mem_summary1 = htorch.hpu.memory_summary()
+    x = {i.strip():j.strip() for i, j in [i.split(':') for i in mem_summary1.strip().split('\n')[3:]]}
+    if tag is not None:
+        print(tag, x['InUse'])
+    return x['InUse']
 
 class StaticMaxLengthCriteria(StoppingCriteria):
     def __init__(self, max_steps: int):
@@ -194,7 +201,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if model_kwargs["past_key_values"] is None:
             import pdb; pdb.set_trace()
             print()
-        outputs["past_key_values"] = None # give up reference     ############################
+        #outputs["past_key_values"] = None # give up reference     ############################
         # sys.getrefcount(model_kwargs["past_key_values"]) = 4
         # sys.getrefcount(outputs) = 5
         # sys.getrefcount(outputs["past_key_values"]) = 4
@@ -376,7 +383,10 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if "past_key_values" in model_kwargs:
 
-                if False:
+                
+                import os
+                storage = int(os.environ.get('STORAGE','0')) == 1
+                if storage:
                     '''
                     Consider a case where we have p = 7, m = 10 and b = 3
                     step 0 (prefill): p'=9, kv cache outputed from model = 9
@@ -418,24 +428,42 @@ class GaudiGenerationMixin(GenerationMixin):
                         for i in range(len(model_kwargs["past_key_values"])):
                             tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
                             for j in range(len(model_kwargs["past_key_values"][i])):
-                                tmp_lst[j] = torch.empty(size_of_each_cache, device=self.device)
-                            new_kv[i] = tuple(tmp_lst)
-                        self.kv_storage = tuple(new_kv)  
-                        self.reshaper = lambda x, cache_size : x.reshape([bs,dim0,dim1,cache_size]).transpose(2,3) # cache_size doesnt need to be an argument, it could be -1
+                                #tmp_lst[j] = torch.empty(size_of_each_cache, device=self.device)
+                                tmp_lst[j] = torch.empty([bs, dim0, final_size, dim1], device=self.device)
+                            new_kv[i] = (tmp_lst)
+                        self.kv_storage = (new_kv)
+                        #self.reshaper = lambda x, cache_size : x.reshape([bs,dim0,dim1,cache_size]).transpose(2,3) # cache_size doesnt need to be an argument, it could be -1
                         an_item = None # release reference
                     old_cache_size = model_kwargs["past_key_values"][0][0].shape[2]
                     # TODO.. for llama "2" is the right index. could be different for other models. similarly bs, dim0, dim1 could also be different
                     new_cache_size = old_cache_size + bucket_size
                     # TODO: this double for loop is a common pattern used in a couple of places. abstract?
-                    new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
+                    #new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
+                    model_kwargs["past_key_values"] = list(model_kwargs["past_key_values"])
                     for i in range(len(model_kwargs["past_key_values"])):
-                        tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
+                        model_kwargs["past_key_values"][i] = list(model_kwargs["past_key_values"][i])
+                    
+                    mem_usage('START')
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        #tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
                         for j in range(len(model_kwargs["past_key_values"][i])):
                             #import pdb; pdb.set_trace()
-                            tmp_lst[j] = self.reshaper(self.kv_storage[i][j][:self.kv_storage_stride * new_cache_size], new_cache_size)
+                            #tmp_lst[j] = self.reshaper(self.kv_storage[i][j][:self.kv_storage_stride * new_cache_size], new_cache_size)
+                            #tmp_lst[j] = self.kv_storage[i][j][: ,:, :new_cache_size, :]
+
+                            model_kwargs["past_key_values"][i][j] = self.kv_storage[i][j][: ,:, :new_cache_size, :]  # TODO overwriting now, need to copy old data
+                            #import pdb; pdb.set_trace()
+                            #print()
+                            mem_usage(f'{i} {j}')
                             # TODO COPY.. before or after the reshape?
-                        new_kv[i] = tuple(tmp_lst)
-                    model_kwargs["past_key_values"] = tuple(new_kv)
+                        #new_kv[i] = tuple(tmp_lst)
+
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        model_kwargs["past_key_values"][i] = tuple(model_kwargs["past_key_values"][i])
+                    model_kwargs["past_key_values"] = tuple(model_kwargs["past_key_values"])
+                    mem_usage('END')
+                    print('XXXXX', model_kwargs["past_key_values"][0][0].shape)
+                    print()
                 else:
                     def create_pad_arg(pad_amount, i, j):
                         if model_kwargs["past_key_values"][0][0].dim() == 3:
@@ -465,6 +493,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         model_kwargs["past_key_values"][i] = list(model_kwargs["past_key_values"][i])
                         # convert tuples to list
 
+                    mem_usage('START')
                     for i in range(len(model_kwargs["past_key_values"])):
                         #tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
                         for j in range(len(model_kwargs["past_key_values"][i])):
@@ -482,6 +511,7 @@ class GaudiGenerationMixin(GenerationMixin):
                             c1 = gc.collect()
                             if i==0 and j==0:
                                 print(i, j, xx, c0, c1) # hopefully xx == 2. then we are good
+                            mem_usage(f'{i} {j}')
                         #new_kv[i] = tuple(tmp_lst)
                     #model_kwargs["past_key_values"] = tuple(new_kv)
                     #import pdb; pdb.set_trace()
@@ -490,6 +520,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     for i in range(len(model_kwargs["past_key_values"])):
                         model_kwargs["past_key_values"][i] = tuple(model_kwargs["past_key_values"][i])
                     model_kwargs["past_key_values"] = tuple(model_kwargs["past_key_values"])
+                    mem_usage('END')
 
 
         if "token_idx" not in model_kwargs:
@@ -1522,6 +1553,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if model_kwargs.get("past_key_values", 1) is None:
                 import pdb; pdb.set_trace()
                 print()
+            xx = mem_usage(None)
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1529,6 +1561,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_hidden_states=output_hidden_states,
                 **hpu_graphs_kwargs,
             )
+            yy = mem_usage(None)
+            print(f'{cnt} {xx} {yy}')
             #import pdb; pdb.set_trace()
             # sys.getrefcount(outputs['past_key_values']) ==== 3
             if model_kwargs.get("past_key_values", 1) is None:
