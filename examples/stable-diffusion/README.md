@@ -131,7 +131,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16    
+    --bf16
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
@@ -192,7 +192,10 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16
+    --bf16 \
+    --num_inference_steps 1 \
+    --guidance_scale 0.0 \
+    --timestep_spacing trailing
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
