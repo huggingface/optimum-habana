@@ -39,7 +39,6 @@ There are two main steps to the DPO training process:
         --report_to=none \
         --use_habana \
         --use_lazy_mode \
-
     ```
 2. Run the DPO trainer using the model saved by the previous step:
     ```
@@ -64,7 +63,7 @@ which will also push the model to your HuggingFace hub account.
 
 ### Running the model
 
-We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and run it through example/text-generation folder.
+We can load the DPO-trained LoRA adaptors which were saved by the DPO training step and run it through the [text-generation example](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation).
 
 ```
 python run_generation.py \
