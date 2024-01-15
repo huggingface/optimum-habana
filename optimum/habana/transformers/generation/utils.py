@@ -191,8 +191,26 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["past_key_values"] = self._extract_past_from_model_output(
             outputs, standardize_cache_format=standardize_cache_format
         )
+        if model_kwargs["past_key_values"] is None:
+            import pdb; pdb.set_trace()
+            print()
+        outputs["past_key_values"] = None # give up reference     ############################
+        # sys.getrefcount(model_kwargs["past_key_values"]) = 4
+        # sys.getrefcount(outputs) = 5
+        # sys.getrefcount(outputs["past_key_values"]) = 4
+        #import pdb; pdb.set_trace()
+        
+        #import pdb; pdb.set_trace()
         if getattr(outputs, "state", None) is not None:
             model_kwargs["state"] = outputs.state
+
+        if model_kwargs["past_key_values"] is None:
+            import pdb; pdb.set_trace()
+            print()
+
+        if model_kwargs["past_key_values"] is None:
+            import pdb; pdb.set_trace()
+            print()
 
         # update token_type_ids with last value
         if "token_type_ids" in model_kwargs:
@@ -358,35 +376,121 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if "past_key_values" in model_kwargs:
 
-                def create_pad_arg(pad_amount, i, j):
-                    if model_kwargs["past_key_values"][0][0].dim() == 3:
-                        assert self.config.model_type == "bloom"
-                        if j == 0:
-                            return (0, pad_amount)
-                        elif j == 1:
-                            return (0, 0, 0, pad_amount)
-                        else:
-                            assert False
-                    elif model_kwargs["past_key_values"][0][0].dim() == 4:
-                        return (0, 0, 0, pad_amount)  # llama, falcon
-                    else:
-                        assert False, "Unknown case, please handle, or dont use bucketing"
+                if False:
+                    '''
+                    Consider a case where we have p = 7, m = 10 and b = 3
+                    step 0 (prefill): p'=9, kv cache outputed from model = 9
+                    step 1: p'=9, kv cache = 9
+                    step 2: p'=12, kv cache will need to grow to 12 now.
+                            This is when we slice from storage
+                    step 3: ...
+                    step 4: ...
+                    step 5: p'=15, kv cache grows by slicing storage again
+                    step 6: ...
+                    [Note above scenario might have "off by one" error, 
+                    I did not EXACTLY test the shapes in each step, this is here just for elucidative purposes]
 
-                new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
-                for i in range(len(model_kwargs["past_key_values"])):
-                    tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
-                    for j in range(len(model_kwargs["past_key_values"][i])):
-                        pad_tuple = create_pad_arg(pad_amount, i, j)
-                        # Different models might have different shapes of kv-cache
-                        # create_pad_arg handles them on a per-model basis
-                        # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
-                        # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
-                        assert model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
-                        tmp_lst[j] = torch.nn.functional.pad(
-                            model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
-                        )
-                    new_kv[i] = tuple(tmp_lst)
-                model_kwargs["past_key_values"] = tuple(new_kv)
+                    Therefore for the first few steps we reuse the model generated kv cache,
+                    then once we need to grow the kv cache, we move over to the sliced storage
+                    '''
+                    # TODO... we can compile for a different tail shape as well for the last bucket
+                    if not hasattr(self, 'kv_storage'):
+                        p = 128 # for now inp it thru env vars?
+                        m = 2048
+                        b = bucket_size
+                        rounder = lambda p, b : int(math.ceil(p / b) * b)
+                        final_size = rounder(p+m, b)
+                        #size = rounder(p, b)
+                        #while True:
+                        #    if size >= p+m:
+                        #        break
+                        #    else:
+                        #        size += b
+                        #final_size = size
+                        an_item = model_kwargs["past_key_values"][0][0]
+                        an_item_shape = an_item.shape
+                        bs = an_item_shape[0]
+                        dim0 = an_item_shape[1]
+                        dim1 = an_item_shape[3]
+                        self.kv_storage_stride = bs*dim0*dim1
+                        size_of_each_cache = self.kv_storage_stride * final_size
+                        new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
+                        for i in range(len(model_kwargs["past_key_values"])):
+                            tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
+                            for j in range(len(model_kwargs["past_key_values"][i])):
+                                tmp_lst[j] = torch.empty(size_of_each_cache, device=self.device)
+                            new_kv[i] = tuple(tmp_lst)
+                        self.kv_storage = tuple(new_kv)  
+                        self.reshaper = lambda x, cache_size : x.reshape([bs,dim0,dim1,cache_size]).transpose(2,3) # cache_size doesnt need to be an argument, it could be -1
+                        an_item = None # release reference
+                    old_cache_size = model_kwargs["past_key_values"][0][0].shape[2]
+                    # TODO.. for llama "2" is the right index. could be different for other models. similarly bs, dim0, dim1 could also be different
+                    new_cache_size = old_cache_size + bucket_size
+                    # TODO: this double for loop is a common pattern used in a couple of places. abstract?
+                    new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
+                        for j in range(len(model_kwargs["past_key_values"][i])):
+                            #import pdb; pdb.set_trace()
+                            tmp_lst[j] = self.reshaper(self.kv_storage[i][j][:self.kv_storage_stride * new_cache_size], new_cache_size)
+                            # TODO COPY.. before or after the reshape?
+                        new_kv[i] = tuple(tmp_lst)
+                    model_kwargs["past_key_values"] = tuple(new_kv)
+                else:
+                    def create_pad_arg(pad_amount, i, j):
+                        if model_kwargs["past_key_values"][0][0].dim() == 3:
+                            assert self.config.model_type == "bloom"
+                            if j == 0:
+                                return (0, pad_amount)
+                            elif j == 1:
+                                return (0, 0, 0, pad_amount)
+                            else:
+                                assert False
+                        elif model_kwargs["past_key_values"][0][0].dim() == 4:
+                            return (0, 0, 0, pad_amount)  # llama, falcon
+                        else:
+                            assert False, "Unknown case, please handle, or dont use bucketing"
+
+                    #import pdb; pdb.set_trace()
+                    import gc, sys
+                    #new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
+                    #import pdb; pdb.set_trace()
+                    #if type(model_kwargs["past_key_values"]) == type(tuple()):
+                    try:
+                        model_kwargs["past_key_values"] = list(model_kwargs["past_key_values"])
+                    except:
+                        import pdb; pdb.set_trace()
+                        print()
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        model_kwargs["past_key_values"][i] = list(model_kwargs["past_key_values"][i])
+                        # convert tuples to list
+
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        #tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
+                        for j in range(len(model_kwargs["past_key_values"][i])):
+                            pad_tuple = create_pad_arg(pad_amount, i, j)
+                            # Different models might have different shapes of kv-cache
+                            # create_pad_arg handles them on a per-model basis
+                            # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
+                            # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
+                            assert model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
+                            xx = sys.getrefcount(model_kwargs["past_key_values"][i][j])
+                            c0 = gc.collect()
+                            model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
+                                model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
+                            )
+                            c1 = gc.collect()
+                            if i==0 and j==0:
+                                print(i, j, xx, c0, c1) # hopefully xx == 2. then we are good
+                        #new_kv[i] = tuple(tmp_lst)
+                    #model_kwargs["past_key_values"] = tuple(new_kv)
+                    #import pdb; pdb.set_trace()
+                    #print()
+                    # TODO do we need to convert back to tuple of tuples? maybe we start of as lists?
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        model_kwargs["past_key_values"][i] = tuple(model_kwargs["past_key_values"][i])
+                    model_kwargs["past_key_values"] = tuple(model_kwargs["past_key_values"])
+
 
         if "token_idx" not in model_kwargs:
             model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
@@ -1377,7 +1481,11 @@ class GaudiGenerationMixin(GenerationMixin):
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
 
+        cnt = -1
         while True:
+            cnt += 1
+            if cnt % 100 == 0:
+                print(cnt, flush=True)
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1394,9 +1502,15 @@ class GaudiGenerationMixin(GenerationMixin):
             if bucket_size > 0:
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
+                if model_kwargs.get("past_key_values", 1) is None:
+                    import pdb; pdb.set_trace()
+                    print()
                 input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
                     params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
                 )
+                if model_kwargs.get("past_key_values", 1) is None:
+                    import pdb; pdb.set_trace()
+                    print()
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
@@ -1404,6 +1518,10 @@ class GaudiGenerationMixin(GenerationMixin):
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 
             # forward pass to get next token
+            # model_kwargs["past_key_values"][0][0] ## COUNT REFERENCES
+            if model_kwargs.get("past_key_values", 1) is None:
+                import pdb; pdb.set_trace()
+                print()
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -1411,8 +1529,17 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_hidden_states=output_hidden_states,
                 **hpu_graphs_kwargs,
             )
+            #import pdb; pdb.set_trace()
+            # sys.getrefcount(outputs['past_key_values']) ==== 3
+            if model_kwargs.get("past_key_values", 1) is None:
+                import pdb; pdb.set_trace()
+                print()
+            if outputs.get("past_key_values", 1) is None:
+                import pdb; pdb.set_trace()
+                print()
 
             if synced_gpus and this_peer_finished:
+                import pdb; pdb.set_trace()
                 continue  # don't waste resources running the code we don't need
 
             token_idx = model_kwargs.get("token_idx", None)
@@ -1450,7 +1577,9 @@ class GaudiGenerationMixin(GenerationMixin):
                         if self.config.is_encoder_decoder
                         else (outputs.hidden_states,)
                     )
-
+            if model_kwargs.get("past_key_values", 1) is None:
+                import pdb; pdb.set_trace()
+                print()
             # argmax
             next_tokens = torch.argmax(next_tokens_scores, dim=-1)
             # finished sentences should have their next token be a padding token
@@ -1471,6 +1600,9 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs = self._update_model_kwargs_for_generation(
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
+            if model_kwargs["past_key_values"] is None:
+                import pdb; pdb.set_trace()
+                print()
 
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:
