@@ -50,7 +50,7 @@ peft_config = LoraConfig(
     r=script_args.lora_r,
     lora_alpha=script_args.lora_alpha,
     lora_dropout=script_args.lora_dropout,
-    target_modules=script_args.lora_targe_modules,
+    target_modules=script_args.lora_target_modules,
     bias="none",
     task_type="CAUSAL_LM",
 )
