@@ -272,11 +272,11 @@ class GaudiLlamaAttention(LlamaAttention):
 
             if attn_weights.size() not in [
                 (bsz, self.num_heads, q_len, kv_seq_len),
-                (bsz, self.self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len),
+                (bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len),
             ]:
                 raise ValueError(
                     f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)} or"
-                    f" {(bsz, self.self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len)}, but is"
+                    f" {(bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len)}, but is"
                     f" {attn_weights.size()}"
                 )
 
