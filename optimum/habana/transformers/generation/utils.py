@@ -1414,11 +1414,14 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
-            xxx = {k:params[k] for k in params}
-            xxx['dummy'] = torch.ones(params['allocated_space'], device=self.device)
-            if storage():
-                xxx['final_shape'] = 2560 # TODO sasarkar
-            model_inputs['need_expansion'] = xxx # kv cache inside model doesnt need expansion in prefill.
+            try:
+                xxx = {k:params[k] for k in params}
+                xxx['dummy'] = torch.ones(params['allocated_space'], device=self.device)
+                if storage():
+                    xxx['final_shape'] = 2560 # TODO sasarkar
+                model_inputs['need_expansion'] = xxx # kv cache inside model doesnt need expansion in prefill.
+            except:
+                pass # for cases like reuse_cache, where we dont have params
             # TODO rename need_expansion to something better
             # TODO pass in dummy
 
