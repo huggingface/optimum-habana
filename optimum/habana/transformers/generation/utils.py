@@ -198,26 +198,15 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["past_key_values"] = self._extract_past_from_model_output(
             outputs, standardize_cache_format=standardize_cache_format
         )
-        if model_kwargs["past_key_values"] is None:
-            import pdb; pdb.set_trace()
-            print()
+
         #outputs["past_key_values"] = None # give up reference     ############################
         # sys.getrefcount(model_kwargs["past_key_values"]) = 4
         # sys.getrefcount(outputs) = 5
         # sys.getrefcount(outputs["past_key_values"]) = 4
-        #import pdb; pdb.set_trace()
         
-        #import pdb; pdb.set_trace()
         if getattr(outputs, "state", None) is not None:
             model_kwargs["state"] = outputs.state
 
-        if model_kwargs["past_key_values"] is None:
-            import pdb; pdb.set_trace()
-            print()
-
-        if model_kwargs["past_key_values"] is None:
-            import pdb; pdb.set_trace()
-            print()
 
         # update token_type_ids with last value
         if "token_type_ids" in model_kwargs:
@@ -447,13 +436,10 @@ class GaudiGenerationMixin(GenerationMixin):
                     for i in range(len(model_kwargs["past_key_values"])):
                         #tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
                         for j in range(len(model_kwargs["past_key_values"][i])):
-                            #import pdb; pdb.set_trace()
                             #tmp_lst[j] = self.reshaper(self.kv_storage[i][j][:self.kv_storage_stride * new_cache_size], new_cache_size)
                             #tmp_lst[j] = self.kv_storage[i][j][: ,:, :new_cache_size, :]
 
                             model_kwargs["past_key_values"][i][j] = self.kv_storage[i][j][: ,:, :new_cache_size, :]  # TODO overwriting now, need to copy old data
-                            #import pdb; pdb.set_trace()
-                            #print()
                             mem_usage(f'{i} {j}')
                             # TODO COPY.. before or after the reshape?
                         #new_kv[i] = tuple(tmp_lst)
@@ -479,10 +465,8 @@ class GaudiGenerationMixin(GenerationMixin):
                         else:
                             assert False, "Unknown case, please handle, or dont use bucketing"
 
-                    #import pdb; pdb.set_trace()
                     import gc, sys
                     #new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
-                    #import pdb; pdb.set_trace()
                     #if type(model_kwargs["past_key_values"]) == type(tuple()):
                     try:
                         model_kwargs["past_key_values"] = list(model_kwargs["past_key_values"])
@@ -514,7 +498,6 @@ class GaudiGenerationMixin(GenerationMixin):
                             mem_usage(f'{i} {j}')
                         #new_kv[i] = tuple(tmp_lst)
                     #model_kwargs["past_key_values"] = tuple(new_kv)
-                    #import pdb; pdb.set_trace()
                     #print()
                     # TODO do we need to convert back to tuple of tuples? maybe we start of as lists?
                     for i in range(len(model_kwargs["past_key_values"])):
@@ -1533,15 +1516,9 @@ class GaudiGenerationMixin(GenerationMixin):
             if bucket_size > 0:
                 # it will not have been padded if bucket_size > 0
                 params = next(inc)
-                if model_kwargs.get("past_key_values", 1) is None:
-                    import pdb; pdb.set_trace()
-                    print()
                 input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
                     params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
                 )
-                if model_kwargs.get("past_key_values", 1) is None:
-                    import pdb; pdb.set_trace()
-                    print()
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
@@ -1550,9 +1527,6 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # forward pass to get next token
             # model_kwargs["past_key_values"][0][0] ## COUNT REFERENCES
-            if model_kwargs.get("past_key_values", 1) is None:
-                import pdb; pdb.set_trace()
-                print()
             xx = mem_usage(None)
             outputs = self(
                 **model_inputs,
@@ -1563,17 +1537,9 @@ class GaudiGenerationMixin(GenerationMixin):
             )
             yy = mem_usage(None)
             print(f'{cnt} {xx} {yy}')
-            #import pdb; pdb.set_trace()
             # sys.getrefcount(outputs['past_key_values']) ==== 3
-            if model_kwargs.get("past_key_values", 1) is None:
-                import pdb; pdb.set_trace()
-                print()
-            if outputs.get("past_key_values", 1) is None:
-                import pdb; pdb.set_trace()
-                print()
 
             if synced_gpus and this_peer_finished:
-                import pdb; pdb.set_trace()
                 continue  # don't waste resources running the code we don't need
 
             token_idx = model_kwargs.get("token_idx", None)
@@ -1611,9 +1577,6 @@ class GaudiGenerationMixin(GenerationMixin):
                         if self.config.is_encoder_decoder
                         else (outputs.hidden_states,)
                     )
-            if model_kwargs.get("past_key_values", 1) is None:
-                import pdb; pdb.set_trace()
-                print()
             # argmax
             next_tokens = torch.argmax(next_tokens_scores, dim=-1)
             # finished sentences should have their next token be a padding token
@@ -1634,9 +1597,6 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs = self._update_model_kwargs_for_generation(
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
-            if model_kwargs["past_key_values"] is None:
-                import pdb; pdb.set_trace()
-                print()
 
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:
