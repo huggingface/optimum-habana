@@ -18,16 +18,14 @@ import logging
 import sys
 from pathlib import Path
 
-import torch
-
-from diffusers import ControlNetModel
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionControlNetPipeline
-from diffusers.utils import load_image
-import numpy as np
-
 import cv2
+import numpy as np
+import torch
+from diffusers import ControlNetModel
+from diffusers.utils import load_image
 from PIL import Image
 
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionControlNetPipeline
 from optimum.habana.utils import set_seed
 
 
@@ -55,7 +53,7 @@ def main():
         type=str,
         help="Path to pre-trained model",
     )
-    
+
     parser.add_argument(
         "--controlnet_model_name_or_path",
         default="lllyasviel/sd-controlnet-canny",
@@ -76,9 +74,7 @@ def main():
         type=str,
         default="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         nargs="+",
-        help=(
-            "Path to the controlnet conditioning image"
-        ),
+        help=("Path to the controlnet conditioning image"),
     )
     parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
@@ -213,7 +209,7 @@ def main():
     # Generate images
     outputs = pipeline(
         prompt=args.prompts,
-        input_image=canny_image,
+        image=canny_image,
         num_images_per_prompt=args.num_images_per_prompt,
         batch_size=args.batch_size,
         height=args.height,
