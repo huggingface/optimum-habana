@@ -83,6 +83,12 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 
 logger = logging.get_logger(__name__)
 
+import os
+def inner_bucket():
+    return int(os.environ.get('INNER_BUCKET', '0')) == 1
+
+def storage():
+    return int(os.environ.get('STORAGE', '0')) == 1
 
 def incrementor(bucket_size, prompt_len):
     assert bucket_size > 0
@@ -358,35 +364,36 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if "past_key_values" in model_kwargs:
 
-                def create_pad_arg(pad_amount, i, j):
-                    if model_kwargs["past_key_values"][0][0].dim() == 3:
-                        assert self.config.model_type == "bloom"
-                        if j == 0:
-                            return (0, pad_amount)
-                        elif j == 1:
-                            return (0, 0, 0, pad_amount)
+                if not inner_bucket():
+                    def create_pad_arg(pad_amount, i, j):
+                        if model_kwargs["past_key_values"][0][0].dim() == 3:
+                            assert self.config.model_type == "bloom"
+                            if j == 0:
+                                return (0, pad_amount)
+                            elif j == 1:
+                                return (0, 0, 0, pad_amount)
+                            else:
+                                assert False
+                        elif model_kwargs["past_key_values"][0][0].dim() == 4:
+                            return (0, 0, 0, pad_amount)  # llama, falcon
                         else:
-                            assert False
-                    elif model_kwargs["past_key_values"][0][0].dim() == 4:
-                        return (0, 0, 0, pad_amount)  # llama, falcon
-                    else:
-                        assert False, "Unknown case, please handle, or dont use bucketing"
+                            assert False, "Unknown case, please handle, or dont use bucketing"
 
-                new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
-                for i in range(len(model_kwargs["past_key_values"])):
-                    tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
-                    for j in range(len(model_kwargs["past_key_values"][i])):
-                        pad_tuple = create_pad_arg(pad_amount, i, j)
-                        # Different models might have different shapes of kv-cache
-                        # create_pad_arg handles them on a per-model basis
-                        # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
-                        # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
-                        assert model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
-                        tmp_lst[j] = torch.nn.functional.pad(
-                            model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
-                        )
-                    new_kv[i] = tuple(tmp_lst)
-                model_kwargs["past_key_values"] = tuple(new_kv)
+                    new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
+                        for j in range(len(model_kwargs["past_key_values"][i])):
+                            pad_tuple = create_pad_arg(pad_amount, i, j)
+                            # Different models might have different shapes of kv-cache
+                            # create_pad_arg handles them on a per-model basis
+                            # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
+                            # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
+                            assert model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
+                            tmp_lst[j] = torch.nn.functional.pad(
+                                model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
+                            )
+                        new_kv[i] = tuple(tmp_lst)
+                    model_kwargs["past_key_values"] = tuple(new_kv)
 
         if "token_idx" not in model_kwargs:
             model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
@@ -608,9 +615,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if not self.config.is_encoder_decoder:
                 # only pad if bucket_size < -1. If we are bucketing (bucket_size > 0), then that is taken care in greedy_search()
+                token_idx = inputs_tensor.shape[-1]
                 if not is_greedy_or_beam_and_bucket:
                     # token_idx is the current index in the generation process, it is incremented each time a new token is generated
-                    token_idx = inputs_tensor.shape[-1]
                     model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
                     inputs_tensor = torch.nn.functional.pad(
                         inputs_tensor, (0, generation_config.max_new_tokens), value=generation_config.pad_token_id
@@ -704,14 +711,16 @@ class GaudiGenerationMixin(GenerationMixin):
             calculated_max_length = input_ids.shape[-1]
             if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
                 calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
-            if generation_config.use_cache and generation_config.reuse_cache:
+            if (generation_config.use_cache and generation_config.reuse_cache):# or inner_bucket():
                 bs, _ = input_ids.shape
-                if not is_greedy_or_beam_and_bucket:
+                #import pdb; pdb.set_trace()
+                if (not is_greedy_or_beam_and_bucket):# or inner_bucket():
                     unwrap_deepspeed_model(self).allocate_kv_cache(
                         bs * generation_config.num_beams,
                         calculated_max_length,
                         token_idx,
                         generation_config.kv_cache_fp8,
+                        generation_config.bucket_size
                     )
             if self.config.model_type in ["llama"]:
                 if self.config.max_position_embeddings < calculated_max_length:
@@ -1377,7 +1386,12 @@ class GaudiGenerationMixin(GenerationMixin):
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
 
+
+        cnt = -1
         while True:
+            cnt += 1
+            if cnt % 1 == 0:
+                print(cnt, flush=True)
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1400,6 +1414,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            xxx = {k:params[k] for k in params}
+            xxx['dummy'] = torch.ones(params['allocated_space'], device=self.device)
+            if storage():
+                xxx['final_shape'] = 2560 # TODO sasarkar
+            model_inputs['need_expansion'] = xxx # kv cache inside model doesnt need expansion in prefill.
+            # TODO rename need_expansion to something better
+            # TODO pass in dummy
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 

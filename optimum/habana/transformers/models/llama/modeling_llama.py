@@ -37,6 +37,13 @@ except ImportError:
     FusedSDPA = None
 
 
+import os
+def inner_bucket():
+    return int(os.environ.get('INNER_BUCKET', '0')) == 1
+
+def storage():
+    return int(os.environ.get('STORAGE', '0')) == 1
+
 def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
     cur = cur.to(dtype=prev.dtype)
@@ -104,10 +111,13 @@ class GaudiLlamaAttention(LlamaAttention):
         self.inp_seq_len = -1
         self.register_buffer("norm_factor", torch.tensor(1.0 / math.sqrt(self.head_dim)), persistent=False)
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
-        key_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        if self.past_key is None or self.past_key.shape != key_shape:
+            
+
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8, bucket=-1):
+        first_bucketed_shape = int(math.ceil(inp_seq_len / bucket) * bucket)
+        key_shape = (batch_size, self.num_key_value_heads, max_seq_len if bucket <= 0 else first_bucketed_shape, self.head_dim)
+        value_shape = (batch_size, self.num_key_value_heads, max_seq_len if bucket <= 0 else first_bucketed_shape, self.head_dim)
+        if (self.past_key is None or self.past_key.shape != key_shape) or bucket > 0:
             self.inp_seq_len = inp_seq_len
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
@@ -157,6 +167,7 @@ class GaudiLlamaAttention(LlamaAttention):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        need_expansion=False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from LlamaAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -168,6 +179,7 @@ class GaudiLlamaAttention(LlamaAttention):
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
         """
+        param = need_expansion
         bsz, q_len, _ = hidden_states.size()
 
         if self.config.pretraining_tp > 1:
@@ -202,14 +214,51 @@ class GaudiLlamaAttention(LlamaAttention):
             if token_idx is None:
                 kv_seq_len += past_key_value[0].shape[-2]
             else:
-                if reuse_cache:
+                if reuse_cache or inner_bucket():
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
-        if past_key_value is not None or reuse_cache:
+        if inner_bucket():
+            is_prefill = key_states.shape[2] > 1
+            if is_prefill:
+                if storage():
+                    bs = key_states.shape[0]
+                    d0 = key_states.shape[1]
+                    d1 = key_states.shape[3]
+                    self.storage_key = torch.empty([bs, d0, param['final_shape'], d1], device=key_states.device)
+                    self.storage_value = torch.empty([bs, d0, param['final_shape'], d1], device=key_states.device)
+                    #import pdb; pdb.set_trace()
+                    rng = torch.arange(0, key_states.shape[2], device=key_states.device)
+                    self.storage_key.index_copy_(2, rng, key_states)
+                    self.storage_value.index_copy_(2, rng, value_states)
+                    self.past_key = self.storage_key[:,:,:token_idx,:]
+                    self.past_value = self.storage_key[:,:,:token_idx,:]
+                else:
+                    self.past_key = key_states
+                    self.past_value = value_states
+                    # only for prefill stage
+            else:
+                need_expansion_1 = param['need_expansion'] and param['passnum'] > 0
+                if need_expansion_1:
+                    if storage():
+                        self.past_key = self.storage_key[:,:,:param["allocated_space"],:]
+                        self.past_value = self.storage_key[:,:,:param["allocated_space"],:]
+                    else:
+                        pad_amount = param["allocated_space"] - self.past_key.shape[2]
+                        self.past_key = torch.nn.functional.pad(self.past_key, (0, 0, 0, pad_amount), value=0)
+                        self.past_value = torch.nn.functional.pad(self.past_value, (0, 0, 0, pad_amount), value=0)
+                    print(self.past_key.shape, '...')
+                else:
+                    print('NOT EXPANDING', self.past_key.shape)
+                # TODO check/add-back dtype transform, and assert in update
+                self.past_key.index_copy_(2, token_idx - 1, key_states)
+                self.past_value.index_copy_(2, token_idx - 1, value_states)
+                key_states = self.past_key
+                value_states = self.past_value
+        elif past_key_value is not None or reuse_cache:
             # reuse k, v, self_attention
             if reuse_cache:
                 past_key = self.past_key
@@ -221,7 +270,7 @@ class GaudiLlamaAttention(LlamaAttention):
             value_states = update(past_value, value_states, 2, token_idx, self.inp_seq_len)
 
         if use_cache:
-            if reuse_cache:
+            if reuse_cache or inner_bucket():
                 past_key_value = (self.past_key.shape, self.past_value.shape)
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
@@ -336,8 +385,8 @@ class GaudiLlamaMLP(LlamaMLP):
 
 
 class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
-        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8, bucket=-1):
+        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8, bucket)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.self_attn.reorder_kv_cache(beam_idx)
@@ -358,6 +407,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        need_expansion=False
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from LlamaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -381,6 +431,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             reuse_cache,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
+            need_expansion=need_expansion
         )
         self.self_attn.attention_all_reduce(output_pre_attn)
         output_post_attn_pre_mlp, residual_mlp = self.post_attn_pre_mlp(output_pre_attn, residual)
@@ -409,6 +460,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        need_expansion=False
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         output_attn, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
@@ -423,6 +475,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             reuse_cache,
             use_flash_attention,
             flash_attention_recompute,
+            need_expansion=need_expansion
         )
         return output_attn, attn_weights, present_key_value
 
@@ -444,9 +497,9 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
 
 
 class GaudiLlamaModel(LlamaModel):
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8, bucket=-1):
         for layer in self.layers:
-            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
+            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8, bucket)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.layers)
@@ -471,6 +524,7 @@ class GaudiLlamaModel(LlamaModel):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        need_expansion=False
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -503,7 +557,7 @@ class GaudiLlamaModel(LlamaModel):
         past_key_values_length = 0
 
         if past_key_values is not None:
-            if reuse_cache:
+            if reuse_cache or inner_bucket():
                 past_key_values_length = past_key_values[0][0][2]
             else:
                 past_key_values_length = past_key_values[0][0].shape[2]
@@ -581,6 +635,7 @@ class GaudiLlamaModel(LlamaModel):
                     reuse_cache=reuse_cache,
                     use_flash_attention=use_flash_attention,
                     flash_attention_recompute=flash_attention_recompute,
+                    need_expansion=need_expansion
                 )
 
             hidden_states = layer_outputs[0]
@@ -620,8 +675,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - add new args reuse_cache
     """
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
-        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8, bucket=-1):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8, bucket)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)
@@ -647,6 +702,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        need_expansion = False
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -669,6 +725,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             reuse_cache=reuse_cache,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
+            need_expansion=need_expansion
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
