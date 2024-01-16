@@ -1,6 +1,6 @@
 # copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama_2/scripts/dpo_llama2.py, enable it for Gaudi2
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import torch
 from datasets import Dataset, load_dataset
@@ -48,7 +48,10 @@ class ScriptArguments:
     lora_alpha: Optional[float] = field(default=16, metadata={"help": "the lora alpha parameter"})
     lora_dropout: Optional[float] = field(default=0.05, metadata={"help": "the lora dropout parameter"})
     lora_r: Optional[int] = field(default=8, metadata={"help": "the lora r parameter"})
-
+    lora_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the LoRA method."},
+    )
     max_prompt_length: Optional[int] = field(default=512, metadata={"help": "the maximum prompt length"})
     max_length: Optional[int] = field(default=1024, metadata={"help": "the maximum sequence length"})
     max_steps: Optional[int] = field(default=1000, metadata={"help": "max number of training steps"})
@@ -192,15 +195,7 @@ if __name__ == "__main__":
         r=script_args.lora_r,
         lora_alpha=script_args.lora_alpha,
         lora_dropout=script_args.lora_dropout,
-        target_modules=[
-            "q_proj",
-            "v_proj",
-            "k_proj",
-            "out_proj",
-            "fc_in",
-            "fc_out",
-            "wte",
-        ],
+        target_modules=script_args.lora_target_modules,
         bias="none",
         task_type="CAUSAL_LM",
     )
