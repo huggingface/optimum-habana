@@ -38,7 +38,7 @@ There are two main steps to the DPO training process:
         --run_name="sft_llama2" \
         --report_to=none \
         --use_habana \
-        --use_lazy_mode \
+        --use_lazy_mode
     ```
 2. Run the DPO trainer using the model saved by the previous step:
     ```
@@ -69,6 +69,5 @@ We can load the DPO-trained LoRA adaptors which were saved by the DPO training s
 python run_generation.py \
 --model_name_or_path ../trl/stack-llama-2/ \
 --use_hpu_graphs --use_kv_cache --batch_size 1 --bf16 --max_new_tokens 100 \
---prompt "Here is my prompt" 
-
+--prompt "Here is my prompt"
 ```
