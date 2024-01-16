@@ -102,7 +102,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.past_key = None
         self.past_value = None
         self.inp_seq_len = -1
-        self.norm_factor = torch.tensor(1.0 / math.sqrt(self.head_dim))
+        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         key_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
