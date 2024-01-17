@@ -82,7 +82,7 @@ def gaudi_llama_repeat_kv(
     The only differences are:
         - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
         - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
-    The query states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
+    The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
     The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
     """
     batch, num_key_value_heads, kv_len, head_dim = key_states.shape
