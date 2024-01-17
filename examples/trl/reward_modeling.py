@@ -45,13 +45,13 @@ class ScriptArguments:
     learning_rate: Optional[float] = field(default=2e-5)
     weight_decay: Optional[float] = field(default=0.001)
     model_name: Optional[str] = field(
-        default="gpt2",
+        default="meta-llama/Llama-2-7b-hf",
         metadata={
             "help": "The model that you want to train from the Hugging Face hub. E.g. gpt2, gpt2-xl, bert, etc."
         },
     )
     tokenizer_name: Optional[str] = field(
-        default=None,
+        default="meta-llama/Llama-2-7b-hf",
         metadata={
             "help": "The tokenizer for your model, if left empty will use the default for your model",
         },
@@ -91,6 +91,17 @@ class ScriptArguments:
         default=False,
         metadata={"help": "Whether to run eval after the first step"},
     )
+    output_dir: Optional[str] = field(default="./results", metadata={"help": "the output directory"})
+    save_steps: Optional[int] = field(default=500, metadata={"help": "the saving frequency"})
+    eval_steps: Optional[int] = field(default=500, metadata={"help": "the evaluation frequency"})
+    logging_steps: Optional[int] = field(default=10, metadata={"help": "the logging frequency"})
+    lora_alpha: Optional[float] = field(default=32, metadata={"help": "the lora alpha parameter"})
+    lora_dropout: Optional[float] = field(default=0.1, metadata={"help": "the lora dropout parameter"})
+    lora_r: Optional[int] = field(default=8, metadata={"help": "the lora r parameter"})
+    lora_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the LoRA method."},
+    )
 
 
 parser = HfArgumentParser(ScriptArguments)
@@ -105,21 +116,18 @@ if script_args.eval_subset > 0:
     eval_dataset = eval_dataset.select(range(script_args.eval_subset))
 # Define the training args. Needs to be done before the model is loaded if you are using deepspeed.
 model_name_split = script_args.model_name.split("/")[-1]
-output_name = (
-    f"{model_name_split}_peft_stack-exchange-paired_rmts__{script_args.train_subset}_{script_args.learning_rate}"
-)
 
 training_args = GaudiTrainingArguments(
-    output_dir=output_name,
+    output_dir=script_args.output_dir,
     learning_rate=script_args.learning_rate,
     per_device_train_batch_size=script_args.per_device_train_batch_size,
     per_device_eval_batch_size=script_args.per_device_eval_batch_size,
     num_train_epochs=script_args.num_train_epochs,
     weight_decay=script_args.weight_decay,
     evaluation_strategy="steps",
-    eval_steps=500,
+    eval_steps=script_args.eval_steps,
     save_strategy="steps",
-    save_steps=500,
+    save_steps=script_args.save_steps,
     gradient_accumulation_steps=script_args.gradient_accumulation_steps,
     gradient_checkpointing=script_args.gradient_checkpointing,
     deepspeed=script_args.deepspeed,
@@ -128,7 +136,7 @@ training_args = GaudiTrainingArguments(
     label_names=[],
     bf16=script_args.bf16,
     logging_strategy="steps",
-    logging_steps=10,
+    logging_steps=script_args.logging_steps,
     optim=script_args.optim,
     lr_scheduler_type=script_args.lr_scheduler_type,
     report_to="none",
@@ -140,13 +148,14 @@ tokenizer_name = script_args.tokenizer_name if script_args.tokenizer_name is not
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_auth_token=True)
 tokenizer.pad_token = tokenizer.eos_token
 
-
 peft_config = LoraConfig(
     task_type=TaskType.SEQ_CLS,
     inference_mode=False,
-    r=8,
-    lora_alpha=32,
-    lora_dropout=0.1,
+    r=script_args.lora_r,
+    lora_alpha=script_args.lora_alpha,
+    lora_dropout=script_args.lora_dropout,
+    target_modules=script_args.lora_target_modules,
+    bias="none",
 )
 torch.autograd.set_detect_anomaly(True)
 model = AutoModelForSequenceClassification.from_pretrained(
@@ -310,4 +319,4 @@ if script_args.eval_first_step:
 trainer.train(script_args.resume_from_checkpoint)
 
 print("Saving last checkpoint of the model")
-trainer.save_model(output_name + "_peft_last_checkpoint")
+trainer.save_model(script_args.output_dir)

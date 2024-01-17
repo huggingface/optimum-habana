@@ -255,7 +255,7 @@ class GaudiPPOTrainer(PPOTrainer, BaseTrainer):
             elif is_npu_available():
                 self.current_device = torch.device("npu:0")
             elif self.accelerator.device.type == "hpu":
-                self.current_device = torch.device("hpu:0")
+                self.current_device = torch.device("hpu")
             else:
                 self.current_device = torch.device("cuda:0")
 

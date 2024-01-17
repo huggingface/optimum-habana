@@ -1,6 +1,6 @@
 # copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama/scripts/rl_training.py, enable it for Gaudi2
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
 import torch
 from datasets import load_dataset
@@ -26,8 +26,8 @@ class ScriptArguments:
 
     # NOTE: gpt2 models use Conv1D instead of Linear layers which are not yet supported in 8 bit mode
     # models like gpt-neo* models are more suitable.
-    model_name: Optional[str] = field(default="", metadata={"help": "the model name"})
-    tokenizer_name: Optional[str] = field(default="", metadata={"help": "the tokenizer name"})
+    model_name: Optional[str] = field(default="meta-llama/Llama-2-7b-hf", metadata={"help": "the model name"})
+    tokenizer_name: Optional[str] = field(default="meta-llama/Llama-2-7b-hf", metadata={"help": "the tokenizer name"})
     reward_model_name: Optional[str] = field(default="", metadata={"help": "the reward model name"})
     log_with: Optional[str] = field(default=None, metadata={"help": "use 'wandb' to log with wandb"})
     learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
@@ -57,6 +57,13 @@ class ScriptArguments:
 
     adap_kl_ctrl: Optional[bool] = field(default=True, metadata={"help": "Use adaptive KL control, otherwise linear"})
     use_habana: Optional[bool] = field(default=True, metadata={"help": "use habana for RL training"})
+    lora_alpha: Optional[float] = field(default=32, metadata={"help": "the lora alpha parameter"})
+    lora_dropout: Optional[float] = field(default=0.05, metadata={"help": "the lora dropout parameter"})
+    lora_r: Optional[int] = field(default=16, metadata={"help": "the lora r parameter"})
+    lora_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the LoRA method."},
+    )
 
 
 adapt_PreTrainedModelWrapper_to_gaudi()
@@ -170,9 +177,10 @@ set_seed(config.seed)
 # Now let's build the model, the reference model, and the tokenizer.
 current_device = GaudiAccelerator().local_process_index
 lora_config = LoraConfig(
-    r=16,
-    lora_alpha=32,
-    lora_dropout=0.05,
+    r=script_args.lora_r,
+    lora_alpha=script_args.lora_alpha,
+    lora_dropout=script_args.lora_dropout,
+    target_modules=script_args.lora_target_modules,
     bias="none",
     task_type="CAUSAL_LM",
 )
@@ -266,7 +274,6 @@ if not config.pad_for_acceleration:
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
 else:
     output_length_sampler = LengthSampler(output_max_length, output_max_length + 1)
-
 for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
     if epoch >= config.total_ppo_epochs:
         break
@@ -292,3 +299,5 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
 
     if script_args.save_freq and epoch and epoch % script_args.save_freq == 0:
         ppo_trainer.save_pretrained(script_args.output_dir + f"step_{epoch}")
+
+ppo_trainer.save_pretrained(script_args.output_dir)
