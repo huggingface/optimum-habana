@@ -100,7 +100,7 @@ def main():
         hostfile=args.hostfile,
         use_mpi=args.use_mpi,
         use_deepspeed=args.use_deepspeed,
-        master_port=args.master_port
+        master_port=args.master_port,
     )
 
     ret_code = distributed_runner.run()

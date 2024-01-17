@@ -170,7 +170,9 @@ class DistributedRunner:
         Single-node multi-card configuration setup for DeepSpeed.
         """
 
-        self._interpreter = f"deepspeed --num_nodes 1 --num_gpus {self._world_size} --no_local_rank --master_port {self._master_port} "
+        self._interpreter = (
+            f"deepspeed --num_nodes 1 --num_gpus {self._world_size} --no_local_rank --master_port {self._master_port} "
+        )
 
     def create_single_node_setup(self):
         """
