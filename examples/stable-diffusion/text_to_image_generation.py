@@ -236,15 +236,16 @@ def main():
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
 
-    # Set seed before running the model
-    set_seed(args.seed)
-
     # Generate images
     if sdxl:
         pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
             args.model_name_or_path,
             **kwargs,
         )
+
+        # Set seed before running the model
+        set_seed(args.seed)
+
         outputs = pipeline(
             prompt=args.prompts,
             prompt_2=args.prompts_2,
@@ -263,6 +264,10 @@ def main():
             args.model_name_or_path,
             **kwargs,
         )
+
+        # Set seed before running the model
+        set_seed(args.seed)
+
         outputs = pipeline(
             prompt=args.prompts,
             num_images_per_prompt=args.num_images_per_prompt,
