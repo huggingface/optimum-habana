@@ -36,6 +36,16 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
+import habana_frameworks.torch.core as htcore
+import habana_frameworks.torch.hpu as torch_hpu
+
+import habana_frameworks.torch as htorch
+def mem_usage(tag):
+    mem_summary1 = htorch.hpu.memory_summary()
+    x = {i.strip():j.strip() for i, j in [i.split(':') for i in mem_summary1.strip().split('\n')[3:]]}
+    if tag is not None:
+        print(tag, x['InUse'])
+    return x['InUse']
 
 import os
 def inner_bucket():
@@ -252,9 +262,14 @@ class GaudiLlamaAttention(LlamaAttention):
                         pad_amount = param["allocated_space"] - self.past_key.shape[2]
                         self.past_key = torch.nn.functional.pad(self.past_key, (0, 0, 0, pad_amount), value=0)
                         self.past_value = torch.nn.functional.pad(self.past_value, (0, 0, 0, pad_amount), value=0)
+                        #import gc
+                        #gc.collect()
+                        #htcore.mark_step()
+                        #torch_hpu.synchronize()
+                        mem_usage("HERE")
                     print(self.past_key.shape, '...')
-                else:
-                    print('NOT EXPANDING', self.past_key.shape)
+                #else:
+                #    print('NOT EXPANDING', self.past_key.shape)
                 # TODO check/add-back dtype transform, and assert in update
                 self.past_key.index_copy_(2, token_idx - 1, key_states)
                 self.past_value.index_copy_(2, token_idx - 1, value_states)

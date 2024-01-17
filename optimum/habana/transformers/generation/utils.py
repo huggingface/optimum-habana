@@ -81,6 +81,14 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
 ]
 
 
+import habana_frameworks.torch as htorch
+def mem_usage(tag):
+    mem_summary1 = htorch.hpu.memory_summary()
+    x = {i.strip():j.strip() for i, j in [i.split(':') for i in mem_summary1.strip().split('\n')[3:]]}
+    if tag is not None:
+        print(tag, x['InUse'])
+    return x['InUse']
+
 logger = logging.get_logger(__name__)
 
 import os
@@ -1390,8 +1398,8 @@ class GaudiGenerationMixin(GenerationMixin):
         cnt = -1
         while True:
             cnt += 1
-            if cnt % 1 == 0:
-                print(cnt, flush=True)
+            #if cnt % 1 == 0:
+            #    print(cnt, flush=True)
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1418,7 +1426,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 xxx = {k:params[k] for k in params}
                 xxx['dummy'] = torch.ones(params['allocated_space'], device=self.device)
                 if storage():
-                    xxx['final_shape'] = 2560 # TODO sasarkar
+                    xxx['final_shape'] = 2560 # TODO sasarkar ..only for in=128, out=2048, bkt=512
                 model_inputs['need_expansion'] = xxx # kv cache inside model doesnt need expansion in prefill.
             except:
                 pass # for cases like reuse_cache, where we dont have params
@@ -1435,6 +1443,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_hidden_states=output_hidden_states,
                 **hpu_graphs_kwargs,
             )
+            if cnt%1 == 0:
+                mem_usage(f'after{cnt}')
 
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
