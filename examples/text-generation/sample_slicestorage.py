@@ -7,6 +7,14 @@ torch.manual_seed(0)
 def storage():
     return int(os.environ.get('STORAGE', '0')) == 1
 
+import habana_frameworks.torch as htorch
+def mem_usage(tag):
+    mem_summary1 = htorch.hpu.memory_summary()
+    x = {i.strip():j.strip() for i, j in [i.split(':') for i in mem_summary1.strip().split('\n')[3:]]}
+    if tag is not None:
+        print(tag, x['InUse'])
+    return x['InUse']
+
 class TestModule(nn.Module):
     def __init__(self):
         super().__init__()
@@ -54,14 +62,17 @@ model = TestModule()
 model = model.to(device)
 #x = torch.empty([2,4,8,5], device=device)
 #x1 = torch.empty([2,4,1,5], device=device)
-token_idx = torch.tensor(5, device=device)
+token_idx = torch.tensor(7, device=device)
+bs=32
+d0=128
+d1=32
 for i in range(9):
     if i == 0:
-        inp = torch.rand([2,4,8,5])
+        inp = torch.rand([bs,d0,9,d1])
     else:
-        inp = torch.rand([2,4,1,5])
+        inp = torch.rand([bs,d0,1,d1])
     inp = inp.to(device)
-    
+
     if i == 0:
         param = {'need_expansion': False, 'final_shape': 15}
     elif i == 3:
@@ -74,6 +85,11 @@ for i in range(9):
     print(token_idx, param)
     y = model(inp, token_idx, param)
     token_idx = token_idx + 1
+    print(y[0].sum(), y[1].sum())
+    mem_usage(f'{i}')
+    print('----------------')
+    f = open(f'.graph_dumps/{i}.txt', 'w')
 print(y[0].sum(), y[1].sum())
-# expect these values to be tensor(59.1479, device='hpu:0') tensor(260.6609, device='hpu:0')
+# expect these values to be tensor(196667.2031, device='hpu:0') tensor(983312.8750, device='hpu:0')
+
 

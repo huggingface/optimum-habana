@@ -234,8 +234,10 @@ class GaudiLlamaAttention(LlamaAttention):
                     rng = torch.arange(0, key_states.shape[2], device=key_states.device)
                     self.storage_key.index_copy_(2, rng, key_states)
                     self.storage_value.index_copy_(2, rng, value_states)
-                    self.past_key = self.storage_key[:,:,:token_idx,:]
-                    self.past_value = self.storage_key[:,:,:token_idx,:]
+                    #self.past_key = self.storage_key[:,:,:token_idx,:]
+                    #self.past_value = self.storage_key[:,:,:token_idx,:]
+                    self.past_key = self.storage_key[:,:,:key_states.shape[2],:]
+                    self.past_value = self.storage_key[:,:,:key_states.shape[2],:]
                 else:
                     self.past_key = key_states
                     self.past_value = value_states
