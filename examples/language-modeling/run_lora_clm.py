@@ -31,6 +31,7 @@ import torch
 import transformers
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model, tuners
+from peft.utils.other import fsdp_auto_wrap_policy
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -692,6 +693,10 @@ def main():
             compute_metrics=compute_metrics if training_args.do_eval else None,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         )
+
+        # Solution for https://github.com/huggingface/peft/blob/v0.6.2/README.md#caveats (1)
+        if training_args.fsdp and training_args.fsdp_config["auto_wrap_policy"] == "TRANSFORMER_BASED_WRAP":
+            trainer.accelerator.state.fsdp_plugin.auto_wrap_policy = fsdp_auto_wrap_policy(lora_model)
 
     if training_args.do_train:
         train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
