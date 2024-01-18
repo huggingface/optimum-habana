@@ -9,6 +9,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiDPOTrainer
+from optimum.habana.utils import set_seed
 
 
 # Define and parse arguments.
@@ -80,6 +81,7 @@ class ScriptArguments:
             "https://github.com/huggingface/transformers/issues/22482#issuecomment-1595790992"
         },
     )
+    seed: Optional[int] = field(default=0, metadata={"help": "the seed"})
 
 
 def get_stack_exchange_paired(
@@ -151,9 +153,12 @@ if __name__ == "__main__":
         run_name="dpo_llama2",
         use_habana=True,
         use_lazy_mode=True,
-        use_hpu_graphs_for_training=True,
+        use_hpu_graphs_for_training=not script_args.gradient_checkpointing,
         use_hpu_graphs_for_inference=True,
+        seed=script_args.seed,
     )
+    # initial seed for reproducible experiments
+    set_seed(training_args.seed)
     # 2. load a pretrained model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
