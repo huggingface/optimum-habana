@@ -1396,7 +1396,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
 
         cnt = -1
+        import time
         while True:
+            t0 = time.time()
             cnt += 1
             #if cnt % 1 == 0:
             #    print(cnt, flush=True)
@@ -1443,8 +1445,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_hidden_states=output_hidden_states,
                 **hpu_graphs_kwargs,
             )
-            if cnt%1 == 0:
-                mem_usage(f'after{cnt}')
 
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
@@ -1523,6 +1523,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if this_peer_finished and not synced_gpus:
                 break
+            if cnt%1 == 0:
+                mem_usage(f'after{cnt}_{time.time()-t0:.4f}')
 
         hb_profer.stop()
         if streamer is not None:

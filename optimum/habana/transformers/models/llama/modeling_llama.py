@@ -289,6 +289,7 @@ class GaudiLlamaAttention(LlamaAttention):
         if use_cache:
             if reuse_cache or inner_bucket():
                 past_key_value = (self.past_key.shape, self.past_value.shape)
+                kv_seq_len = past_key_value[0][-2]
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
@@ -296,7 +297,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
         key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
         value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
-
+        #print(attention_mask.shape)
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
 
@@ -317,6 +318,7 @@ class GaudiLlamaAttention(LlamaAttention):
             attn_weights = self.matmul_qk(query_states, key_states.transpose(2, 3)) * self.norm_factor
 
             if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+                import pdb; pdb.set_trace()
                 raise ValueError(
                     f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
                     f" {attn_weights.size()}"
