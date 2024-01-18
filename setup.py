@@ -33,7 +33,7 @@ INSTALL_REQUIRES = [
     "optimum",
     "torch",
     "accelerate >= 0.23.0",
-    "diffusers >= 0.18.0, < 0.24.0",
+    "diffusers >= 0.24.0, < 0.25.0",
 ]
 
 TESTS_REQUIRE = [
