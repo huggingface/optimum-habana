@@ -27,13 +27,14 @@ from transformers.modeling_outputs import (
     Seq2SeqModelOutput,
 )
 from transformers.models.bart.modeling_bart import (
-    _expand_mask,
     shift_tokens_right,
 )
 from transformers.utils import (
     logging,
 )
-
+from transformers.modeling_attn_mask_utils import (
+    AttentionMaskConverter,
+)
 
 logger = logging.get_logger(__name__)
 
@@ -352,7 +353,7 @@ def gaudi_BartEncoder_forward(
     # expand attention_mask
     if attention_mask is not None:
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-        attention_mask = _expand_mask(attention_mask, inputs_embeds.dtype)
+        attention_mask = AttentionMaskConverter._expand_mask(attention_mask, inputs_embeds.dtype)
 
     encoder_states = () if output_hidden_states else None
     all_attentions = () if output_attentions else None

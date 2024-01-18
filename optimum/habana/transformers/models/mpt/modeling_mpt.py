@@ -21,7 +21,8 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from transformers.models.mpt.modeling_mpt import MptForCausalLM, MptModel, _expand_mask, _make_causal_mask
+from transformers.models.mpt.modeling_mpt import MptForCausalLM, MptModel
+from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.utils import logging
 
 
@@ -166,12 +167,12 @@ class GaudiMptModel(MptModel):
         _, src_length = input_shape
 
         if src_length > 1:
-            combined_attention_mask = _make_causal_mask(
-                input_shape, device=device, past_key_values_length=past_key_values_length
+            combined_attention_mask = AttentionMaskConverter._make_causal_mask(
+                input_shape, dytpe=torch.bool, device=device, past_key_values_length=past_key_values_length
             )
 
         # [batch_size, seq_length] -> [batch_size, 1, tgt_length, src_length]
-        expanded_attn_mask = _expand_mask(attention_mask, tgt_length=src_length)
+        expanded_attn_mask = AttentionMaskConverter._expand_mask(attention_mask, dtype=torch.bool, tgt_len=src_length)
         combined_attention_mask = (
             expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask | combined_attention_mask
         )
