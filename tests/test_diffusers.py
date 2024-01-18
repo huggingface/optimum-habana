@@ -21,7 +21,7 @@ import subprocess
 import tempfile
 from io import BytesIO
 from pathlib import Path
-from unittest import TestCase
+from unittest import TestCase, skipUnless
 
 import numpy as np
 import requests
@@ -31,7 +31,7 @@ from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
-from transformers.testing_utils import slow
+from transformers.testing_utils import parse_flag_from_env, slow
 
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import (
@@ -56,6 +56,20 @@ else:
 
 TEXTUAL_INVERSION_THROUGHPUT = 58.16156989437878
 TEXTUAL_INVERSION_RUNTIME = 206.32180358597543
+
+
+_run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
+
+
+def custom_bf16_ops(test_case):
+    """
+    Decorator marking a test as needing custom bf16 ops.
+    Custom bf16 ops must be declared before `habana_frameworks.torch.core` is imported, which is not possible if some other tests are executed before.
+
+    Such tests are skipped by default. Set the CUSTOM_BF16_OPS environment variable to a truthy value to run them.
+
+    """
+    return skipUnless(_run_custom_bf16_ops_test_, "test requires custom bf16 ops")(test_case)
 
 
 class GaudiPipelineUtilsTester(TestCase):
@@ -550,6 +564,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
         self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_BF16)
 
+    @custom_bf16_ops
     @slow
     def test_no_throughput_regression_autocast(self):
         prompts = [
