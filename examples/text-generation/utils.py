@@ -115,7 +115,7 @@ def setup_env(args):
     check_min_version("4.34.0")
     check_optimum_habana_min_version("1.9.0.dev0")
 
-    if args.global_rank == 0:
+    if args.global_rank == 0 and not args.torch_compile:
         os.environ.setdefault("GRAPH_VISUALIZATION", "true")
         shutil.rmtree(".graph_dumps", ignore_errors=True)
 
