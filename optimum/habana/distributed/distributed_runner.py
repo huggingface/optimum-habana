@@ -41,6 +41,7 @@ class DistributedRunner:
         hostfile: Union[str, Path] = None,
         use_mpi: bool = False,
         use_deepspeed: bool = False,
+        master_port: int = 29500,
         use_env: bool = False,
         map_by: bool = "socket",
         multi_hls=None,
@@ -68,6 +69,7 @@ class DistributedRunner:
         self._world_size = world_size
         self._hostfile = hostfile
         self._map_by = map_by
+        self._master_port = master_port
         self._use_env = use_env
         self._interpreter = f"{sys.executable} "
 
@@ -99,7 +101,7 @@ class DistributedRunner:
             elif use_mpi:
                 # Single-node multi-card run with MPI
                 self._model_env_vars["MASTER_ADDR"] = "localhost"
-                self._model_env_vars["MASTER_PORT"] = "12345"
+                self._model_env_vars["MASTER_PORT"] = self._master_port
                 self.create_single_node_setup_mpirun()
             else:
                 # Single-node multi-card run with torch.distributed
@@ -148,7 +150,7 @@ class DistributedRunner:
         """
 
         if use_deepspeed:
-            self._interpreter = "deepspeed --num_gpus 1 "
+            self._interpreter = f"deepspeed --num_gpus 1 --master_port {self._master_port} "
         else:
             self._interpreter = f"{sys.executable} "
 
@@ -168,7 +170,9 @@ class DistributedRunner:
         Single-node multi-card configuration setup for DeepSpeed.
         """
 
-        self._interpreter = f"deepspeed --num_nodes 1 --num_gpus {self._world_size} --no_local_rank "
+        self._interpreter = (
+            f"deepspeed --num_nodes 1 --num_gpus {self._world_size} --no_local_rank --master_port {self._master_port} "
+        )
 
     def create_single_node_setup(self):
         """
@@ -187,7 +191,7 @@ class DistributedRunner:
         """
 
         master_addr = self.process_hostfile()
-        self._interpreter = f"deepspeed --hostfile {self._hostfile} --master_addr {master_addr} --no_local_rank "
+        self._interpreter = f"deepspeed --hostfile {self._hostfile} --master_addr {master_addr} --no_local_rank --master_port {self._master_port} "
 
     def run(self):
         """

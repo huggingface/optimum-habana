@@ -42,6 +42,15 @@ To run generation with DeepSpeed-inference, you must launch the script as follow
 python ../gaudi_spawn.py --use_deepspeed --world_size number_of_devices run_generation.py ARGS
 ```
 
+To run multiple DeepSpeed tasks simultaneously, you can launch them with different `master_port` and [`HABANA_VISIBLE_MODULES`](https://docs.habana.ai/en/latest/PyTorch/PT_Multiple_Tenants_on_HPU/Multiple_Dockers_each_with_Single_Workload.html#running-distributed-workload-inside-the-docker-container), for example:
+
+```bash
+# the following tasks could run simultaneously in a container with 8 HPUs
+HABANA_VISIBLE_MODULES="0,1" python ../gaudi_spawn.py --use_deepspeed --world_size 2 run_generation.py ARGS     # using the default master_port=29500
+HABANA_VISIBLE_MODULES="2,3,4,5" python ../gaudi_spawn.py --use_deepspeed --world_size 4 --master_port 29501 run_generation.py ARGS
+HABANA_VISIBLE_MODULES="6,7" python ../gaudi_spawn.py --use_deepspeed --world_size 2 --master_port 29502 run_generation.py ARGS
+```
+
 Without DeepSpeed-inference, you can run the script with:
 
 ```bash

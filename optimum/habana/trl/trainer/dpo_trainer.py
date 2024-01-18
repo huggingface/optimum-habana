@@ -35,7 +35,6 @@ from trl.trainer.utils import (
     DPODataCollatorWithPadding,
     disable_dropout_in_model,
     pad_to_length,
-    peft_module_casting_to_bf16,
 )
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
@@ -155,7 +154,7 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             # get peft model with the given config
             model = get_peft_model(model, peft_config)
             if args.bf16:
-                peft_module_casting_to_bf16(model)
+                model = model.to(torch.bfloat16)
 
         # For models that use gradient_checkpoiting, we need to attach a hook that enables input
         # to explicitly have `requires_grad=True`, otherwise training will either silently

@@ -3,7 +3,7 @@
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
 import torch
 import transformers
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ScriptArguments:
-    model_name: Optional[str] = field(default="meta-llama/Llama-2-7b-hf", metadata={"help": "the model name"})
+    model_name_or_path: Optional[str] = field(default="meta-llama/Llama-2-7b-hf", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(default="lvwerra/stack-exchange-paired", metadata={"help": "the dataset name"})
     subset: Optional[str] = field(default="data/finetune", metadata={"help": "the subset to use"})
     split: Optional[str] = field(default="train", metadata={"help": "the split to use"})
@@ -38,6 +38,10 @@ class ScriptArguments:
     lora_alpha: Optional[float] = field(default=16, metadata={"help": "the lora alpha parameter"})
     lora_dropout: Optional[float] = field(default=0.05, metadata={"help": "the lora dropout parameter"})
     lora_r: Optional[int] = field(default=8, metadata={"help": "the lora r parameter"})
+    lora_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the LoRA method."},
+    )
 
 
 parser = HfArgumentParser((ScriptArguments, GaudiTrainingArguments))
@@ -46,7 +50,7 @@ peft_config = LoraConfig(
     r=script_args.lora_r,
     lora_alpha=script_args.lora_alpha,
     lora_dropout=script_args.lora_dropout,
-    target_modules=["q_proj", "v_proj"],
+    target_modules=script_args.lora_target_modules,
     bias="none",
     task_type="CAUSAL_LM",
 )
@@ -120,14 +124,14 @@ def create_datasets(tokenizer, args):
 
 
 base_model = AutoModelForCausalLM.from_pretrained(
-    script_args.model_name,
+    script_args.model_name_or_path,
     low_cpu_mem_usage=True,
     torch_dtype=torch.bfloat16,
     use_auth_token=True,
 )
 base_model.config.use_cache = False
 
-tokenizer = AutoTokenizer.from_pretrained(script_args.model_name, trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
 tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = "right"  # Fix weird overflow issue with fp16 training
 

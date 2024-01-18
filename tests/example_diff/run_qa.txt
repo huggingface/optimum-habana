@@ -62,9 +62,9 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-637a656
+639a658
 >         gaudi_config=gaudi_config,
-706,710d724
+708,712d726
 < 
 < 
 < def _mp_fn(index):
