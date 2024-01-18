@@ -247,7 +247,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     #self.past_key = self.storage_key[:,:,:token_idx,:]
                     #self.past_value = self.storage_key[:,:,:token_idx,:]
                     self.past_key = self.storage_key[:,:,:key_states.shape[2],:]
-                    self.past_value = self.storage_key[:,:,:key_states.shape[2],:]
+                    self.past_value = self.storage_value[:,:,:key_states.shape[2],:]
                 else:
                     self.past_key = key_states
                     self.past_value = value_states
@@ -257,7 +257,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 if need_expansion_1:
                     if storage():
                         self.past_key = self.storage_key[:,:,:param["allocated_space"],:]
-                        self.past_value = self.storage_key[:,:,:param["allocated_space"],:]
+                        self.past_value = self.storage_value[:,:,:param["allocated_space"],:]
                     else:
                         pad_amount = param["allocated_space"] - self.past_key.shape[2]
                         self.past_key = torch.nn.functional.pad(self.past_key, (0, 0, 0, pad_amount), value=0)
