@@ -206,6 +206,7 @@ python text_to_image_generation.py \
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
 It is a type of model for controlling StableDiffusion by conditioning the model with an additional input image.
+
 Here is how to generate images conditioned by canny edge model:
 ```bash
 pip install -r requirements.txt
@@ -223,6 +224,39 @@ python text_to_image_generation.py \
     --bf16
 ```
 
+Here is how to generate images conditioned by canny edge model and with multiple prompts:
+```bash
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" "a rusty robot" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --num_images_per_prompt 10 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+Here is how to generate images conditioned by open pose model:
+```bash
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-openpose \
+    --prompts "Chef in the kitchen" \
+    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png  \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
 
 ## Textual Inversion
 
