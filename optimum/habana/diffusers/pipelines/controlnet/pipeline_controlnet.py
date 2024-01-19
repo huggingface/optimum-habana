@@ -32,7 +32,7 @@ from optimum.utils import logging
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
-from ..stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
+from ..stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline, GaudiStableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)
@@ -117,78 +117,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         )
 
         self.to(self._device)
-
-    def prepare_latents(self, num_images, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (num_images, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
-        if isinstance(generator, list) and len(generator) != num_images:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective number"
-                f" of images of {num_images}. Make sure the number of images matches the length of the generators."
-            )
-
-        if latents is None:
-            # torch.randn is broken on HPU so running it on CPU
-            rand_device = "cpu" if device.type == "hpu" else device
-            if isinstance(generator, list):
-                shape = (1,) + shape[1:]
-                latents = [
-                    torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype)
-                    for i in range(num_images)
-                ]
-                latents = torch.cat(latents, dim=0).to(device)
-            else:
-                latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
-        else:
-            if latents.shape != shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
-            latents = latents.to(device)
-
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
-        return latents
-
-    @classmethod
-    def _split_inputs_into_batches(cls, batch_size, latents, prompt_embeds, negative_prompt_embeds):
-        # Use torch.split to generate num_batches batches of size batch_size
-        latents_batches = list(torch.split(latents, batch_size))
-        prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
-        if negative_prompt_embeds is not None:
-            negative_prompt_embeds_batches = list(torch.split(negative_prompt_embeds, batch_size))
-
-        # If the last batch has less samples than batch_size, pad it with dummy samples
-        num_dummy_samples = 0
-        if latents_batches[-1].shape[0] < batch_size:
-            num_dummy_samples = batch_size - latents_batches[-1].shape[0]
-            # Pad latents_batches
-            sequence_to_stack = (latents_batches[-1],) + tuple(
-                torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
-            )
-            latents_batches[-1] = torch.vstack(sequence_to_stack)
-            # Pad prompt_embeds_batches
-            sequence_to_stack = (prompt_embeds_batches[-1],) + tuple(
-                torch.zeros_like(prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
-            )
-            prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
-            # Pad negative_prompt_embeds_batches if necessary
-            if negative_prompt_embeds is not None:
-                sequence_to_stack = (negative_prompt_embeds_batches[-1],) + tuple(
-                    torch.zeros_like(negative_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
-                )
-                negative_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
-
-        # Stack batches in the same tensor
-        latents_batches = torch.stack(latents_batches)
-        if negative_prompt_embeds is not None:
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            for i, (negative_prompt_embeds_batch, prompt_embeds_batch) in enumerate(
-                zip(negative_prompt_embeds_batches, prompt_embeds_batches[:])
-            ):
-                prompt_embeds_batches[i] = torch.cat([negative_prompt_embeds_batch, prompt_embeds_batch])
-        prompt_embeds_batches = torch.stack(prompt_embeds_batches)
-
-        return latents_batches, prompt_embeds_batches, num_dummy_samples
 
     @torch.no_grad()
     def __call__(
@@ -446,7 +374,11 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                 controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
             # 7.2 Split into batches (HPU-specific step)
-            latents_batches, text_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
+            (
+                latents_batches,
+                text_embeddings_batches,
+                num_dummy_samples,
+            ) = GaudiStableDiffusionPipeline._split_inputs_into_batches(
                 batch_size,
                 latents,
                 prompt_embeds,
@@ -563,7 +495,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
 
                     hb_profiler.step()
 
-                output_image = None
                 if not output_type == "latent":
                     # 8. Post-processing
                     output_image = self.vae.decode(
