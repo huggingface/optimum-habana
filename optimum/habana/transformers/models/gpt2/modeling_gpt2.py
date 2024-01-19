@@ -288,8 +288,6 @@ def gaudi_gpt2_forward(
 
     if token_type_ids is not None:
         token_type_ids = token_type_ids.view(-1, input_shape[-1])
-    if position_ids is not None:
-        position_ids = position_ids.view(-1, input_shape[-1])
 
     if past_key_values is None:
         past_length = 0
@@ -298,7 +296,7 @@ def gaudi_gpt2_forward(
         past_length = past_key_values[0][0].size(-2)
     if position_ids is None:
         position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
-        position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+        position_ids = position_ids.unsqueeze(0)
 
     # GPT2Attention mask.
     if attention_mask is not None:
@@ -379,22 +377,16 @@ def gaudi_gpt2_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, use_cache, output_attentions)
-
-                return custom_forward
-
-            outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(block),
+            outputs = self._gradient_checkpointing_func(
+                block.__call__,
                 hidden_states,
                 None,
                 attention_mask,
                 head_mask[i],
                 encoder_hidden_states,
                 encoder_attention_mask,
+                use_cache,
+                output_attentions,
             )
         else:
             outputs = block(
@@ -458,15 +450,24 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         token_type_ids = kwargs.get("token_type_ids", None)
-        # only last token for inputs_ids if past is defined in kwargs
+        # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
-                input_ids = input_ids[:, -1].unsqueeze(-1)
+                past_length = past_key_values[0][0].shape[2]
+
+                # Some generation methods already pass only the last input ID
+                if input_ids.shape[1] > past_length:
+                    remove_prefix_length = past_length
+                else:
+                    # Default to old behavior: keep only final ID
+                    remove_prefix_length = input_ids.shape[1] - 1
+
+                input_ids = input_ids[:, remove_prefix_length:]
 
             if token_type_ids is not None:
-                token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
+                token_type_ids = token_type_ids[:, -input_ids.shape[1] :]
 
         attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
@@ -479,7 +480,7 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
                 if token_idx is not None:
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
         else:
             position_ids = None
@@ -489,7 +490,6 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
             model_inputs = {"input_ids": input_ids}
-
         model_inputs.update(
             {
                 "past_key_values": past_key_values,

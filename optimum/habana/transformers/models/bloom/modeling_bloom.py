@@ -24,6 +24,7 @@ import torch
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomMLP, dropout_add
 from transformers.utils import logging
 
@@ -399,11 +400,13 @@ def gaudi_bloom_model_forward(
 
     alibi = gaudi_bloom_build_alibi_tensor(attention_mask, self.num_heads, hidden_states.dtype, self.training)
 
-    causal_mask = self._prepare_attn_mask(
+    causal_mask = _prepare_4d_causal_attention_mask(
         attention_mask,
         input_shape=(batch_size, seq_length),
+        inputs_embeds=inputs_embeds,
         past_key_values_length=past_key_values_length,
     )
+    causal_mask = causal_mask.bool()
 
     if token_idx is not None and past_key_values[0] is not None and os.environ.get("WA_INDEX_COPY", "1") == "1":
         pkv = past_key_values[0][0]
@@ -416,20 +419,15 @@ def gaudi_bloom_model_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
-
-                return custom_forward
-
-            outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(block),
+            outputs = self._gradient_checkpointing_func(
+                block.__call__,
                 hidden_states,
                 alibi,
                 causal_mask,
+                layer_past,
                 head_mask[i],
+                use_cache,
+                output_attentions,
             )
         else:
             outputs = block(
@@ -484,8 +482,8 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> dict:
-        # only last token for input_ids if past is not None
-        if past_key_values:
+        # only last tokens for input_ids if past is not None
+        if past_key_values is not None:
             if token_idx is None:
                 input_ids = input_ids[:, -1].unsqueeze(-1)
             else:

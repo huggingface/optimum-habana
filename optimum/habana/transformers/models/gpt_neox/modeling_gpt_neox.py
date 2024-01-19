@@ -22,6 +22,7 @@ def gaudi_gpt_neox_attention_forward(
     layer_past: Optional[Tuple[torch.Tensor]] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
+    padding_mask: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     """
@@ -192,9 +193,7 @@ def gaudi_gpt_neox_model_forward(
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
         position_ids = torch.arange(past_length, seq_length + past_length, dtype=torch.long, device=device)
-        position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-    else:
-        position_ids = position_ids.view(-1, seq_length).long()
+        position_ids = position_ids.unsqueeze(0)
 
     # Attention mask.
     if attention_mask is not None:
@@ -242,20 +241,15 @@ def gaudi_gpt_neox_model_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for layer_past
-                    return module(*inputs, use_cache, None, output_attentions)
-
-                return custom_forward
-
-            outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(layer),
+            outputs = self._gradient_checkpointing_func(
+                layer.__call__,
                 hidden_states,
                 attention_mask,
                 position_ids,
                 head_mask[i],
+                use_cache,
+                None,
+                output_attentions,
             )
         else:
             outputs = layer(
@@ -362,11 +356,20 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         input_shape = input_ids.shape
 
         # cut decoder_input_ids if past is used
-        if past_key_values and past_key_values[0] is not None:
+        if past_key_values is not None:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
-                input_ids = input_ids[:, -1:]
+                past_length = past_key_values[0][0].shape[2]
+
+                # Some generation methods already pass only the last input ID
+                if input_ids.shape[1] > past_length:
+                    remove_prefix_length = past_length
+                else:
+                    # Default to old behavior: keep only final ID
+                    remove_prefix_length = input_ids.shape[1] - 1
+
+                input_ids = input_ids[:, remove_prefix_length:]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
@@ -377,7 +380,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
                 if token_idx is not None:
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
         if attention_mask is None:
@@ -388,7 +391,6 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
             model_inputs = {"input_ids": input_ids}
-
         model_inputs.update(
             {
                 "attention_mask": attention_mask,

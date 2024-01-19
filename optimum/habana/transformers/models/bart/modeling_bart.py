@@ -376,22 +376,17 @@ def gaudi_BartEncoder_forward(
             dropout_probability = torch.rand([])
             if dropout_probability < self.layerdrop:  # skip the layer
                 to_drop = True
+
         if to_drop:
             layer_outputs = (None, None)
         else:
             if self.gradient_checkpointing and self.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs, output_attentions)
-
-                    return custom_forward
-
-                layer_outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(encoder_layer),
+                layer_outputs = self._gradient_checkpointing_func(
+                    encoder_layer.__call__,
                     hidden_states,
                     attention_mask,
                     (head_mask[idx] if head_mask is not None else None),
+                    output_attentions,
                 )
             else:
                 layer_outputs = encoder_layer(
@@ -458,9 +453,20 @@ def gaudi_BartDecoder_forward(
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input) * self.embed_scale
 
-    attention_mask = self._prepare_decoder_attention_mask(
-        attention_mask, input_shape, inputs_embeds, past_key_values_length
-    )
+    if self._use_sdpa and not output_attentions and cross_attn_head_mask is None:
+        # output_attentions=True & cross_attn_head_mask can not be supported when using SDPA, and we fall back on
+        # the manual implementation that requires a 4D causal mask in all cases.
+        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+            attention_mask,
+            input_shape,
+            inputs_embeds,
+            past_key_values_length,
+        )
+    else:
+        # 4d mask is passed through the layers
+        attention_mask = _prepare_4d_causal_attention_mask(
+            attention_mask, input_shape, inputs_embeds, past_key_values_length
+        )
 
     # expand encoder attention mask
     if encoder_hidden_states is not None and encoder_attention_mask is not None:
@@ -527,16 +533,8 @@ def gaudi_BartDecoder_forward(
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, output_attentions, use_cache)
-
-                return custom_forward
-
-            layer_outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(decoder_layer),
+            layer_outputs = self._gradient_checkpointing_func(
+                decoder_layer.__call__,
                 hidden_states,
                 attention_mask,
                 encoder_hidden_states,
@@ -544,6 +542,8 @@ def gaudi_BartDecoder_forward(
                 head_mask[idx] if head_mask is not None else None,
                 cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
                 None,
+                output_attentions,
+                use_cache,
             )
         else:
             layer_outputs = decoder_layer(
