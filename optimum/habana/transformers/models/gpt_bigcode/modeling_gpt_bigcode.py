@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss
+from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.gpt_bigcode.modeling_gpt_bigcode import GPTBigCodeForCausalLM
 
@@ -253,9 +254,7 @@ def gaudi_gpt_bigcode_model_forward(
         self_attention_mask = torch.where(
             self_attention_mask,
             torch.full([], 0.0, dtype=dtype, device=self_attention_mask.device),
-            torch.full(
-                [], torch.finfo(self.wte.weight.dtype).min, dtype=dtype, device=self_attention_mask.device
-            ),
+            torch.full([], torch.finfo(self.wte.weight.dtype).min, dtype=dtype, device=self_attention_mask.device),
         )
 
     attention_mask = self_attention_mask

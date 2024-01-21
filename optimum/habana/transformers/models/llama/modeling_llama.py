@@ -5,6 +5,10 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_attn_mask_utils import (
+    _prepare_4d_causal_attention_mask,
+    _prepare_4d_causal_attention_mask_for_sdpa,
+)
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
@@ -284,7 +288,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
                     query_states.dtype
                 )
-            attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+            attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
             attn_output = self.matmul_av(attn_weights, value_states)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):

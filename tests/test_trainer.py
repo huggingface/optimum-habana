@@ -27,11 +27,17 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
-from huggingface_hub import HfFolder, delete_repo, list_repo_commits
+from huggingface_hub import HfFolder, delete_repo, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
 from requests.exceptions import HTTPError
-from transformers import IntervalStrategy, PretrainedConfig, is_torch_available, get_polynomial_decay_schedule_with_warmup, TrainerCallback
+from transformers import (
+    IntervalStrategy,
+    PretrainedConfig,
+    TrainerCallback,
+    get_polynomial_decay_schedule_with_warmup,
+    is_torch_available,
+)
 from transformers.hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS
 from transformers.testing_utils import (
     ENDPOINT_STAGING,
@@ -347,7 +353,9 @@ if is_torch_available():
             )
         return GaudiConfig.from_pretrained(gaudi_config_name_or_path)
 
-    def get_regression_trainer(a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, keep_report_to=False,  **kwargs):
+    def get_regression_trainer(
+        a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, keep_report_to=False, **kwargs
+    ):
         label_names = kwargs.get("label_names", None)
         gradient_checkpointing = kwargs.get("gradient_checkpointing", False)
         train_dataset = RegressionDataset(length=train_len, label_names=label_names)
@@ -377,7 +385,9 @@ if is_torch_available():
         output_dir = kwargs.pop("output_dir", "./regression")
         preprocess_logits_for_metrics = kwargs.pop("preprocess_logits_for_metrics", None)
 
-        args = RegressionGaudiTrainingArguments(output_dir, use_habana=True, use_lazy_mode=True, a=a, b=b, keep_report_to=keep_report_to, **kwargs)
+        args = RegressionGaudiTrainingArguments(
+            output_dir, use_habana=True, use_lazy_mode=True, a=a, b=b, keep_report_to=keep_report_to, **kwargs
+        )
 
         return GaudiTrainer(
             model,
@@ -1419,7 +1429,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             use_lazy_mode=True,
         )
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockCudaOOMCallback()])
+        trainer = GaudiTrainer(
+            model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockCudaOOMCallback()]
+        )
         trainer.train()
         # After `auto_find_batch_size` is ran we should now be at 8
         self.assertEqual(trainer._train_batch_size, 8)

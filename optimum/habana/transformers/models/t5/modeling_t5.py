@@ -5,7 +5,6 @@ import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
-from torch.utils.checkpoint import checkpoint
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
@@ -374,9 +373,7 @@ def gaudi_T5Stack_forward(
         encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
         encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
         if encoder_attention_mask is None:
-            encoder_attention_mask = torch.ones(
-                encoder_hidden_shape, device=inputs_embeds.device, dtype=torch.long
-            )
+            encoder_attention_mask = torch.ones(encoder_hidden_shape, device=inputs_embeds.device, dtype=torch.long)
         encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
     else:
         encoder_extended_attention_mask = None

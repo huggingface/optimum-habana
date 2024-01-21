@@ -20,6 +20,7 @@
 
 """ PyTorch Mistral model."""
 import math
+import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -287,7 +288,6 @@ def gaudi_mistral_model_forward(
                 past_key_value=past_key_values,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
-                padding_mask=padding_mask,
                 token_idx=token_idx,
             )
 

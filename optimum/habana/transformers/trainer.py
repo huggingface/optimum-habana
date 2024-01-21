@@ -1297,10 +1297,7 @@ class GaudiTrainer(Trainer):
         is_deepspeed_custom_scheduler = self.is_deepspeed_enabled and not isinstance(
             self.lr_scheduler, DeepSpeedSchedulerWrapper
         )
-        if (
-            self.args.should_save
-            and (not self.is_deepspeed_enabled or is_deepspeed_custom_scheduler)
-        ):
+        if self.args.should_save and (not self.is_deepspeed_enabled or is_deepspeed_custom_scheduler):
             if self.args.use_habana:
                 # Move the state dict from HPU to CPU before saving
                 scheduler_dict = self.lr_scheduler.state_dict()

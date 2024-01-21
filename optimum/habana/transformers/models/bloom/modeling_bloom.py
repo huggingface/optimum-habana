@@ -23,8 +23,8 @@ from typing import Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
-from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomMLP, dropout_add
 from transformers.utils import logging
 

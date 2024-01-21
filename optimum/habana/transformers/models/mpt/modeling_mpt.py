@@ -20,10 +20,10 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.mpt.modeling_mpt import MptForCausalLM, MptModel
 from transformers.utils import logging
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
 
 logger = logging.get_logger(__name__)
