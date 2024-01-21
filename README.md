@@ -190,6 +190,16 @@ The following model architectures, tasks and device distributions have been vali
 
 </div>
 
+- TRL:
+
+<div align="center">
+
+| Architecture     | Training | Inference            | Tasks |
+|------------------|:--------:|:--------------------:|:-----:|
+| LLAMA2 |        | <li>Multi cards</li> | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+
+</div>
+
 Other models and tasks supported by the 🤗 Transformers and 🤗 Diffusers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
 
 If you find any issues while using those, please open an issue or a pull request.
