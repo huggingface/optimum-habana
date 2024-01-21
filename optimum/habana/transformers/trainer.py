@@ -1199,7 +1199,7 @@ class GaudiTrainer(Trainer):
             staging_output_dir = output_dir
         else:
             staging_output_dir = os.path.join(run_dir, f"tmp-{checkpoint_folder}")
-        self.save_model(output_dir, _internal_call=True)
+        self.save_model(staging_output_dir, _internal_call=True)
 
         if not self.args.save_only_model:
             # Save optimizer and scheduler

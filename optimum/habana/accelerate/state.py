@@ -112,7 +112,6 @@ class GaudiPartialState(PartialState):
         ```
         """
         if self.distributed_type in (
-            GaudiDistributedType.MULTI_CPU,
             GaudiDistributedType.DEEPSPEED,
             GaudiDistributedType.MULTI_HPU,
         ):
