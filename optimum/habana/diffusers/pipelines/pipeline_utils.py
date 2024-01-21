@@ -23,6 +23,7 @@ from typing import Optional, Union
 
 import torch
 from diffusers.pipelines import DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import _unwrap_model
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo
 
@@ -164,14 +165,11 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
         for name, module in kwargs.items():
             # retrieve library
-            if module is None:
+            if module is None or isinstance(module, (tuple, list)) and module[0] is None:
                 register_dict = {name: (None, None)}
             else:
                 # register the config from the original module, not the dynamo compiled one
-                if is_compiled_module(module):
-                    not_compiled_module = module._orig_mod
-                else:
-                    not_compiled_module = module
+                not_compiled_module = _unwrap_model(module)
 
                 library = not_compiled_module.__module__.split(".")[0]
                 if library == "optimum":
@@ -261,7 +259,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             # Dynamo wraps the original model in a private class.
             # I didn't find a public API to get the original class.
             if is_compiled_module(sub_model):
-                sub_model = sub_model._orig_mod
+                sub_model = _unwrap_model(sub_model)
                 model_cls = sub_model.__class__
 
             save_method_name = None
