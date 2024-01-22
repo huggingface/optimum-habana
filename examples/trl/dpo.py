@@ -81,7 +81,9 @@ class ScriptArguments:
             "https://github.com/huggingface/transformers/issues/22482#issuecomment-1595790992"
         },
     )
-    seed: Optional[int] = field(default=0, metadata={"help": "the seed"})
+    seed: Optional[int] = field(
+        default=0, metadata={"help": "Random seed that will be set at the beginning of training."}
+    )
 
 
 def get_stack_exchange_paired(
@@ -131,6 +133,7 @@ def get_stack_exchange_paired(
 if __name__ == "__main__":
     parser = HfArgumentParser(ScriptArguments)
     script_args = parser.parse_args_into_dataclasses()[0]
+
     # 1. initialize training arguments:
     training_args = GaudiTrainingArguments(
         per_device_train_batch_size=script_args.per_device_train_batch_size,
@@ -157,8 +160,10 @@ if __name__ == "__main__":
         use_hpu_graphs_for_inference=True,
         seed=script_args.seed,
     )
-    # initial seed for reproducible experiments
+
+    # Set seed before initializing model.
     set_seed(training_args.seed)
+
     # 2. load a pretrained model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
