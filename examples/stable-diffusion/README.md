@@ -248,7 +248,8 @@ python text_to_image_generation.py \
     --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-openpose \
     --prompts "Chef in the kitchen" \
-    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png  \
+    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png \
+    --control_preprocessing_type "none" \
     --num_images_per_prompt 20 \
     --batch_size 4 \
     --image_save_dir /tmp/controlnet_images \

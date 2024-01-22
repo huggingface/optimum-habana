@@ -99,6 +99,13 @@ def main():
         help=("Path to the controlnet conditioning image"),
     )
     parser.add_argument(
+        "--control_preprocessing_type",
+        type=str,
+        default="canny",
+        help=("The type of preprocessing to apply on contol image. Only `canny` is supported."
+              " Defaults to `canny`. Set to unsupported value to disable preprocessing."),
+    )
+    parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
     )
     parser.add_argument("--batch_size", type=int, default=1, help="The number of images in a batch.")
@@ -219,13 +226,14 @@ def main():
         from diffusers.utils import load_image
         from PIL import Image
         # get control image
-        image = load_image(args.control_image)
-        image = np.array(image)
-        # get canny image
-        image = cv2.Canny(image, 100, 200)
-        image = image[:, :, None]
-        image = np.concatenate([image, image, image], axis=2)
-        canny_image = Image.fromarray(image)
+        control_image = load_image(args.control_image)
+        if args.control_preprocessing_type == "canny":
+            image = np.array(control_image)
+            # get canny image
+            image = cv2.Canny(image, 100, 200)
+            image = image[:, :, None]
+            image = np.concatenate([image, image, image], axis=2)
+            control_image = Image.fromarray(image)
 
     # Import selected pipeline
     sdxl_models = ["stable-diffusion-xl-base-1.0", "sdxl-turbo"]
@@ -291,7 +299,7 @@ def main():
         )
         outputs = pipeline(
             prompt=args.prompts,
-            image=canny_image,
+            image=control_image,
             num_images_per_prompt=args.num_images_per_prompt,
             batch_size=args.batch_size,
             num_inference_steps=args.num_inference_steps,
