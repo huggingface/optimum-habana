@@ -218,28 +218,60 @@ python run_generation.py \
 Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For example `--simulate_dyn_prompt 25,35,45` will extend or crop the default prompt (or the prompt passed in using `--prompt`) to sizes 25, 35, and 45, and throughput will be measured for these 3 lengths. If `--simulate_dyn_prompt` is used, the min and max input lengths from it are computed to perform warmup as well. One final optimization that can be used in case of dynamic inputs is `--reduce_recompile`. Thus the suggested configuration to simulate dynamicity after warmup is to use all three arguments: `--simulate_dyn_prompt 25 35 45 --reduce_recompile --bucket_size 30`
 ### Running with FP8
 
-Llama2-7b in FP8 is enabled. Use `--fp8` to enable quantization in fp8.
-Add the `--kv_cache_fp8` argument to run the model with a KV cache allocated in fp8.
-More information on enabling fp8 in SynapseAI is available here:
-https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
+Llama2-70b and 7b in FP8 is enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+For full details on HQT see: https://docs.habana.ai/en/v1.14.0/PyTorch/Inference_on_PyTorch/Inference_Using_HQT.html
 
-Here is an example:
+Use this command to measure the tensor statistics on the 70B model:
+
 ```bash
-USE_DEFAULT_QUANT_PARAM=true UPDATE_GRAPH_OUTPUT_MME=false ENABLE_CALC_DYNAMIC_RANGE=false ENABLE_EXPERIMENTAL_FLAGS=true \
-python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
+QUANT_CONFIG=./quantization_config//maxabs_measure.json deepspeed --num_gpus 8 run_lm_eval.py \
+-o acc_70b_bs1_measure.txt \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
+--attn_softmax_bf16 \
 --use_hpu_graphs \
+--trim_logits \
 --use_kv_cache \
 --reuse_cache \
---trim_logits \
+--bf16 \
+--batch_size 1
+```
+
+Use this command to quantize the model based on the measurements and run the 70B model:
+
+```bash
+QUANT_CONFIG=./quantization_config//maxabs_quant.json deepspeed --num_gpus 8 run_lm_eval.py \
+-o acc_70b_bs1_quant.txt \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
 --attn_softmax_bf16 \
---max_new_tokens 200 \
---batch_size=2 \
---kv_cache_fp8 \
+--use_hpu_graphs \
+--trim_logits \
+--use_kv_cache \
+--reuse_cache \
+--bf16 \
+--batch_size 1 \
 --fp8
 ```
 
+Use this command to quantize based on the measurements and run batch size 277,
+2048 max_new_tokens and max_input_tokens on the 70B model:
 
+```bash
+QUANT_CONFIG=./quantization_config//maxabs_quant.json deepspeed --num_gpus 8 run_generation.py \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
+--attn_softmax_bf16 \
+--use_hpu_graphs \
+--trim_logits \
+--use_kv_cache \
+--limit_hpu_graphs \
+--reuse_cache \
+--max_new_tokens 2048 \
+--max_input_tokens 2048 \
+--fp8 \
+--bf16 \
+--batch_size 277
+```
+
+`--fp8` is required to enable quantization in fp8.
 
 ## Language Model Evaluation Harness
 
