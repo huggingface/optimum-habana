@@ -98,8 +98,8 @@ Here are a few settings you may be interested in:
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
-- `--kv_cache_fp8` Store kv-cache in float8 when kv-cache is used
 - `--fp8` Enable Quantization to fp8
+- `--kv_cache_fp8` Deprecated - Store kv-cache in float8 when kv-cache is used. should not be used with HQT(Habana Quantization Toolkit)
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -218,35 +218,65 @@ python run_generation.py \
 Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For example `--simulate_dyn_prompt 25,35,45` will extend or crop the default prompt (or the prompt passed in using `--prompt`) to sizes 25, 35, and 45, and throughput will be measured for these 3 lengths. If `--simulate_dyn_prompt` is used, the min and max input lengths from it are computed to perform warmup as well. One final optimization that can be used in case of dynamic inputs is `--reduce_recompile`. Thus the suggested configuration to simulate dynamicity after warmup is to use all three arguments: `--simulate_dyn_prompt 25 35 45 --reduce_recompile --bucket_size 30`
 ### Running with FP8
 
-Llama2-7b in FP8 is enabled. Use `--fp8` to enable quantization in fp8.
-Add the `--kv_cache_fp8` argument to run the model with a KV cache allocated in fp8.
+Llama2-70b and Llama2-7b in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
-Here is an example:
+Here is an example to measure the tensor quantization statistics on LLama2-70b:
 ```bash
-USE_DEFAULT_QUANT_PARAM=true UPDATE_GRAPH_OUTPUT_MME=false ENABLE_CALC_DYNAMIC_RANGE=false ENABLE_EXPERIMENTAL_FLAGS=true \
-python run_generation.py \
---model_name_or_path meta-llama/Llama-2-7b-hf \
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 8 run_lm_eval.py \
+-o acc_70b_bs1_measure.txt \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
+--attn_softmax_bf16 \
 --use_hpu_graphs \
+--trim_logits \
 --use_kv_cache \
 --reuse_cache \
---trim_logits \
+--bf16 \
+--batch_size 1
+```
+
+
+Here is an example to quantize the model based on previous measurements for LLama2-70b:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 8 run_lm_eval.py \
+-o acc_70b_bs1_quant.txt \
 --attn_softmax_bf16 \
---max_new_tokens 200 \
---batch_size=2 \
---kv_cache_fp8 \
+--use_hpu_graphs \
+--trim_logits \
+--use_kv_cache \
+--reuse_cache \
+--bf16 \
+--batch_size 1 \
 --fp8
 ```
 
+Alternatively, here is another example to quantize the model based on previous measurements for LLama2-70b:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 8 run_generation.py \
+--attn_softmax_bf16 \
+--use_hpu_graphs \
+--trim_logits \
+--use_kv_cache \
+--reuse_cache \
+--bf16 \
+--batch_size 277 \
+--max_new_tokens 2048 \
+--max_input_tokens 2048 \
+--limit_hpu_graphs \
+--fp8
+```
+`--fp8` is required to enable quantization in fp8.
 
 
 ## Language Model Evaluation Harness
 
 The evaluation of LLMs can be done using the `lm_eval.py` script. It utilizes the [LM evaluation harness](https://github.com/EleutherAI/lm-evaluation-harness)
  framework and provides the possibility to run one of four tasks: HellaSwag, Lambada_openai, PiQA, WinoGrande.
-
-
 
 For a more detailed description of parameters, please see the help message:
 ```
