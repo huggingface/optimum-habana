@@ -33,6 +33,7 @@ import torch
 from accelerate import skip_first_batches
 from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin
 from huggingface_hub import upload_folder
+from packaging import version
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
@@ -117,9 +118,9 @@ if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
 if is_accelerate_available():
+    from accelerate import __version__ as accelerate_version
     from accelerate.utils import (
         load_fsdp_optimizer,
-        save_fsdp_model,
         save_fsdp_optimizer,
     )
 
@@ -1434,15 +1435,16 @@ class GaudiTrainer(Trainer):
         """
         if output_dir is None:
             output_dir = self.args.output_dir
-        # copy from https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/trainer.py#L2870
+        # copy from https://github.com/huggingface/transformers/blob/a7cab3c283312b8d4de5df3bbe719971e24f4281/src/transformers/trainer.py#L2825
+        # Note we picked this code from transformers 0.36.2 (when rest of code is from older version) because without this checkpoint with LoRA
+        # was not coming out correct.
         if self.is_fsdp_enabled:
-            state_dict = self.model.state_dict() if not self.is_fsdp_enabled else {}
-            if self.args.should_save:
-                self._save(output_dir, state_dict=state_dict)
-            if self.is_fsdp_enabled:
-                # remove the dummy state_dict
-                remove_dummy_checkpoint(self.args.should_save, output_dir, [WEIGHTS_NAME, SAFE_WEIGHTS_NAME])
-                save_fsdp_model(self.accelerator.state.fsdp_plugin, self.accelerator, self.model, output_dir)
+            if ("FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type)) and (
+                version.parse(accelerate_version) > version.parse("0.24.1")
+            ):
+                state_dict = self.accelerator.get_state_dict(self.model)
+                if self.args.should_save:
+                    self._save(output_dir, state_dict=state_dict)
         elif self.is_deepspeed_enabled:
             # this takes care of everything as long as we aren't under zero3
             try:

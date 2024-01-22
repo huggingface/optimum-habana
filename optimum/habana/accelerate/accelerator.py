@@ -799,6 +799,14 @@ class GaudiAccelerator(Accelerator):
                 from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
 
                 state_dict = clone_tensors_for_torch_save(self.unwrap_model(model).state_dict())
+        # copied from https://github.com/huggingface/accelerate/blob/6f05bbd41a179cc9a86238c7c6f3f4eded70fbd8/src/accelerate/accelerator.py#L3057
+        elif self.distributed_type == DistributedType.FSDP:
+            from torch.distributed.fsdp import FullStateDictConfig, StateDictType
+            from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+            full_state_dict_config = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+            with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, full_state_dict_config):
+                state_dict = model.state_dict()
         else:
             if unwrap:
                 model = self.unwrap_model(model)
