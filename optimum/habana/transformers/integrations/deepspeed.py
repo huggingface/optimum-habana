@@ -48,7 +48,7 @@ class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
         self._dtype = None
         self.mismatches = []
 
-    def trainer_config_process(self, args):
+    def trainer_config_process(self, args, auto_find_batch_size=False):
         """
         Adjust the config with `TrainingArguments` values. This stage is run during `TrainingArguments` object
         creation.
@@ -57,10 +57,15 @@ class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
         # train_batch_size = world_size * train_micro_batch_size_per_gpu * gradient_accumulation_steps
         train_batch_size = args.world_size * args.per_device_train_batch_size * args.gradient_accumulation_steps
         self.fill_match(
-            "train_micro_batch_size_per_gpu", args.per_device_train_batch_size, "per_device_train_batch_size"
+            "train_micro_batch_size_per_gpu",
+            args.per_device_train_batch_size,
+            "per_device_train_batch_size",
+            not auto_find_batch_size,
         )
         self.fill_match("gradient_accumulation_steps", args.gradient_accumulation_steps, "gradient_accumulation_steps")
-        self.fill_match("train_batch_size", train_batch_size, "train_batch_size (calculated)")
+        self.fill_match(
+            "train_batch_size", train_batch_size, "train_batch_size (calculated)", not auto_find_batch_size
+        )
         self.fill_match("gradient_clipping", args.max_grad_norm, "max_grad_norm")
 
         self.fill_match("optimizer.params.lr", args.learning_rate, "learning_rate")

@@ -27,7 +27,10 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+from transformers.modeling_attn_mask_utils import (
+    _prepare_4d_causal_attention_mask,
+    _prepare_4d_causal_attention_mask_for_sdpa,
+)
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.mistral.modeling_mistral import MistralForCausalLM, apply_rotary_pos_emb, repeat_kv
 from transformers.utils import logging
@@ -250,14 +253,24 @@ def gaudi_mistral_model_forward(
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input_ids)
 
-    # 4d mask is passed through the layers
-    attention_mask = _prepare_4d_causal_attention_mask(
-        attention_mask,
-        (batch_size, seq_length),
-        inputs_embeds,
-        past_key_values_length,
-        sliding_window=self.config.sliding_window,
-    )
+    if self._attn_implementation == "sdpa" and not output_attentions:
+        # output_attentions=True can not be supported when using SDPA, and we fall back on
+        # the manual implementation that requires a 4D causal mask in all cases.
+        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+            attention_mask,
+            (batch_size, seq_length),
+            inputs_embeds,
+            past_key_values_length,
+        )
+    else:
+        # 4d mask is passed through the layers
+        attention_mask = _prepare_4d_causal_attention_mask(
+            attention_mask,
+            (batch_size, seq_length),
+            inputs_embeds,
+            past_key_values_length,
+            sliding_window=self.config.sliding_window,
+        )
 
     hidden_states = inputs_embeds
 
@@ -415,7 +428,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
 
                 # Keep only the unprocessed tokens:
                 # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
-                # some of the inputs are exclusivelly passed as part of the cache (e.g. when passing input_embeds as
+                # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
                 # input)
                 if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
                     input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]

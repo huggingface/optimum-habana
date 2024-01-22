@@ -38,8 +38,8 @@ from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import speed_metrics
-from ..pipeline_stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 from ..pipeline_utils import GaudiDiffusionPipeline
+from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

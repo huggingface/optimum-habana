@@ -470,8 +470,9 @@ class GaudiTrainer(Trainer):
             if resume_from_checkpoint is None:
                 raise ValueError(f"No valid checkpoint found in output directory ({args.output_dir})")
 
-        if resume_from_checkpoint is not None and not self.is_deepspeed_enabled:
-            self._load_from_checkpoint(resume_from_checkpoint)
+        if resume_from_checkpoint is not None:
+            if not self.is_deepspeed_enabled:
+                self._load_from_checkpoint(resume_from_checkpoint)
             # In case of repeating the find_executable_batch_size, set `self._train_batch_size` properly
             state = TrainerState.load_from_json(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME))
             if state.train_batch_size is not None:
@@ -518,6 +519,19 @@ class GaudiTrainer(Trainer):
         self.accelerator.free_memory()
         self._train_batch_size = batch_size
         if self.args.auto_find_batch_size:
+            if self.state.train_batch_size != self._train_batch_size:
+                from accelerate.utils import release_memory
+
+                (self.model_wrapped,) = release_memory(self.model_wrapped)
+                self.model_wrapped = self.model
+
+                # Check for DeepSpeed *after* the intial pass and modify the config
+                if self.is_deepspeed_enabled:
+                    # Temporarily unset `self.args.train_batch_size`
+                    original_bs = self.args.per_device_train_batch_size
+                    self.args.per_device_train_batch_size = self._train_batch_size // max(1, self.args.n_gpu)
+                    self.propagate_args_to_deepspeed(True)
+                    self.args.per_device_train_batch_size = original_bs
             self.state.train_batch_size = self._train_batch_size
         logger.debug(f"Currently training with a batch size of: {self._train_batch_size}")
         # Data loader and number of training steps
@@ -1073,7 +1087,11 @@ class GaudiTrainer(Trainer):
                 if self.args.save_safetensors and os.path.isfile(best_safe_model_path):
                     state_dict = safetensors.torch.load_file(best_safe_model_path, device="cpu")
                 else:
-                    state_dict = torch.load(best_model_path, map_location="cpu")
+                    state_dict = torch.load(
+                        best_model_path,
+                        map_location="cpu",
+                        weights_only=True,
+                    )
 
                 # If the model is on the GPU, it still works!
                 load_result = model.load_state_dict(state_dict, False)
@@ -1093,7 +1111,7 @@ class GaudiTrainer(Trainer):
         if self.args.adjust_throughput:
             save_start = time.perf_counter()
 
-        if self.control.should_log:
+        if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
             logs: Dict[str, float] = {}
 
             # all_gather + mean() to get average loss over all processes
@@ -1112,17 +1130,7 @@ class GaudiTrainer(Trainer):
 
         metrics = None
         if self.control.should_evaluate:
-            if isinstance(self.eval_dataset, dict):
-                metrics = {}
-                for eval_dataset_name, eval_dataset in self.eval_dataset.items():
-                    dataset_metrics = self.evaluate(
-                        eval_dataset=eval_dataset,
-                        ignore_keys=ignore_keys_for_eval,
-                        metric_key_prefix=f"eval_{eval_dataset_name}",
-                    )
-                    metrics.update(dataset_metrics)
-            else:
-                metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+            metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
             self._report_to_hp_search(trial, self.state.global_step, metrics)
 
             # Run delayed LR scheduler now that metrics are populated
@@ -1233,21 +1241,23 @@ class GaudiTrainer(Trainer):
         # Place checkpoint in final location after all saving is finished.
         # First wait for everyone to finish writing
         self.args.distributed_state.wait_for_everyone()
-        # Then go through the rewriting process starting on process 0
-        if staging_output_dir != output_dir:
-            with self.args.main_process_first(
-                desc="Renaming model checkpoint folder to true location", local=self.args.save_on_each_node
-            ):
+
+        # Then go through the rewriting process, only renaming and rotating from main process(es)
+        if self.is_local_process_zero() if self.args.save_on_each_node else self.is_world_process_zero():
+            if staging_output_dir != output_dir:
                 if os.path.exists(staging_output_dir):
                     os.rename(staging_output_dir, output_dir)
 
-        # Maybe delete some older checkpoints.
-        if self.args.should_save:
-            self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
+                    # Ensure rename completed in cases where os.rename is not atomic
+                    fd = os.open(output_dir, os.O_RDONLY)
+                    os.fsync(fd)
+                    os.close(fd)
 
-        # Synchronize all processes after saving the current checkpoint
-        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.use_habana:
-            torch.distributed.barrier()
+            # Maybe delete some older checkpoints.
+            if self.args.should_save:
+                self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
+
+        self.args.distributed_state.wait_for_everyone()
 
     def _save_rng_state(self, output_dir):
         # Save RNG state in non-distributed training
@@ -1502,7 +1512,9 @@ class GaudiTrainer(Trainer):
             else:
                 logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
                 if self.args.save_safetensors:
-                    safetensors.torch.save_file(state_dict, os.path.join(output_dir, SAFE_WEIGHTS_NAME))
+                    safetensors.torch.save_file(
+                        state_dict, os.path.join(output_dir, SAFE_WEIGHTS_NAME), metadata={"format": "pt"}
+                    )
                 else:
                     torch.save(state_dict, os.path.join(output_dir, WEIGHTS_NAME))
         else:
@@ -2100,14 +2112,20 @@ class GaudiTrainer(Trainer):
         self.is_fsdp_enabled = False
 
         # post accelerator creation setup
-        if self.is_deepspeed_enabled:
-            if getattr(self.args, "hf_deepspeed_config", None) is None:
-                from .integrations.deepspeed import GaudiTrainerDeepSpeedConfig
+        if self.is_deepspeed_enabled and getattr(self.args, "hf_deepspeed_config", None) is None:
+            self.propagate_args_to_deepspeed()
 
-                ds_plugin = self.accelerator.state.deepspeed_plugin
+    def propagate_args_to_deepspeed(self, auto_find_batch_size=False):
+        """
+        Sets values in the deepspeed plugin based on the Trainer args
+        """
+        from .integrations.deepspeed import GaudiTrainerDeepSpeedConfig
 
-                ds_plugin.hf_ds_config = GaudiTrainerDeepSpeedConfig(ds_plugin.hf_ds_config.config)
-                ds_plugin.deepspeed_config = ds_plugin.hf_ds_config.config
+        ds_plugin = self.accelerator.state.deepspeed_plugin
+
+        ds_plugin.hf_ds_config = GaudiTrainerDeepSpeedConfig(ds_plugin.hf_ds_config.config)
+        ds_plugin.deepspeed_config = ds_plugin.hf_ds_config.config
+        ds_plugin.hf_ds_config.trainer_config_process(self.args, auto_find_batch_size)
 
     def _zero_model_grad(self, model):
         if hasattr(model, "_zero_grad_kwargs"):

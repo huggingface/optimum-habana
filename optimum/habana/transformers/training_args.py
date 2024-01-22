@@ -31,6 +31,7 @@ from transformers.training_args import (
     default_logdir,
 )
 from transformers.utils import (
+    ACCELERATE_MIN_VERSION,
     get_full_repo_name,
     is_accelerate_available,
     is_safetensors_available,
@@ -627,9 +628,10 @@ class GaudiTrainingArguments(TrainingArguments):
                 gaudi_config.declare_autocast_bf16_fp32_ops()
 
         logger.info("PyTorch: setting up devices")
-        if not is_accelerate_available(min_version="0.21.0"):
+        if not is_accelerate_available():
             raise ImportError(
-                "Using the `GaudiTrainer` requires `accelerate>=0.21.0`: Please run `pip install accelerate -U`."
+                f"Using the `Trainer` with `PyTorch` requires `accelerate>={ACCELERATE_MIN_VERSION}`: "
+                "Please run `pip install transformers[torch]` or `pip install accelerate -U`"
             )
         GaudiAcceleratorState._reset_state()
         GaudiPartialState._reset_state()
