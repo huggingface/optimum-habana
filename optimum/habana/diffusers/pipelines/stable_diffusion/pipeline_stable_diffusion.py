@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -22,7 +23,7 @@ import numpy as np
 import PIL
 import torch
 from diffusers.image_processor import PipelineImageInput
-from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipeline, StableDiffusionSafetyChecker
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
 from diffusers.schedulers import KarrasDiffusionSchedulers
@@ -44,6 +45,51 @@ class GaudiStableDiffusionPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
     throughput: float
+
+
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    timesteps: Optional[List[int]] = None,
+    **kwargs,
+):
+    """
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used,
+            `timesteps` must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`List[int]`, *optional*):
+                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
+                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
+                must be `None`.
+
+    Returns:
+        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device="cpu", **kwargs)
+        timesteps = scheduler.timesteps.to(device)
+        num_inference_steps = len(timesteps)
+    else:
+        scheduler.set_timesteps(num_inference_steps, device="cpu", **kwargs)
+        timesteps = scheduler.timesteps.to(device)
+    scheduler.reset_timestep_dependent_params()
+    return timesteps, num_inference_steps
 
 
 class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeline):
@@ -240,6 +286,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
@@ -266,6 +316,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -289,7 +340,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Returns:
             [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] or `tuple`:
@@ -336,6 +387,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             self._guidance_rescale = guidance_rescale
             self._clip_skip = clip_skip
             self._cross_attention_kwargs = cross_attention_kwargs
+            self._interrupt = False
 
             # 2. Define call parameters
             if prompt is not None and isinstance(prompt, str):
@@ -370,10 +422,16 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 clip_skip=self.clip_skip,
             )
 
+            if ip_adapter_image is not None:
+                output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
+                image_embeds, negative_image_embeds = self.encode_image(
+                    ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+                )
+                if self.do_classifier_free_guidance:
+                    image_embeds = torch.cat([negative_image_embeds, image_embeds])
+
             # 4. Prepare timesteps
-            self.scheduler.set_timesteps(num_inference_steps, device="cpu")
-            timesteps = self.scheduler.timesteps.to(device)
-            self.scheduler.reset_timestep_dependent_params()
+            timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
 
             # 5. Prepare latent variables
             num_channels_latents = self.unet.config.in_channels
@@ -391,7 +449,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
             extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-            # 6.5 Optionally get Guidance Scale Embedding
+            # 6.1 Add image embeds for IP-Adapter
+            added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+
+            # 6.2 Optionally get Guidance Scale Embedding
             timestep_cond = None
             if self.unet.config.time_cond_proj_dim is not None:
                 guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(
@@ -431,6 +492,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
 
                 for i in range(num_inference_steps):
+                    if self.interrupt:
+                        continue
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
@@ -449,6 +512,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                         text_embeddings_batch,
                         timestep_cond,
                         self.cross_attention_kwargs,
+                        added_cond_kwargs,
                         capture,
                     )
 
@@ -553,7 +617,14 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
 
     @torch.no_grad()
     def unet_hpu(
-        self, latent_model_input, timestep, encoder_hidden_states, timestep_cond, cross_attention_kwargs, capture
+        self,
+        latent_model_input,
+        timestep,
+        encoder_hidden_states,
+        timestep_cond,
+        cross_attention_kwargs,
+        added_cond_kwargs,
+        capture,
     ):
         if self.use_hpu_graphs:
             return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture)
@@ -564,6 +635,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 encoder_hidden_states=encoder_hidden_states,
                 timestep_cond=timestep_cond,
                 cross_attention_kwargs=cross_attention_kwargs,
+                added_cond_kwargs=added_cond_kwargs,
                 return_dict=False,
             )[0]
 
