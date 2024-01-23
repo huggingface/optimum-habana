@@ -231,10 +231,18 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
+    parser.add_argument(
+        "--torch_compile",
+        action="store_true",
+        help="Whether to use torch compiled model or not.",
+    )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
 
     args = parser.parse_args()
+
+    if args.torch_compile:
+        args.use_hpu_graphs = False
 
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
@@ -246,6 +254,10 @@ def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
     model, tokenizer, generation_config = initialize_model(args, logger)
+
+    use_lazy_mode = True
+    if args.torch_compile and model.config.model_type == "llama":
+        use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
 
@@ -299,7 +311,7 @@ def main():
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
-                lazy_mode=True,
+                lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
@@ -479,7 +491,7 @@ def main():
             outputs = model.generate(
                 **batch,
                 generation_config=generation_config,
-                lazy_mode=True,
+                lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
