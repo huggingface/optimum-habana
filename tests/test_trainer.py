@@ -29,6 +29,7 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 from huggingface_hub import HfFolder, delete_repo, list_repo_commits
 from parameterized import parameterized
+from pytest import mark
 from requests.exceptions import HTTPError
 from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
 from transformers.hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS
@@ -706,6 +707,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.n_epochs = args.num_train_epochs
         self.batch_size = args.train_batch_size
 
+    @mark.skip("Skip this test until PT_HPU_LAZY_MODE=0 is set as default for all tests")
     def test_eager_mode(self):
         train_dataset = RegressionDataset()
         eval_dataset = RegressionDataset()

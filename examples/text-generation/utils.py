@@ -114,8 +114,8 @@ def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
     check_min_version("4.34.0")
     check_optimum_habana_min_version("1.9.0.dev0")
-    #TODO: SW-167588 - WA for memory issue in hqt prep_model 
-    os.environ.setdefault('EXPERIMENTAL_WEIGHT_SHARING', 'FALSE')
+    # TODO: SW-167588 - WA for memory issue in hqt prep_model
+    os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
     if args.global_rank == 0:
         os.environ.setdefault("GRAPH_VISUALIZATION", "true")
@@ -162,6 +162,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     if args.quant_config:
         import habana_quantization_toolkit
+
         habana_quantization_toolkit.prep_model(model)
     model = model.eval().to(args.device)
 
@@ -232,9 +233,10 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     model = model.module
     if model.config.model_type == "llama":
         patch_scoped_linear_all_reduce(model)
-    
+
     if args.quant_config:
         import habana_quantization_toolkit
+
         habana_quantization_toolkit.prep_model(model)
     return model
 

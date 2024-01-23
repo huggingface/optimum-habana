@@ -1,6 +1,6 @@
 # copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama_2/scripts/dpo_llama2.py, enable it for Gaudi2
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import torch
 from datasets import Dataset, load_dataset
@@ -9,6 +9,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiDPOTrainer
+from optimum.habana.utils import set_seed
 
 
 # Define and parse arguments.
@@ -48,7 +49,10 @@ class ScriptArguments:
     lora_alpha: Optional[float] = field(default=16, metadata={"help": "the lora alpha parameter"})
     lora_dropout: Optional[float] = field(default=0.05, metadata={"help": "the lora dropout parameter"})
     lora_r: Optional[int] = field(default=8, metadata={"help": "the lora r parameter"})
-
+    lora_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the LoRA method."},
+    )
     max_prompt_length: Optional[int] = field(default=512, metadata={"help": "the maximum prompt length"})
     max_length: Optional[int] = field(default=1024, metadata={"help": "the maximum sequence length"})
     max_steps: Optional[int] = field(default=1000, metadata={"help": "max number of training steps"})
@@ -76,6 +80,9 @@ class ScriptArguments:
             "help": "fix for DDP issues with LM bias/mask buffers - invalid scalar type,`inplace operation. See"
             "https://github.com/huggingface/transformers/issues/22482#issuecomment-1595790992"
         },
+    )
+    seed: Optional[int] = field(
+        default=0, metadata={"help": "Random seed that will be set at the beginning of training."}
     )
 
 
@@ -126,6 +133,7 @@ def get_stack_exchange_paired(
 if __name__ == "__main__":
     parser = HfArgumentParser(ScriptArguments)
     script_args = parser.parse_args_into_dataclasses()[0]
+
     # 1. initialize training arguments:
     training_args = GaudiTrainingArguments(
         per_device_train_batch_size=script_args.per_device_train_batch_size,
@@ -148,9 +156,14 @@ if __name__ == "__main__":
         run_name="dpo_llama2",
         use_habana=True,
         use_lazy_mode=True,
-        use_hpu_graphs_for_training=True,
+        use_hpu_graphs_for_training=not script_args.gradient_checkpointing,
         use_hpu_graphs_for_inference=True,
+        seed=script_args.seed,
     )
+
+    # Set seed before initializing model.
+    set_seed(training_args.seed)
+
     # 2. load a pretrained model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
@@ -192,15 +205,7 @@ if __name__ == "__main__":
         r=script_args.lora_r,
         lora_alpha=script_args.lora_alpha,
         lora_dropout=script_args.lora_dropout,
-        target_modules=[
-            "q_proj",
-            "v_proj",
-            "k_proj",
-            "out_proj",
-            "fc_in",
-            "fc_out",
-            "wte",
-        ],
+        target_modules=script_args.lora_target_modules,
         bias="none",
         task_type="CAUSAL_LM",
     )

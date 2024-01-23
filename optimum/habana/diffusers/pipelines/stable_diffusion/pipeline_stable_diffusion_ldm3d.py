@@ -285,6 +285,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             # 4. Prepare timesteps
             self.scheduler.set_timesteps(num_inference_steps, device="cpu")
             timesteps = self.scheduler.timesteps.to(device)
+            self.scheduler.reset_timestep_dependent_params()
 
             # 5. Prepare latent variables
             num_channels_latents = self.unet.config.in_channels
@@ -362,7 +363,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
 
                     # compute the previous noisy sample x_t -> x_t-1
                     latents_batch = self.scheduler.step(
-                        noise_pred, latents_batch, **extra_step_kwargs, return_dict=False
+                        noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False
                     )[0]
 
                     if not self.use_hpu_graphs:
@@ -379,8 +380,6 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 else:
                     image = latents_batch
                 outputs["images"].append(image)
-
-                self.scheduler.reset_timestep_dependent_params()
 
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()

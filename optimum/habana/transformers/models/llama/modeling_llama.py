@@ -15,8 +15,6 @@ from transformers.models.llama.modeling_llama import (
     logger,
 )
 
-from ..modeling_all_models import ScopedLinearAllReduce
-
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -41,6 +39,7 @@ def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
     if prev.dtype == torch.float8_e4m3fn:
         from habana_frameworks.torch.hpex.kernels.Fp8Ops import cast_to_fp8_v2
+
         cur = cast_to_fp8_v2(cur, None, False, False, prev.dtype)[0]
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
@@ -94,8 +93,8 @@ class Matmul(torch.nn.Module):
     def forward(self, x, y):
         return torch.matmul(x, y)
 
-class KVCache(torch.nn.Module):
 
+class KVCache(torch.nn.Module):
     def __init__(self):
         super(KVCache, self).__init__()
         self.cache = None
@@ -121,6 +120,7 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return update(self.cache, cur, dim, idx, self.inp_seq_len)
 
+
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
@@ -130,9 +130,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
-
-        self.register_buffer("norm_factor", torch.tensor(1.0 / math.sqrt(self.head_dim)), persistent=False)
-
+        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -260,7 +258,9 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 # first token
                 with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
 
         else:
             attn_weights = self.matmul_qk(query_states, key_states.transpose(2, 3)) * self.norm_factor
@@ -776,6 +776,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
+        # TODO: remove `.clone()` when SynapseAI v1.15 is released
+        return FusedRoPE.apply(q, cos.clone(), sin.clone(), position_ids), FusedRoPE.apply(
+            k, cos.clone(), sin.clone(), position_ids
+        )
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

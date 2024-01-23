@@ -115,6 +115,93 @@ python text_to_image_generation.py \
 > - use [the latest checkpoint](https://huggingface.co/Intel/ldm3d-4c) for generating improved results
 > - use [the pano checkpoint](https://huggingface.co/Intel/ldm3d-pano) to generate panoramic view
 
+### Stable Diffusion XL (SDXL)
+
+Stable Diffusion XL was proposed in [SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis](https://arxiv.org/pdf/2307.01952.pdf) by the Stability AI team.
+
+Here is how to generate SDXL images with a single prompt:
+```python
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --prompts "Sailing ship painting by Van Gogh" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/stable_diffusion_xl_images \
+    --scheduler euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
+Here is how to generate SDXL images with several prompts:
+```python
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
+    --num_images_per_prompt 20 \
+    --batch_size 8 \
+    --image_save_dir /tmp/stable_diffusion_xl_images \
+    --scheduler euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+SDXL combines a second text encoder (OpenCLIP ViT-bigG/14) with the original text encoder to significantly
+increase the number of parameters. Here is how to generate images with several prompts for both `prompt`
+and `prompt_2` (2nd text encoder), as well as their negative prompts:
+```python
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
+    --prompts_2 "Red tone" "Blue tone" \
+    --negative_prompts "Low quality" "Sketch" \
+    --negative_prompts_2 "Clouds" "Clouds" \
+    --num_images_per_prompt 20 \
+    --batch_size 8 \
+    --image_save_dir /tmp/stable_diffusion_xl_images \
+    --scheduler euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
+### SDXL-Turbo
+SDXL-Turbo is a distilled version of SDXL 1.0, trained for real-time synthesis.
+
+Here is how to generate images with multiple prompts:
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/sdxl-turbo \
+    --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
+    --num_images_per_prompt 20 \
+    --batch_size 8 \
+    --image_save_dir /tmp/stable_diffusion_xl_turbo_images \
+    --scheduler euler_ancestral_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16 \
+    --num_inference_steps 1 \
+    --guidance_scale 0.0 \
+    --timestep_spacing trailing
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
 
 ## Textual Inversion
 

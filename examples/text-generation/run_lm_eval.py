@@ -78,7 +78,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         if self.model.config.model_type == "llama":
             self.model_inputs.update(
                 {
-                    "reuse_cache" : self.options.reuse_cache,
+                    "reuse_cache": self.options.reuse_cache,
                     "attn_softmax_bf16": self.options.attn_softmax_bf16,
                 }
             )
@@ -174,6 +174,7 @@ def main():
         print(json.dumps(results, indent=2))
     if args.quant_config:
         import habana_quantization_toolkit
+
         habana_quantization_toolkit.finish_measurements(model)
 
 
