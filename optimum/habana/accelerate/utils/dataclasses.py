@@ -142,5 +142,5 @@ class GaudiFullyShardedDataParallelPlugin(FullyShardedDataParallelPlugin):
         self.activation_checkpointing = str_to_bool(os.environ.get(prefix + "ACTIVATION_CHECKPOINTING", "False")) == 1
 
         if self.sync_module_states:
-            device = "hpu:" + str(torch.hpu.current_device())
+            device = torch.device("hpu")
             self.param_init_fn = lambda x: x.to_empty(device=device, recurse=False)

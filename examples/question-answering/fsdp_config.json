@@ -4,7 +4,7 @@
     "fsdp_forward_prefetch": false,
     "fsdp_offload_params": false,
     "fsdp_sharding_strategy": 1,
-    "fsdp_state_dict_type": "SHARDED_STATE_DICT",
+    "fsdp_state_dict_type": "FULL_STATE_DICT",
     "fsdp_sync_module_states": true,
     "fsdp_use_orig_params": true,
     "transformer_layer_cls_to_wrap": "BertLayer",
