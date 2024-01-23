@@ -240,7 +240,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 
 Here is an example to quantize the model based on previous measurements for LLama2-70b:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_lm_eval.py \
 -o acc_70b_bs1_quant.txt \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
@@ -256,7 +256,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 
 Alternatively, here is another example to quantize the model based on previous measurements for LLama2-70b:
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py \
+QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --attn_softmax_bf16 \
