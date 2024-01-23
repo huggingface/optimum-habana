@@ -196,7 +196,7 @@ The following model architectures, tasks and device distributions have been vali
 
 | Architecture     | Training | Inference            | Tasks |
 |------------------|:--------:|:--------------------:|:-----:|
-| Llama 2          |          | <li>Multi card</li>  | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+| Llama 2          | <li>Multi card</li> |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
 
 </div>
 
