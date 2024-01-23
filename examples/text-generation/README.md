@@ -135,7 +135,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --trim_logits
 ```
 
-To run Falcon inference, use the following command:
+To run Falcon-7B inference, use the following command:
 ```bash
 python run_generation.py \
  --model_name_or_path tiiuae/falcon-7b \
@@ -147,7 +147,7 @@ python run_generation.py \
  --do_sample
 ```
 
-To run Falcon-40b inference on 8 Gaudi2 cards, use the following command:
+To run Falcon-40B inference on 8 Gaudi2 cards, use the following command:
 ```bash
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path tiiuae/falcon-40b \
