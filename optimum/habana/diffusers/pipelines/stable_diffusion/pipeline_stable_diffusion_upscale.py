@@ -381,6 +381,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
             # 4. Prepare timesteps
             self.scheduler.set_timesteps(num_inference_steps, device="cpu")
             timesteps = self.scheduler.timesteps.to(device)
+            self.scheduler.reset_timestep_dependent_params()
 
             # 5. Add noise to image
             noise_level = torch.tensor([noise_level], dtype=torch.long, device=device)
@@ -483,7 +484,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
 
                     # compute the previous noisy sample x_t -> x_t-1
                     latents_batch = self.scheduler.step(
-                        noise_pred, latents_batch, **extra_step_kwargs, return_dict=False
+                        noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False
                     )[0]
 
                     if not self.use_hpu_graphs:
@@ -515,8 +516,6 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
                 else:
                     image = latents_batch
                 outputs["images"].append(image)
-
-                self.scheduler.reset_timestep_dependent_params()
 
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()

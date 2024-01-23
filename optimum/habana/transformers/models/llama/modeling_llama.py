@@ -102,7 +102,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.past_key = None
         self.past_value = None
         self.inp_seq_len = -1
-        self.register_buffer("norm_factor", torch.tensor(1.0 / math.sqrt(self.head_dim)), persistent=False)
+        self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         key_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -243,7 +243,9 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 # first token
                 with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
 
         else:
             attn_weights = self.matmul_qk(query_states, key_states.transpose(2, 3)) * self.norm_factor
@@ -759,6 +761,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
+        # TODO: remove `.clone()` when SynapseAI v1.15 is released
+        return FusedRoPE.apply(q, cos.clone(), sin.clone(), position_ids), FusedRoPE.apply(
+            k, cos.clone(), sin.clone(), position_ids
+        )
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

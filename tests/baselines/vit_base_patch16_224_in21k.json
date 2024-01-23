@@ -12,6 +12,7 @@
                     "train_samples_per_second": 349.875,
                     "extra_arguments": [
                         "--remove_unused_columns False",
+                        "--image_column_name img",
                         "--seed 1337",
                         "--use_hpu_graphs_for_inference",
                         "--dataloader_num_workers 1",
@@ -27,6 +28,7 @@
                     "train_samples_per_second": 2509.027,
                     "extra_arguments": [
                         "--remove_unused_columns False",
+                        "--image_column_name img",
                         "--seed 1337",
                         "--use_hpu_graphs_for_inference",
                         "--dataloader_num_workers 1",
@@ -51,6 +53,7 @@
                     "train_samples_per_second": 904.475,
                     "extra_arguments": [
                         "--remove_unused_columns False",
+                        "--image_column_name img",
                         "--seed 1337",
                         "--use_hpu_graphs_for_inference",
                         "--dataloader_num_workers 1",
@@ -66,6 +69,7 @@
                     "train_samples_per_second": 4251.991,
                     "extra_arguments": [
                         "--remove_unused_columns False",
+                        "--image_column_name img",
                         "--seed 1337",
                         "--use_hpu_graphs_for_inference",
                         "--dataloader_num_workers 1",
