@@ -147,6 +147,18 @@ python run_generation.py \
  --do_sample
 ```
 
+To run Falcon-40b inference on 8 Gaudi2 cards, use the following command:
+```bash
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path tiiuae/falcon-40b \
+--max_new_tokens 2048 \
+--bf16 \
+--use_hpu_graphs \
+--use_kv_cache \
+--batch_size 1 \
+--do_sample
+```
+
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
 > - have a HF account
 > - agree to the terms of use of the model in its model card on the HF Hub
