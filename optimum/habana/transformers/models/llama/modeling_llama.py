@@ -228,9 +228,6 @@ class GaudiLlamaAttention(LlamaAttention):
         else:
             past_key_value = None
 
-        key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
-        value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
-
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
 
@@ -248,6 +245,9 @@ class GaudiLlamaAttention(LlamaAttention):
                     )
 
         else:
+            key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
+            value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
+
             attn_weights = self.matmul_qk(query_states, key_states.transpose(2, 3)) * self.norm_factor
 
             if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
