@@ -30,6 +30,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-70b-hf", 58.2750262232098),
             ("facebook/opt-66b", 28.16154122335556),
         ],
+        "torch_compile": [
+            ("meta-llama/Llama-2-7b-hf", 8.95169640119334),
+        ],
     }
 else:
     # Gaudi1 CI baselines
@@ -50,13 +53,22 @@ else:
         "deepspeed": [
             ("bigscience/bloomz-7b1", 27.34439410425298),
         ],
+        "torch_compile": [],
     }
 
 
-def _test_text_generation(model_name: str, baseline: float, token: str, deepspeed: bool = False, world_size: int = 8):
+def _test_text_generation(
+    model_name: str,
+    baseline: float,
+    token: str,
+    deepspeed: bool = False,
+    world_size: int = 8,
+    torch_compile: bool = False,
+):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
 
+    deepspeed = deepspeed and not torch_compile
     if deepspeed:
         command += [
             f"{path_to_example_dir / 'gaudi_spawn.py'}",
@@ -68,10 +80,21 @@ def _test_text_generation(model_name: str, baseline: float, token: str, deepspee
         f"{path_to_example_dir / 'text-generation' / 'run_generation.py'}",
         f"--model_name_or_path {model_name}",
         "--batch_size 1",
-        "--use_hpu_graphs",
         "--use_kv_cache",
         "--max_new_tokens 100",
     ]
+
+    if torch_compile:
+        command += [
+            "--attn_softmax_bf16",
+            "--reuse_cache",
+            "--trim_logits",
+            "--torch_compile",
+        ]
+    else:
+        command += [
+            "--use_hpu_graphs",
+        ]
 
     if not deepspeed:
         command.append("--bf16")
@@ -112,3 +135,11 @@ def test_text_generation_bf16(model_name: str, baseline: float, token: str):
 def test_text_generation_deepspeed(model_name: str, baseline: float, token: str):
     world_size = 2 if "opt-66b" in model_name else 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size)
+
+
+@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
+def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
+    os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
+    os.environ["PT_HPU_LAZY_MODE"] = "0"
+    os.environ["WORLD_SIZE"] = "0"
+    _test_text_generation(model_name, baseline, token, torch_compile=True)
