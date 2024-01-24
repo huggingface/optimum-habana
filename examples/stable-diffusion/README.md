@@ -259,6 +259,24 @@ python text_to_image_generation.py \
     --bf16
 ```
 
+Here is how to generate images with conditioned by canny edge model using Stable Diffusion 2
+```bash
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-2-1 \
+    --controlnet_model_name_or_path thibaud/controlnet-sd21-canny-diffusers \
+    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png \
+    --control_preprocessing_type "none" \
+    --prompts "bird" \
+    --seed 0 \
+    --num_images_per_prompt 10 \
+    --batch_size 2 \
+    --image_save_dir /tmp/controlnet-2-1_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion-2
+```
+
 ## Textual Inversion
 
 [Textual Inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like Stable Diffusion on your own images using just 3-5 examples.

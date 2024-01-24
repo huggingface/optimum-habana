@@ -18,7 +18,6 @@ import logging
 import sys
 from pathlib import Path
 
-import cv2
 import numpy as np
 import torch
 
@@ -231,6 +230,8 @@ def main():
         # get control image
         control_image = load_image(args.control_image)
         if args.control_preprocessing_type == "canny":
+            import cv2
+
             image = np.array(control_image)
             # get canny image
             image = cv2.Canny(image, 100, 200)
