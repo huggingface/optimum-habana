@@ -15,8 +15,6 @@ from transformers.models.llama.modeling_llama import (
     logger,
 )
 
-from ..modeling_all_models import ScopedLinearAllReduce
-
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -39,7 +37,10 @@ except ImportError:
 
 def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
-    cur = cur.to(dtype=prev.dtype)
+    if prev.dtype == torch.float8_e4m3fn:
+        from habana_frameworks.torch.hpex.kernels.Fp8Ops import cast_to_fp8_v2
+
+        cur = cast_to_fp8_v2(cur, None, False, False, prev.dtype)[0]
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
         prev[:, :, :inp_seq_len, :].copy_(cur)
@@ -118,34 +119,50 @@ class Matmul(torch.nn.Module):
         return torch.matmul(x, y)
 
 
+class KVCache(torch.nn.Module):
+    def __init__(self):
+        super(KVCache, self).__init__()
+        self.cache = None
+        self.inp_seq_len = -1
+
+    def allocate(self, inp_seq_len, kv_cache_fp8, dtype, device, shape):
+        if self.cache is None or self.cache.shape != shape:
+            self.inp_seq_len = inp_seq_len
+            if kv_cache_fp8:
+                dtype = torch.float8_e4m3fn
+            self.cache = torch.zeros(shape, dtype=dtype, device=device)
+        else:
+            assert (
+                self.inp_seq_len == inp_seq_len
+            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            self.cache.fill_(0)
+
+    def get_shape(self):
+        if self.cache is None:
+            return None
+        return self.cache.shape
+
+    def forward(self, cur, dim, idx):
+        return update(self.cache, cur, dim, idx, self.inp_seq_len)
+
+
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
 
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
-        self.past_key = None
-        self.past_value = None
+        self.k_cache = KVCache()
+        self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
-        key_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        if self.past_key is None or self.past_key.shape != key_shape:
-            self.inp_seq_len = inp_seq_len
-            device = self.k_proj.weight.device
-            dtype = self.k_proj.weight.dtype
-            if kv_cache_fp8:
-                dtype = torch.float8_e4m3fn
-            self.past_key = torch.zeros(key_shape, dtype=dtype, device=device)
-            self.past_value = torch.zeros(value_shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.past_key.fill_(0)
-            self.past_value.fill_(0)
+        cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
+        device = self.k_proj.weight.device
+        dtype = self.config.torch_dtype
+        self.k_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
+        self.v_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
 
     def update_sincos_cache(self, seq_len):
         # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
@@ -160,14 +177,14 @@ class GaudiLlamaAttention(LlamaAttention):
         tensor.copy_(updated)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
-        if self.past_key is None:
+        if self.k_cache.cache is None:
             return (None, None)
 
-        head_dim = self.past_key.size(-1)
-        seq_length = self.past_key.size(-2)
-        self.reorder(self.past_key, beam_idx, seq_length, head_dim)
-        self.reorder(self.past_value, beam_idx, seq_length, head_dim)
-        return (self.past_key.shape, self.past_value.shape)
+        head_dim = self.k_cache.cache.size(-1)
+        seq_length = self.k_cache.cache.size(-2)
+        self.reorder(self.k_cache.cache, beam_idx, seq_length, head_dim)
+        self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
+        return (self.k_cache.cache.shape, self.v_cache.cache.shape)
 
     def pre_attn_forward(
         self,
@@ -237,17 +254,15 @@ class GaudiLlamaAttention(LlamaAttention):
         if past_key_value is not None or reuse_cache:
             # reuse k, v, self_attention
             if reuse_cache:
-                past_key = self.past_key
-                past_value = self.past_value
+                key_states = self.k_cache(key_states, 2, token_idx)
+                value_states = self.v_cache(value_states, 2, token_idx)
             else:
-                past_key = past_key_value[0]
-                past_value = past_key_value[1]
-            key_states = update(past_key, key_states, 2, token_idx, self.inp_seq_len)
-            value_states = update(past_value, value_states, 2, token_idx, self.inp_seq_len)
+                key_states = update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                value_states = update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
 
         if use_cache:
             if reuse_cache:
-                past_key_value = (self.past_key.shape, self.past_value.shape)
+                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
@@ -323,11 +338,11 @@ class GaudiLlamaAttention(LlamaAttention):
         return attn_output, attn_weights, past_key_value
 
     def attention_all_reduce(self, attn_output):
-        if self.o_proj.__class__ is ScopedLinearAllReduce:
+        if hasattr(self.o_proj, "all_reduce"):
             self.o_proj.all_reduce(attn_output)
 
     def post_attn_forward(self, attn_output):
-        if self.o_proj.__class__ is ScopedLinearAllReduce:
+        if hasattr(self.o_proj, "post_all_reduce"):
             self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
@@ -356,13 +371,13 @@ class GaudiLlamaMLP(LlamaMLP):
         return output
 
     def mlp_all_reduce(self, x):
-        if self.down_proj.__class__ is ScopedLinearAllReduce:
+        if hasattr(self.down_proj, "all_reduce"):
             self.down_proj.all_reduce(x)
 
     def post_mlp_forward(self, x):
         if self.config.pretraining_tp > 1:
             return x
-        if self.down_proj.__class__ is ScopedLinearAllReduce:
+        if hasattr(self.down_proj, "post_all_reduce"):
             return self.down_proj.post_all_reduce(x)
         return x
 

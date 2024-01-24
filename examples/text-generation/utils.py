@@ -96,7 +96,7 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
-def setup_quantization(model):
+def setup_quantization(args, model):
     import habana_frameworks.torch.core as htcore
     from habana_frameworks.torch.core.quantization import _check_params_as_const, _mark_params_as_const
     from habana_frameworks.torch.hpu import hpu
@@ -104,8 +104,8 @@ def setup_quantization(model):
     print("Initializing inference with quantization")
     _mark_params_as_const(model)
     _check_params_as_const(model)
-
-    hpu.enable_quantization()
+    if not args.quant_config:
+        hpu.enable_quantization()
     htcore.hpu_initialize(model)
     return model
 
@@ -114,6 +114,8 @@ def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
     check_min_version("4.34.0")
     check_optimum_habana_min_version("1.9.0.dev0")
+    # TODO: SW-167588 - WA for memory issue in hqt prep_model
+    os.environ.setdefault("EXPERIMENTAL_WEIGHT_SHARING", "FALSE")
 
     if args.global_rank == 0 and not args.torch_compile:
         os.environ.setdefault("GRAPH_VISUALIZATION", "true")
@@ -163,6 +165,10 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         model = peft_model(args, model_dtype, logger, **model_kwargs)
     else:
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+    if args.quant_config:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.prep_model(model)
     model = model.eval().to(args.device)
 
     if args.use_hpu_graphs:
@@ -185,7 +191,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
-    config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     load_to_meta = model_on_meta(config)
 
     if load_to_meta:
@@ -234,6 +240,11 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     model = model.module
     if model.config.model_type == "llama":
         patch_scoped_linear_all_reduce(model)
+
+    if args.quant_config:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.prep_model(model)
     return model
 
 
@@ -366,7 +377,7 @@ def initialize_model(args, logger):
     tokenizer, model = setup_tokenizer(args, model)
     generation_config = setup_generation_config(args, model, tokenizer)
     if args.fp8:
-        model = setup_quantization(model)
+        model = setup_quantization(args, model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
