@@ -763,7 +763,11 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     @slow
     def test_textual_inversion(self):
         path_to_script = (
-            Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "textual_inversion.py"
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "textual_inversion.py"
         )
 
         with tempfile.TemporaryDirectory() as data_dir:
@@ -773,7 +777,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             with tempfile.TemporaryDirectory() as run_dir:
                 cmd_line = [
                     "python3",
-                    f"{path_to_script.parent.parent / 'gaudi_spawn.py'}",
+                    f"{path_to_script.parent.parent.parent / 'gaudi_spawn.py'}",
                     "--use_mpi",
                     "--world_size",
                     "8",
@@ -1723,3 +1727,117 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
 
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
+
+
+class TrainTextToImage(TestCase):
+    """
+    Tests the Stable Diffusion text_to_image Training for Gaudi.
+    """
+
+    def test_train_text_to_image_script(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_text_to_image_sdxl.py"
+        )
+
+        cmd_line = f"""ls {path_to_script}""".split()
+
+        # check find existence
+        p = subprocess.Popen(cmd_line)
+        return_code = p.wait()
+
+        # Ensure the run finished without any issue
+        self.assertEqual(return_code, 0)
+
+    @slow
+    def test_train_text_to_image_sdxl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path_to_script = (
+                Path(os.path.dirname(__file__)).parent
+                / "examples"
+                / "stable-diffusion"
+                / "training"
+                / "train_text_to_image_sdxl.py"
+            )
+
+            cmd_line = f"""
+                 python3
+                 {path_to_script}
+                 --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0
+                 --pretrained_vae_model_name_or_path stabilityai/sdxl-vae
+                 --dataset_name lambdalabs/pokemon-blip-captions
+                 --resolution 64
+                 --center_crop
+                 --random_flip
+                 --proportion_empty_prompts=0.2
+                 --train_batch_size 1
+                 --gradient_accumulation_steps 4
+                 --learning_rate 1e-05
+                 --max_grad_norm 1
+                 --lr_scheduler constant
+                 --lr_warmup_steps 0
+                 --gaudi_config_name Habana/stable-diffusion
+                 --throughput_warmup_steps 3
+                 --use_hpu_graphs
+                 --bf16
+                 --max_train_steps 2
+                 --output_dir {tmpdir}
+                """.split()
+
+            # Run train_text_to_image_sdxl.y
+            p = subprocess.Popen(cmd_line)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+
+    @slow
+    def test_train_text_to_image_sdxl_lora(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path_to_script = (
+                Path(os.path.dirname(__file__)).parent
+                / "examples"
+                / "stable-diffusion"
+                / "training"
+                / "train_text_to_image_sdxl.py"
+            )
+
+            cmd_line = f"""
+                 python3
+                 {path_to_script}
+                 --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0
+                 --pretrained_vae_model_name_or_path=madebyollin/sdxl-vae-fp16-fix
+                 --dataset_name=lambdalabs/pokemon-blip-captions
+                 --caption_column=text
+                 --resolution=64
+                 --random_flip
+                 --train_batch_size=1
+                 --learning_rate=1e-04
+                 --lr_scheduler=constant
+                 --lr_warmup_steps=0
+                 --seed=42
+                 --finetuning_method=lora
+                 --gaudi_config_name=Habana/stable-diffusion
+                 --throughput_warmup_steps=3
+                 --use_hpu_graphs
+                 --bf16
+                 --max_train_steps 2
+                 --output_dir {tmpdir}
+                """.split()
+
+            # Run train_text_to_image_lora.py
+            p = subprocess.Popen(cmd_line)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
