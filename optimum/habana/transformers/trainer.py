@@ -249,6 +249,11 @@ class GaudiTrainer(Trainer):
                 raise error
             self.hpu_random = hpu_random
 
+            if self.is_fsdp_enabled:
+                logger.warning(
+                    "FSDP support on Habana Gaudi is still experimental and has not been validated for all models."
+                )
+
         # Set the correct log level depending on the node
         # Already done in super().init() but we have to do it again
         # because we use optimum.utils.logging here and not

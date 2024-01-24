@@ -10,22 +10,40 @@ import pytest
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
-# Gaudi2 CI baselines
-MODELS_TO_TEST = {
-    "bf16": [
-        (
-            "bert-base-uncased",
-            "Habana/bert-base-uncased",
-            2807,
-            85.4688,
-            "question-answering",
-            24,
-            8,
-            "run_qa.py",
-            "full_shard",
-        ),
-    ],
-}
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    # Gaudi2 CI baselines
+    MODELS_TO_TEST = {
+        "bf16": [
+            (
+                "bert-base-uncased",
+                "Habana/bert-base-uncased",
+                2807,
+                85.4688,
+                "question-answering",
+                24,
+                8,
+                "run_qa.py",
+                "full_shard",
+            ),
+        ],
+    }
+else:
+    # Gaudi1 CI baselines
+    MODELS_TO_TEST = {
+        "bf16": [
+            (
+                "bert-base-uncased",
+                "Habana/bert-base-uncased",
+                2807,
+                85.4688,
+                "question-answering",
+                24,
+                8,
+                "run_qa.py",
+                "full_shard",
+            ),
+        ],
+    }
 
 
 def _test_fsdp(
