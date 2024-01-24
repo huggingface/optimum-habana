@@ -17,6 +17,7 @@ from transformers.models.llama.modeling_llama import (
     LlamaForCausalLM,
     LlamaMLP,
     LlamaModel,
+    LlamaRMSNorm,
     apply_rotary_pos_emb,
     logger,
 )
@@ -354,6 +355,17 @@ class GaudiLlamaMLP(LlamaMLP):
 
 
 class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
+    def __init__(self, config: LlamaConfig, layer_idx: int):
+        super().__init__(config, layer_idx)
+        self.hidden_size = config.hidden_size
+
+        self.self_attn = GaudiLlamaAttention(config=config, layer_idx=layer_idx)
+
+        self.mlp = GaudiLlamaMLP(config)
+        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+
+
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
 
