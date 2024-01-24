@@ -36,7 +36,7 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import check_optimum_habana_min_version, set_seed
 
 
 def adjust_batch(batch, size):
