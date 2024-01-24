@@ -32,7 +32,10 @@ from optimum.utils import logging
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
-from ..stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline, GaudiStableDiffusionPipelineOutput
+from ..stable_diffusion.pipeline_stable_diffusion import (
+    GaudiStableDiffusionPipeline,
+    GaudiStableDiffusionPipelineOutput,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -117,6 +120,35 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         )
 
         self.to(self._device)
+
+    def prepare_latents(self, num_images, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        shape = (num_images, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        if isinstance(generator, list) and len(generator) != num_images:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective number"
+                f" of images of {num_images}. Make sure the number of images matches the length of the generators."
+            )
+
+        if latents is None:
+            # torch.randn is broken on HPU so running it on CPU
+            rand_device = "cpu" if device.type == "hpu" else device
+            if isinstance(generator, list):
+                shape = (1,) + shape[1:]
+                latents = [
+                    torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype)
+                    for i in range(num_images)
+                ]
+                latents = torch.cat(latents, dim=0).to(device)
+            else:
+                latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        else:
+            if latents.shape != shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+            latents = latents.to(device)
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
+        return latents
 
     @torch.no_grad()
     def __call__(
@@ -347,6 +379,7 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
             # 5. Prepare timesteps
             self.scheduler.set_timesteps(num_inference_steps, device="cpu")
             timesteps = self.scheduler.timesteps.to(device)
+            self.scheduler.reset_timestep_dependent_params()
 
             # 6. Prepare latent variables
             num_channels_latents = self.unet.config.in_channels
@@ -429,9 +462,9 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                     # controlnet(s) inference
                     if guess_mode and do_classifier_free_guidance:
                         # Infer ControlNet only for the conditional batch.
-                        control_model_input = latents
+                        control_model_input = latents_batch
                         control_model_input = self.scheduler.scale_model_input(control_model_input, t)
-                        controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+                        controlnet_prompt_embeds = text_embeddings_batch.chunk(2)[1]
                     else:
                         control_model_input = latent_model_input
                         controlnet_prompt_embeds = text_embeddings_batch

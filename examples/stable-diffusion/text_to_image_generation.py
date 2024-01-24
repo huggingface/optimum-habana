@@ -102,8 +102,10 @@ def main():
         "--control_preprocessing_type",
         type=str,
         default="canny",
-        help=("The type of preprocessing to apply on contol image. Only `canny` is supported."
-              " Defaults to `canny`. Set to unsupported value to disable preprocessing."),
+        help=(
+            "The type of preprocessing to apply on contol image. Only `canny` is supported."
+            " Defaults to `canny`. Set to unsupported value to disable preprocessing."
+        ),
     )
     parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
@@ -225,6 +227,7 @@ def main():
     if args.control_image is not None:
         from diffusers.utils import load_image
         from PIL import Image
+
         # get control image
         control_image = load_image(args.control_image)
         if args.control_preprocessing_type == "canny":
@@ -239,8 +242,9 @@ def main():
     sdxl_models = ["stable-diffusion-xl-base-1.0", "sdxl-turbo"]
 
     if args.control_image is not None:
-        from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
         from diffusers import ControlNetModel
+
+        from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
 
         sdxl = False
     elif any(model in args.model_name_or_path for model in sdxl_models):
@@ -297,6 +301,10 @@ def main():
             controlnet=controlnet,
             **kwargs,
         )
+
+        # Set seed before running the model
+        set_seed(args.seed)
+
         outputs = pipeline(
             prompt=args.prompts,
             image=control_image,

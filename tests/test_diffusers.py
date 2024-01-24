@@ -26,13 +26,14 @@ from unittest import TestCase, skipUnless
 import numpy as np
 import requests
 import torch
-from diffusers import AutoencoderKL, UNet2DConditionModel, ControlNetModel
+from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
+from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.testing_utils import parse_flag_from_env, slow
-from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import (
@@ -40,14 +41,14 @@ from optimum.habana.diffusers import (
     GaudiDiffusionPipeline,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
+    GaudiStableDiffusionControlNetPipeline,
     GaudiStableDiffusionLDM3DPipeline,
     GaudiStableDiffusionPipeline,
     GaudiStableDiffusionUpscalePipeline,
     GaudiStableDiffusionXLPipeline,
-    GaudiStableDiffusionControlNetPipeline,
 )
 from optimum.habana.utils import set_seed
-from diffusers.utils.torch_utils import randn_tensor
+
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
     THROUGHPUT_BASELINE_BF16 = 1.019
@@ -1173,6 +1174,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
+
 class GaudiStableDiffusionControlNetPipelineTester(TestCase):
     """
     Tests the StableDiffusionControlNetPipeline for Gaudi.
@@ -1304,10 +1306,7 @@ class GaudiStableDiffusionControlNetPipelineTester(TestCase):
         # Test num_images_per_prompt for single prompt
         num_images_per_prompt = 2
         inputs["prompt"] = prompt
-        images = sd_pipe(
-            num_images_per_prompt=num_images_per_prompt,
-            **inputs
-        ).images
+        images = sd_pipe(num_images_per_prompt=num_images_per_prompt, **inputs).images
 
         self.assertEqual(len(images), num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
@@ -1315,10 +1314,7 @@ class GaudiStableDiffusionControlNetPipelineTester(TestCase):
         ## Test num_images_per_prompt for several prompts
         num_prompts = 2
         inputs["prompt"] = [prompt] * num_prompts
-        images = sd_pipe(
-            num_images_per_prompt=num_images_per_prompt,
-            **inputs
-        ).images
+        images = sd_pipe(num_images_per_prompt=num_images_per_prompt, **inputs).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
@@ -1375,11 +1371,7 @@ class GaudiStableDiffusionControlNetPipelineTester(TestCase):
         # Same test for several prompts
         num_prompts = 2
         inputs["prompt"] = [prompt] * num_prompts
-        images = sd_pipe(
-            batch_size=batch_size,
-            num_images_per_prompt=num_images_per_prompt,
-            **inputs
-        ).images
+        images = sd_pipe(batch_size=batch_size, num_images_per_prompt=num_images_per_prompt, **inputs).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
@@ -1444,6 +1436,7 @@ class GaudiStableDiffusionControlNetPipelineTester(TestCase):
 
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
+
 
 class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
     """
@@ -1595,10 +1588,7 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
         # Test num_images_per_prompt for single prompt
         num_images_per_prompt = 2
         inputs["prompt"] = prompt
-        images = sd_pipe(
-            num_images_per_prompt=num_images_per_prompt,
-            **inputs
-        ).images
+        images = sd_pipe(num_images_per_prompt=num_images_per_prompt, **inputs).images
 
         self.assertEqual(len(images), num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
@@ -1606,10 +1596,7 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
         ## Test num_images_per_prompt for several prompts
         num_prompts = 2
         inputs["prompt"] = [prompt] * num_prompts
-        images = sd_pipe(
-            num_images_per_prompt=num_images_per_prompt,
-            **inputs
-        ).images
+        images = sd_pipe(num_images_per_prompt=num_images_per_prompt, **inputs).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
@@ -1666,11 +1653,7 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
         # Same test for several prompts
         num_prompts = 2
         inputs["prompt"] = [prompt] * num_prompts
-        images = sd_pipe(
-            batch_size=batch_size,
-            num_images_per_prompt=num_images_per_prompt,
-            **inputs
-        ).images
+        images = sd_pipe(batch_size=batch_size, num_images_per_prompt=num_images_per_prompt, **inputs).images
 
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
