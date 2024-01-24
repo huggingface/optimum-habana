@@ -174,11 +174,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-        if check_habana_frameworks_version("1.13.0"):
-            if model.config.model_type == "falcon":
-                model = wrap_in_hpu_graph(model, hash_with_views=False)
-        else:
-            model = wrap_in_hpu_graph(model)
+        model = wrap_in_hpu_graph(model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)

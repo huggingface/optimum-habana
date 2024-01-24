@@ -42,7 +42,7 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 
 > To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
 >```
 
 Optimum Habana is a fast-moving project, and you may want to install it from source:
@@ -211,7 +211,7 @@ Please refer to Habana Gaudi's official [installation guide](https://docs.habana
 
 > Tests should be run in a Docker container based on Habana Docker images.
 >
-> The current version has been validated for SynapseAI 1.13.
+> The current version has been validated for SynapseAI 1.14.
 
 
 ## Development
