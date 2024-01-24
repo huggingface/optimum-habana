@@ -103,7 +103,6 @@ class Matmul(torch.nn.Module):
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
-
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.past_key = None
@@ -225,6 +224,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
+
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
@@ -543,15 +543,21 @@ class GaudiLlamaModel(LlamaModel):
                 )
                 use_cache = False
 
+        #seq_length_with_past = seq_length
         past_key_values_length = 0
-        if use_cache:
-            if reuse_cache:
-                past_key_values_length = past_key_values[0][0][2]
-            else:
-                use_legacy_cache = not isinstance(past_key_values, Cache)
-                if use_legacy_cache:
-                    past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                past_key_values_length = past_key_values.get_usable_length(seq_length)
+        use_legacy_cache = True
+        do_not_use_new_cache = True
+        if past_key_values is not None:
+            if use_cache:
+                if reuse_cache:
+                    past_key_values_length = past_key_values[0][2] #past_key_values[0][0][2]
+                else:
+                    use_legacy_cache = not isinstance(past_key_values, Cache)
+                    if use_legacy_cache:
+                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                    past_key_values_length = past_key_values.get_usable_length(seq_length)
+             #seq_length_with_past = seq_length_with_past + past_key_values_length
+
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -562,8 +568,6 @@ class GaudiLlamaModel(LlamaModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-
-        key_value_length = seq_length + past_key_values_length
         if self._use_sdpa and not output_attentions:
             # output_attentions=True can not be supported when using SDPA, and we fall back on
             # the manual implementation that requires a 4D causal mask in all cases.
@@ -571,12 +575,13 @@ class GaudiLlamaModel(LlamaModel):
                 attention_mask,
                 (batch_size, seq_length),
                 inputs_embeds,
-                key_value_length,
+                past_key_value_length,
             )
         else:
             # 4d mask is passed through the layers
             attention_mask = _prepare_4d_causal_attention_mask(
-                attention_mask, (batch_size, seq_length), inputs_embeds, key_value_length
+
+                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
             )
 
         # embed positions
@@ -585,7 +590,7 @@ class GaudiLlamaModel(LlamaModel):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = None
+        next_decoder_cache = () if do_not_use_new_cache else None
 
         for decoder_layer in self.layers:
             if output_hidden_states:
@@ -622,7 +627,7 @@ class GaudiLlamaModel(LlamaModel):
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
+                next_decoder_cache += layer_outputs[2 if output_attentions else 1]
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -635,7 +640,8 @@ class GaudiLlamaModel(LlamaModel):
 
         next_cache = None
         if use_cache:
-            next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
+            #import pdb; pdb.set_trace()
+            next_cache = next_decoder_cache if do_not_use_new_cache else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         return BaseModelOutputWithPast(
@@ -824,7 +830,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and FusedRoPE:
+    if False:#q.device.type == "hpu" and FusedRoPE:
         # TODO: remove `.clone()` when SynapseAI v1.15 is released
         return FusedRoPE.apply(q, cos.clone(), sin.clone(), position_ids), FusedRoPE.apply(
             k, cos.clone(), sin.clone(), position_ids
