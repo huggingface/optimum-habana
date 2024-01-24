@@ -177,6 +177,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         if check_habana_frameworks_version("1.13.0"):
             if model.config.model_type == "falcon":
                 model = wrap_in_hpu_graph(model, hash_with_views=False)
+            else:
+                model = wrap_in_hpu_graph(model, hash_with_views=True)
         else:
             model = wrap_in_hpu_graph(model)
 
