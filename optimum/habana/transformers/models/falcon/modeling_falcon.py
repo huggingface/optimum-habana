@@ -123,10 +123,12 @@ def gaudi_falcon_attention_split_heads(
 
         if self.config.num_attention_heads != self.num_heads:  # When DS divides heads for TP
             num_heads = self.config.num_attention_heads
+            num_kv_heads = self.config.num_kv_heads
         else:  # When DS not in use
             num_heads = self.num_heads
+            num_kv_heads = self.num_kv_heads
 
-        qkv = fused_qkv.view(batch, seq_len, -1, num_heads // self.num_kv_heads + 2, self.head_dim)
+        qkv = fused_qkv.view(batch, seq_len, -1, num_heads // num_kv_heads + 2, self.head_dim)
         # query = qkv[:, :, :, :-2]
         # key = qkv[:, :, :, [-2]]
         # value = qkv[:, :, :, [-1]]

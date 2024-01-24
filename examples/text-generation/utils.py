@@ -168,11 +168,9 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-        # TODO: remove the following check from SynapseAI v1.15
         if check_habana_frameworks_version("1.13.0"):
             if model.config.model_type == "falcon":
-                args.skip_hash_with_views = True
-            model = wrap_in_hpu_graph(model, hash_with_views=not args.skip_hash_with_views)
+                model = wrap_in_hpu_graph(model, hash_with_views=False)
         else:
             model = wrap_in_hpu_graph(model)
 

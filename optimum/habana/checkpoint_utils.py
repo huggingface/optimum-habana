@@ -76,7 +76,7 @@ def model_on_meta(config):
     """
     Checks if load the model to meta.
     """
-    return config.model_type in ["bloom", "llama"]
+    return config.model_type in ["bloom", "llama", "falcon"]
 
 
 def get_optimized_model_name(config):

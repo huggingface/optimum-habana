@@ -99,9 +99,6 @@ def _test_text_generation(
     if not deepspeed:
         command.append("--bf16")
 
-    if "falcon" in model_name:
-        command.append("--skip_hash_with_views")
-
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
         print(f"\n\nCommand to test: {' '.join(command)}\n")
