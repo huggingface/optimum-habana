@@ -291,10 +291,13 @@ class GaudiLlamaAttention(LlamaAttention):
 
             attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
 
-            if attn_weights.size() not in [
-                (bsz, self.num_heads, q_len, kv_seq_len),
-                (bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len),
-            ]:
+            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len) and attn_weights.size() != (
+                bsz,
+                self.num_key_value_heads,
+                self.num_key_value_groups,
+                q_len,
+                kv_seq_len,
+            ):
                 raise ValueError(
                     f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)} or"
                     f" {(bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len)}, but is"
@@ -302,7 +305,13 @@ class GaudiLlamaAttention(LlamaAttention):
                 )
 
             if attention_mask is not None:
-                if attention_mask.size() not in [(bsz, 1, q_len, kv_seq_len), (bsz, 1, 1, q_len, kv_seq_len)]:
+                if attention_mask.size() != (bsz, 1, q_len, kv_seq_len) and attention_mask.size() != (
+                    bsz,
+                    1,
+                    1,
+                    q_len,
+                    kv_seq_len,
+                ):
                     raise ValueError(
                         f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)} or {(bsz, 1, 1, q_len, kv_seq_len)},"
                         f" but is {attention_mask.size()}"
