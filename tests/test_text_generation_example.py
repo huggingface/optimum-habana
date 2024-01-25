@@ -53,7 +53,7 @@ else:
         "deepspeed": [
             ("bigscience/bloomz-7b1", 31.044523676681507),
         ],
-        # "torch_compile": [],
+        "torch_compile": [],
     }
 
 
