@@ -420,6 +420,9 @@ class ExampleTesterBase(TestCase):
         if "bloom" not in model_name:
             cmd_line.append("--do_eval")
 
+        if "wav2vec-base" in model_name and not deepspeed:
+            cmd_line.append("--use_hpu_graphs_for_training")
+
         if extra_command_line_arguments is not None:
             cmd_line += extra_command_line_arguments
 
