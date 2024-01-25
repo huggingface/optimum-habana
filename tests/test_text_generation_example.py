@@ -38,20 +38,20 @@ else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 41.93942748147396),
-            ("gpt2-xl", 126.6292071377241),
+            ("bigscience/bloomz-7b1", 41.51855420676164),
+            ("gpt2-xl", 137.159223188195),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 37.14562499113717),
-            ("meta-llama/Llama-2-7b-hf", 43.951804139391925),
-            ("tiiuae/falcon-7b", 44.288602257903726),
-            ("bigcode/starcoder", 15.955986010526113),
-            ("Salesforce/codegen2-1B", 109.03016111561857),
-            ("mosaicml/mpt-7b", 44.888696119070424),
-            ("mistralai/Mistral-7B-v0.1", 40.0690067247771),
+            ("EleutherAI/gpt-j-6b", 50.66146537939035),
+            ("meta-llama/Llama-2-7b-hf", 44.29688546702468),
+            ("tiiuae/falcon-7b", 44.217408724737744),
+            ("bigcode/starcoder", 15.948143541091655),
+            ("Salesforce/codegen2-1B", 153.79670508220687),
+            ("mosaicml/mpt-7b", 44.80241777760578),
+            ("mistralai/Mistral-7B-v0.1", 40.00435417311187),
         ],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 27.34439410425298),
+            ("bigscience/bloomz-7b1", 31.044523676681507),
         ],
         "torch_compile": [],
     }
