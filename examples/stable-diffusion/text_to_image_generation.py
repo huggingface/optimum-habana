@@ -179,7 +179,18 @@ def main():
     parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
-
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        default=0,
+        type=int,
+        help="Number of steps to ignore for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        default=0,
+        type=int,
+        help="Number of steps to capture for profiling.",
+    )
     args = parser.parse_args()
 
     # Set image resolution
@@ -277,6 +288,8 @@ def main():
             negative_prompt=args.negative_prompts,
             eta=args.eta,
             output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
             **res,
         )
 
