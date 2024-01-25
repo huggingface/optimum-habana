@@ -27,7 +27,7 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_attn_mask_utils import (
+from optimum.habana.transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
@@ -78,7 +78,7 @@ def gaudi_mistral_attn_forward(
                 "with a layer index."
             )
         if token_idx is not None:
-            kv_seq_len = past_key_value[0].shape[-2]
+            kv_seq_len = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         else:
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
