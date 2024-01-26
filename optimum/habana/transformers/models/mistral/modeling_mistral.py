@@ -83,7 +83,6 @@ def gaudi_mistral_attn_forward(
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
     query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-
     if past_key_value is not None:
         if token_idx is not None:
             past_key_value[0].index_copy_(2, token_idx - 1, key_states)
@@ -234,12 +233,13 @@ def gaudi_mistral_model_forward(
             use_cache = False
 
     past_key_values_length = 0
-
-    if use_cache:
-        use_legacy_cache = not isinstance(past_key_values, Cache)
-        if use_legacy_cache:
-            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-        past_key_values_length = past_key_values.get_usable_length(seq_length)
+    use_legacy_cache = True
+    if past_key_values is not None:
+        if use_cache:
+            use_legacy_cache = not isinstance(past_key_values, Cache)
+            if use_legacy_cache:
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            past_key_values_length = past_key_values.get_usable_length(seq_length)
 
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -319,7 +319,7 @@ def gaudi_mistral_model_forward(
         all_hidden_states += (hidden_states,)
 
     next_cache = None
-    if use_cache:
+    if next_decoder_cache and use_cache:
         next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
 
     if not return_dict:
