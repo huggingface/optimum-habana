@@ -167,14 +167,10 @@ class AttentionMaskConverter:
             diagonal = past_key_values_length - sliding_window + 1
 
             #context_mask = 1 - torch.triu(torch.ones_like(mask, dtype=torch.int), diagonal=diagonal)
-            # Create a mask tensor with ones
-            mask_tensor = torch.ones_like(mask, dtype=torch.int)
-
-            # Create a diagonal mask tensor with zeros
-            diagonal_mask = mask_tensor - mask_tensor.roll(diagonal, dims=1)
-
-            # Subtract the diagonal mask tensor from the mask tensor
-            context_mask = mask_tensor - diagonal_mask
+            # Replace triu with below
+            row_indices = torch.arange(mask.size(0), device=mask.device).view(-1, 1)  # Reshape to column vector
+            col_indices = torch.arange(mask.size(1), device=mask.device)
+            context_mask = 1 - (col_indices >= row_indices + diagonal).int().expand_as(mask)  # Expand to match mask shape
 
             mask.masked_fill_(context_mask.bool(), torch.finfo(dtype).min)
 
