@@ -373,7 +373,7 @@ def _prepare_4d_causal_attention_mask_for_sdpa(
                 )
                 return attention_mask
 
-        elif not is_tracing and torch.all(attention_mask == 1):
+        elif not is_tracing:# and torch.all(attention_mask == 1):
             if query_length == 1:
                 # For query_length == 1, causal attention and bi-directional attention are the same.
                 attention_mask = None

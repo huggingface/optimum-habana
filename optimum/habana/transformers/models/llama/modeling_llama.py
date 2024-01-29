@@ -223,7 +223,6 @@ class GaudiLlamaAttention(LlamaAttention):
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][-2]
                 else:
-                    #import pdb; pdb.set_trace()
                     kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
