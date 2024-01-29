@@ -223,6 +223,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][-2]
                 else:
+                    #import pdb; pdb.set_trace()
                     kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
@@ -546,16 +547,17 @@ class GaudiLlamaModel(LlamaModel):
         #seq_length_with_past = seq_length
         past_key_values_length = 0
         use_legacy_cache = True
-        do_not_use_new_cache = True
+        do_not_use_new_cache = True # Ignoring new Cache path for HPU
         if past_key_values is not None:
             if use_cache:
                 if reuse_cache:
                     past_key_values_length = past_key_values[0][2] #past_key_values[0][0][2]
                 else:
-                    use_legacy_cache = not isinstance(past_key_values, Cache)
-                    if use_legacy_cache:
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_key_values_length = past_key_values.get_usable_length(seq_length)
+                    if not do_not_use_new_cache:
+                        use_legacy_cache = not isinstance(past_key_values, Cache)
+                        if use_legacy_cache:
+                            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                        past_key_values_length = past_key_values.get_usable_length(seq_length)
              #seq_length_with_past = seq_length_with_past + past_key_values_length
 
 
@@ -592,7 +594,7 @@ class GaudiLlamaModel(LlamaModel):
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if do_not_use_new_cache else None
 
-        for decoder_layer in self.layers:
+        for layer_idx, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -602,7 +604,7 @@ class GaudiLlamaModel(LlamaModel):
                     hidden_states,
                     attention_mask,
                     position_ids,
-                    past_key_values,
+                    None if past_key_values is None else past_key_values[layer_idx],
                     output_attentions,
                     use_cache,
                     attn_softmax_bf16=attn_softmax_bf16,
@@ -614,7 +616,7 @@ class GaudiLlamaModel(LlamaModel):
                     hidden_states,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
-                    past_key_value=past_key_values,
+                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     token_idx=token_idx,
@@ -627,7 +629,7 @@ class GaudiLlamaModel(LlamaModel):
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += layer_outputs[2 if output_attentions else 1]
+                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -640,7 +642,6 @@ class GaudiLlamaModel(LlamaModel):
 
         next_cache = None
         if use_cache:
-            #import pdb; pdb.set_trace()
             next_cache = next_decoder_cache if do_not_use_new_cache else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
