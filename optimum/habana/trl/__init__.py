@@ -3,4 +3,6 @@ from .trainer.dpo_trainer import GaudiDPOTrainer
 from .trainer.ppo_config import GaudiPPOConfig
 from .trainer.ppo_trainer import GaudiPPOTrainer
 from .trainer.reward_trainer import GaudiRewardTrainer, RewardDataCollatorWithPadding
+from .trainer.ddpo_trainer import GaudiDDPOTrainer
 from .trainer.sft_trainer import GaudiSFTTrainer
+from .models.modeling_sd_base import GaudiDefaultDDPOStableDiffusionPipeline
