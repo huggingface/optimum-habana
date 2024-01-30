@@ -202,6 +202,80 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
+### ControlNet
+
+ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
+It is a type of model for controlling StableDiffusion by conditioning the model with an additional input image.
+
+Here is how to generate images conditioned by canny edge model:
+```bash
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+Here is how to generate images conditioned by canny edge model and with multiple prompts:
+```bash
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" "a rusty robot" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --num_images_per_prompt 10 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+Here is how to generate images conditioned by open pose model:
+```bash
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-openpose \
+    --prompts "Chef in the kitchen" \
+    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png \
+    --control_preprocessing_type "none" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+Here is how to generate images with conditioned by canny edge model using Stable Diffusion 2
+```bash
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-2-1 \
+    --controlnet_model_name_or_path thibaud/controlnet-sd21-canny-diffusers \
+    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png \
+    --control_preprocessing_type "none" \
+    --prompts "bird" \
+    --seed 0 \
+    --num_images_per_prompt 10 \
+    --batch_size 2 \
+    --image_save_dir /tmp/controlnet-2-1_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion-2
+```
 
 ## Textual Inversion
 

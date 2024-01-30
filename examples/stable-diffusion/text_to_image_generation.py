@@ -18,6 +18,7 @@ import logging
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from optimum.habana.diffusers import (
@@ -54,6 +55,13 @@ def main():
     )
 
     parser.add_argument(
+        "--controlnet_model_name_or_path",
+        default="lllyasviel/sd-controlnet-canny",
+        type=str,
+        help="Path to pre-trained model",
+    )
+
+    parser.add_argument(
         "--scheduler",
         default="ddim",
         choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
@@ -82,6 +90,21 @@ def main():
         nargs="*",
         default=None,
         help="The second prompt or prompts to guide the image generation (applicable to SDXL).",
+    )
+    parser.add_argument(
+        "--control_image",
+        type=str,
+        default=None,
+        help=("Path to the controlnet conditioning image"),
+    )
+    parser.add_argument(
+        "--control_preprocessing_type",
+        type=str,
+        default="canny",
+        help=(
+            "The type of preprocessing to apply on contol image. Only `canny` is supported."
+            " Defaults to `canny`. Set to unsupported value to disable preprocessing."
+        ),
     )
     parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
@@ -179,7 +202,18 @@ def main():
     parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
-
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        default=0,
+        type=int,
+        help="Number of steps to ignore for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        default=0,
+        type=int,
+        help="Number of steps to capture for profiling.",
+    )
     args = parser.parse_args()
 
     # Set image resolution
@@ -188,10 +222,33 @@ def main():
         res["width"] = args.width
         res["height"] = args.height
 
+    # ControlNet
+    if args.control_image is not None:
+        from diffusers.utils import load_image
+        from PIL import Image
+
+        # get control image
+        control_image = load_image(args.control_image)
+        if args.control_preprocessing_type == "canny":
+            import cv2
+
+            image = np.array(control_image)
+            # get canny image
+            image = cv2.Canny(image, 100, 200)
+            image = image[:, :, None]
+            image = np.concatenate([image, image, image], axis=2)
+            control_image = Image.fromarray(image)
+
     # Import selected pipeline
     sdxl_models = ["stable-diffusion-xl-base-1.0", "sdxl-turbo"]
 
-    if any(model in args.model_name_or_path for model in sdxl_models):
+    if args.control_image is not None:
+        from diffusers import ControlNetModel
+
+        from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
+
+        sdxl = False
+    elif any(model in args.model_name_or_path for model in sdxl_models):
         from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
         sdxl = True
@@ -237,7 +294,33 @@ def main():
         kwargs["torch_dtype"] = torch.bfloat16
 
     # Generate images
-    if sdxl:
+    if args.control_image is not None:
+        model_dtype = torch.bfloat16 if args.bf16 else None
+        controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path, torch_dtype=model_dtype)
+        pipeline = GaudiStableDiffusionControlNetPipeline.from_pretrained(
+            args.model_name_or_path,
+            controlnet=controlnet,
+            **kwargs,
+        )
+
+        # Set seed before running the model
+        set_seed(args.seed)
+
+        outputs = pipeline(
+            prompt=args.prompts,
+            image=control_image,
+            num_images_per_prompt=args.num_images_per_prompt,
+            batch_size=args.batch_size,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            negative_prompt=args.negative_prompts,
+            eta=args.eta,
+            output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            **res,
+        )
+    elif sdxl:
         pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
             args.model_name_or_path,
             **kwargs,
