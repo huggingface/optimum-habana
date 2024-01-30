@@ -18,49 +18,53 @@
 import argparse
 import functools
 import gc
+import json
 import logging
 import math
 import os
 import random
 import shutil
+import time
 from pathlib import Path
 
-import accelerate
 import datasets
+import diffusers
+import habana_frameworks.torch.core as htcore
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration, set_seed
+from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
-from huggingface_hub import create_repo, upload_folder
-from packaging import version
-from torchvision import transforms
-from torchvision.transforms.functional import crop
-from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
-
-import diffusers
 from diffusers import (
     AutoencoderKL,
-    DDPMScheduler,
-    StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
-from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import is_compiled_module
+from huggingface_hub import create_repo, upload_folder
+from torchvision import transforms
+from torchvision.transforms.functional import crop
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer, PretrainedConfig
 
+from optimum.habana import GaudiConfig
+from optimum.habana.accelerate import GaudiAccelerator
+from optimum.habana.diffusers import GaudiEulerDiscreteScheduler, GaudiStableDiffusionXLPipeline
+from optimum.habana.utils import set_seed
+
+
+if is_wandb_available():
+    import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.23.0")
+check_min_version("0.23.1")
 
-logger = get_logger(__name__)
-
+logger = get_logger(__name__, log_level="INFO")
 
 DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
@@ -147,6 +151,12 @@ def parse_args(input_args=None):
         default=None,
         required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
         "--dataset_name",
@@ -398,9 +408,6 @@ def parse_args(input_args=None):
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
     )
-    parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
-    )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -439,21 +446,30 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--mixed_precision",
-        type=str,
-        default=None,
-        choices=["no", "fp16", "bf16"],
-        help=(
-            "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
-            " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
-            " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
-        ),
+        "--bf16",
+        action="store_true",
+        default=False,
+        help=("Whether to use bf16 mixed precision."),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
-    parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
-    )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
+    parser.add_argument(
+        "--gaudi_config_name",
+        type=str,
+        default=None,
+        help="Local path to the Gaudi configuration file or its name on the Hugging Face Hub.",
+    )
+    parser.add_argument(
+        "--throughput_warmup_steps",
+        type=int,
+        default=0,
+        help=(
+            "Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N, the"
+            " first N steps will not be considered in the calculation of the throughput. This is especially useful in"
+            " lazy mode."
+        ),
+    )
+    parser.add_argument("--use_hpu_graphs", action="store_true", help="Use HPU graphs on HPU.")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -502,11 +518,12 @@ def encode_prompt(batch, text_encoders, tokenizers, proportion_empty_prompts, ca
             prompt_embeds = text_encoder(
                 text_input_ids.to(text_encoder.device),
                 output_hidden_states=True,
+                return_dict=False,
             )
 
             # We are only ALWAYS interested in the pooled output of the final text encoder
             pooled_prompt_embeds = prompt_embeds[0]
-            prompt_embeds = prompt_embeds.hidden_states[-2]
+            prompt_embeds = prompt_embeds[-1][-2]
             bs_embed, seq_len, _ = prompt_embeds.shape
             prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
             prompt_embeds_list.append(prompt_embeds)
@@ -574,17 +591,14 @@ def main(args):
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
-    accelerator = Accelerator(
+    gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
+    accelerator = GaudiAccelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision=args.mixed_precision,
+        mixed_precision="bf16" if gaudi_config.use_torch_autocast or args.bf16 else "no",
         log_with=args.report_to,
         project_config=accelerator_project_config,
+        force_autocast=gaudi_config.use_torch_autocast or args.bf16,
     )
-
-    if args.report_to == "wandb":
-        if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -618,10 +632,16 @@ def main(args):
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+        use_fast=False,
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_2",
+        revision=args.revision,
+        use_fast=False,
     )
 
     # import correct text encoder classes
@@ -633,125 +653,53 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="scheduler"
+    )
+
     # Check for terminal SNR in combination with SNR Gamma
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
-    )
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+    ).to(accelerator.device)
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
-    )
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
+    ).to(accelerator.device)
+
     vae_path = (
         args.pretrained_model_name_or_path
         if args.pretrained_vae_model_name_or_path is None
         else args.pretrained_vae_model_name_or_path
     )
+
     vae = AutoencoderKL.from_pretrained(
-        vae_path, subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None, revision=args.revision
+        vae_path,
+        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+        revision=args.revision,
+        variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
     # Freeze vae and text encoders.
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
-    # Set unet as trainable.
-    unet.train()
-
-    # For mixed precision training we cast all non-trainable weigths to half-precision
-    # as these weights are only used for inference, keeping weights in full precision is not required.
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
-
-    # Move unet, vae and text_encoder to device and cast to weight_dtype
-    # The VAE is in float32 to avoid NaN losses.
-    vae.to(accelerator.device, dtype=torch.float32)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-
-    # Create EMA for the unet.
-    if args.use_ema:
-        ema_unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
-        )
-        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
-
-    if args.enable_xformers_memory_efficient_attention:
-        if is_xformers_available():
-            import xformers
-
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warn(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
-                )
-            unet.enable_xformers_memory_efficient_attention()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
-
-    # `accelerate` 0.16.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
-        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
-        def save_model_hook(models, weights, output_dir):
-            if accelerator.is_main_process:
-                if args.use_ema:
-                    ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
-
-                for i, model in enumerate(models):
-                    model.save_pretrained(os.path.join(output_dir, "unet"))
-
-                    # make sure to pop weight so that corresponding model is not saved again
-                    weights.pop()
-
-        def load_model_hook(models, input_dir):
-            if args.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
-                ema_unet.load_state_dict(load_model.state_dict())
-                ema_unet.to(accelerator.device)
-                del load_model
-
-            for i in range(len(models)):
-                # pop models so that they are not loaded again
-                model = models.pop()
-
-                # load diffusers style into model
-                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
-                model.register_to_config(**load_model.config)
-
-                model.load_state_dict(load_model.state_dict())
-                del load_model
-
-        accelerator.register_save_state_pre_hook(save_model_hook)
-        accelerator.register_load_state_pre_hook(load_model_hook)
-
+    
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
 
-    # Enable TF32 for faster training on Ampere GPUs,
-    # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
-    if args.allow_tf32:
-        torch.backends.cuda.matmul.allow_tf32 = True
 
     if args.scale_lr:
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
-    if args.use_8bit_adam:
-        try:
-            import bitsandbytes as bnb
-        except ImportError:
-            raise ImportError(
-                "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
-            )
+    # Initialize the optimizer
+    if gaudi_config.use_fused_adam:
+        from habana_frameworks.torch.hpex.optimizers import FusedAdamW
 
-        optimizer_class = bnb.optim.AdamW8bit
+        optimizer_class = FusedAdamW
     else:
         optimizer_class = torch.optim.AdamW
 
@@ -836,7 +784,6 @@ def main(args):
                 image = crop(image, y1, x1, h, w)
             if args.random_flip and random.random() < 0.5:
                 # flip
-                x1 = image.width - x1
                 image = train_flip(image)
             crop_top_left = (y1, x1)
             crop_top_lefts.append(crop_top_left)
@@ -873,6 +820,7 @@ def main(args):
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
         new_fingerprint_for_vae = Hasher.hash("vae")
+
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
         train_dataset = train_dataset.map(
             compute_vae_encodings_fn,
@@ -880,10 +828,6 @@ def main(args):
             batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
             new_fingerprint=new_fingerprint_for_vae,
         )
-
-    del text_encoders, tokenizers, vae
-    gc.collect()
-    torch.cuda.empty_cache()
 
     def collate_fn(examples):
         model_input = torch.stack([torch.tensor(example["model_input"]) for example in examples])
@@ -909,6 +853,68 @@ def main(args):
         num_workers=args.dataloader_num_workers,
     )
 
+    # Set unet as trainable.
+    unet.train()
+
+    # For mixed precision training we cast all non-trainable weigths to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
+
+    weight_dtype = torch.float32
+
+    if gaudi_config.use_torch_autocast or args.bf16:
+        weight_dtype = torch.bfloat16
+
+
+    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    # The VAE is in float32 to avoid NaN losses.
+    vae.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+    del text_encoders, tokenizers
+    gc.collect()
+    # Create EMA for the unet.
+    if args.use_ema:
+        ema_unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+        )
+        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
+
+    ## `accelerate` 0.16.0 will have better support for customized saving
+    # if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+    #    # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+    #    def save_model_hook(models, weights, output_dir):
+    #        if accelerator.is_main_process:
+    #            if args.use_ema:
+    #                ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+
+    #            for i, model in enumerate(models):
+    #                model.save_pretrained(os.path.join(output_dir, "unet"))
+
+    #                # make sure to pop weight so that corresponding model is not saved again
+    #                weights.pop()
+
+    #    def load_model_hook(models, input_dir):
+    #        if args.use_ema:
+    #            load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
+    #            ema_unet.load_state_dict(load_model.state_dict())
+    #            ema_unet.to(accelerator.device)
+    #            del load_model
+
+    #        for i in range(len(models)):
+    #            # pop models so that they are not loaded again
+    #            model = models.pop()
+
+    #            # load diffusers style into model
+    #            load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+    #            model.register_to_config(**load_model.config)
+
+    #            model.load_state_dict(load_model.state_dict())
+    #            del load_model
+
+    #    accelerator.register_save_state_pre_hook(save_model_hook)
+    #    accelerator.register_load_state_pre_hook(load_model_hook)
+
+    
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -939,6 +945,11 @@ def main(args):
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune-sdxl", config=vars(args))
+
+    def unwrap_model(model):
+        model = accelerator.unwrap_model(model)
+        model = model._orig_mod if is_compiled_module(model) else model
+        return model
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -989,25 +1000,36 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
+    import habana_frameworks.torch as htorch
+    t0 = None
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
+            if t0 is None: # and global_step == args.throughput_warmup_steps:
+                t0 = time.perf_counter()
+
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
-                model_input = batch["model_input"].to(accelerator.device)
+                model_input = batch["model_input"].to(dtype=weight_dtype).to(accelerator.device)
                 noise = torch.randn_like(model_input)
                 if args.noise_offset:
                     # https://www.crosslabs.org//blog/diffusion-with-offset-noise
+                    # torch.randn is broken on HPU so we need workaround using CPU here
+                    #rand_device = "cpu" if model_input.device.type == "hpu" else model_input.device
+                    rand_device = model_input.device
                     noise += args.noise_offset * torch.randn(
-                        (model_input.shape[0], model_input.shape[1], 1, 1), device=model_input.device
+                        (model_input.shape[0], model_input.shape[1], 1, 1), device=rand_device
                     )
+                    noise = noise.to(model_input.device)
 
                 bsz = model_input.shape[0]
+
                 if args.timestep_bias_strategy == "none":
                     # Sample a random timestep for each image without bias.
                     timesteps = torch.randint(
                         0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
                     )
+                    timesteps = timesteps.long()
                 else:
                     # Sample a random timestep for each image, potentially biased by the timestep weights.
                     # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
@@ -1038,9 +1060,14 @@ def main(args):
                 prompt_embeds = batch["prompt_embeds"].to(accelerator.device)
                 pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(accelerator.device)
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
+
                 model_pred = unet(
-                    noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
-                ).sample
+                    noisy_model_input,
+                    timesteps,
+                    prompt_embeds,
+                    added_cond_kwargs=unet_added_conditions,
+                    return_dict=False,
+                )[0]
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
@@ -1082,13 +1109,18 @@ def main(args):
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
 
                 # Backpropagate
+                #TODO: check why this cause bufferoverflow issue
+                #with accelerator.autocast():    
                 accelerator.backward(loss)
+                htcore.mark_step()
+                
                 if accelerator.sync_gradients:
                     params_to_clip = unet.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
+                htcore.mark_step()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -1145,18 +1177,22 @@ def main(args):
                     vae_path,
                     subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
                     revision=args.revision,
+                    variant=args.variant,
                 )
-                pipeline = StableDiffusionXLPipeline.from_pretrained(
+                pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
-                    unet=accelerator.unwrap_model(unet),
+                    unet=unwrap_model(unet),
                     revision=args.revision,
-                    torch_dtype=weight_dtype,
+                    variant=args.variant,
+                    use_habana=True,
+                    use_hpu_graphs=args.use_hpu_graphs,
+                    gaudi_config=args.gaudi_config_name,
                 )
                 if args.prediction_type is not None:
                     scheduler_args = {"prediction_type": args.prediction_type}
                     pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-
+                pipeline.scheduler = GaudiEulerDiscreteScheduler.from_config(pipeline.scheduler.config)
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
 
@@ -1164,7 +1200,7 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.cuda.amp.autocast():
+                with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=gaudi_config.use_torch_autocast):
                     images = [
                         pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
                         for _ in range(args.num_validation_images)
@@ -1185,10 +1221,21 @@ def main(args):
                         )
 
                 del pipeline
-                torch.cuda.empty_cache()
+
+    duration = time.perf_counter() - t0
+    throughput = args.max_train_steps * total_batch_size / duration
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        logger.info(f"Throughput = {throughput} samples/s")
+        logger.info(f"Train runtime = {duration} seconds")
+        metrics = {
+            "train_samples_per_second": throughput,
+            "train_runtime": duration,
+        }
+        with open(f"{args.output_dir}/speed_metrics.json", mode="w") as file:
+            json.dump(metrics, file)
+
         unet = accelerator.unwrap_model(unet)
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
@@ -1198,10 +1245,20 @@ def main(args):
             vae_path,
             subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
             revision=args.revision,
+            variant=args.variant,
             torch_dtype=weight_dtype,
         )
-        pipeline = StableDiffusionXLPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, unet=unet, vae=vae, revision=args.revision, torch_dtype=weight_dtype
+        pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            unet=unet,
+            vae=vae,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
+            scheduler=noise_scheduler,
+            use_habana=True,
+            use_hpu_graphs=args.use_hpu_graphs,
+            gaudi_config=args.gaudi_config_name,
         )
         if args.prediction_type is not None:
             scheduler_args = {"prediction_type": args.prediction_type}
@@ -1213,7 +1270,7 @@ def main(args):
         if args.validation_prompt and args.num_validation_images > 0:
             pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            with torch.cuda.amp.autocast():
+            with torch.autocast(device_type="hpu", dtype=weight_dtype, enabled=gaudi_config.use_torch_autocast):
                 images = [
                     pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                     for _ in range(args.num_validation_images)

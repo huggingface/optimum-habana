@@ -194,8 +194,8 @@ python text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --bf16 \
     --num_inference_steps 1 \
-    --guidance_scale 0.0 \
-    --timestep_spacing trailing
+-   --guidance_scale 0.0 \
+-   --timestep_spacing trailing
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
@@ -297,3 +297,34 @@ image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 
 image.save("cat-backpack.png")
 ```
+
+
+## Fine-Tuning
+
+The `train_text_to_image*.py` scripts shows how to implement the fine-tuning of Stable Diffusion models on Habana Gaudi.
+
+
+### Example for SDXL
+We can launch the fine-tuning of SDXL model using:
+
+python train_text_to_image_sdxl.py \
+  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+  --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
+  --dataset_name lambdalabs/pokemon-blip-captions \
+  --use_ema \
+  --resolution 1024 \
+  --center_crop \
+  --random_flip \
+  --train_batch_size 1 \
+  --gradient_accumulation_steps 4 \
+  --gradient_checkpointing \
+  --max_train_steps 50 \
+  --learning_rate 1e-05 \
+  --max_grad_norm 1 \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir sdxl-pokemon-model \
+  --gaudi_config_name Habana/stable-diffusion \
+  --use_hpu_graphs \
+  --throughput_warmup_steps 3 \
+  --bf16
