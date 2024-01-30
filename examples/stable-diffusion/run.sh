@@ -8,7 +8,7 @@ python train_text_to_image_sdxl.py \
   --proportion_empty_prompts=0.2 \
   --train_batch_size 1 \
   --gradient_accumulation_steps 4 \
-  --max_train_steps 5 \
+  --max_train_steps 1 \
   --learning_rate 1e-05 \
   --max_grad_norm 1 \
   --lr_scheduler constant \
