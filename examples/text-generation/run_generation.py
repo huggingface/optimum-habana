@@ -28,7 +28,7 @@ from itertools import cycle
 from pathlib import Path
 
 import torch
-from utils import adjust_batch, count_hpu_graphs, initialize_model
+from utils import adjust_batch, count_hpu_graphs, initialize_model, sqlcoder_generate_prompt
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -266,6 +266,8 @@ def main():
         # Benchmark over the prompts below
         if args.prompt:
             input_sentences = args.prompt
+        if args.prompt and (model.config._name_or_path == "defog/sqlcoder-34b"):
+            input_sentences = sqlcoder_generate_prompt(args.prompt)
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",

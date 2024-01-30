@@ -38,6 +38,8 @@ from optimum.habana.checkpoint_utils import (
 )
 from optimum.habana.utils import check_optimum_habana_min_version, set_seed
 
+__PWD__ = os.path.abspath(os.path.dirname( __file__ ))
+
 
 def adjust_batch(batch, size):
     curr_size = batch["input_ids"].shape[1]
@@ -312,6 +314,18 @@ def setup_tokenizer(args, model):
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
     return tokenizer, model
+
+def sqlcoder_generate_prompt(question, prompt_file=os.path.join(__PWD__,"prompt.md"), metadata_file=os.path.join(__PWD__,"metadata.sql")):
+    with open(prompt_file, "r") as f:
+        prompt = f.read()
+
+    with open(metadata_file, "r") as f:
+        table_metadata_string = f.read()
+
+    prompt = prompt.format(
+        user_question=question, table_metadata_string=table_metadata_string
+    )
+    return prompt
 
 
 def setup_generation_config(args, model, tokenizer):
