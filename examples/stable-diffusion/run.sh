@@ -8,16 +8,17 @@ python train_text_to_image_sdxl.py \
   --proportion_empty_prompts=0.2 \
   --train_batch_size 1 \
   --gradient_accumulation_steps 4 \
+  --gradient_checkpointing \
   --max_train_steps 1 \
-  --learning_rate 1e-05 \
-  --max_grad_norm 1 \
+  --learning_rate 1e-06 \
   --lr_scheduler constant \
   --lr_warmup_steps 0 \
-  --output_dir sdxl-pokemon-model \
-  --gaudi_config_name Habana/stable-diffusion \
-  --throughput_warmup_steps 3 \
   --bf16 \
   --validation_prompt="a cute Sundar Pichai creature" \
   --validation_epochs 5 \
+  --checkpointing_steps=5000 \
+  --output_dir sdxl-pokemon-model \
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3 \
   --use_hpu_graphs \
   --cache_dir /root/software/data/pytorch/huggingface/sdxl 2>&1 | tee log.txt
