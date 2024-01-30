@@ -29,7 +29,7 @@ except ImportError:
 import habana_frameworks.torch.core as htcore
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
-from transformers.modeling_attn_mask_utils import (
+from optimum.habana.transformers.modeling_attn_mask_utils import (
     AttentionMaskConverter,
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
