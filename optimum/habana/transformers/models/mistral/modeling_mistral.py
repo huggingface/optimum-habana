@@ -27,7 +27,7 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_attn_mask_utils import (
+from optimum.habana.transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
@@ -77,13 +77,13 @@ def gaudi_mistral_attn_forward(
                 "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                 "with a layer index."
             )
+        shp = past_key_value[0].shape[-2] if type(past_key_value) == type(tuple()) else past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         if token_idx is not None:
-            kv_seq_len = past_key_value[0].shape[-2]
+            kv_seq_len = shp
         else:
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+            kv_seq_len += shp
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
     query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-
     if past_key_value is not None:
         if token_idx is not None:
             past_key_value[0].index_copy_(2, token_idx - 1, key_states)
@@ -94,6 +94,7 @@ def gaudi_mistral_attn_forward(
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
+    past_key_value = (key_states, value_states) if use_cache else None
     # repeat k/v heads if n_kv_heads < n_heads
     key_states = repeat_kv(key_states, self.num_key_value_groups)
     value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -234,12 +235,14 @@ def gaudi_mistral_model_forward(
             use_cache = False
 
     past_key_values_length = 0
-
-    if use_cache:
-        use_legacy_cache = not isinstance(past_key_values, Cache)
-        if use_legacy_cache:
-            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-        past_key_values_length = past_key_values.get_usable_length(seq_length)
+    use_legacy_cache = True
+    do_not_use_new_cache = True
+    if past_key_values is not None:
+        if use_cache and not do_not_use_new_cache:
+            use_legacy_cache = not isinstance(past_key_values, Cache)
+            if use_legacy_cache:
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            past_key_values_length = past_key_values.get_usable_length(seq_length)
 
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -277,11 +280,12 @@ def gaudi_mistral_model_forward(
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
     all_self_attns = () if output_attentions else None
-    next_decoder_cache = None
+    next_decoder_cache = () if use_cache else None
 
-    for decoder_layer in self.layers:
+    for layer_idx, decoder_layer in enumerate(self.layers):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
+
 
         if self.gradient_checkpointing and self.training:
             layer_outputs = self._gradient_checkpointing_func(
@@ -289,7 +293,7 @@ def gaudi_mistral_model_forward(
                 hidden_states,
                 attention_mask,
                 position_ids,
-                past_key_values,
+                None if past_key_values is None else past_key_values[layer_idx],
                 output_attentions,
                 use_cache,
             )
@@ -298,7 +302,7 @@ def gaudi_mistral_model_forward(
                 hidden_states,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                past_key_value=past_key_values,
+                past_key_value=None if past_key_values is None else past_key_values[layer_idx],
                 output_attentions=output_attentions,
                 use_cache=use_cache,
                 token_idx=token_idx,
@@ -307,7 +311,7 @@ def gaudi_mistral_model_forward(
         hidden_states = layer_outputs[0]
 
         if use_cache:
-            next_decoder_cache = layer_outputs[2 if output_attentions else 1]
+            next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
         if output_attentions:
             all_self_attns += (layer_outputs[1],)
@@ -319,9 +323,8 @@ def gaudi_mistral_model_forward(
         all_hidden_states += (hidden_states,)
 
     next_cache = None
-    if use_cache:
-        next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
-
+    if next_decoder_cache and use_cache:
+        next_cache = next_decoder_cache if do_not_use_new_cache else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
     if not return_dict:
         return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
     return BaseModelOutputWithPast(
