@@ -471,6 +471,20 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--use_hpu_graphs", action="store_true", help="Use HPU graphs on HPU.")
 
+    parser.add_argument(
+        "--image_save_dir",
+        type=str,
+        default="./stable-diffusion-generated-images",
+        help="The directory where images will be saved.",
+    )
+    parser.add_argument(
+        "--output_type",
+        type=str,
+        choices=["pil", "np"],
+        default="pil",
+        help="Whether to return PIL images or Numpy arrays.",
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -1275,6 +1289,16 @@ def main(args):
                     pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                     for _ in range(args.num_validation_images)
                 ]
+            # Save images in the specified directory if not None and if they are in PIL format
+            if args.image_save_dir is not None:
+                if args.output_type == "pil":
+                    image_save_dir = Path(args.image_save_dir)
+                    image_save_dir.mkdir(parents=True, exist_ok=True)
+                    logger.info(f"Saving images in {image_save_dir.resolve()}...")
+                    for i, image in enumerate(images):
+                        image.save(image_save_dir / f"image_{i+1}.png")
+                else:
+                    logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 
             for tracker in accelerator.trackers:
                 if tracker.name == "tensorboard":
