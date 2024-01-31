@@ -592,3 +592,8 @@ class MultiCardBridgetowerExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_bridgetower", multi_card=True
 ):
     TASK_NAME = "jmhessel/newyorker_caption_contest"
+
+class DeepspeedTranslationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_translation", deepspeed=True
+):
+    TASK_NAME = "wmt16"

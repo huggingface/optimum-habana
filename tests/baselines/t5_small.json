@@ -47,6 +47,35 @@
                     ]
                 }
             }
+        },
+        "wmt16": {
+            "num_train_epochs": 4,
+            "eval_batch_size": 4,
+            "distribution": {
+                "deepspeed": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 4,
+                    "extra_arguments": [
+                        "--source_lang en",
+                        "--target_lang ro",
+                        "--source_prefix \"translate English to Romanian: \"",
+                        "--dataset_config_name ro-en",
+                        "--question_column question",
+                        "--answer_column answers",
+                        "--version_2_with_negative",
+                        "--max_seq_length 384",
+                        "--predict_with_generate",
+                        "--ignore_pad_token_for_loss False",
+                        "--pad_to_max_length",
+                        "--use_hpu_graphs_for_inference",
+                        "--save_strategy epoch",
+                        "--overwrite_output_dir",
+                        "--use_lazy_mode",
+                        "--throughput_warmup_steps 3",
+                        "--deepspeed tests/configs/deepspeed_zero_2.json"
+                    ]
+                }
+            }
         }
     },
     "gaudi2": {
@@ -97,6 +126,35 @@
                     ]
                 }
             }
+        },
+        "wmt16": {
+            "num_train_epochs": 4,
+            "eval_batch_size": 4,
+            "distribution": {
+                "deepspeed": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 4,
+                    "extra_arguments": [
+                        "--source_lang en",
+                        "--target_lang ro",
+                        "--source_prefix \"translate English to Romanian: \"",
+                        "--dataset_config_name ro-en",
+                        "--question_column question",
+                        "--answer_column answers",
+                        "--version_2_with_negative",
+                        "--max_seq_length 384",
+                        "--predict_with_generate",
+                        "--ignore_pad_token_for_loss False",
+                        "--pad_to_max_length",
+                        "--use_hpu_graphs_for_inference",
+                        "--save_strategy epoch",
+                        "--overwrite_output_dir",
+                        "--use_lazy_mode",
+                        "--throughput_warmup_steps 3"
+                    ]
+                }
+            }
+
         }
     }
 }
