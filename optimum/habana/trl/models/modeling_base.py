@@ -15,9 +15,7 @@ import os
 
 import torch
 from trl import PreTrainedModelWrapper
-from trl.import_utils import is_npu_available, is_xpu_available
 
-from optimum.habana.accelerate import GaudiPartialState as PartialState
 from optimum.habana.utils import to_device_dtype
 
 
@@ -31,15 +29,10 @@ def gaudi_get_current_device():
     Copied from PreTrainedModelWrapper._get_current_device: https://github.com/huggingface/trl/blob/v0.7.6/trl/models/modeling_base.py#L392
     - add hpu device
     """
-    state = PartialState()
-    if is_xpu_available():
-        return f"xpu:{state.local_process_index}"
-    elif is_npu_available():
-        return f"npu:{state.local_process_index}"
-    elif hasattr(torch, "hpu") and torch.hpu.is_available():
+    if hasattr(torch, "hpu") and torch.hpu.is_available():
         return "hpu"
     else:
-        return state.local_process_index if torch.cuda.is_available() else "cpu"
+        return "cpu"
 
 
 def gaudi_save_pretrained(self, *args, **kwargs):

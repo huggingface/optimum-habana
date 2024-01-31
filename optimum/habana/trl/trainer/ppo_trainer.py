@@ -38,7 +38,7 @@ from trl.core import (
     stack_dicts,
     stats_to_np,
 )
-from trl.import_utils import is_npu_available, is_torch_greater_2_0, is_xpu_available
+from trl.import_utils import is_torch_greater_2_0
 from trl.models import SUPPORTED_ARCHITECTURES, PreTrainedModelWrapper, create_reference_model
 from trl.trainer import AdaptiveKLController, BaseTrainer, FixedKLController, RunningMoments
 
@@ -47,7 +47,7 @@ from optimum.habana.utils import set_seed
 from . import GaudiPPOConfig
 
 
-class GaudiPPOTrainer(PPOTrainer, BaseTrainer):
+class GaudiPPOTrainer(PPOTrainer):
     def __init__(
         self,
         config: GaudiPPOConfig = None,
@@ -63,7 +63,7 @@ class GaudiPPOTrainer(PPOTrainer, BaseTrainer):
         """
         Copied from PPOTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/ppo_trainer.py#L145
         The only differences are:
-        - add new args for guadi in config
+        - add new args for Guadi in config
         - use GaudiAccelerator instead of Accelerator
         """
         BaseTrainer.__init__(self, config)
@@ -84,7 +84,7 @@ class GaudiPPOTrainer(PPOTrainer, BaseTrainer):
             )
         # Step 1: Initialize Accelerator
         if config.use_habana:
-            from optimum.habana.accelerate import GaudiAccelerator as Accelerator  # pylint: disable=E0611, E0401
+            from optimum.habana.accelerate import GaudiAccelerator as Accelerator
         else:
             from accelerate import Accelerator
         self.accelerator = Accelerator(
@@ -250,14 +250,10 @@ class GaudiPPOTrainer(PPOTrainer, BaseTrainer):
         if not getattr(self.model, "is_sequential_parallel", False):
             self.current_device = self.accelerator.device
         else:
-            if is_xpu_available():
-                self.current_device = torch.device("xpu:0")
-            elif is_npu_available():
-                self.current_device = torch.device("npu:0")
-            elif self.accelerator.device.type == "hpu":
+            if self.accelerator.device.type == "hpu":
                 self.current_device = torch.device("hpu")
             else:
-                self.current_device = torch.device("cuda:0")
+                self.current_device = torch.device("cpu")
 
         PPODecorators.optimize_device_cache = self.config.optimize_device_cache
 
@@ -558,7 +554,7 @@ class GaudiPPOTrainer(PPOTrainer, BaseTrainer):
         early_stop = False
         if self.config.use_habana:
             self.unwrap_fw_for_hpu_graph_mode(self.model)
-            import habana_frameworks.torch as ht  # pylint: disable=E0611, E0401
+            import habana_frameworks.torch as ht
 
             model = self.accelerator.unwrap_model(self.model)
             if not hasattr(model, "wrap_train_in_graph"):

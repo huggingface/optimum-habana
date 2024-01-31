@@ -1,24 +1,22 @@
 # copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama/scripts/reward_modeling.py, enable it for Gaudi2
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from typing import List, Optional
 
 import evaluate
 import numpy as np
 import torch
-import torch.nn as nn
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
     HfArgumentParser,
-    PreTrainedTokenizerBase,
     TrainerCallback,
 )
-from transformers.utils import PaddingStrategy
 
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
+from optimum.habana.trl import GaudiRewardTrainer, RewardDataCollatorWithPadding
 
 
 # Define and parse arguments.
@@ -115,7 +113,6 @@ eval_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/eval
 if script_args.eval_subset > 0:
     eval_dataset = eval_dataset.select(range(script_args.eval_subset))
 # Define the training args. Needs to be done before the model is loaded if you are using deepspeed.
-model_name_split = script_args.model_name.split("/")[-1]
 
 training_args = GaudiTrainingArguments(
     output_dir=script_args.output_dir,
@@ -215,56 +212,6 @@ eval_dataset = eval_dataset.filter(
     lambda x: len(x["input_ids_j"]) <= script_args.max_length and len(x["input_ids_k"]) <= script_args.max_length
 )
 
-
-# We need to define a special data collator that batches the data in our j vs k format.
-@dataclass
-class RewardDataCollatorWithPadding:
-    tokenizer: PreTrainedTokenizerBase
-    padding: Union[bool, str, PaddingStrategy] = True
-    max_length: Optional[int] = None
-    pad_to_multiple_of: Optional[int] = None
-    return_tensors: str = "pt"
-
-    def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
-        features_j = []
-        features_k = []
-        for feature in features:
-            features_j.append(
-                {
-                    "input_ids": feature["input_ids_j"],
-                    "attention_mask": feature["attention_mask_j"],
-                }
-            )
-            features_k.append(
-                {
-                    "input_ids": feature["input_ids_k"],
-                    "attention_mask": feature["attention_mask_k"],
-                }
-            )
-        batch_j = self.tokenizer.pad(
-            features_j,
-            padding=self.padding,
-            max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors=self.return_tensors,
-        )
-        batch_k = self.tokenizer.pad(
-            features_k,
-            padding=self.padding,
-            max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors=self.return_tensors,
-        )
-        batch = {
-            "input_ids_j": batch_j["input_ids"],
-            "attention_mask_j": batch_j["attention_mask"],
-            "input_ids_k": batch_k["input_ids"],
-            "attention_mask_k": batch_k["attention_mask"],
-            "return_loss": True,
-        }
-        return batch
-
-
 # Define the metric that we'll use for validation.
 accuracy = evaluate.load("accuracy")
 
@@ -278,23 +225,12 @@ def compute_metrics(eval_pred):
     return accuracy.compute(predictions=predictions, references=labels)
 
 
-class RewardTrainer(GaudiTrainer):
-    # Define how to compute the reward loss. We use the InstructGPT pairwise logloss: https://arxiv.org/abs/2203.02155
-    def compute_loss(self, model, inputs, return_outputs=False):
-        rewards_j = model(input_ids=inputs["input_ids_j"], attention_mask=inputs["attention_mask_j"])[0]
-        rewards_k = model(input_ids=inputs["input_ids_k"], attention_mask=inputs["attention_mask_k"])[0]
-        loss = -nn.functional.logsigmoid(rewards_j - rewards_k).mean()
-        if return_outputs:
-            return loss, {"rewards_j": rewards_j, "rewards_k": rewards_k}
-        return loss
-
-
 gaudi_config = GaudiConfig()
 gaudi_config.use_fused_adam = True
 gaudi_config.use_fused_clip_norm = True
 
 # Train the model, woohoo.
-trainer = RewardTrainer(
+trainer = GaudiRewardTrainer(
     model=model,
     gaudi_config=gaudi_config,
     args=training_args,

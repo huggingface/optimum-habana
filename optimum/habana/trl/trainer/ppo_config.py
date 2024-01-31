@@ -25,12 +25,13 @@ class GaudiPPOConfig(PPOConfig):
     """
 
     use_habana: bool = False
-    """Use habana. Only applicable if use_habana is True"""
+    """Indicate if habana is used"""
     pad_for_acceleration: bool = False
-    """Use pad_for_acceleration. Only applicable if pad_for_acceleration is True"""
+    """Indicate if padding is used for acceleration. """
     pad_max_len: int = 0
-    """Use pad_for_acceleration. Only applicable if pad_for_acceleration is True"""
+    """max total length including padding. Only applicable if pad_for_acceleration is True"""
     pad_max_input_len: int = 0
+    """max input length including padding. Only applicable if pad_for_acceleration is True"""
 
     def __post_init__(self):
         self.backward_batch_size = self.mini_batch_size * self.gradient_accumulation_steps
@@ -61,7 +62,7 @@ class GaudiPPOConfig(PPOConfig):
                 )
 
         if self.use_habana:
-            from optimum.habana.transformers.modeling_utils import (  # pylint: disable=E0611, E0401
+            from optimum.habana.transformers.modeling_utils import (
                 adapt_transformers_to_gaudi,
             )
 

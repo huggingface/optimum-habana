@@ -31,7 +31,8 @@ class ScriptArguments:
     reward_model_name: Optional[str] = field(default="", metadata={"help": "the reward model name"})
     log_with: Optional[str] = field(default=None, metadata={"help": "use 'wandb' to log with wandb"})
     learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
-    output_max_length: Optional[int] = field(default=128, metadata={"help": "maximum length for generation"})
+    output_max_length: Optional[int] = field(default=128, metadata={"help": "maximum output length for generation"})
+    input_max_length: Optional[int] = field(default=512, metadata={"help": "maximum input length for generation"})
     mini_batch_size: Optional[int] = field(default=1, metadata={"help": "the PPO minibatch size"})
     batch_size: Optional[int] = field(default=32, metadata={"help": "the batch size"})
     ppo_epochs: Optional[int] = field(default=4, metadata={"help": "the number of ppo epochs"})
@@ -64,6 +65,15 @@ class ScriptArguments:
         default_factory=lambda: None,
         metadata={"help": "Target modules for the LoRA method."},
     )
+    max_train_samples: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "For debugging purposes or quicker training, truncate the number of training examples to this "
+                "value if set."
+            )
+        },
+    )
 
 
 adapt_PreTrainedModelWrapper_to_gaudi()
@@ -88,12 +98,14 @@ config = GaudiPPOConfig(
     adap_kl_ctrl=script_args.adap_kl_ctrl,
     use_habana=script_args.use_habana,
     pad_for_acceleration=script_args.use_habana,
-    pad_max_len=512 + script_args.output_max_length,
-    pad_max_input_len=512,
+    pad_max_len=script_args.input_max_length + script_args.output_max_length,
+    pad_max_input_len=script_args.input_max_length,
 )
 
 train_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/rl", split="train")
-train_dataset = train_dataset.select(range(100000))
+if script_args.max_train_samples is not None:
+    max_train_samples = min(len(train_dataset), script_args.max_train_samples)
+    train_dataset = train_dataset.select(range(max_train_samples))
 original_columns = train_dataset.column_names
 
 # We then define the arguments to pass to the sentiment analysis pipeline.
@@ -106,7 +118,7 @@ sent_kwargs = {
 }
 if config.pad_for_acceleration:
     sent_kwargs["padding"] = "max_length"
-    sent_kwargs["max_length"] = 512 + script_args.output_max_length
+    sent_kwargs["max_length"] = script_args.input_max_length + script_args.output_max_length
 
 tokenizer = AutoTokenizer.from_pretrained(script_args.tokenizer_name)
 # GPT-2 tokenizer has a pad token, but it is not eos_token by default. We need to set it to eos_token.
@@ -225,8 +237,6 @@ ppo_trainer = GaudiPPOTrainer(
 # model name and the sentiment analysis pipeline arguments. Let's also make sure to
 # set the device to the same device as the PPOTrainer.
 device = ppo_trainer.accelerator.device
-if ppo_trainer.accelerator.num_processes == 1 and torch.cuda.is_available():
-    device = 0
 
 reward_model = AutoModelForSequenceClassification.from_pretrained(
     reward_model_name,
