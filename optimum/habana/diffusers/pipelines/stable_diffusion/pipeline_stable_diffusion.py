@@ -31,7 +31,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
+from ....utils import HabanaProfile, speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -220,6 +220,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **kwargs,
     ):
         r"""
@@ -276,6 +278,10 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            profiling_warmup_steps (`int`, *optional*):
+                Number of steps to ignore for profling.
+            profiling_steps (`int`, *optional*):
+                Number of steps to be captured when enabling profiling.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -413,6 +419,13 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
 
             self._num_timesteps = len(timesteps)
 
+            hb_profiler = HabanaProfile(
+                warmup=profiling_warmup_steps,
+                active=profiling_steps,
+                record_shapes=False,
+            )
+            hb_profiler.start()
+
             # 8. Denoising loop
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
@@ -481,6 +494,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, timestep, latents_batch)
 
+                    hb_profiler.step()
+
                 if not output_type == "latent":
                     # 8. Post-processing
                     image = self.vae.decode(
@@ -492,6 +507,8 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
 
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
+
+            hb_profiler.stop()
 
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
