@@ -536,7 +536,10 @@ class GaudiGenerationMixin(GenerationMixin):
 
         generation_config = copy.deepcopy(generation_config)
         if generation_config.static_shapes is None:
-            generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES and not kwargs.get("return_dict_in_generate", False)
+            generation_config.static_shapes = (
+                self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+                and not kwargs.get("return_dict_in_generate", False)
+            )
             self.generation_config.static_shapes = generation_config.static_shapes
             self.config.static_shapes = generation_config.static_shapes
         if generation_config.ignore_eos is None:
@@ -594,7 +597,10 @@ class GaudiGenerationMixin(GenerationMixin):
             self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
             or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
         )
-        is_greedy_or_beam = self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
+        is_greedy_or_beam = (
+            self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
+            or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
+        )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
         model_kwargs["reduce_recompile"] = (
             generation_config.reduce_recompile if generation_config.reduce_recompile is not None else False

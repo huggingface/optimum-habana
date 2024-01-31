@@ -1913,7 +1913,7 @@ class GenerationTesterMixin:
             tgt_len = min_length + idx if not use_cache else 1
             src_len = min_length + idx
             if config.static_shapes:
-                tgt_len = max_length if idx==0 else (1 if use_cache else max_length)
+                tgt_len = max_length if idx == 0 else (1 if use_cache else max_length)
                 src_len = max_length
 
             expected_shape = (
