@@ -266,8 +266,8 @@ def main():
         # Benchmark over the prompts below
         if args.prompt:
             input_sentences = args.prompt
-        if args.prompt and (model.config._name_or_path == "defog/sqlcoder-34b"):
-            input_sentences = sqlcoder_generate_prompt(args.prompt)
+            if (model.config._name_or_path == "defog/sqlcoder-34b-alpha"):
+                input_sentences = [sqlcoder_generate_prompt(each) for each in args.prompt]
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",
