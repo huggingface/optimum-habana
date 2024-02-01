@@ -679,6 +679,12 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
     ).to(accelerator.device)
 
+    # For mixed precision training we cast all non-trainable weigths to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
+    weight_dtype = torch.float32
+    if gaudi_config.use_torch_autocast or args.bf16:
+        weight_dtype = torch.bfloat16
+
     vae_path = (
         args.pretrained_model_name_or_path
         if args.pretrained_vae_model_name_or_path is None
@@ -692,7 +698,11 @@ def main(args):
         variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        revision=args.revision,
+        variant=args.variant,
+        torch_dtype=weight_dtype
     )
 
     # Freeze vae and text encoders.
@@ -869,15 +879,6 @@ def main(args):
 
     # Set unet as trainable.
     unet.train()
-
-    # For mixed precision training we cast all non-trainable weigths to half-precision
-    # as these weights are only used for inference, keeping weights in full precision is not required.
-
-    weight_dtype = torch.float32
-
-    if gaudi_config.use_torch_autocast or args.bf16:
-        weight_dtype = torch.bfloat16
-
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     # The VAE is in float32 to avoid NaN losses.
