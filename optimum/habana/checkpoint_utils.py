@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 import torch
+import transformers
 from huggingface_hub import snapshot_download
 from transformers.utils import is_offline_mode
 
@@ -53,16 +54,27 @@ def get_repo_root(model_name_or_path, local_rank=-1, token=None):
 def get_checkpoint_files(model_name_or_path, local_rank, token=None):
     """
     Gets the list of files for the specified model checkpoint.
+    Copied from https://github.com/huggingface/transformers/blob/abbffc4525566a48a9733639797c812301218b83/src/transformers/modeling_utils.py#L414
     """
     cached_repo_dir = get_repo_root(model_name_or_path, local_rank=local_rank, token=token)
 
-    # Extensions: .bin | .pt | .safetensors
-    # Creates a list of paths from all downloaded files in cache dir
-    exts = [".bin", ".pt", ".safetensors"]
-    file_list = [
-        str(entry) for entry in Path(cached_repo_dir).rglob("*") if (entry.is_file() and entry.suffix in exts)
-    ]
-    return file_list
+    index_file = os.path.join(cached_repo_dir, transformers.modeling_utils.WEIGHTS_INDEX_NAME)
+    safe_index_file = os.path.join(cached_repo_dir, transformers.modeling_utils.SAFE_WEIGHTS_INDEX_NAME)
+
+    index_present = os.path.isfile(index_file)
+    safe_index_present = os.path.isfile(safe_index_file)
+
+    if not index_present and not safe_index_present:
+        filenames = (WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_INDEX_NAME)
+        raise ValueError(f"Can't find a checkpoint index ({' or '.join(filenames)}) in {folder}.")
+
+    load_index = safe_index_file if safe_index_present else index_file
+
+    with open(load_index, "r", encoding="utf-8") as f:
+        index = json.load(f)
+
+    file_list = set(index["weight_map"].values())
+    return [os.path.join(cached_repo_dir, entry) for entry in file_list]
 
 
 def write_checkpoints_json(model_name_or_path, local_rank, f, token=None):
