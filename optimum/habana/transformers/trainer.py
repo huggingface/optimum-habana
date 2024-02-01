@@ -34,6 +34,7 @@ from accelerate import skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
 from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin
 from huggingface_hub import upload_folder
+from packaging import version
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
@@ -80,6 +81,7 @@ from transformers.utils import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
     PushInProgress,
+    is_accelerate_available,
     is_datasets_available,
     is_peft_available,
     is_safetensors_available,
@@ -116,6 +118,12 @@ if is_peft_available():
 if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
+if is_accelerate_available():
+    from accelerate import __version__ as accelerate_version
+    from accelerate.utils import (
+        load_fsdp_optimizer,
+        save_fsdp_optimizer,
+    )
 
 if TYPE_CHECKING:
     import optuna
@@ -291,8 +299,7 @@ class GaudiTrainer(Trainer):
         else:
             num_samples = len(self.train_dataset)
             if (
-                self.args.use_lazy_mode
-                and not self.args.dataloader_drop_last
+                not self.args.dataloader_drop_last
                 and len(self.train_dataset) % self.args.per_device_train_batch_size != 0
                 and self.args.parallel_mode != ParallelMode.DISTRIBUTED
             ):
@@ -471,7 +478,7 @@ class GaudiTrainer(Trainer):
                 raise ValueError(f"No valid checkpoint found in output directory ({args.output_dir})")
 
         if resume_from_checkpoint is not None:
-            if not self.is_deepspeed_enabled:
+            if not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
                 self._load_from_checkpoint(resume_from_checkpoint)
             # In case of repeating the find_executable_batch_size, set `self._train_batch_size` properly
             state = TrainerState.load_from_json(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME))
@@ -586,6 +593,8 @@ class GaudiTrainer(Trainer):
         if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:
             debug_overflow = DebugUnderflowOverflow(self.model)  # noqa
 
+        delay_optimizer_creation = self.is_fsdp_enabled
+
         # We need to reset the scheduler, as its parameters may be different on subsequent calls
         if self._created_lr_scheduler:
             self.lr_scheduler = None
@@ -594,7 +603,8 @@ class GaudiTrainer(Trainer):
         if self.is_deepspeed_enabled:
             self.optimizer, self.lr_scheduler = deepspeed_init(self, num_training_steps=max_steps)
 
-        self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+        if not delay_optimizer_creation:
+            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
         self.state = TrainerState()
         self.state.is_hyper_param_search = trial is not None
@@ -660,6 +670,9 @@ class GaudiTrainer(Trainer):
         # FSDP-XLA, SageMaker MP/DP, DataParallel, IPEX
         use_accelerator_prepare = True if model is self.model else False
 
+        if delay_optimizer_creation:
+            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+
         # prepare using `accelerator` prepare
         if use_accelerator_prepare:
             self.model.train()
@@ -670,6 +683,9 @@ class GaudiTrainer(Trainer):
                 model, self.optimizer, self.lr_scheduler = self.accelerator.prepare(
                     self.model, self.optimizer, self.lr_scheduler
                 )
+
+        if self.is_fsdp_enabled:
+            self.model = self.model_wrapped = model
 
         # for the rest of this function `model` is the outside model, whether it was wrapped or not
         if model is not self.model:
@@ -682,6 +698,10 @@ class GaudiTrainer(Trainer):
         # deepspeed ckpt loading
         if resume_from_checkpoint is not None and self.is_deepspeed_enabled:
             deepspeed_load_checkpoint(self.model_wrapped, resume_from_checkpoint)
+
+        # fsdp ckpt loading
+        if resume_from_checkpoint is not None and self.is_fsdp_enabled:
+            self._load_from_checkpoint(resume_from_checkpoint, self.model_wrapped)
 
         # Check if saved optimizer or scheduler states exist
         self._load_optimizer_and_scheduler(resume_from_checkpoint)
@@ -702,6 +722,7 @@ class GaudiTrainer(Trainer):
         # important: at this point:
         # self.model         is the Transformers Model
         # self.model_wrapped is DDP(Transformers Model), Deepspeed(Transformers Model), etc.
+        # FSDP(Transformers Model), Dynamo Optimized Module(Transformers Model) etc.
 
         # Train!
         logger.info("***** Running training *****")
@@ -1056,6 +1077,10 @@ class GaudiTrainer(Trainer):
         # TODO: check if the code below works
         # if self.is_deepspeed_enabled:
         #     deepspeed_load_checkpoint(self.model_wrapped, self.state.best_model_checkpoint)
+        # elif self.is_fsdp_enabled:
+        #     load_result = load_fsdp_model(
+        #         self.accelerator.state.fsdp_plugin, self.accelerator, model, self.state.best_model_checkpoint
+        #     )
         if (
             os.path.exists(best_model_path)
             or os.path.exists(best_safe_model_path)
@@ -1294,6 +1319,12 @@ class GaudiTrainer(Trainer):
                 self.model_wrapped.save_checkpoint(output_dir, exclude_frozen_parameters=True)
             else:
                 self.model_wrapped.save_checkpoint(output_dir)
+        elif self.is_fsdp_enabled:
+            # save fsdp specific ckpt for resuming from ckpt
+            save_fsdp_model(self.accelerator.state.fsdp_plugin, self.accelerator, self.model, output_dir)
+            save_fsdp_optimizer(
+                self.accelerator.state.fsdp_plugin, self.accelerator, self.optimizer, self.model, output_dir
+            )
         elif self.args.should_save:
             # deepspeed.save_checkpoint above saves model/optim/sched
             # This block is exectuted by the main process only
@@ -1347,10 +1378,18 @@ class GaudiTrainer(Trainer):
             # In distributed training however, we load directly on each GPU and risk the GPU OOM as it's more
             # likely to get OOM on CPU (since we load num_gpu times the optimizer state
             map_location = "cpu" if self.args.use_habana else self.args.device
-
-            self.optimizer.load_state_dict(
-                torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
-            )
+            if self.is_fsdp_enabled:
+                load_fsdp_optimizer(
+                    self.accelerator.state.fsdp_plugin,
+                    self.accelerator,
+                    self.optimizer,
+                    self.model,
+                    checkpoint,
+                )
+            else:
+                self.optimizer.load_state_dict(
+                    torch.load(os.path.join(checkpoint, OPTIMIZER_NAME), map_location=map_location)
+                )
 
             with warnings.catch_warnings(record=True) as caught_warnings:
                 self.lr_scheduler.load_state_dict(
@@ -1460,7 +1499,12 @@ class GaudiTrainer(Trainer):
         if output_dir is None:
             output_dir = self.args.output_dir
 
-        if self.is_deepspeed_enabled:
+        if self.is_fsdp_enabled:
+            if ("FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type))):
+                state_dict = self.accelerator.get_state_dict(self.model)
+                if self.args.should_save:
+                    self._save(output_dir, state_dict=state_dict)
+        elif self.is_deepspeed_enabled:
             try:
                 state_dict = self.accelerator.get_state_dict(self.deepspeed)
                 if self.args.should_save:
@@ -1559,6 +1603,9 @@ class GaudiTrainer(Trainer):
                 else self.accelerator.prepare_model(model, evaluation_mode=True)
             )
 
+            if self.is_fsdp_enabled:
+                self.model = model
+
             # for the rest of this function `model` is the outside model, whether it was wrapped or not
             if model is not self.model:
                 self.model_wrapped = model
@@ -1566,6 +1613,7 @@ class GaudiTrainer(Trainer):
             # backward compatibility
             if self.is_deepspeed_enabled:
                 self.deepspeed = self.model_wrapped
+
         model.eval()
 
         # Do not use HPU graphs if the training is ongoing because it detaches gradients
@@ -2101,7 +2149,7 @@ class GaudiTrainer(Trainer):
             split_batches=self.args.split_batches,
             deepspeed_plugin=self.args.deepspeed_plugin,
             gradient_accumulation_plugin=gradient_accumulation_plugin,
-            even_batches=self.args.use_lazy_mode and not self.args.dataloader_drop_last,
+            even_batches=not self.args.dataloader_drop_last,
             distribution_strategy=self.args.distribution_strategy,
         )
         # some Trainer classes need to use `gather` instead of `gather_for_metrics`, thus we store a flag
@@ -2109,9 +2157,27 @@ class GaudiTrainer(Trainer):
 
         # deepspeed and accelerate flags covering both trainer args and accelerate launcher
         self.is_deepspeed_enabled = getattr(self.accelerator.state, "deepspeed_plugin", None) is not None
-        self.is_fsdp_enabled = False
+        self.is_fsdp_enabled = getattr(self.accelerator.state, "fsdp_plugin", None) is not None
 
         # post accelerator creation setup
+        # copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/trainer.py#L3991
+        # post accelerator creation setup
+        if self.is_fsdp_enabled:
+            fsdp_plugin = self.accelerator.state.fsdp_plugin
+            fsdp_plugin.limit_all_gathers = self.args.fsdp_config.get(
+                "limit_all_gathers", fsdp_plugin.limit_all_gathers
+            )
+            if is_accelerate_available("0.23.0"):
+                fsdp_plugin.activation_checkpointing = self.args.fsdp_config.get(
+                    "activation_checkpointing", fsdp_plugin.activation_checkpointing
+                )
+                if fsdp_plugin.activation_checkpointing and self.args.gradient_checkpointing:
+                    raise ValueError(
+                        "The activation_checkpointing in FSDP config and the gradient_checkpointing in training arg "
+                        "can't be set to True simultaneously. Please use FSDP's activation_checkpointing logic "
+                        "when using FSDP."
+                    )
+
         if self.is_deepspeed_enabled and getattr(self.args, "hf_deepspeed_config", None) is None:
             self.propagate_args_to_deepspeed()
 

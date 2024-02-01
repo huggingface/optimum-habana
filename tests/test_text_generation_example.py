@@ -30,33 +30,45 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-70b-hf", 58.2750262232098),
             ("facebook/opt-66b", 28.16154122335556),
         ],
+        "torch_compile": [
+            ("meta-llama/Llama-2-7b-hf", 8.95169640119334),
+        ],
     }
 else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 41.93942748147396),
-            ("gpt2-xl", 126.6292071377241),
+            ("bigscience/bloomz-7b1", 41.51855420676164),
+            ("gpt2-xl", 137.159223188195),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 37.14562499113717),
-            ("meta-llama/Llama-2-7b-hf", 43.951804139391925),
-            ("tiiuae/falcon-7b", 44.288602257903726),
-            ("bigcode/starcoder", 15.955986010526113),
-            ("Salesforce/codegen2-1B", 109.03016111561857),
-            ("mosaicml/mpt-7b", 44.888696119070424),
-            ("mistralai/Mistral-7B-v0.1", 40.0690067247771),
+            ("EleutherAI/gpt-j-6b", 50.66146537939035),
+            ("meta-llama/Llama-2-7b-hf", 44.29688546702468),
+            ("tiiuae/falcon-7b", 44.217408724737744),
+            ("bigcode/starcoder", 15.948143541091655),
+            ("Salesforce/codegen2-1B", 153.79670508220687),
+            ("mosaicml/mpt-7b", 44.80241777760578),
+            ("mistralai/Mistral-7B-v0.1", 40.00435417311187),
         ],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 27.34439410425298),
+            ("bigscience/bloomz-7b1", 31.044523676681507),
         ],
+        "torch_compile": [],
     }
 
 
-def _test_text_generation(model_name: str, baseline: float, token: str, deepspeed: bool = False, world_size: int = 8):
+def _test_text_generation(
+    model_name: str,
+    baseline: float,
+    token: str,
+    deepspeed: bool = False,
+    world_size: int = 8,
+    torch_compile: bool = False,
+):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
 
+    deepspeed = deepspeed and not torch_compile
     if deepspeed:
         command += [
             f"{path_to_example_dir / 'gaudi_spawn.py'}",
@@ -68,16 +80,24 @@ def _test_text_generation(model_name: str, baseline: float, token: str, deepspee
         f"{path_to_example_dir / 'text-generation' / 'run_generation.py'}",
         f"--model_name_or_path {model_name}",
         "--batch_size 1",
-        "--use_hpu_graphs",
         "--use_kv_cache",
         "--max_new_tokens 100",
     ]
 
+    if torch_compile:
+        command += [
+            "--attn_softmax_bf16",
+            "--reuse_cache",
+            "--trim_logits",
+            "--torch_compile",
+        ]
+    else:
+        command += [
+            "--use_hpu_graphs",
+        ]
+
     if not deepspeed:
         command.append("--bf16")
-
-    if "falcon" in model_name:
-        command.append("--skip_hash_with_views")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
@@ -115,3 +135,11 @@ def test_text_generation_bf16(model_name: str, baseline: float, token: str):
 def test_text_generation_deepspeed(model_name: str, baseline: float, token: str):
     world_size = 2 if "opt-66b" in model_name else 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size)
+
+
+@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
+def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
+    os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
+    os.environ["PT_HPU_LAZY_MODE"] = "0"
+    os.environ["WORLD_SIZE"] = "0"
+    _test_text_generation(model_name, baseline, token, torch_compile=True)

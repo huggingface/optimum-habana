@@ -877,7 +877,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
-        if capture:
+        if cached is None:
             # Capture the graph and cache it
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()

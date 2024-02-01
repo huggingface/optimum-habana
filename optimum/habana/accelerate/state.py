@@ -55,7 +55,7 @@ class GaudiPartialState(PartialState):
                     if not is_deepspeed_available():
                         raise ImportError(
                             "DeepSpeed is not available, install it with: `pip install"
-                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0`."
+                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0`."
                         )
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
                     import deepspeed
@@ -67,6 +67,11 @@ class GaudiPartialState(PartialState):
                     deepspeed.init_distributed(dist_backend=self.backend, **kwargs)
                     logger.info("DeepSpeed is enabled.")
                     self._mixed_precision = "no"  # deepspeed handles mixed_precision using deepspeed_config
+                elif os.environ.get("ACCELERATE_USE_FSDP", "false") == "true":
+                    self.distributed_type = GaudiDistributedType.FSDP
+                    if not torch.distributed.is_initialized():
+                        torch.distributed.init_process_group(backend=self.backend, rank=rank, world_size=world_size)
+                        logger.info("Enabled distributed run.")
                 else:
                     self.distributed_type = GaudiDistributedType.MULTI_HPU
                     if not torch.distributed.is_initialized():
@@ -118,6 +123,7 @@ class GaudiPartialState(PartialState):
         if self.distributed_type in (
             GaudiDistributedType.DEEPSPEED,
             GaudiDistributedType.MULTI_HPU,
+            GaudiDistributedType.FSDP,
         ):
             torch.distributed.barrier()
 
@@ -174,6 +180,10 @@ class GaudiAcceleratorState(AcceleratorState):
             )
             if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true" and not cpu:
                 self.deepspeed_plugin = deepspeed_plugin
+            if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" and not cpu:
+                if self._mixed_precision != "no":
+                    fsdp_plugin.set_mixed_precision(self._mixed_precision)
+                self.fsdp_plugin = fsdp_plugin
             GaudiPartialState._shared_state["distributed_type"] = self.distributed_type
             self.use_ipex = False
 

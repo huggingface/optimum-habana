@@ -30,11 +30,8 @@ import evaluate
 import torch
 import transformers
 from datasets import load_dataset
-from peft import (
-    LoraConfig,
-    TaskType,
-    get_peft_model,
-)
+from peft import LoraConfig, TaskType, get_peft_model, tuners
+from peft.utils.other import fsdp_auto_wrap_policy
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -45,6 +42,7 @@ from transformers import (
 from transformers.trainer_utils import is_main_process
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.peft.layer import GaudiLoraLayerLinearForward
 from optimum.habana.utils import set_seed
 
 
@@ -674,6 +672,7 @@ def main():
         )
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
+        tuners.lora.layer.Linear.forward = GaudiLoraLayerLinearForward
         lora_model = get_peft_model(model, peft_config)
         if training_args.bf16:
             lora_model = lora_model.to(torch.bfloat16)
@@ -694,6 +693,10 @@ def main():
             compute_metrics=compute_metrics if training_args.do_eval else None,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         )
+
+        # Solution for https://github.com/huggingface/peft/blob/v0.6.2/README.md#caveats (1)
+        if training_args.fsdp and training_args.fsdp_config["auto_wrap_policy"] == "TRANSFORMER_BASED_WRAP":
+            trainer.accelerator.state.fsdp_plugin.auto_wrap_policy = fsdp_auto_wrap_policy(lora_model)
 
     if training_args.do_train:
         train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)

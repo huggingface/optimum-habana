@@ -22,6 +22,7 @@ import argparse
 import json
 import logging
 import math
+import os
 import time
 from itertools import cycle
 from pathlib import Path
@@ -201,11 +202,6 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to reuse key/value cache for decoding. It should save memory.",
     )
-    parser.add_argument(
-        "--skip_hash_with_views",
-        action="store_true",
-        help="Whether to skip hash with views for HPU graphs. When skip_hash_with_views is not used, the input to HPU graphs includes both view and base tensors.",
-    )
     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
     parser.add_argument(
         "--simulate_dyn_prompt",
@@ -223,7 +219,7 @@ def setup_parser(parser):
     parser.add_argument(
         "--kv_cache_fp8",
         action="store_true",
-        help="Store kv-cache in float8 when kv-cache is used",
+        help="Store kv-cache in float8 when kv-cache is used. Can't use this argument together with QUANT_CONFIG env var",
     )
     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
@@ -231,14 +227,27 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
+    parser.add_argument(
+        "--torch_compile",
+        action="store_true",
+        help="Whether to use torch compiled model or not.",
+    )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
 
     args = parser.parse_args()
 
+    if args.torch_compile:
+        args.use_hpu_graphs = False
+
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
 
+    args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config and args.kv_cache_fp8:
+        # can't use both quant_config and kv_cache_fp8, since quant_config may trigger kv cache quantization
+        # with habana quantization toolkit
+        raise parser.error("Can't use QUANT_CONFIG env var with kv_cache_fp8 argument")
     return args
 
 
@@ -246,6 +255,10 @@ def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
     model, tokenizer, generation_config = initialize_model(args, logger)
+
+    use_lazy_mode = True
+    if args.torch_compile and model.config.model_type == "llama":
+        use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
 
@@ -299,7 +312,7 @@ def main():
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
-                lazy_mode=True,
+                lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
@@ -479,7 +492,7 @@ def main():
             outputs = model.generate(
                 **batch,
                 generation_config=generation_config,
-                lazy_mode=True,
+                lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
@@ -539,6 +552,10 @@ def main():
         if prompt_length > 0:
             print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
+    if args.quant_config:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.finish_measurements(model)
 
 
 if __name__ == "__main__":

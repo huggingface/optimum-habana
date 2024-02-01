@@ -22,8 +22,6 @@ from transformers.models.llama.modeling_llama import (
     logger,
 )
 
-from ..modeling_all_models import ScopedLinearAllReduce
-
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -46,7 +44,10 @@ except ImportError:
 
 def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
-    cur = cur.to(dtype=prev.dtype)
+    if prev.dtype == torch.float8_e4m3fn:
+        from habana_frameworks.torch.hpex.kernels.Fp8Ops import cast_to_fp8_v2
+
+        cur = cast_to_fp8_v2(cur, None, False, False, prev.dtype)[0]
     if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
         prev[:, :, :inp_seq_len, :].copy_(cur)
@@ -67,8 +68,14 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
         - override RMSNorm with Habana fused RMSNorm
     """
     if hidden_states.device.type == "hpu" and FusedRMSNorm:
-        hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
-        return hidden_states
+        # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
+        if hidden_states.dtype != self.weight.dtype:
+            orig_dtype = hidden_states.dtype
+            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
+            return hidden_states.to(orig_dtype)
+        else:
+            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+            return hidden_states
     else:
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
@@ -77,19 +84,38 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
         return self.weight * hidden_states.to(input_dtype)
 
 
-def gaudi_llama_repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+def gaudi_llama_repeat_kv(
+    query_states: torch.Tensor,
+    key_states: torch.Tensor,
+    value_states: torch.Tensor,
+    attention_mask: torch.Tensor,
+    n_rep: int,
+):
     """
     Copied from repeat_kv: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
     The only differences are:
         - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
-    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
-    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+        - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
+    The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
+    The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
     """
-    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    batch, num_key_value_heads, kv_len, head_dim = key_states.shape
     if n_rep == 1 or num_key_value_heads == 1:
-        return hidden_states
-    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
-    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+        return query_states, key_states, value_states, attention_mask
+
+    new_kv_shape = (batch, num_key_value_heads, 1, kv_len, head_dim)
+    key_states = key_states.reshape(new_kv_shape)
+    value_states = value_states.reshape(new_kv_shape)
+
+    batch, _, q_len, head_dim = query_states.shape
+    new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
+    query_states = query_states.reshape(new_q_shape)
+
+    if attention_mask is not None:
+        # Add groups dim and set to 1
+        attention_mask = attention_mask.unsqueeze(1)
+
+    return query_states, key_states, value_states, attention_mask
 
 
 class Matmul(torch.nn.Module):
@@ -100,33 +126,49 @@ class Matmul(torch.nn.Module):
         return torch.matmul(x, y)
 
 
+class KVCache(torch.nn.Module):
+    def __init__(self):
+        super(KVCache, self).__init__()
+        self.cache = None
+        self.inp_seq_len = -1
+
+    def allocate(self, inp_seq_len, kv_cache_fp8, dtype, device, shape):
+        if self.cache is None or self.cache.shape != shape:
+            self.inp_seq_len = inp_seq_len
+            if kv_cache_fp8:
+                dtype = torch.float8_e4m3fn
+            self.cache = torch.zeros(shape, dtype=dtype, device=device)
+        else:
+            assert (
+                self.inp_seq_len == inp_seq_len
+            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            self.cache.fill_(0)
+
+    def get_shape(self):
+        if self.cache is None:
+            return None
+        return self.cache.shape
+
+    def forward(self, cur, dim, idx):
+        return update(self.cache, cur, dim, idx, self.inp_seq_len)
+
+
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
-        self.past_key = None
-        self.past_value = None
+        self.k_cache = KVCache()
+        self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
-        key_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        if self.past_key is None or self.past_key.shape != key_shape:
-            self.inp_seq_len = inp_seq_len
-            device = self.k_proj.weight.device
-            dtype = self.k_proj.weight.dtype
-            if kv_cache_fp8:
-                dtype = torch.float8_e4m3fn
-            self.past_key = torch.zeros(key_shape, dtype=dtype, device=device)
-            self.past_value = torch.zeros(value_shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.past_key.fill_(0)
-            self.past_value.fill_(0)
+        cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
+        device = self.k_proj.weight.device
+        dtype = self.config.torch_dtype
+        self.k_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
+        self.v_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
 
     def update_sincos_cache(self, seq_len):
         # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
@@ -141,14 +183,14 @@ class GaudiLlamaAttention(LlamaAttention):
         tensor.copy_(updated)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
-        if self.past_key is None:
+        if self.k_cache.cache is None:
             return (None, None)
 
-        head_dim = self.past_key.size(-1)
-        seq_length = self.past_key.size(-2)
-        self.reorder(self.past_key, beam_idx, seq_length, head_dim)
-        self.reorder(self.past_value, beam_idx, seq_length, head_dim)
-        return (self.past_key.shape, self.past_value.shape)
+        head_dim = self.k_cache.cache.size(-1)
+        seq_length = self.k_cache.cache.size(-2)
+        self.reorder(self.k_cache.cache, beam_idx, seq_length, head_dim)
+        self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
+        return (self.k_cache.cache.shape, self.v_cache.cache.shape)
 
     def pre_attn_forward(
         self,
@@ -231,24 +273,19 @@ class GaudiLlamaAttention(LlamaAttention):
         if past_key_value is not None or reuse_cache:
             # reuse k, v, self_attention
             if reuse_cache:
-                past_key = self.past_key
-                past_value = self.past_value
+                key_states = self.k_cache(key_states, 2, token_idx)
+                value_states = self.v_cache(value_states, 2, token_idx)
             else:
-                past_key = past_key_value[0]
-                past_value = past_key_value[1]
-            key_states = update(past_key, key_states, 2, token_idx, self.inp_seq_len)
-            value_states = update(past_value, value_states, 2, token_idx, self.inp_seq_len)
+                key_states = update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                value_states = update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
 
         if use_cache:
             if reuse_cache:
-                past_key_value = (self.past_key.shape, self.past_value.shape)
+                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
             past_key_value = None
-
-        key_states = gaudi_llama_repeat_kv(key_states, self.num_key_value_groups)
-        value_states = gaudi_llama_repeat_kv(value_states, self.num_key_value_groups)
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
@@ -267,18 +304,36 @@ class GaudiLlamaAttention(LlamaAttention):
                     )
 
         else:
-            attn_weights = self.matmul_qk(query_states, key_states.transpose(2, 3)) * self.norm_factor
+            query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
+                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+            )
 
-            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
+
+            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len) and attn_weights.size() != (
+                bsz,
+                self.num_key_value_heads,
+                self.num_key_value_groups,
+                q_len,
+                kv_seq_len,
+            ):
                 raise ValueError(
-                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)} or"
+                    f" {(bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len)}, but is"
                     f" {attn_weights.size()}"
                 )
 
             if attention_mask is not None:
-                if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                if attention_mask.size() != (bsz, 1, q_len, kv_seq_len) and attention_mask.size() != (
+                    bsz,
+                    1,
+                    1,
+                    q_len,
+                    kv_seq_len,
+                ):
                     raise ValueError(
-                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)} or {(bsz, 1, 1, q_len, kv_seq_len)},"
+                        f" but is {attention_mask.size()}"
                     )
                 attn_weights = attn_weights + attention_mask
 
@@ -291,6 +346,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 )
             attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
             attn_output = self.matmul_av(attn_weights, value_states)
+            attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
@@ -310,11 +366,11 @@ class GaudiLlamaAttention(LlamaAttention):
         return attn_output, attn_weights, past_key_value
 
     def attention_all_reduce(self, attn_output):
-        if self.o_proj.__class__ is ScopedLinearAllReduce:
+        if hasattr(self.o_proj, "all_reduce"):
             self.o_proj.all_reduce(attn_output)
 
     def post_attn_forward(self, attn_output):
-        if self.o_proj.__class__ is ScopedLinearAllReduce:
+        if hasattr(self.o_proj, "post_all_reduce"):
             self.o_proj.post_all_reduce(attn_output)
         return attn_output
 
@@ -343,13 +399,13 @@ class GaudiLlamaMLP(LlamaMLP):
         return output
 
     def mlp_all_reduce(self, x):
-        if self.down_proj.__class__ is ScopedLinearAllReduce:
+        if hasattr(self.down_proj, "all_reduce"):
             self.down_proj.all_reduce(x)
 
     def post_mlp_forward(self, x):
         if self.config.pretraining_tp > 1:
             return x
-        if self.down_proj.__class__ is ScopedLinearAllReduce:
+        if hasattr(self.down_proj, "post_all_reduce"):
             return self.down_proj.post_all_reduce(x)
         return x
 
