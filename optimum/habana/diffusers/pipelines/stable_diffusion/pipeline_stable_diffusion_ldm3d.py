@@ -177,6 +177,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
+        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -327,7 +328,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
-                if j == 2:
+                if j == kwargs.get("throughput_warmup_steps", 3):
                     t1 = time.time()
 
                 latents_batch = latents_batches[0]
@@ -338,8 +339,6 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 for i in range(num_inference_steps):
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-
-                    capture = True if self.use_hpu_graphs and i < 2 else False
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
@@ -353,7 +352,6 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                         timestep,
                         text_embeddings_batch,
                         cross_attention_kwargs,
-                        capture,
                     )
 
                     # perform guidance
@@ -443,9 +441,9 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             )
 
     @torch.no_grad()
-    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs, capture):
+    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs):
         if self.use_hpu_graphs:
-            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture)
+            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states)
         else:
             return self.unet(
                 latent_model_input,
@@ -456,12 +454,12 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             )[0]
 
     @torch.no_grad()
-    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, capture):
+    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states):
         inputs = [latent_model_input, timestep, encoder_hidden_states, False]
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
-        if capture:
+        if cached is None:
             # Capture the graph and cache it
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()
