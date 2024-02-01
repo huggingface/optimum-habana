@@ -277,12 +277,9 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             do_classifier_free_guidance = guidance_scale > 1.0
 
             if ip_adapter_image is not None:
-                output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-                image_embeds, negative_image_embeds = self.encode_image(
-                    ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+                image_embeds = self.prepare_ip_adapter_image_embeds(
+                    ip_adapter_image, device, batch_size * num_images_per_prompt
                 )
-                if do_classifier_free_guidance:
-                    image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
             # 3. Encode input prompt
             prompt_embeds, negative_prompt_embeds = self.encode_prompt(

@@ -62,6 +62,38 @@ for library in GAUDI_LOADABLE_CLASSES:
     GAUDI_ALL_IMPORTABLE_CLASSES.update(GAUDI_LOADABLE_CLASSES[library])
 
 
+def _fetch_class_library_tuple(module):
+    # import it here to avoid circular import
+    diffusers_module = importlib.import_module(__name__.split(".")[0])
+    pipelines = getattr(diffusers_module, "pipelines")
+
+    # register the config from the original module, not the dynamo compiled one
+    not_compiled_module = _unwrap_model(module)
+    library = not_compiled_module.__module__.split(".")[0]
+    if library == "optimum":
+        library = "optimum.habana.diffusers.schedulers"
+
+    # check if the module is a pipeline module
+    module_path_items = not_compiled_module.__module__.split(".")
+    pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
+
+    path = not_compiled_module.__module__.split(".")
+    is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+
+    # if library is not in GAUDI_LOADABLE_CLASSES, then it is a custom module.
+    # Or if it's a pipeline module, then the module is inside the pipeline
+    # folder so we set the library to module name.
+    if is_pipeline_module:
+        library = pipeline_dir
+    elif library not in GAUDI_LOADABLE_CLASSES:
+        library = not_compiled_module.__module__
+
+    # retrieve class_name
+    class_name = not_compiled_module.__class__.__name__
+
+    return (library, class_name)
+
+
 class GaudiDiffusionPipeline(DiffusionPipeline):
     """
     Extends the [`DiffusionPipeline`](https://huggingface.co/docs/diffusers/api/diffusion_pipeline) class:
@@ -160,39 +192,12 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             self._device = torch.device("cpu")
 
     def register_modules(self, **kwargs):
-        # import it here to avoid circular import
-        from diffusers import pipelines
-
         for name, module in kwargs.items():
             # retrieve library
             if module is None or isinstance(module, (tuple, list)) and module[0] is None:
                 register_dict = {name: (None, None)}
             else:
-                # register the config from the original module, not the dynamo compiled one
-                not_compiled_module = _unwrap_model(module)
-
-                library = not_compiled_module.__module__.split(".")[0]
-                if library == "optimum":
-                    library = "optimum.habana.diffusers.schedulers"
-
-                # check if the module is a pipeline module
-                module_path_items = not_compiled_module.__module__.split(".")
-                pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
-
-                path = not_compiled_module.__module__.split(".")
-                is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
-
-                # if library is not in GAUDI_LOADABLE_CLASSES, then it is a custom module.
-                # Or if it's a pipeline module, then the module is inside the pipeline
-                # folder so we set the library to module name.
-                if is_pipeline_module:
-                    library = pipeline_dir
-                elif library not in GAUDI_LOADABLE_CLASSES:
-                    library = not_compiled_module.__module__
-
-                # retrieve class_name
-                class_name = not_compiled_module.__class__.__name__
-
+                library, class_name = _fetch_class_library_tuple(module)
                 register_dict = {name: (library, class_name)}
 
             # save model index config
@@ -308,6 +313,11 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             self.gaudi_config.save_pretrained(save_directory)
 
         if push_to_hub:
+            # Create a new empty model card and eventually tag it
+            model_card = load_or_create_model_card(repo_id, token=token, is_pipeline=True)
+            model_card = populate_model_card(model_card)
+            model_card.save(os.path.join(save_directory, "README.md"))
+
             self._upload_folder(
                 save_directory,
                 repo_id,

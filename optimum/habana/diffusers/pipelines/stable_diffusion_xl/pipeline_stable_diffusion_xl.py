@@ -617,13 +617,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             negative_add_time_ids = negative_add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
 
             if ip_adapter_image is not None:
-                output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-                image_embeds, negative_image_embeds = self.encode_image(
-                    ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+                image_embeds = self.prepare_ip_adapter_image_embeds(
+                    ip_adapter_image, device, batch_size * num_images_per_prompt
                 )
-                if self.do_classifier_free_guidance:
-                    image_embeds = torch.cat([negative_image_embeds, image_embeds])
-                    image_embeds = image_embeds.to(device)
 
             # 7.5 Split into batches (HPU-specific step)
             (
