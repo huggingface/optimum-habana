@@ -289,6 +289,8 @@ def main():
         def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
 
+            t0 = time.perf_counter()
+            print(f"Step4+ starting time is {t0*1000}", flush=True)
             # Tokenization
             if args.max_input_tokens > 0:
                 input_tokens = tokenizer.batch_encode_plus(
@@ -317,7 +319,10 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
             ).cpu()
-            return tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            x = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            duration = time.perf_counter() - t0
+            print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
+            return x
 
         from optimum.habana.utils import HabanaProfile
 
