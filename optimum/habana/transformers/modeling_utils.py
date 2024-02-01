@@ -51,6 +51,7 @@ from .models import (
     gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
+    gaudi_BlipForQuestionAnswering_generate,
     gaudi_BlipTextAttention_forward,
     gaudi_BlipTextEncoder_forward,
     gaudi_BlipTextLayer_forward,
@@ -291,3 +292,4 @@ def adapt_transformers_to_gaudi():
     transformers.models.blip.modeling_blip_text.BlipTextLayer.forward = gaudi_BlipTextLayer_forward
     transformers.models.blip.modeling_blip_text.BlipTextAttention.forward = gaudi_BlipTextAttention_forward
     transformers.models.blip.modeling_blip_text.BlipTextSelfAttention.forward = gaudi_BlipTextSelfAttention_forward
+    transformers.models.blip.BlipForQuestionAnswering.generate = gaudi_BlipForQuestionAnswering_generate

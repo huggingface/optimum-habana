@@ -1,3 +1,4 @@
+from .modeling_blip import gaudi_BlipForQuestionAnswering_generate
 from .modeling_blip_text import (
     gaudi_BlipTextAttention_forward,
     gaudi_BlipTextEncoder_forward,

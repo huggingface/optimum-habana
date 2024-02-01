@@ -11,6 +11,7 @@ from .bart import (
     gaudi_BartModel_forward,
 )
 from .blip import (
+    gaudi_BlipForQuestionAnswering_generate,
     gaudi_BlipTextAttention_forward,
     gaudi_BlipTextEncoder_forward,
     gaudi_BlipTextLayer_forward,
