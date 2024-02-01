@@ -399,7 +399,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
                 if token_idx is not None:
-                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)#.unsqueeze(-1)
+                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)  # .unsqueeze(-1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
         else:

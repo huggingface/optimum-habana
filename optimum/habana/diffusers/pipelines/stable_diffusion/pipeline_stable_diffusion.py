@@ -23,7 +23,7 @@ import numpy as np
 import PIL
 import torch
 from diffusers.image_processor import PipelineImageInput
-from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipeline, StableDiffusionSafetyChecker
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
 from diffusers.schedulers import KarrasDiffusionSchedulers

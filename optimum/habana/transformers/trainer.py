@@ -32,9 +32,8 @@ import numpy as np
 import torch
 from accelerate import skip_first_batches
 from accelerate.data_loader import SeedableRandomSampler
-from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin
+from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin, save_fsdp_model
 from huggingface_hub import upload_folder
-from packaging import version
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
@@ -119,7 +118,6 @@ if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
 if is_accelerate_available():
-    from accelerate import __version__ as accelerate_version
     from accelerate.utils import (
         load_fsdp_optimizer,
         save_fsdp_optimizer,
@@ -1500,7 +1498,7 @@ class GaudiTrainer(Trainer):
             output_dir = self.args.output_dir
 
         if self.is_fsdp_enabled:
-            if ("FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type))):
+            if "FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type):
                 state_dict = self.accelerator.get_state_dict(self.model)
                 if self.args.should_save:
                     self._save(output_dir, state_dict=state_dict)

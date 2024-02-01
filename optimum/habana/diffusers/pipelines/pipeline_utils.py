@@ -24,6 +24,7 @@ from typing import Optional, Union
 import torch
 from diffusers.pipelines import DiffusionPipeline
 from diffusers.pipelines.pipeline_utils import _unwrap_model
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo
 

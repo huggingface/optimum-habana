@@ -421,7 +421,6 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
-
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
 
@@ -599,27 +598,26 @@ class GaudiLlamaModel(LlamaModel):
                 )
                 use_cache = False
 
-        #seq_length_with_past = seq_length
-        past_key_values_length = 0
+        # seq_length_with_past = seq_length
+        past_key_value_length = 0
         use_legacy_cache = True
-        do_not_use_new_cache = True # Ignoring new Cache path for HPU
+        do_not_use_new_cache = True  # Ignoring new Cache path for HPU
         if past_key_values is not None:
             if use_cache:
                 if reuse_cache:
-                    past_key_values_length = past_key_values[0][2] #past_key_values[0][0][2]
+                    past_key_value_length = past_key_values[0][2]  # past_key_values[0][0][2]
                 else:
                     if not do_not_use_new_cache:
                         use_legacy_cache = not isinstance(past_key_values, Cache)
                         if use_legacy_cache:
                             past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                        past_key_values_length = past_key_values.get_usable_length(seq_length)
-             #seq_length_with_past = seq_length_with_past + past_key_values_length
-
+                        past_key_value_length = past_key_values.get_usable_length(seq_length)
+            # seq_length_with_past = seq_length_with_past + past_key_values_length
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
-                past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
+                past_key_value_length, seq_length + past_key_value_length, dtype=torch.long, device=device
             )
             position_ids = position_ids.unsqueeze(0)
 
@@ -637,8 +635,7 @@ class GaudiLlamaModel(LlamaModel):
         else:
             # 4d mask is passed through the layers
             attention_mask = _prepare_4d_causal_attention_mask(
-
-                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_value_length
             )
 
         # embed positions
@@ -697,7 +694,11 @@ class GaudiLlamaModel(LlamaModel):
 
         next_cache = None
         if use_cache:
-            next_cache = next_decoder_cache if do_not_use_new_cache else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
+            next_cache = (
+                next_decoder_cache
+                if do_not_use_new_cache
+                else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
+            )
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         return BaseModelOutputWithPast(
@@ -888,7 +889,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
         # TODO: remove `.clone()` when SynapseAI v1.15 is released
-        return FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids), FusedRoPE.apply(
+        return FusedRoPE.apply(
+            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+        ), FusedRoPE.apply(
             k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
         )
     else:

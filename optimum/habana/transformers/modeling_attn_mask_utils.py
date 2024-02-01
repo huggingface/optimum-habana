@@ -166,11 +166,13 @@ class AttentionMaskConverter:
         if sliding_window is not None:
             diagonal = past_key_values_length - sliding_window + 1
 
-            #context_mask = 1 - torch.triu(torch.ones_like(mask, dtype=torch.int), diagonal=diagonal)
+            # context_mask = 1 - torch.triu(torch.ones_like(mask, dtype=torch.int), diagonal=diagonal)
             # Replace triu with below
             row_indices = torch.arange(mask.size(0), device=mask.device).view(-1, 1)  # Reshape to column vector
             col_indices = torch.arange(mask.size(1), device=mask.device)
-            context_mask = 1 - (col_indices >= row_indices + diagonal).int().expand_as(mask)  # Expand to match mask shape
+            context_mask = 1 - (col_indices >= row_indices + diagonal).int().expand_as(
+                mask
+            )  # Expand to match mask shape
 
             mask.masked_fill_(context_mask.bool(), torch.finfo(dtype).min)
 
@@ -373,7 +375,7 @@ def _prepare_4d_causal_attention_mask_for_sdpa(
                 )
                 return attention_mask
 
-        elif not is_tracing:# and torch.all(attention_mask == 1):
+        elif not is_tracing:  # and torch.all(attention_mask == 1):
             if query_length == 1:
                 # For query_length == 1, causal attention and bi-directional attention are the same.
                 attention_mask = None

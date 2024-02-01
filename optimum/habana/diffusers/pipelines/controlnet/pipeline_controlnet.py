@@ -24,8 +24,9 @@ from diffusers.pipelines.controlnet import StableDiffusionControlNetPipeline
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import deprecate
 from diffusers.utils.torch_utils import is_compiled_module
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from optimum.utils import logging
 
@@ -35,8 +36,8 @@ from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import (
     GaudiStableDiffusionPipeline,
     GaudiStableDiffusionPipelineOutput,
+    retrieve_timesteps,
 )
-from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
 
 logger = logging.get_logger(__name__)
@@ -444,7 +445,9 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
             # 6.5 Optionally get Guidance Scale Embedding
             timestep_cond = None
             if self.unet.config.time_cond_proj_dim is not None:
-                guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+                guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(
+                    batch_size * num_images_per_prompt
+                )
                 timestep_cond = self.get_guidance_scale_embedding(
                     guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
                 ).to(device=device, dtype=latents.dtype)

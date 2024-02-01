@@ -27,13 +27,14 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.models.mistral.modeling_mistral import MistralForCausalLM, apply_rotary_pos_emb, repeat_kv
+from transformers.utils import logging
+
 from optimum.habana.transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.mistral.modeling_mistral import MistralForCausalLM, apply_rotary_pos_emb, repeat_kv
-from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
@@ -77,7 +78,11 @@ def gaudi_mistral_attn_forward(
                 "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                 "with a layer index."
             )
-        shp = past_key_value[0].shape[-2] if type(past_key_value) == type(tuple()) else past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        shp = (
+            past_key_value[0].shape[-2]
+            if isinstance(past_key_value, tuple)
+            else past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        )
         if token_idx is not None:
             kv_seq_len = shp
         else:
@@ -286,7 +291,6 @@ def gaudi_mistral_model_forward(
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-
         if self.gradient_checkpointing and self.training:
             layer_outputs = self._gradient_checkpointing_func(
                 decoder_layer.__call__,
@@ -324,7 +328,11 @@ def gaudi_mistral_model_forward(
 
     next_cache = None
     if next_decoder_cache and use_cache:
-        next_cache = next_decoder_cache if do_not_use_new_cache else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
+        next_cache = (
+            next_decoder_cache
+            if do_not_use_new_cache
+            else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
+        )
     if not return_dict:
         return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
     return BaseModelOutputWithPast(
