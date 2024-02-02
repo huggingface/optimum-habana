@@ -179,6 +179,7 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         clip_skip: Optional[int] = None,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
+        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -438,7 +439,7 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
-                if j == 2:
+                if j == kwargs.get("throughput_warmup_steps", 3):
                     t1 = time.time()
 
                 latents_batch = latents_batches[0]
@@ -450,8 +451,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                 for i in range(num_inference_steps):
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-
-                    capture = True if self.use_hpu_graphs and i < 2 else False
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
@@ -484,7 +483,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                         image,
                         cond_scale,
                         guess_mode,
-                        capture,
                     )
 
                     if guess_mode and do_classifier_free_guidance:
@@ -504,7 +502,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                         cross_attention_kwargs,
                         down_block_res_samples,
                         mid_block_res_sample,
-                        capture,
                     )
 
                     # perform guidance
@@ -604,7 +601,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         cross_attention_kwargs,
         down_block_additional_residuals,
         mid_block_additional_residual,
-        capture,
     ):
         if self.use_hpu_graphs:
             return self.unet_capture_replay(
@@ -613,7 +609,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                 encoder_hidden_states,
                 down_block_additional_residuals,
                 mid_block_additional_residual,
-                capture,
             )
         else:
             return self.unet(
@@ -634,7 +629,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         encoder_hidden_states,
         down_block_additional_residuals,
         mid_block_additional_residual,
-        capture,
     ):
         inputs = [
             latent_model_input,
@@ -647,7 +641,7 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
-        if capture:
+        if cached is None:
             # Capture the graph and cache it
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()
@@ -689,7 +683,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         controlnet_cond,
         conditioning_scale,
         guess_mode,
-        capture,
     ):
         if self.use_hpu_graphs:
             return self.controlnet_capture_replay(
@@ -699,7 +692,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                 controlnet_cond,
                 conditioning_scale,
                 guess_mode,
-                capture,
             )
         else:
             return self.controlnet(
@@ -721,7 +713,6 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         controlnet_cond,
         conditioning_scale,
         guess_mode,
-        capture,
     ):
         inputs = [
             control_model_input,
@@ -735,7 +726,7 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
-        if capture:
+        if cached is None:
             # Capture the graph and cache it
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()
