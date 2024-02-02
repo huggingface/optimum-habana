@@ -36,10 +36,6 @@
 >             "help": "Whether a convolutional attention network should be stacked on top of the Wav2Vec2Bert Encoder. Can be very "
 155d161
 < 
-265c271
-<                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
----
->                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
 407c413
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---

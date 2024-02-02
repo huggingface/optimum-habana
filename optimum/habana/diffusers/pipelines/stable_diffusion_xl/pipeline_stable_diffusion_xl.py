@@ -681,7 +681,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
-                if j == 2:
+                if j == kwargs.get("throughput_warmup_steps", 3):
                     t1 = time.time()
 
                 latents_batch = latents_batches[0]
@@ -698,8 +698,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                         continue
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-
-                    capture = True if self.use_hpu_graphs and j == 0 and i < 2 else False
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
@@ -718,7 +716,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                         timestep_cond,
                         self.cross_attention_kwargs,
                         added_cond_kwargs,
-                        capture,
                     )
 
                     # perform guidance
@@ -828,7 +825,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         timestep_cond,
         cross_attention_kwargs,
         added_cond_kwargs,
-        capture,
     ):
         if self.use_hpu_graphs:
             return self.capture_replay(
@@ -838,7 +834,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 timestep_cond,
                 cross_attention_kwargs,
                 added_cond_kwargs,
-                capture,
             )
         else:
             return self.unet(
@@ -860,7 +855,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         timestep_cond,
         cross_attention_kwargs,
         added_cond_kwargs,
-        capture,
     ):
         inputs = [
             latent_model_input,

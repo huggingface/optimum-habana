@@ -599,6 +599,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
         if generation_config.reuse_cache:
+            assert self.config.model_type in ["llama"], "reuse_cache only supported by llama at the moment"
             assert generation_config.bucket_size <= 0, "reuse_cache and bucketing flags set together"
 
         if generation_config.static_shapes:
