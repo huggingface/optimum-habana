@@ -125,10 +125,11 @@ def setup_env(args):
         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
-    # Tweak generation so that it runs faster on Gaudi
-    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+    if not args.default_transformers:
+        # Tweak generation so that it runs faster on Gaudi
+        from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
-    adapt_transformers_to_gaudi()
+        adapt_transformers_to_gaudi()
 
 
 def setup_device(args):
@@ -164,7 +165,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.peft_model is not None:
         model = peft_model(args, model_dtype, logger, **model_kwargs)
     else:
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, trust_remote_code=args.trust_remote_code, **model_kwargs)
     if args.quant_config:
         import habana_quantization_toolkit
 
@@ -187,7 +188,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     logger.info("DeepSpeed is enabled.")
     deepspeed.init_distributed(dist_backend="hccl")
-    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, trust_remote_code=args.trust_remote_code, **model_kwargs)
     load_to_meta = model_on_meta(config)
 
     if load_to_meta:
@@ -220,7 +221,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
                 model = peft_model(args, model_dtype, logger, **model_kwargs)
             else:
                 model = AutoModelForCausalLM.from_pretrained(
-                    args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+                    args.model_name_or_path, torch_dtype=model_dtype, trust_remote_code=args.trust_remote_code, **model_kwargs
                 )
     model.eval()
 

@@ -232,6 +232,20 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to use torch compiled model or not.",
     )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
+             "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
+             "execute code present on the Hub on your local machine.",
+    )
+    parser.add_argument(
+        "--default_transformers",
+        action="store_true",
+        help="Use Hugging Face transformers implementation"
+    )
+
+
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
 
@@ -309,14 +323,17 @@ def main():
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
 
-            outputs = model.generate(
-                **input_tokens,
-                generation_config=generation_config,
-                lazy_mode=use_lazy_mode,
-                hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=args.profiling_steps,
-                profiling_warmup_steps=args.profiling_warmup_steps,
-            ).cpu()
+            if args.default_transformers:
+                outputs = model.generate(**input_tokens).cpu()
+            else:
+                outputs = model.generate(
+                    **input_tokens,
+                    generation_config=generation_config,
+                    lazy_mode=use_lazy_mode,
+                    hpu_graphs=args.use_hpu_graphs,
+                    profiling_steps=args.profiling_steps,
+                    profiling_warmup_steps=args.profiling_warmup_steps,
+                ).cpu()
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile
@@ -489,14 +506,17 @@ def main():
                 if torch.is_tensor(batch[t]):
                     batch[t] = batch[t].to(args.device)
             # Generate new sequences
-            outputs = model.generate(
-                **batch,
-                generation_config=generation_config,
-                lazy_mode=use_lazy_mode,
-                hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=args.profiling_steps,
-                profiling_warmup_steps=args.profiling_warmup_steps,
-            ).cpu()
+            if args.default_transformers:
+                outputs = model.generate(**batch).cpu()
+            else:
+                outputs = model.generate(
+                    **batch,
+                    generation_config=generation_config,
+                    lazy_mode=use_lazy_mode,
+                    hpu_graphs=args.use_hpu_graphs,
+                    profiling_steps=args.profiling_steps,
+                    profiling_warmup_steps=args.profiling_warmup_steps,
+                ).cpu()
             return prompt, outputs
 
         # warmup
