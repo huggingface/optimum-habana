@@ -14,56 +14,53 @@
 # limitations under the License.
 
 import time
-from dataclasses import dataclass
 from math import ceil
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
-import PIL
 import torch
-from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines import StableDiffusionLDM3DPipeline
+from diffusers.image_processor import PipelineImageInput
+from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from diffusers.pipelines.controlnet import StableDiffusionControlNetPipeline
+from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import BaseOutput
+from diffusers.utils.torch_utils import is_compiled_module
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
+from ....utils import HabanaProfile, speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
-from .pipeline_stable_diffusion import GaudiStableDiffusionPipeline
+from ..stable_diffusion.pipeline_stable_diffusion import (
+    GaudiStableDiffusionPipeline,
+    GaudiStableDiffusionPipelineOutput,
+)
 
 
 logger = logging.get_logger(__name__)
 
 
-@dataclass
-class GaudiStableDiffusionLDM3DPipelineOutput(BaseOutput):
-    rgb: Union[List[PIL.Image.Image], np.ndarray]
-    depth: Union[List[PIL.Image.Image], np.ndarray]
-    throughput: float
-    nsfw_content_detected: Optional[List[bool]]
-
-
-class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionLDM3DPipeline):
+class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffusionControlNetPipeline):
     """
-    Adapted from: https://github.com/huggingface/diffusers/blob/v0.23.1/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_ldm3d.py#L84
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.23.1/src/diffusers/pipelines/controlnet/pipeline_controlnet.py#L94
     - Generation is performed by batches
     - Two `mark_step()` were added to add support for lazy mode
     - Added support for HPU graphs
-    - Adjusted original Stable Diffusion to match with the LDM3D implementation (input and output being different)
 
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         text_encoder ([`~transformers.CLIPTextModel`]):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
-        tokenizer ([`~transformers.CLIPTokenizer`]):
+        tokenizer (`~transformers.CLIPTokenizer`):
             A `CLIPTokenizer` to tokenize text.
         unet ([`UNet2DConditionModel`]):
             A `UNet2DConditionModel` to denoise the encoded image latents.
+        controlnet ([`ControlNetModel`] or `List[ControlNetModel]`):
+            Provides additional conditioning to the `unet` during the denoising process. If you set multiple
+            ControlNets as a list, the outputs from each ControlNet are added together to create one combined
+            additional conditioning.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -91,6 +88,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
+        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel]],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -108,16 +106,13 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             bf16_full_eval,
         )
 
-        # Workaround for Synapse 1.11 for full bf16
-        if bf16_full_eval:
-            unet.conv_in.float()
-
-        StableDiffusionLDM3DPipeline.__init__(
+        StableDiffusionControlNetPipeline.__init__(
             self,
             vae,
             text_encoder,
             tokenizer,
             unet,
+            controlnet,
             scheduler,
             safety_checker,
             feature_extractor,
@@ -159,10 +154,11 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
+        image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
-        guidance_scale: float = 5.0,
+        guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         batch_size: int = 1,
@@ -176,7 +172,13 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
+        guess_mode: bool = False,
+        control_guidance_start: Union[float, List[float]] = 0.0,
+        control_guidance_end: Union[float, List[float]] = 1.0,
         clip_skip: Optional[int] = None,
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **kwargs,
     ):
         r"""
@@ -185,6 +187,14 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
+            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
+                    `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+                The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
+                specified as `torch.FloatTensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be
+                accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If height
+                and/or width are passed, `image` is resized accordingly. If multiple ControlNets are specified in
+                `init`, images must be passed as a list such that each element of the list can be correctly batched for
+                input to a single ControlNet.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -192,7 +202,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 5.0):
+            guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -200,6 +210,8 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
+            batch_size (`int`, *optional*, defaults to 1):
+                The number of images in a batch.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
                 to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
@@ -219,7 +231,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
+                Whether or not to return a [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
@@ -230,25 +242,58 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
+                the corresponding scale as a list.
+            guess_mode (`bool`, *optional*, defaults to `False`):
+                The ControlNet encoder tries to recognize the content of the input image even if you remove all
+                prompts. A `guidance_scale` value between 3.0 and 5.0 is recommended.
+            control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
+                The percentage of total steps at which the ControlNet starts applying.
+            control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The percentage of total steps at which the ControlNet stops applying.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            profiling_warmup_steps (`int`, *optional*):
+                Number of steps to ignore for profling.
+            profiling_steps (`int`, *optional*):
+                Number of steps to be captured when enabling profiling.
 
         Returns:
             [`~diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
+                If `return_dict` is `True`, [`~diffusers.pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is a list with the generated images and the
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
-            # 0. Default height and width to unet
-            height = height or self.unet.config.sample_size * self.vae_scale_factor
-            width = width or self.unet.config.sample_size * self.vae_scale_factor
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
+        # align format for control guidance
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
+            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
+
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             # 1. Check inputs. Raise error if not correct
             self.check_inputs(
-                prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+                prompt,
+                image,
+                callback_steps,
+                negative_prompt,
+                prompt_embeds,
+                negative_prompt_embeds,
+                controlnet_conditioning_scale,
+                control_guidance_start,
+                control_guidance_end,
             )
 
             # 2. Define call parameters
@@ -259,19 +304,27 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             else:
                 num_prompts = prompt_embeds.shape[0]
             num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
-            logger.info(
-                f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
-                f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
-            )
-            if num_batches < 3:
-                logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
+
             device = self._execution_device
             # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
             # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
             # corresponds to doing no classifier free guidance.
             do_classifier_free_guidance = guidance_scale > 1.0
 
+            if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+                controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+
+            global_pool_conditions = (
+                controlnet.config.global_pool_conditions
+                if isinstance(controlnet, ControlNetModel)
+                else controlnet.nets[0].config.global_pool_conditions
+            )
+            guess_mode = guess_mode or global_pool_conditions
+
             # 3. Encode input prompt
+            text_encoder_lora_scale = (
+                cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+            )
             prompt_embeds, negative_prompt_embeds = self.encode_prompt(
                 prompt,
                 device,
@@ -280,15 +333,56 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 negative_prompt,
                 prompt_embeds=prompt_embeds,
                 negative_prompt_embeds=negative_prompt_embeds,
+                lora_scale=text_encoder_lora_scale,
                 clip_skip=clip_skip,
             )
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            # if do_classifier_free_guidance:
+            #    prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-            # 4. Prepare timesteps
+            # 4. Prepare image
+            if isinstance(controlnet, ControlNetModel):
+                image = self.prepare_image(
+                    image=image,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
+                height, width = image.shape[-2:]
+            elif isinstance(controlnet, MultiControlNetModel):
+                images = []
+                for image_ in image:
+                    image_ = self.prepare_image(
+                        image=image_,
+                        width=width,
+                        height=height,
+                        batch_size=batch_size,
+                        num_images_per_prompt=num_images_per_prompt,
+                        device=device,
+                        dtype=controlnet.dtype,
+                        do_classifier_free_guidance=do_classifier_free_guidance,
+                        guess_mode=guess_mode,
+                    )
+                    images.append(image_)
+
+                image = images
+                height, width = image[0].shape[-2:]
+            else:
+                assert False
+
+            # 5. Prepare timesteps
             self.scheduler.set_timesteps(num_inference_steps, device="cpu")
             timesteps = self.scheduler.timesteps.to(device)
             self.scheduler.reset_timestep_dependent_params()
 
-            # 5. Prepare latent variables
+            # 6. Prepare latent variables
             num_channels_latents = self.unet.config.in_channels
             latents = self.prepare_latents(
                 num_prompts * num_images_per_prompt,
@@ -301,10 +395,19 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 latents,
             )
 
-            # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+            # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
             extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-            # 7. Split into batches (HPU-specific step)
+            # 7.1 Create tensor stating which controlnets to keep
+            controlnet_keep = []
+            for i in range(len(timesteps)):
+                keeps = [
+                    1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
+                    for s, e in zip(control_guidance_start, control_guidance_end)
+                ]
+                controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
+
+            # 7.2 Split into batches (HPU-specific step)
             (
                 latents_batches,
                 text_embeddings_batches,
@@ -318,11 +421,19 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
 
             outputs = {
                 "images": [],
-                "depths": [],
                 "has_nsfw_concept": [],
             }
             t0 = time.time()
             t1 = t0
+
+            self._num_timesteps = len(timesteps)
+
+            hb_profiler = HabanaProfile(
+                warmup=profiling_warmup_steps,
+                active=profiling_steps,
+                record_shapes=False,
+            )
+            hb_profiler.start()
 
             # 8. Denoising loop
             for j in self.progress_bar(range(num_batches)):
@@ -335,23 +446,62 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
                 text_embeddings_batch = text_embeddings_batches[0]
                 text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
+                num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
                 for i in range(num_inference_steps):
-                    timestep = timesteps[0]
+                    t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
                         torch.cat([latents_batch] * 2) if do_classifier_free_guidance else latents_batch
                     )
-                    # latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                    # controlnet(s) inference
+                    if guess_mode and do_classifier_free_guidance:
+                        # Infer ControlNet only for the conditional batch.
+                        control_model_input = latents_batch
+                        control_model_input = self.scheduler.scale_model_input(control_model_input, t)
+                        controlnet_prompt_embeds = text_embeddings_batch.chunk(2)[1]
+                    else:
+                        control_model_input = latent_model_input
+                        controlnet_prompt_embeds = text_embeddings_batch
+
+                    if isinstance(controlnet_keep[i], list):
+                        cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                    else:
+                        controlnet_cond_scale = controlnet_conditioning_scale
+                        if isinstance(controlnet_cond_scale, list):
+                            controlnet_cond_scale = controlnet_cond_scale[0]
+                        cond_scale = controlnet_cond_scale * controlnet_keep[i]
+
+                    down_block_res_samples, mid_block_res_sample = self.controlnet_hpu(
+                        control_model_input,
+                        t,
+                        controlnet_prompt_embeds,
+                        image,
+                        cond_scale,
+                        guess_mode,
+                    )
+
+                    if guess_mode and do_classifier_free_guidance:
+                        # Infered ControlNet only for the conditional batch.
+                        # To apply the output of ControlNet to both the unconditional and conditional batches,
+                        # add 0 to the unconditional batch to keep it unchanged.
+                        down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
+                        mid_block_res_sample = torch.cat(
+                            [torch.zeros_like(mid_block_res_sample), mid_block_res_sample]
+                        )
 
                     # predict the noise residual
                     noise_pred = self.unet_hpu(
                         latent_model_input,
-                        timestep,
+                        t,
                         text_embeddings_batch,
                         cross_attention_kwargs,
+                        down_block_res_samples,
+                        mid_block_res_sample,
                     )
 
                     # perform guidance
@@ -361,26 +511,33 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
 
                     # compute the previous noisy sample x_t -> x_t-1
                     latents_batch = self.scheduler.step(
-                        noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False
+                        noise_pred, t, latents_batch, **extra_step_kwargs, return_dict=False
                     )[0]
 
                     if not self.use_hpu_graphs:
                         self.htcore.mark_step()
 
                     # call the callback, if provided
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, timestep, latents_batch)
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        if callback is not None and i % callback_steps == 0:
+                            step_idx = i // getattr(self.scheduler, "order", 1)
+                            callback(step_idx, t, latents_batch)
+
+                    hb_profiler.step()
 
                 if not output_type == "latent":
                     # 8. Post-processing
-                    image = self.vae.decode(latents_batch / self.vae.config.scaling_factor, return_dict=False)[0]
+                    output_image = self.vae.decode(
+                        latents_batch / self.vae.config.scaling_factor, return_dict=False, generator=generator
+                    )[0]
                 else:
-                    image = latents_batch
-                outputs["images"].append(image)
+                    output_image = latents_batch
+                outputs["images"].append(output_image)
 
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
+
+            hb_profiler.stop()
 
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
@@ -411,16 +568,12 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 else:
                     do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-                rgb, depth = self.image_processor.postprocess(
-                    image, output_type=output_type, do_denormalize=do_denormalize
-                )
+                image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
                 if output_type == "pil":
-                    outputs["images"] += rgb
-                    outputs["depths"] += depth
+                    outputs["images"] += image
                 else:
-                    outputs["images"] += [*rgb]
-                    outputs["depths"] += [*depth]
+                    outputs["images"] += [*image]
 
                 if has_nsfw_concept is not None:
                     outputs["has_nsfw_concept"] += has_nsfw_concept
@@ -431,31 +584,60 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             self.maybe_free_model_hooks()
 
             if not return_dict:
-                return ((rgb, depth), has_nsfw_concept)
+                return (outputs["images"], outputs["has_nsfw_concept"])
 
-            return GaudiStableDiffusionLDM3DPipelineOutput(
-                rgb=outputs["images"],
-                depth=outputs["depths"],
-                nsfw_content_detected=has_nsfw_concept,
+            return GaudiStableDiffusionPipelineOutput(
+                images=outputs["images"],
+                nsfw_content_detected=outputs["has_nsfw_concept"],
                 throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
             )
 
     @torch.no_grad()
-    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs):
+    def unet_hpu(
+        self,
+        latent_model_input,
+        timestep,
+        encoder_hidden_states,
+        cross_attention_kwargs,
+        down_block_additional_residuals,
+        mid_block_additional_residual,
+    ):
         if self.use_hpu_graphs:
-            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states)
+            return self.unet_capture_replay(
+                latent_model_input,
+                timestep,
+                encoder_hidden_states,
+                down_block_additional_residuals,
+                mid_block_additional_residual,
+            )
         else:
             return self.unet(
                 latent_model_input,
                 timestep,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
+                down_block_additional_residuals=down_block_additional_residuals,
+                mid_block_additional_residual=mid_block_additional_residual,
                 return_dict=False,
             )[0]
 
     @torch.no_grad()
-    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states):
-        inputs = [latent_model_input, timestep, encoder_hidden_states, False]
+    def unet_capture_replay(
+        self,
+        latent_model_input,
+        timestep,
+        encoder_hidden_states,
+        down_block_additional_residuals,
+        mid_block_additional_residual,
+    ):
+        inputs = [
+            latent_model_input,
+            timestep,
+            encoder_hidden_states,
+            down_block_additional_residuals,
+            mid_block_additional_residual,
+            False,
+        ]
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
@@ -464,7 +646,105 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()
                 graph.capture_begin()
-                outputs = self.unet(inputs[0], inputs[1], inputs[2], inputs[3])[0]
+                outputs = self.unet(
+                    inputs[0],
+                    inputs[1],
+                    inputs[2],
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    inputs[3],
+                    inputs[4],
+                    None,
+                    None,
+                    inputs[5],
+                )[0]
+                graph.capture_end()
+                graph_inputs = inputs
+                graph_outputs = outputs
+                self.cache[h] = self.ht.hpu.graphs.CachedParams(graph_inputs, graph_outputs, graph)
+            return outputs
+
+        # Replay the cached graph with updated inputs
+        self.ht.hpu.graphs.copy_to(cached.graph_inputs, inputs)
+        cached.graph.replay()
+        self.ht.core.hpu.default_stream().synchronize()
+
+        return cached.graph_outputs
+
+    @torch.no_grad()
+    def controlnet_hpu(
+        self,
+        control_model_input,
+        timestep,
+        encoder_hidden_states,
+        controlnet_cond,
+        conditioning_scale,
+        guess_mode,
+    ):
+        if self.use_hpu_graphs:
+            return self.controlnet_capture_replay(
+                control_model_input,
+                timestep,
+                encoder_hidden_states,
+                controlnet_cond,
+                conditioning_scale,
+                guess_mode,
+            )
+        else:
+            return self.controlnet(
+                control_model_input,
+                timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                controlnet_cond=controlnet_cond,
+                conditioning_scale=conditioning_scale,
+                guess_mode=guess_mode,
+                return_dict=False,
+            )
+
+    @torch.no_grad()
+    def controlnet_capture_replay(
+        self,
+        control_model_input,
+        timestep,
+        encoder_hidden_states,
+        controlnet_cond,
+        conditioning_scale,
+        guess_mode,
+    ):
+        inputs = [
+            control_model_input,
+            timestep,
+            encoder_hidden_states,
+            controlnet_cond,
+            conditioning_scale,
+            guess_mode,
+            False,
+        ]
+        h = self.ht.hpu.graphs.input_hash(inputs)
+        cached = self.cache.get(h)
+
+        if cached is None:
+            # Capture the graph and cache it
+            with self.ht.hpu.stream(self.hpu_stream):
+                graph = self.ht.hpu.HPUGraph()
+                graph.capture_begin()
+                outputs = self.controlnet(
+                    inputs[0],
+                    inputs[1],
+                    inputs[2],
+                    inputs[3],
+                    inputs[4],
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    inputs[5],
+                    False,
+                )
                 graph.capture_end()
                 graph_inputs = inputs
                 graph_outputs = outputs
