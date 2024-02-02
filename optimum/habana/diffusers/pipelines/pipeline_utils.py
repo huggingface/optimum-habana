@@ -65,8 +65,7 @@ for library in GAUDI_LOADABLE_CLASSES:
 
 def _fetch_class_library_tuple(module):
     # import it here to avoid circular import
-    diffusers_module = importlib.import_module(__name__.split(".")[0])
-    pipelines = getattr(diffusers_module, "pipelines")
+    from diffusers import pipelines
 
     # register the config from the original module, not the dynamo compiled one
     not_compiled_module = _unwrap_model(module)
@@ -160,7 +159,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
                 from ..models import gaudi_unet_2d_condition_model_forward
 
-                diffusers.models.unet_2d_condition.UNet2DConditionModel.forward = gaudi_unet_2d_condition_model_forward
+                diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.forward = gaudi_unet_2d_condition_model_forward
 
             if self.use_hpu_graphs:
                 try:
