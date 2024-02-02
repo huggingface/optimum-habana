@@ -212,15 +212,15 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["attention_mask"] = attention_mask
         else:
             # update decoder attention mask
-            # if "attention_mask" in model_kwargs:
-            #     attention_mask = model_kwargs["attention_mask"]
-            #     if token_idx is not None:
-            #         attention_mask.index_fill_(1, token_idx, 1)
-            #     else:
-            #         attention_mask = torch.cat(
-            #             [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
-            #         )
-            #     model_kwargs["attention_mask"] = attention_mask
+            if "attention_mask" in model_kwargs:
+                attention_mask = model_kwargs["attention_mask"]
+                if token_idx is not None:
+                    attention_mask.index_fill_(1, token_idx, 1)
+                else:
+                    attention_mask = torch.cat(
+                        [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
+                    )
+                model_kwargs["attention_mask"] = attention_mask
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
                 if token_idx is not None:
@@ -2027,13 +2027,13 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if self.generation_config.static_shapes:
             beam_trace_scores = torch.zeros(
-                (input_ids.shape[0], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.float32
+                (input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.float32
             )
             beam_trace_indices = torch.zeros(
-                (input_ids.shape[0], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
+                (input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
             )
             beam_trace_tokens = torch.zeros(
-                (input_ids.shape[0], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
+                (input_ids.shape[1], 2 * batch_size * num_beams), device=input_ids.device, dtype=torch.int64
             )
             beam_trace_idx = torch.tensor(0, device=input_ids.device)
             num_eos_tokens = torch.zeros((1), device=input_ids.device, dtype=torch.int64)
