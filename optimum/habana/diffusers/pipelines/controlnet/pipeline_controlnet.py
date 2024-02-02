@@ -426,8 +426,17 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
                 assert False
 
             # 5. Prepare timesteps
+<<<<<<< HEAD
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
             self._num_timesteps = len(timesteps)
+=======
+            self.scheduler.set_timesteps(num_inference_steps, device="cpu")
+            timesteps = self.scheduler.timesteps.to(device)
+            if hasattr(self.scheduler, "reset_timestep_dependent_params") and callable(
+                self.scheduler.reset_timestep_dependent_params
+            ):
+                self.scheduler.reset_timestep_dependent_params()
+>>>>>>> d44a2e3 (formatting)
 
             # 6. Prepare latent variables
             num_channels_latents = self.unet.config.in_channels

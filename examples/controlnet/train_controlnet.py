@@ -24,22 +24,15 @@ import time
 from pathlib import Path
 
 import accelerate
+import diffusers
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration, set_seed
+from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
-from huggingface_hub import create_repo, upload_folder
-from packaging import version
-from PIL import Image
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
-
-import diffusers
 from diffusers import (
     AutoencoderKL,
     ControlNetModel,
@@ -49,11 +42,17 @@ from diffusers import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+from huggingface_hub import create_repo, upload_folder
+from packaging import version
+from PIL import Image
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer, PretrainedConfig
 
 from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline, GaudiDDIMScheduler
-from optimum.habana.utils import set_seed
 from optimum.habana.accelerate import GaudiAccelerator
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionControlNetPipeline
+from optimum.habana.utils import set_seed
 
 
 try:
@@ -86,7 +85,9 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
-def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, accelerator, noise_scheduler, weight_dtype, step):
+def log_validation(
+    vae, text_encoder, tokenizer, unet, controlnet, args, accelerator, noise_scheduler, weight_dtype, step
+):
     logger.info("Running validation... ")
 
     controlnet = accelerator.unwrap_model(controlnet)
@@ -137,9 +138,9 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
         images = []
 
         for _ in range(args.num_validation_images):
-            image = pipeline(
-                validation_prompt, validation_image, num_inference_steps=20, generator=generator
-            ).images[0]
+            image = pipeline(validation_prompt, validation_image, num_inference_steps=20, generator=generator).images[
+                0
+            ]
 
             images.append(image)
 
@@ -542,21 +543,23 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
+    (
+        parser.add_argument(
+            "--gaudi_config_name",
+            type=str,
+            default="Habana/stable-diffusion",
+            help="Local path to the Gaudi configuration file or its name on the Hugging Face Hub.",
+        ),
+    )
     parser.add_argument(
-        "--gaudi_config_name",
-        type=str,
-        default="Habana/stable-diffusion",
-        help="Local path to the Gaudi configuration file or its name on the Hugging Face Hub.",
-    ),
-    parser.add_argument(
-    "--throughput_warmup_steps",
-    type=int,
-    default=0,
-    help=(
-        "Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N, the"
-        " first N steps will not be considered in the calculation of the throughput. This is especially useful in"
-        " lazy mode."
-    ),
+        "--throughput_warmup_steps",
+        type=int,
+        default=0,
+        help=(
+            "Number of steps to ignore for throughput calculation. For example, with throughput_warmup_steps=N, the"
+            " first N steps will not be considered in the calculation of the throughput. This is especially useful in"
+            " lazy mode."
+        ),
     )
 
     if input_args is not None:
@@ -759,6 +762,7 @@ def main(args):
         diffusers.utils.logging.set_verbosity_error()
 
     import habana_frameworks.torch.core as htcore
+
     # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)
@@ -887,6 +891,7 @@ def main(args):
         optimizer_class = bnb.optim.AdamW8bit
     elif gaudi_config.use_fused_adam:
         from habana_frameworks.torch.hpex.optimizers import FusedAdamW
+
         optimizer_class = FusedAdamW
     else:
         optimizer_class = torch.optim.AdamW
@@ -932,7 +937,7 @@ def main(args):
     weight_dtype = torch.float32
     if gaudi_config.use_torch_autocast or args.bf16:
         weight_dtype = torch.bfloat16
-    
+
     # Move controlnet to device prior to calling prepare()
     controlnet.to(accelerator.device, dtype=weight_dtype)
     # Prepare everything with our `accelerator`.
@@ -1128,7 +1133,7 @@ def main(args):
 
             if global_step >= args.max_train_steps:
                 break
-    
+
     duration = time.perf_counter() - t0
     throughput = args.max_train_steps * total_batch_size / duration
 
