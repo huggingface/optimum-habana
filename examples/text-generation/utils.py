@@ -36,7 +36,7 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from optimum.habana.utils import check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
 
 
 def adjust_batch(batch, size):
@@ -174,7 +174,10 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-        model = wrap_in_hpu_graph(model)
+        if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
+            model = wrap_in_hpu_graph(model, hash_with_views=False)
+        else:
+            model = wrap_in_hpu_graph(model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
