@@ -24,7 +24,10 @@ from optimum.habana import GaudiTrainer
 
 
 class GaudiRewardTrainer(GaudiTrainer):
-    # Define how to compute the reward loss. We use the InstructGPT pairwise logloss: https://arxiv.org/abs/2203.02155
+    """
+    Copied from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama/scripts/reward_modeling.py#L266
+    """
+
     def compute_loss(self, model, inputs, return_outputs=False):
         rewards_j = model(input_ids=inputs["input_ids_j"], attention_mask=inputs["attention_mask_j"])[0]
         rewards_k = model(input_ids=inputs["input_ids_k"], attention_mask=inputs["attention_mask_k"])[0]
@@ -36,6 +39,10 @@ class GaudiRewardTrainer(GaudiTrainer):
 
 @dataclass
 class RewardDataCollatorWithPadding:
+    """
+    Copied from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama/scripts/reward_modeling.py#L206
+    """
+
     tokenizer: PreTrainedTokenizerBase
     padding: Union[bool, str, PaddingStrategy] = True
     max_length: Optional[int] = None

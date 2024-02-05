@@ -51,10 +51,9 @@ class GaudiPPOConfig(PPOConfig):
                 raise ImportError(
                     "Please install wandb to use wandb logging. You can do this by running `pip install wandb`."
                 )
+        self.pad_for_acceleration = (self.pad_max_len > 0) and (self.pad_max_input_len > 0)
 
         if self.pad_for_acceleration:
-            if self.pad_max_input_len == 0:
-                raise AssertionError("pad_max_input_len ({self.pad_max_input_len}) must be set for pad input ")
             if self.pad_max_input_len >= self.pad_max_len:
                 raise AssertionError(
                     "pad_max_input_len ({self.pad_max_input_len}) must be smaller "

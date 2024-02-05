@@ -97,7 +97,6 @@ config = GaudiPPOConfig(
     init_kl_coef=script_args.init_kl_coef,
     adap_kl_ctrl=script_args.adap_kl_ctrl,
     use_habana=script_args.use_habana,
-    pad_for_acceleration=script_args.use_habana,
     pad_max_len=script_args.input_max_length + script_args.output_max_length,
     pad_max_input_len=script_args.input_max_length,
 )

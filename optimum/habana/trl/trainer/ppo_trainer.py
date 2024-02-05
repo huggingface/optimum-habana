@@ -63,7 +63,7 @@ class GaudiPPOTrainer(PPOTrainer):
         """
         Copied from PPOTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/ppo_trainer.py#L145
         The only differences are:
-        - add new args for Guadi in config
+        - add new args for Gaudi in config
         - use GaudiAccelerator instead of Accelerator
         """
         BaseTrainer.__init__(self, config)
@@ -825,7 +825,7 @@ class GaudiPPOTrainer(PPOTrainer):
             if self.accelerator.sync_gradients:
                 self.accelerator.clip_grad_norm_(self.model_params, self.config.max_grad_norm)
         self.optimizer.step()
-        if self.config.use_habana:  # pragma: no cover
+        if self.config.use_habana:
             self.htcore.mark_step()
         # we call optimizer.zero_grad() every time and let `accelerator` handle accumulation
         # see https://huggingface.co/docs/accelerate/usage_guides/gradient_accumulation#the-finished-code
