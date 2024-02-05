@@ -159,7 +159,9 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
                 from ..models import gaudi_unet_2d_condition_model_forward
 
-                diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.forward = gaudi_unet_2d_condition_model_forward
+                diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.forward = (
+                    gaudi_unet_2d_condition_model_forward
+                )
 
             if self.use_hpu_graphs:
                 try:
