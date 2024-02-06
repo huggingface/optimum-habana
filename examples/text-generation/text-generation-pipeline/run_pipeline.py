@@ -40,7 +40,7 @@ def main():
     for input_sentence in input_sentences:
         print(f"Prompt: {input_sentence}")
         t0 = time.perf_counter()
-        output = pipe(input_sentence)
+        output = (pipe(input_sentence))[0]["generated_text"]
         duration = time.perf_counter() - t0
         throughput = args.max_new_tokens / duration
         print(f"Generated Text: {repr(output)}")
