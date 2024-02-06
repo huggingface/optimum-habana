@@ -4,7 +4,7 @@ from utils import initialize_model
 
 
 class GaudiTextGenerationPipeline(TextGenerationPipeline):
-    def __init__(self, args, logger):
+    def __init__(self, args, logger, use_with_langchain=False):
         self.model, self.tokenizer, self.generation_config = initialize_model(args, logger)
 
         self.task = "text-generation"
@@ -13,12 +13,15 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
         if args.do_sample:
             self.generation_config.temperature = args.temperature
             self.generation_config.top_p = args.top_p
-        self.generation_config.ignore_eos = False
 
         self.max_padding_length = args.max_input_tokens if args.max_input_tokens > 0 else 100
         self.use_hpu_graphs = args.use_hpu_graphs
         self.profiling_steps = args.profiling_steps
         self.profiling_warmup_steps = args.profiling_warmup_steps
+
+        self.use_with_langchain = use_with_langchain
+        if self.use_with_langchain:
+            self.generation_config.ignore_eos = False
 
         import habana_frameworks.torch.hpu as torch_hpu
 
@@ -46,4 +49,8 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
         ).cpu()
 
         output_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
-        return [{"generated_text": output_text}]
+
+        if self.use_with_langchain:
+            return [{"generated_text": output_text}]
+        
+        return output_text
