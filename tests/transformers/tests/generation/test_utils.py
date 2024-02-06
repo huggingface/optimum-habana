@@ -1582,45 +1582,63 @@ class GenerationTesterMixin:
                         for output in (output_greedy, output_assisted):
                             self._check_outputs(output, input_ids, model.config, use_cache=True)
 
-    def test_assisted_decoding_sample(self):
-        # Seeded assisted decoding will not match sample for the same seed, as the forward pass does not return the
-        # exact same logits (the forward pass of the main model, now with several tokens at once, has causal masking).
 
+    def test_assisted_decoding_sample(self):
+        # In this test we don't check assisted vs non-assisted output -- seeded assisted decoding with sample will not
+        # match sample for the same seed, as the forward pass does not return the exact same logits (due to matmul with
+        # different shapes, see https://github.com/huggingface/transformers/issues/25420#issuecomment-1775317535).
         for model_class in self.all_generative_model_classes:
-            # won't fix: FSMT and Reformer have a different cache variable type (and format).
             if any(model_name in model_class.__name__.lower() for model_name in ["fsmt", "reformer"]):
-                return
-            # may fix in the future: the following models fail with assisted decoding, and need model-specific fixes
+                self.skipTest("Won't fix: old model with different cache format")
             if any(
                 model_name in model_class.__name__.lower()
-                for model_name in ["bigbirdpegasus", "led", "mega", "speech2text", "git", "prophetnet"]
+                for model_name in [
+                    "bigbirdpegasus",
+                    "led",
+                    "mega",
+                    "speech2text",
+                    "git",
+                    "prophetnet",
+                    "seamlessm4t",
+                    "clvp",
+                ]
             ):
-                return
+                self.skipTest("May fix in the future: need model-specific fixes")
 
             # enable cache
-            config, input_ids, attention_mask, max_length = self._get_input_ids_and_config(batch_size=1)
+            config, input_ids, attention_mask, _ = self._get_input_ids_and_config(batch_size=1)
 
             # NOTE: assisted generation only works with cache on at the moment.
             if not hasattr(config, "use_cache"):
-                return
+                self.skipTest("This model doesn't support caching")
 
             config.use_cache = True
             config.is_decoder = True
             model = model_class(config).to(torch_device).eval()
-            output_assisted = model.generate(
-                input_ids,
-                attention_mask=attention_mask,
-                max_length=max_length,
-                num_beams=1,
-                do_sample=True,
-                assistant_model=model,  # triggers assisted decoding
-                output_scores=True,
-                output_hidden_states=True,
-                output_attentions=True,
-                return_dict_in_generate=True,
-            )
+            # Sets assisted generation arguments such that:
+            # a) no EOS is generated, to ensure generation doesn't break early
+            # b) the assistant model always generates two tokens when it is called, to ensure the input preparation of
+            #    the assistant model is correct
+            # c) there are at least two forward passes in the main model, to ensure the input preparation of
+            #    the main model is correct
+            assistant_model = model
+            assistant_model.generation_config.num_assistant_tokens = 2  # see b)
+            assistant_model.generation_config.num_assistant_tokens_schedule = "constant"  # see b)
+            generation_kwargs = {
+                "eos_token_id": -1,  # see a)
+                "max_new_tokens": 4,  # see c)
+                "num_beams": 1,
+                "do_sample": True,
+                "assistant_model": assistant_model,
+                "output_scores": True,
+                "output_hidden_states": True,
+                "output_attentions": True,
+                "return_dict_in_generate": True,
+            }
+            output_assisted = model.generate(input_ids, attention_mask=attention_mask, **generation_kwargs)
 
             self._check_outputs(output_assisted, input_ids, model.config, use_cache=True)
+
 
     def test_generate_with_head_masking(self):
         """Test designed for encoder-decoder models to ensure the attention head masking is used."""
