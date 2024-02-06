@@ -51,7 +51,7 @@ from optimum.habana.utils import set_seed
 
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
-    THROUGHPUT_BASELINE_BF16 = 1.019
+    THROUGHPUT_BASELINE_BF16 = 1.021
     THROUGHPUT_BASELINE_AUTOCAST = 0.389
 else:
     THROUGHPUT_BASELINE_BF16 = 0.412

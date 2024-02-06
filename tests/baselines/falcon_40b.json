@@ -7,9 +7,9 @@
                 "multi_card": {
                     "learning_rate": 4e-4,
                     "train_batch_size": 1,
-                    "perplexity": 4.0581,
-                    "train_runtime": 1097.492,
-                    "train_samples_per_second": 26.047,
+                    "perplexity": 4.0438,
+                    "train_runtime": 1011.5447,
+                    "train_samples_per_second": 27.566,
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 16",
