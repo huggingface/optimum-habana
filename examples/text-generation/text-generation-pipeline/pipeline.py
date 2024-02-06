@@ -52,5 +52,5 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
 
         if self.use_with_langchain:
             return [{"generated_text": output_text}]
-        
+
         return output_text
