@@ -421,7 +421,7 @@ def main():
         # Set the validation transforms
         dataset["validation"].set_transform(val_transforms)
 
-    # Initalize our trainer
+    # Initialize our trainer
     trainer = GaudiTrainer(
         model=model,
         gaudi_config=gaudi_config,
