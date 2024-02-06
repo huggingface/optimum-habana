@@ -29,6 +29,7 @@ except ImportError:
 import habana_frameworks.torch.core as htcore
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
@@ -43,9 +44,8 @@ from transformers.models.falcon.modeling_falcon import (
 from transformers.utils import logging
 
 from optimum.habana.transformers.modeling_attn_mask_utils import (
-    AttentionMaskConverter,
-    _prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
+    GaudiAttentionMaskConverter,
+    _gaudi_prepare_4d_causal_attention_mask_for_sdpa,
 )
 
 
@@ -466,7 +466,7 @@ class GaudiFalconModel(FalconModel):
             # output_attentions=True can not be supported when using SDPA, and we fall back on
             # the manual implementation that requires a 4D causal mask in all cases.
             if alibi is None:
-                attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+                attention_mask = _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
                     attention_mask,
                     (batch_size, seq_length),
                     inputs_embeds,
@@ -494,7 +494,7 @@ class GaudiFalconModel(FalconModel):
                     # From PyTorch 2.1 onwards, F.scaled_dot_product_attention with the memory-efficient attention backend
                     # produces nans if sequences are completely unattended in the attention mask. Details: https://github.com/pytorch/pytorch/issues/110213
                     if seq_length > 1:
-                        attention_mask = AttentionMaskConverter._unmask_unattended(
+                        attention_mask = GaudiAttentionMaskConverter._unmask_unattended(
                             attention_mask, attention_mask_2d, unmasked_value=0.0
                         )
             else:

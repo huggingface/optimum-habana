@@ -156,6 +156,7 @@ class KVCache(torch.nn.Module):
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
+
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
@@ -598,31 +599,30 @@ class GaudiLlamaModel(LlamaModel):
                 )
                 use_cache = False
 
-        # seq_length_with_past = seq_length
-        past_key_value_length = 0
+        past_key_values_length = 0
         use_legacy_cache = True
-        do_not_use_new_cache = True  # Ignoring new Cache path for HPU
+        use_new_cache = False  # Ignoring new Cache path for HPU
         if past_key_values is not None:
             if use_cache:
                 if reuse_cache:
-                    past_key_value_length = past_key_values[0][2]  # past_key_values[0][0][2]
+                    past_key_values_length = past_key_values[0][2]
                 else:
-                    if not do_not_use_new_cache:
+                    if use_new_cache:
                         use_legacy_cache = not isinstance(past_key_values, Cache)
                         if use_legacy_cache:
                             past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                        past_key_value_length = past_key_values.get_usable_length(seq_length)
-            # seq_length_with_past = seq_length_with_past + past_key_values_length
+                        past_key_values_length = past_key_values.get_usable_length(seq_length)
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
-                past_key_value_length, seq_length + past_key_value_length, dtype=torch.long, device=device
+                past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
             )
             position_ids = position_ids.unsqueeze(0)
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
+
         if self._use_sdpa and not output_attentions:
             # output_attentions=True can not be supported when using SDPA, and we fall back on
             # the manual implementation that requires a 4D causal mask in all cases.
@@ -630,12 +630,12 @@ class GaudiLlamaModel(LlamaModel):
                 attention_mask,
                 (batch_size, seq_length),
                 inputs_embeds,
-                past_key_value_length,
+                past_key_values_length,
             )
         else:
             # 4d mask is passed through the layers
             attention_mask = _prepare_4d_causal_attention_mask(
-                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_value_length
+                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
             )
 
         # embed positions
@@ -644,7 +644,7 @@ class GaudiLlamaModel(LlamaModel):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if do_not_use_new_cache else None
+        next_decoder_cache = () if not use_new_cache else None
 
         for layer_idx, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
@@ -696,7 +696,7 @@ class GaudiLlamaModel(LlamaModel):
         if use_cache:
             next_cache = (
                 next_decoder_cache
-                if do_not_use_new_cache
+                if not use_new_cache
                 else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
             )
         if not return_dict:

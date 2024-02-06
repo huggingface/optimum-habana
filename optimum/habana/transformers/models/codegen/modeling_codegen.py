@@ -85,9 +85,6 @@ class GaudiCodeGenAttention(CodeGenAttention):
                 value = torch.cat((past_value, value), dim=-2)
 
         if use_cache is True:
-            # Note that this cast is quite ugly, but is not implemented before ROPE as k_rot in the original codebase is always in fp32.
-            # Reference: https://github.com/salesforce/CodeGen/blob/f210c3bb1216c975ad858cd4132c0fdeabf4bfc2/codegen1/jaxformer/hf/codegen/modeling_codegen.py#L38
-            # present = (key.to(hidden_states.dtype), value)
             present = (key, value)
         else:
             present = None

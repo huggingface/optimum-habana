@@ -31,10 +31,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from transformers.models.mistral.modeling_mistral import MistralForCausalLM, apply_rotary_pos_emb, repeat_kv
 from transformers.utils import logging
 
-from optimum.habana.transformers.modeling_attn_mask_utils import (
-    _prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
-)
+from optimum.habana.transformers.modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask_for_sdpa, _gaudi_prepare_4d_causal_attention_mask
 
 
 logger = logging.get_logger(__name__)
@@ -78,17 +75,18 @@ def gaudi_mistral_attn_forward(
                 "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                 "with a layer index."
             )
-        shp = (
+        kv_shape = (
             past_key_value[0].shape[-2]
             if isinstance(past_key_value, tuple)
             else past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         )
         if token_idx is not None:
-            kv_seq_len = shp
+            kv_seq_len = kv_shape
         else:
-            kv_seq_len += shp
+            kv_seq_len += kv_shape
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
     query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+
     if past_key_value is not None:
         if token_idx is not None:
             past_key_value[0].index_copy_(2, token_idx - 1, key_states)
@@ -100,6 +98,7 @@ def gaudi_mistral_attn_forward(
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
     past_key_value = (key_states, value_states) if use_cache else None
+
     # repeat k/v heads if n_kv_heads < n_heads
     key_states = repeat_kv(key_states, self.num_key_value_groups)
     value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -241,9 +240,9 @@ def gaudi_mistral_model_forward(
 
     past_key_values_length = 0
     use_legacy_cache = True
-    do_not_use_new_cache = True
+    use_new_cache = False
     if past_key_values is not None:
-        if use_cache and not do_not_use_new_cache:
+        if use_cache and use_new_cache:
             use_legacy_cache = not isinstance(past_key_values, Cache)
             if use_legacy_cache:
                 past_key_values = DynamicCache.from_legacy_cache(past_key_values)
@@ -264,7 +263,7 @@ def gaudi_mistral_model_forward(
     if self._attn_implementation == "sdpa" and not output_attentions:
         # output_attentions=True can not be supported when using SDPA, and we fall back on
         # the manual implementation that requires a 4D causal mask in all cases.
-        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+        attention_mask = _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
             attention_mask,
             (batch_size, seq_length),
             inputs_embeds,
@@ -272,7 +271,7 @@ def gaudi_mistral_model_forward(
         )
     else:
         # 4d mask is passed through the layers
-        attention_mask = _prepare_4d_causal_attention_mask(
+        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
             attention_mask,
             (batch_size, seq_length),
             inputs_embeds,
@@ -285,7 +284,7 @@ def gaudi_mistral_model_forward(
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
     all_self_attns = () if output_attentions else None
-    next_decoder_cache = () if use_cache else None
+    next_decoder_cache = () if not use_new_cache else None
 
     for layer_idx, decoder_layer in enumerate(self.layers):
         if output_hidden_states:
@@ -327,10 +326,10 @@ def gaudi_mistral_model_forward(
         all_hidden_states += (hidden_states,)
 
     next_cache = None
-    if next_decoder_cache and use_cache:
+    if use_cache:
         next_cache = (
             next_decoder_cache
-            if do_not_use_new_cache
+            if not use_new_cache
             else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
         )
     if not return_dict:
