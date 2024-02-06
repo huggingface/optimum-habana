@@ -6,9 +6,8 @@ python train_text_to_image_sdxl.py \
   --center_crop \
   --random_flip \
   --proportion_empty_prompts=0.2 \
-  --train_batch_size 1 \
-  --gradient_accumulation_steps 4 \
-  --max_train_steps 1 \
+  --train_batch_size 16 \
+  --max_train_steps 2500 \
   --learning_rate 1e-05 \
   --max_grad_norm 1 \
   --lr_scheduler constant \
@@ -17,7 +16,8 @@ python train_text_to_image_sdxl.py \
   --gaudi_config_name Habana/stable-diffusion \
   --throughput_warmup_steps 3 \
   --bf16 \
-  --validation_prompt="a cute Sundar Pichai creature" \
-  --validation_epochs 5 \
+  --validation_prompt="a horse running on the beach during sunset" \
+  --validation_epochs 48 \
   --use_hpu_graphs \
-  --cache_dir /root/software/data/pytorch/huggingface/sdxl 2>&1 | tee log.txt
+  --checkpointing_steps 2500 \
+  --cache_dir /root/software/data/pytorch/huggingface/sdxl 2>&1 | tee log_1x_bs16.txt

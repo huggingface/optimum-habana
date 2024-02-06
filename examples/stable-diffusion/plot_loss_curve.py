@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import savgol_filter
 
-SAMPLE=50
+def sample(x):
+    return x//500
 
 def test():
     def match(x,y):
@@ -77,18 +78,22 @@ def parse(flnm, smooth_fn=lambda x:x, clip_first=100):
             if not filter_fn(ln):
                 continue
             step, step_loss = strip_ln(ln)
+
             if 'step_loss' in ln:
                 if prev_step != int(step):
                     loss.append(last_loss)
                     steps.append(int(prev_step))
                     prev_step = int(step)
+                    #print("\nstep/loss", step, last_loss)
                 else:
                     last_loss = float(step_loss)
             #TODO: parse eval epoch?
         loss.append(last_loss)
         steps.append(int(prev_step))
+    SAMPLE= sample(len(loss))
     loss = (loss[clip_first:])[::SAMPLE]
     steps = (steps[clip_first:])[::SAMPLE]
+
     loss = smooth_fn(loss)
     #epoch=fix(epoch) #TODO uncomment this
     return steps, loss, eval_epoch, eval_samples_per_sec, flnm.split('/')[-1].split('.')[0]

@@ -1025,17 +1025,17 @@ def main(args):
 
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
-                model_input = batch["model_input"].to(dtype=weight_dtype).to(accelerator.device)
+
+                model_input = batch["model_input"].to(dtype=weight_dtype)
+
                 noise = torch.randn_like(model_input)
                 if args.noise_offset:
                     # https://www.crosslabs.org//blog/diffusion-with-offset-noise
-                    # torch.randn is broken on HPU so we need workaround using CPU here
-                    #rand_device = "cpu" if model_input.device.type == "hpu" else model_input.device
                     rand_device = model_input.device
                     noise += args.noise_offset * torch.randn(
                         (model_input.shape[0], model_input.shape[1], 1, 1), device=rand_device
                     )
-                    noise = noise.to(model_input.device)
+                noise = noise.to(model_input.device)
 
                 bsz = model_input.shape[0]
 
@@ -1056,7 +1056,6 @@ def main(args):
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
-
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
                     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
@@ -1069,7 +1068,6 @@ def main(args):
                 add_time_ids = torch.cat(
                     [compute_time_ids(s, c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
                 )
-
                 # Predict the noise residual
                 unet_added_conditions = {"time_ids": add_time_ids}
                 prompt_embeds = batch["prompt_embeds"].to(accelerator.device)
@@ -1121,14 +1119,14 @@ def main(args):
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
-                train_loss += avg_loss.item() / args.gradient_accumulation_steps
+                train_loss += avg_loss / args.gradient_accumulation_steps
 
                 # Backpropagate
                 #TODO: check why this cause bufferoverflow issue
-                #with accelerator.autocast():    
+                #with torch.autocast(device_type="hpu", dtype=weight_dtype, enabled=True):
                 accelerator.backward(loss)
                 htcore.mark_step()
-                
+
                 if accelerator.sync_gradients:
                     params_to_clip = unet.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
@@ -1177,7 +1175,7 @@ def main(args):
                 break
 
         if accelerator.is_main_process:
-            if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+            if args.validation_prompt is not None and (epoch+1) % args.validation_epochs == 0:
                 logger.info(
                     f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                     f" {args.validation_prompt}."
