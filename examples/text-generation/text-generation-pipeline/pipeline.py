@@ -7,11 +7,13 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
     def __init__(self, args, logger):
         self.model, self.tokenizer, self.generation_config = initialize_model(args, logger)
 
+        self.task = "text-generation"
         self.device = args.device
 
         if args.do_sample:
             self.generation_config.temperature = args.temperature
             self.generation_config.top_p = args.top_p
+        self.generation_config.ignore_eos = False
 
         self.max_padding_length = args.max_input_tokens if args.max_input_tokens > 0 else 100
         self.use_hpu_graphs = args.use_hpu_graphs
@@ -44,4 +46,4 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
         ).cpu()
 
         output_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
-        return output_text
+        return [{"generated_text": output_text}]
