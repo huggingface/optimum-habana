@@ -1029,10 +1029,16 @@ def main(args):
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
+                # torch.randn is broken on HPU so running it on CPU
+                rand_device = "cpu" if accelerator.device == "hpu" else accelerator.device
+                noise = torch.randn_like(latents, device=rand_device)
+                if accelerator.device =="hpu":
+                    noise = noise.to(accelerator.device)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=rand_device)
+                if accelerator.device =="hpu":
+                    timesteps = timesteps.to(accelerator.device)
                 timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
