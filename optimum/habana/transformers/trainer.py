@@ -632,9 +632,7 @@ class GaudiTrainer(Trainer):
             else:
                 gradient_checkpointing_kwargs = args.gradient_checkpointing_kwargs
 
-            self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
-
-            import transformers.modeling_utils as modeling_utils
+            import transformers.modeling_utils
 
             if args.deepspeed:
                 from deepspeed.runtime.activation_checkpointing.checkpointing import CheckpointFunction
@@ -650,12 +648,14 @@ class GaudiTrainer(Trainer):
                     return tuple(all_outputs)
 
                 torch.utils.checkpoint.checkpoint = hpu_deepspeed_checkpointing
-                modeling_utils.checkpoint = hpu_deepspeed_checkpointing
+                transformers.modeling_utils.checkpoint = hpu_deepspeed_checkpointing
             elif args.use_lazy_mode:
                 from .gradient_checkpointing import checkpoint as lazy_mode_checkpointing
 
                 torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
-                modeling_utils.checkpoint = lazy_mode_checkpointing
+                transformers.modeling_utils.checkpoint = lazy_mode_checkpointing
+
+            self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
             if hasattr(self.model, "gradient_checkpointing_disable"):
