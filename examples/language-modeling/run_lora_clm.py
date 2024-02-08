@@ -156,6 +156,15 @@ class ModelArguments:
             )
         },
     )
+    flash_attention_causal_mask: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable causal mask in Habana flash attention for fine-tuning."
+                " It is applicable only when use_flash_attention is True.",
+            )
+        },
+    )
     use_fused_rope: bool = field(
         default=True,
         metadata={
@@ -545,6 +554,7 @@ def main():
         if model_args.use_flash_attention:
             model.generation_config.use_flash_attention = True
             model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
+            model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
         if not model_args.use_fused_rope:
             model.generation_config.use_fused_rope = False
 

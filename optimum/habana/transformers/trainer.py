@@ -874,6 +874,8 @@ class GaudiTrainer(Trainer):
                             inputs["use_flash_attention"] = True
                         if self.model.generation_config.flash_attention_recompute:
                             inputs["flash_attention_recompute"] = True
+                        if self.model.generation_config.flash_attention_causal_mask:
+                            inputs["flash_attention_causal_mask"] = True
                         if not self.model.generation_config.use_fused_rope:
                             inputs["use_fused_rope"] = False
 
@@ -1628,6 +1630,8 @@ class GaudiTrainer(Trainer):
                         inputs["use_flash_attention"] = True
                     if self.model.generation_config.flash_attention_recompute:
                         inputs["flash_attention_recompute"] = True
+                    if self.model.generation_config.flash_attention_causal_mask:
+                        inputs["flash_attention_causal_mask"] = True
                     if not self.model.generation_config.use_fused_rope:
                         inputs["use_fused_rope"] = False
 

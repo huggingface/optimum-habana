@@ -296,6 +296,30 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 ```
 `--fp8` is required to enable quantization in fp8.
 
+### Using Habana Flash Attention
+
+Habana Flash Attention addresses large sequence lenghts on prompt stage of inference. Using causal attention mask on prompt stage requires input sequences in batch to be of the same length, but can provide a memory saving, thus enabling higher batch sizes.
+
+Below example uses `flash_attention_recompute` mode in order to reduce memory consumption on prompt stage. Additionally since all sequences in a batch are of the same lenght it uses `flash_attention_causal_mask` which will further improve performance by taking advantage of specific lower-diagonal shape of inputs to softmax operation.
+
+```bash
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
+--use_hpu_graphs \
+--use_kv_cache \
+--reuse_cache \
+--trim_logits \
+--attn_softmax_bf16 \
+--max_input_tokens 31744 \
+--max_new_tokens 1024 \
+--batch_size=12 \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask \
+--book_source
+```
+
+For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html#using-fused-sdpa).
 
 ## Language Model Evaluation Harness
 

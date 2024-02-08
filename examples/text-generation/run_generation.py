@@ -233,6 +233,21 @@ def setup_parser(parser):
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
     parser.add_argument(
+        "--flash_attention_recompute",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
+    )
+    parser.add_argument(
+        "--flash_attention_causal_mask",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
+    )
+    parser.add_argument(
+        "--book_source",
+        action="store_true",
+        help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
+    )
+    parser.add_argument(
         "--torch_compile",
         action="store_true",
         help="Whether to use torch compiled model or not.",
@@ -271,6 +286,45 @@ def main():
         # Benchmark over the prompts below
         if args.prompt:
             input_sentences = args.prompt
+        elif args.book_source:
+
+            def download_book(book_id):
+                import os
+
+                import requests
+
+                url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
+                response = requests.get(url)
+                if response.status_code == 200:
+                    pid = os.getpid()
+                    save_path = f"/tmp/{book_id}_{pid}.txt"
+                    with open(save_path, "wb") as file:
+                        file.write(response.content)
+                    print(f"Book downloaded and saved to: {save_path}")
+                    return save_path
+                else:
+                    print("Failed to download book! Exiting...")
+                    import sys
+
+                    sys.exit()
+
+            def assemble_prompt(prompt_size, book_path):
+                prompt = ""
+                counter = 0
+                book_lines = open(book_path).readlines()
+                for line in book_lines:
+                    for word in line.split():
+                        counter += 1
+                        prompt += word + " "
+                        if counter == prompt_size:
+                            return [prompt] * args.batch_size
+
+            book_ids = [
+                2701,  # Moby Dick; Or, The Whale
+                1513,  # Romeo and Juliet
+                1342,  # Pride and Prejudice
+            ]
+            input_sentences = assemble_prompt(prompt_size=args.max_input_tokens, book_path=download_book(book_ids[0]))
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",
