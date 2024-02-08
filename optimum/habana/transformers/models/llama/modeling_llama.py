@@ -311,6 +311,7 @@ class GaudiLlamaAttention(LlamaAttention):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
@@ -323,6 +324,7 @@ class GaudiLlamaAttention(LlamaAttention):
         - add new args reuse_cache
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
+        - add new arg flash_attention_causal_mask
         """
         bsz, q_len, _ = hidden_states.size()
 
@@ -406,10 +408,15 @@ class GaudiLlamaAttention(LlamaAttention):
                     )
             else:
                 # first token
-                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
+                if flash_attention_causal_mask:
+                    # causal masking on first token requires inputs to be of the same lenght
+                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                        attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
+                else:
+                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                        attn_output = FusedSDPA.apply(
+                            query_states, key_states, value_states, attention_mask, 0.0, False, None
+                        )
 
         else:
             query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(
@@ -496,6 +503,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
@@ -507,6 +515,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         - add new args reuse_cache
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
+        - add new arg flash_attention_causal_mask
         """
         if "padding_mask" in kwargs:
             warnings.warn(
@@ -527,6 +536,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             reuse_cache,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
             cache_idx=cache_idx,
             **kwargs,
         )
@@ -559,6 +569,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
@@ -575,6 +586,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             reuse_cache,
             use_flash_attention,
             flash_attention_recompute,
+            flash_attention_causal_mask,
             cache_idx=cache_idx,
         )
         return output_attn, attn_weights, present_key_value
@@ -657,6 +669,7 @@ class GaudiLlamaModel(LlamaModel):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
@@ -667,6 +680,7 @@ class GaudiLlamaModel(LlamaModel):
         - add new args reuse_cache
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
+        - add new arg flash_attention_causal_mask
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -762,6 +776,7 @@ class GaudiLlamaModel(LlamaModel):
                     False,
                     use_flash_attention,
                     flash_attention_recompute,
+                    flash_attention_causal_mask,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -777,6 +792,7 @@ class GaudiLlamaModel(LlamaModel):
                     reuse_cache=reuse_cache,
                     use_flash_attention=use_flash_attention,
                     flash_attention_recompute=flash_attention_recompute,
+                    flash_attention_causal_mask=flash_attention_causal_mask,
                     cache_idx=cache_idx,
                 )
             hidden_states = layer_outputs[0]
@@ -848,6 +864,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         reuse_cache: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -876,6 +893,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             reuse_cache=reuse_cache,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
             cache_idx=cache_idx,
         )
         hidden_states = outputs[0]
@@ -1009,6 +1027,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "reuse_cache": reuse_cache,
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
                 "cache_idx": kwargs.get("cache_idx"),
             }
         )
