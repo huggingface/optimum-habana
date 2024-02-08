@@ -588,17 +588,25 @@ class GaudiGenerationMixin(GenerationMixin):
                 inputs_tensor, generation_config.pad_token_id, generation_config.eos_token_id
             )
 
-        is_greedy_or_beam_and_bucket = generation_config.bucket_size > 0 and (
-            self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
-            or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
+        is_greedy_or_beam_and_bucket = (
+            not generation_config.bucket_internal
+            and generation_config.bucket_size > 0
+            and (
+                self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
+                or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
+            )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
+        model_kwargs["bucket_internal"] = generation_config.bucket_internal
         model_kwargs["reduce_recompile"] = (
             generation_config.reduce_recompile if generation_config.reduce_recompile is not None else False
         )
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
-        if generation_config.reuse_cache:
+        if generation_config.bucket_internal:
+            assert generation_config.bucket_size >= 0, "bucket_internal and bucket_size flags set together"
+            assert generation_config.reuse_cache, "please set reuse_cache to use bucket_internal"
+        if generation_config.reuse_cache and not generation_config.bucket_internal:
             assert generation_config.bucket_size <= 0, "reuse_cache and bucketing flags set together"
 
         if generation_config.static_shapes:
@@ -713,6 +721,8 @@ class GaudiGenerationMixin(GenerationMixin):
                         token_idx,
                         generation_config.kv_cache_fp8,
                     )
+                    model_kwargs["kv_cache_len"] = calculated_max_length
+
             if self.config.model_type in ["llama"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
@@ -1368,13 +1378,16 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         bucket_size = model_kwargs.get("bucket_size", -1)
+        prev_idx = None  # avoiding calculate cache_idx when its value is not changing
+        bucket_internal = model_kwargs["bucket_internal"]
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
         prompt_len = input_ids.shape[-1]
-        if bucket_size >= 0:
-            inc = iter(incrementor(bucket_size, prompt_len))
-        if bucket_size > 0:
-            assert "position_ids" not in model_kwargs, "Untested path"
+        if not bucket_internal:
+            if bucket_size >= 0:
+                inc = iter(incrementor(bucket_size, prompt_len))
+            if bucket_size > 0:
+                assert "position_ids" not in model_kwargs, "Untested path"
 
         while True:
             if lazy_mode:
@@ -1391,11 +1404,22 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
 
             if bucket_size > 0:
-                # it will not have been padded if bucket_size > 0
-                params = next(inc)
-                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
-                    params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
-                )
+                if not bucket_internal:
+                    # it will not have been padded if bucket_size > 0
+                    params = next(inc)
+                    input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
+                        params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
+                    )
+                else:
+                    # Calculate slice idx for kv cache. Breaking down the kv cache in the attention block helps to reduce computation time.
+                    if model_kwargs.get("token_idx") <= (model_kwargs["kv_cache_len"] // bucket_size) * bucket_size:
+                        idx = torch.div(model_kwargs.get("token_idx") - 1, bucket_size, rounding_mode="floor")
+                        if idx != prev_idx:
+                            cache_idx = (idx.item() + 1) * bucket_size
+                            model_kwargs["cache_idx"] = cache_idx
+                            prev_idx = idx
+                    else:
+                        model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
