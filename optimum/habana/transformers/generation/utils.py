@@ -812,7 +812,6 @@ class GaudiGenerationMixin(GenerationMixin):
             return self.assisted_decoding(
                 input_ids,
                 candidate_generator=candidate_generator,
-                assistant_model=assistant_model,
                 do_sample=generation_config.do_sample,
                 logits_processor=prepared_logits_processor,
                 logits_warper=self._get_logits_warper(generation_config) if generation_config.do_sample else None,
