@@ -17,6 +17,7 @@
 import copy
 import inspect
 import math
+import time
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -1399,6 +1400,7 @@ class GaudiGenerationMixin(GenerationMixin):
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
         prompt_len = input_ids.shape[-1]
+        
         if not bucket_internal:
             if bucket_size >= 0:
                 inc = iter(incrementor(bucket_size, prompt_len))
@@ -1409,6 +1411,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
+        greedy_first = True
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1531,6 +1534,13 @@ class GaudiGenerationMixin(GenerationMixin):
                 this_peer_finished = True
 
             hb_profer.step()
+
+            if greedy_first:
+                import habana_frameworks.torch.hpu as torch_hpu
+
+                torch_hpu.synchronize()
+                print(f"First Token time(greedy):{time.perf_counter()*1000}")
+                greedy_first = False
 
             if this_peer_finished and not synced_gpus:
                 break
@@ -1766,6 +1776,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
 
+        sample_first = True
         # auto-regressive generation
         while True:
             if lazy_mode:
@@ -1867,6 +1878,13 @@ class GaudiGenerationMixin(GenerationMixin):
                 this_peer_finished = True
 
             hb_profer.step()
+
+            if sample_first:
+                import habana_frameworks.torch.hpu as torch_hpu
+
+                torch_hpu.synchronize()
+                print(f"First Token time(sample):{time.perf_counter()*1000}")
+                sample_first = False
 
             if this_peer_finished and not synced_gpus:
                 break
