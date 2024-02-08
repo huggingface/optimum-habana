@@ -31,7 +31,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from transformers.models.mistral.modeling_mistral import MistralForCausalLM, apply_rotary_pos_emb, repeat_kv
 from transformers.utils import logging
 
-from optimum.habana.transformers.modeling_attn_mask_utils import (
+from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
     _gaudi_prepare_4d_causal_attention_mask_for_sdpa,
 )

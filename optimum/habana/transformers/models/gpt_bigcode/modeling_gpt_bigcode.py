@@ -3,9 +3,10 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss
-from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.gpt_bigcode.modeling_gpt_bigcode import GPTBigCodeForCausalLM
+
+from ...modeling_attn_mask_utils import GaudiAttentionMaskConverter
 
 
 def gaudi_gpt_bigcode_attention_forward(
@@ -245,7 +246,7 @@ def gaudi_gpt_bigcode_model_forward(
         if query_length > 1 and attention_mask is not None:
             # From PyTorch 2.1 onwards, F.scaled_dot_product_attention with the memory-efficient attention backend
             # produces nans if sequences are completely unattended in the attention mask. Details: https://github.com/pytorch/pytorch/issues/110213
-            self_attention_mask = AttentionMaskConverter._unmask_unattended(
+            self_attention_mask = GaudiAttentionMaskConverter._unmask_unattended(
                 self_attention_mask, attention_mask, unmasked_value=True
             )
 

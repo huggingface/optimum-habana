@@ -29,7 +29,6 @@ except ImportError:
 import habana_frameworks.torch.core as htcore
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
@@ -43,8 +42,9 @@ from transformers.models.falcon.modeling_falcon import (
 )
 from transformers.utils import logging
 
-from optimum.habana.transformers.modeling_attn_mask_utils import (
+from ...modeling_attn_mask_utils import (
     GaudiAttentionMaskConverter,
+    _gaudi_prepare_4d_causal_attention_mask,
     _gaudi_prepare_4d_causal_attention_mask_for_sdpa,
 )
 
@@ -62,22 +62,6 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
         )
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
-
-
-def _prepare_4d_attention_mask(mask: torch.Tensor, past_key_values_length: int, tgt_len: int) -> torch.BoolTensor:
-    """
-    Copied from transformers.models.falcon.modeling_falcon._prepare_4d_attention_mask
-    Expands attention_mask from `[batch_size, seq_length]` to `[batch_size, 1, seq_length, seq_length + past_length]`
-    when past_key_values_length is not 0 or to `[batch_size, 1, seq_length, tgt_len] when past_key_values_length is 0.`
-    """
-    batch_size, total_length = mask.shape
-    if tgt_len > 0:
-        seq_length = tgt_len
-    else:
-        seq_length = total_length - past_key_values_length if past_key_values_length is not None else total_length
-
-    expanded_mask = ~(mask[:, None, None, :].to(torch.bool))
-    return expanded_mask.expand(batch_size, 1, seq_length, total_length)
 
 
 def gaudi_falcon_attention_split_heads(
@@ -477,7 +461,7 @@ class GaudiFalconModel(FalconModel):
 
                 attention_mask_2d = attention_mask
                 # We don't call _prepare_4d_causal_attention_mask_for_sdpa as we need to mask alibi using the 4D attention_mask untouched.
-                attention_mask = _prepare_4d_causal_attention_mask(
+                attention_mask = _gaudi_prepare_4d_causal_attention_mask(
                     attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
                 )
 
@@ -499,12 +483,12 @@ class GaudiFalconModel(FalconModel):
                         )
             else:
                 # PyTorch SDPA does not support head_mask, we fall back on the eager implementation in this case.
-                attention_mask = _prepare_4d_causal_attention_mask(
+                attention_mask = _gaudi_prepare_4d_causal_attention_mask(
                     attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
                 )
         else:
             # 4d mask is passed through the layers
-            attention_mask = _prepare_4d_causal_attention_mask(
+            attention_mask = _gaudi_prepare_4d_causal_attention_mask(
                 attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
             )
 

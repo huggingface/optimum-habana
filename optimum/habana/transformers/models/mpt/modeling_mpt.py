@@ -20,10 +20,11 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.mpt.modeling_mpt import MptForCausalLM, MptModel
 from transformers.utils import logging
+
+from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
 logger = logging.get_logger(__name__)
@@ -216,7 +217,7 @@ class GaudiMptModel(MptModel):
 
         alibi = self.build_mpt_alibi_tensor(self.num_heads, self.config.max_seq_len, device=hidden_states.device)
 
-        causal_mask = _prepare_4d_causal_attention_mask(
+        causal_mask = _gaudi_prepare_4d_causal_attention_mask(
             attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
         )
         causal_mask = causal_mask.bool()

@@ -2,9 +2,10 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.nn import CrossEntropyLoss
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.opt.modeling_opt import OPTForCausalLM, OPTLearnedPositionalEmbedding, logger
+
+from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
 class GaudiOPTLearnedPositionalEmbedding(OPTLearnedPositionalEmbedding):
@@ -288,7 +289,7 @@ def gaudi_opt_decoder_forward(
             f"The provided attention mask has length {attention_mask.shape[1]}, but its length should be "
             f"{mask_seq_length} (sum of the lengths of current and past inputs)"
         )
-    causal_attention_mask = _prepare_4d_causal_attention_mask(
+    causal_attention_mask = _gaudi_prepare_4d_causal_attention_mask(
         attention_mask, input_shape, inputs_embeds, past_key_values_length
     )
 

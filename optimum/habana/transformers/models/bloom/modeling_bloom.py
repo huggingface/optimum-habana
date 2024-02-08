@@ -23,10 +23,11 @@ from typing import Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomMLP, dropout_add
 from transformers.utils import logging
+
+from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
 logger = logging.get_logger(__name__)
@@ -400,7 +401,7 @@ def gaudi_bloom_model_forward(
 
     alibi = gaudi_bloom_build_alibi_tensor(attention_mask, self.num_heads, hidden_states.dtype, self.training)
 
-    causal_mask = _prepare_4d_causal_attention_mask(
+    causal_mask = _gaudi_prepare_4d_causal_attention_mask(
         attention_mask,
         input_shape=(batch_size, seq_length),
         inputs_embeds=inputs_embeds,

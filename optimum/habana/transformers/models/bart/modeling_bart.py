@@ -23,8 +23,6 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_attention_mask,
     _prepare_4d_attention_mask_for_sdpa,
-    _prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
 )
 from transformers.modeling_outputs import (
     BaseModelOutput,
@@ -34,6 +32,11 @@ from transformers.modeling_outputs import (
 )
 from transformers.models.bart.modeling_bart import shift_tokens_right
 from transformers.utils import logging
+
+from ...modeling_attn_mask_utils import (
+    _gaudi_prepare_4d_causal_attention_mask,
+    _gaudi_prepare_4d_causal_attention_mask_for_sdpa,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -461,7 +464,7 @@ def gaudi_BartDecoder_forward(
     if self._use_sdpa and not output_attentions and cross_attn_head_mask is None:
         # output_attentions=True & cross_attn_head_mask can not be supported when using SDPA, and we fall back on
         # the manual implementation that requires a 4D causal mask in all cases.
-        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+        attention_mask = _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
             attention_mask,
             input_shape,
             inputs_embeds,
@@ -469,7 +472,7 @@ def gaudi_BartDecoder_forward(
         )
     else:
         # 4d mask is passed through the layers
-        attention_mask = _prepare_4d_causal_attention_mask(
+        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
             attention_mask, input_shape, inputs_embeds, past_key_values_length
         )
 
