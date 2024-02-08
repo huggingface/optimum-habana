@@ -42,6 +42,7 @@ if is_torch_available():
         GPT2LMHeadModel,
         GPT2Tokenizer,
         ImageGPTForCausalImageModeling,
+        PreTrainedModel,
         SpeechEncoderDecoderModel,
         top_k_top_p_filtering,
     )
@@ -55,6 +56,7 @@ if is_torch_available():
         DisjunctiveConstraint,
         ForcedBOSTokenLogitsProcessor,
         ForcedEOSTokenLogitsProcessor,
+        GenerateEncoderDecoderOutput,
         GreedySearchDecoderOnlyOutput,
         GreedySearchEncoderDecoderOutput,
         HammingDiversityLogitsProcessor,
@@ -74,6 +76,8 @@ if is_torch_available():
         TopKLogitsWarper,
         TopPLogitsWarper,
     )
+    from transformers.generation.candidate_generator import AssistedCandidateGenerator, CandidateGenerator
+    from transformers.generation.streamers import BaseStreamer
 
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
@@ -1582,7 +1586,6 @@ class GenerationTesterMixin:
                         for output in (output_greedy, output_assisted):
                             self._check_outputs(output, input_ids, model.config, use_cache=True)
 
-
     def test_assisted_decoding_sample(self):
         # In this test we don't check assisted vs non-assisted output -- seeded assisted decoding with sample will not
         # match sample for the same seed, as the forward pass does not return the exact same logits (due to matmul with
@@ -1638,10 +1641,17 @@ class GenerationTesterMixin:
 
             #######################################################################
             # Monkey patch assisted decoding function till SW issue is resolved
-            from types import MethodType
-            from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
             import copy
-            from transformers.generation.utils import _prepare_attention_mask, _prepare_token_type_ids, _crop_past_key_values, _split_model_outputs, GenerateDecoderOnlyOutput
+            from types import MethodType
+            from typing import List, Optional, Union
+
+            from transformers.generation.utils import (
+                GenerateDecoderOnlyOutput,
+                _crop_past_key_values,
+                _prepare_attention_mask,
+                _prepare_token_type_ids,
+                _split_model_outputs,
+            )
 
             def _speculative_sampling(
                 candidate_input_ids,
@@ -1719,7 +1729,7 @@ class GenerationTesterMixin:
                 synced_gpus: bool = False,
                 streamer: Optional["BaseStreamer"] = None,
                 **model_kwargs,
-            ) :
+            ):
                 r"""
                 Generates sequences of token ids for models with a language modeling head using **greedy decoding** or
                 **sample** (depending on `do_sample`), assisted by candidate sequences. Assisted generation is an example of a
@@ -1824,7 +1834,9 @@ class GenerationTesterMixin:
                 ```"""
                 # handling deprecated arguments
                 if (assistant_model is None) == (candidate_generator is None):
-                    raise ValueError("One (and only one) of `assistant_model` and `candidate_generator` should be defined.")
+                    raise ValueError(
+                        "One (and only one) of `assistant_model` and `candidate_generator` should be defined."
+                    )
 
                 if assistant_model is not None:
                     candidate_generator = AssistedCandidateGenerator(
@@ -1850,13 +1862,17 @@ class GenerationTesterMixin:
                     raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
                 if isinstance(eos_token_id, int):
                     eos_token_id = [eos_token_id]
-                eos_token_id_tensor = torch.tensor(eos_token_id).to(input_ids.device) if eos_token_id is not None else None
+                eos_token_id_tensor = (
+                    torch.tensor(eos_token_id).to(input_ids.device) if eos_token_id is not None else None
+                )
                 output_scores = output_scores if output_scores is not None else self.generation_config.output_scores
                 output_attentions = (
                     output_attentions if output_attentions is not None else self.generation_config.output_attentions
                 )
                 output_hidden_states = (
-                    output_hidden_states if output_hidden_states is not None else self.generation_config.output_hidden_states
+                    output_hidden_states
+                    if output_hidden_states is not None
+                    else self.generation_config.output_hidden_states
                 )
                 return_dict_in_generate = (
                     return_dict_in_generate
@@ -1872,7 +1888,9 @@ class GenerationTesterMixin:
 
                 # if model is an encoder-decoder, retrieve encoder attention weights and hidden states
                 if return_dict_in_generate and self.config.is_encoder_decoder:
-                    encoder_attentions = model_kwargs["encoder_outputs"].get("attentions") if output_attentions else None
+                    encoder_attentions = (
+                        model_kwargs["encoder_outputs"].get("attentions") if output_attentions else None
+                    )
                     encoder_hidden_states = (
                         model_kwargs["encoder_outputs"].get("hidden_states") if output_hidden_states else None
                     )
@@ -1890,7 +1908,7 @@ class GenerationTesterMixin:
                         # The following logic allows an early break if all peers finished generating their sequence
                         this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(input_ids.device)
                         # send 0.0 if we finished, 1.0 otherwise
-                        dist.all_reduce(this_peer_finished_flag, op=dist.ReduceOp.SUM)
+                        torch.dist.all_reduce(this_peer_finished_flag, op=torch.dist.ReduceOp.SUM)
                         # did all peers finish? the reduced sum will be 0.0 then
                         if this_peer_finished_flag.item() == 0.0:
                             break
@@ -1936,10 +1954,14 @@ class GenerationTesterMixin:
                     new_logits = outputs.logits[:, -candidate_length - 1 :]  # excludes the input prompt if present
                     if len(logits_processor) > 0:
                         for i in range(candidate_length + 1):
-                            new_logits[:, i, :] = logits_processor(candidate_input_ids[:, : cur_len + i], new_logits[:, i, :])
+                            new_logits[:, i, :] = logits_processor(
+                                candidate_input_ids[:, : cur_len + i], new_logits[:, i, :]
+                            )
                     if len(logits_warper) > 0:
                         for i in range(candidate_length + 1):
-                            new_logits[:, i, :] = logits_warper(candidate_input_ids[:, : cur_len + i], new_logits[:, i, :])
+                            new_logits[:, i, :] = logits_warper(
+                                candidate_input_ids[:, : cur_len + i], new_logits[:, i, :]
+                            )
 
                     # 3. Select the accepted tokens. There are two possible cases:
                     # Case 1: `do_sample=True` and we have logits for the candidates (originally from speculative decoding)
@@ -2086,7 +2108,6 @@ class GenerationTesterMixin:
                 else:
                     return input_ids
 
-
             model.assisted_decoding = MethodType(assisted_decoding, model)
 
             #######################################################################
@@ -2094,7 +2115,6 @@ class GenerationTesterMixin:
             output_assisted = model.generate(input_ids, attention_mask=attention_mask, **generation_kwargs)
 
             self._check_outputs(output_assisted, input_ids, model.config, use_cache=True)
-
 
     def test_generate_with_head_masking(self):
         """Test designed for encoder-decoder models to ensure the attention head masking is used."""
