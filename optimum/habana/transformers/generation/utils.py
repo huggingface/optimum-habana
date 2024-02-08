@@ -707,6 +707,7 @@ class GaudiGenerationMixin(GenerationMixin):
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
+        model_kwargs["flash_attention_causal_mask"] = True if generation_config.flash_attention_causal_mask else False
         model_kwargs["use_fused_rope"] = False if not generation_config.use_fused_rope else True
 
         if not self.config.is_encoder_decoder:
