@@ -329,6 +329,7 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.use_cache = args.use_kv_cache
     generation_config.static_shapes = is_optimized
     generation_config.bucket_size = args.bucket_size if is_optimized else -1
+    generation_config.bucket_internal = args.bucket_internal
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
     generation_config.bad_words_ids = bad_words_ids
