@@ -65,7 +65,10 @@ def get_checkpoint_files(model_name_or_path, local_rank, token=None):
     safe_index_present = os.path.isfile(safe_index_file)
 
     if not index_present and not safe_index_present:
-        filenames = (transformers.modeling_utils.WEIGHTS_INDEX_NAME, transformers.modeling_utils.SAFE_WEIGHTS_INDEX_NAME)
+        filenames = (
+            transformers.modeling_utils.WEIGHTS_INDEX_NAME,
+            transformers.modeling_utils.SAFE_WEIGHTS_INDEX_NAME,
+        )
         raise ValueError(f"Can't find a checkpoint index ({' or '.join(filenames)}) in {cached_repo_dir}.")
 
     load_index = safe_index_file if safe_index_present else index_file
@@ -95,7 +98,9 @@ def model_on_meta(config):
 
 
 def get_optimized_model_name(config):
-    from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+    from optimum.habana.transformers.generation import (
+        MODELS_OPTIMIZED_WITH_STATIC_SHAPES,
+    )
 
     for model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES:
         if model_type == config.model_type:
