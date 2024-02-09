@@ -35,7 +35,7 @@ from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
-    _gaudi_prepare_4d_causal_attention_mask_for_sdpa,
+    _prepare_4d_causal_attention_mask_for_sdpa,
 )
 
 
@@ -465,7 +465,7 @@ def gaudi_BartDecoder_forward(
     if self._use_sdpa and not output_attentions and cross_attn_head_mask is None:
         # output_attentions=True & cross_attn_head_mask can not be supported when using SDPA, and we fall back on
         # the manual implementation that requires a 4D causal mask in all cases.
-        attention_mask = _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
+        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
             attention_mask,
             input_shape,
             inputs_embeds,

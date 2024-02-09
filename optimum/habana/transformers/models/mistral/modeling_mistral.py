@@ -33,7 +33,7 @@ from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
-    _gaudi_prepare_4d_causal_attention_mask_for_sdpa,
+    _prepare_4d_causal_attention_mask_for_sdpa,
 )
 
 
@@ -266,7 +266,7 @@ def gaudi_mistral_model_forward(
     if self._attn_implementation == "sdpa" and not output_attentions:
         # output_attentions=True can not be supported when using SDPA, and we fall back on
         # the manual implementation that requires a 4D causal mask in all cases.
-        attention_mask = _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
+        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
             attention_mask,
             (batch_size, seq_length),
             inputs_embeds,
