@@ -27,13 +27,13 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.mistral.modeling_mistral import MistralForCausalLM, apply_rotary_pos_emb, repeat_kv
 from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
 )
 
 

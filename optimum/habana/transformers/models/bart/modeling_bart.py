@@ -23,6 +23,7 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_attention_mask,
     _prepare_4d_attention_mask_for_sdpa,
+    _prepare_4d_causal_attention_mask_for_sdpa,
 )
 from transformers.modeling_outputs import (
     BaseModelOutput,
@@ -35,7 +36,6 @@ from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
 )
 
 
