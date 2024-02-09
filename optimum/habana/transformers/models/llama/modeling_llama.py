@@ -606,13 +606,15 @@ class GaudiLlamaModel(LlamaModel):
         if past_key_values is not None:
             if use_cache:
                 if reuse_cache:
-                    past_key_values_length = past_key_values[0][2]
+                    past_key_values_length = past_key_values[0][0][2]
                 else:
                     if use_new_cache:
                         use_legacy_cache = not isinstance(past_key_values, Cache)
                         if use_legacy_cache:
                             past_key_values = DynamicCache.from_legacy_cache(past_key_values)
                         past_key_values_length = past_key_values.get_usable_length(seq_length)
+                    else:
+                        past_key_values_length = past_key_values[0][0].shape[2]
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
