@@ -666,7 +666,7 @@ class GaudiLlamaModel(LlamaModel):
                     attn_softmax_bf16,
                     False,
                     use_flash_attention,
-                    flash_attention_recompute,
+                    True,
                 )
             else:
                 layer_outputs = decoder_layer(
