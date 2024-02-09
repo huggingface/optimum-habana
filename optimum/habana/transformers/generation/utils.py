@@ -600,6 +600,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
         if generation_config.reuse_cache:
+            assert self.config.model_type in ["llama"], "reuse_cache only supported by llama at the moment"
             assert generation_config.bucket_size <= 0, "reuse_cache and bucketing flags set together"
 
         if generation_config.static_shapes:
@@ -1368,8 +1369,8 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
-        bucket_size = model_kwargs["bucket_size"]
-        reduce_recompile = model_kwargs["reduce_recompile"]
+        bucket_size = model_kwargs.get("bucket_size", -1)
+        reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
         prompt_len = input_ids.shape[-1]
         if bucket_size >= 0:
@@ -2121,8 +2122,8 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
 
-        bucket_size = model_kwargs["bucket_size"]
-        reduce_recompile = model_kwargs["reduce_recompile"]
+        bucket_size = model_kwargs.get("bucket_size", -1)
+        reduce_recompile = model_kwargs.get("reduce_recompile", False)
         prompt_len = input_ids.shape[-1]
         if bucket_size >= 0:
             inc = iter(incrementor(bucket_size, prompt_len))
