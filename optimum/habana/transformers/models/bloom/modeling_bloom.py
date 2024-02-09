@@ -429,6 +429,7 @@ def gaudi_bloom_model_forward(
                 head_mask[i],
                 use_cache,
                 output_attentions,
+                None,
             )
         else:
             outputs = block(

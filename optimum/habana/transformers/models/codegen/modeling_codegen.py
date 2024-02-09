@@ -264,6 +264,7 @@ def gaudi_codegen_model_forward(
                 head_mask[i],
                 use_cache,
                 output_attentions,
+                None,
             )
         else:
             outputs = block(

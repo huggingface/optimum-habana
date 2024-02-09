@@ -342,6 +342,7 @@ def gaudi_opt_decoder_forward(
                 None,
                 output_attentions,
                 use_cache,
+                None,
             )
         else:
             layer_outputs = decoder_layer(

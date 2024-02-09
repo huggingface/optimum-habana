@@ -250,6 +250,7 @@ def gaudi_gpt_neox_model_forward(
                 use_cache,
                 None,
                 output_attentions,
+                None,
             )
         else:
             outputs = layer(

@@ -418,6 +418,8 @@ def gaudi_T5Stack_forward(
                 None,  # past_key_value is always None with gradient checkpointing
                 use_cache,
                 output_attentions,
+                True,
+                None,
             )
         else:
             layer_outputs = layer_module(

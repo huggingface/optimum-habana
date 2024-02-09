@@ -336,9 +336,9 @@ def gaudi_gptj_model_forward(
                 head_mask[i],
                 use_cache,
                 output_attentions,
-                token_idx=None,
-                sin=sin,
-                cos=cos,
+                None,
+                sin,
+                cos,
             )
         else:
             outputs = block(

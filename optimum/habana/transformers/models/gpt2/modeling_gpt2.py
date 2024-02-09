@@ -387,6 +387,7 @@ def gaudi_gpt2_forward(
                 encoder_attention_mask,
                 use_cache,
                 output_attentions,
+                None,
             )
         else:
             outputs = block(

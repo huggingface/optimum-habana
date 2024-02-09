@@ -513,6 +513,7 @@ class GaudiFalconModel(FalconModel):
                     layer_past,
                     use_cache,
                     output_attentions,
+                    None,
                 )
             else:
                 outputs = block(

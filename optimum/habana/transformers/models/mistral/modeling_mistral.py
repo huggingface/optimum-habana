@@ -302,6 +302,7 @@ def gaudi_mistral_model_forward(
                 None if past_key_values is None else past_key_values[layer_idx],
                 output_attentions,
                 use_cache,
+                None,
             )
         else:
             layer_outputs = decoder_layer(

@@ -308,6 +308,7 @@ def gaudi_gpt_bigcode_model_forward(
                 encoder_attention_mask,
                 use_cache,
                 output_attentions,
+                None,
             )
         else:
             outputs = block(

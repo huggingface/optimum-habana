@@ -662,9 +662,11 @@ class GaudiLlamaModel(LlamaModel):
                     None if past_key_values is None else past_key_values[layer_idx],
                     output_attentions,
                     use_cache,
-                    attn_softmax_bf16=attn_softmax_bf16,
-                    use_flash_attention=use_flash_attention,
-                    flash_attention_recompute=flash_attention_recompute,
+                    None,
+                    attn_softmax_bf16,
+                    False,
+                    use_flash_attention,
+                    flash_attention_recompute,
                 )
             else:
                 layer_outputs = decoder_layer(

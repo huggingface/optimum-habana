@@ -395,6 +395,7 @@ def gaudi_BartEncoder_forward(
                     attention_mask,
                     (head_mask[idx] if head_mask is not None else None),
                     output_attentions,
+                    None,
                 )
             else:
                 layer_outputs = encoder_layer(
@@ -552,6 +553,7 @@ def gaudi_BartDecoder_forward(
                 None,
                 output_attentions,
                 use_cache,
+                None,
             )
         else:
             layer_outputs = decoder_layer(

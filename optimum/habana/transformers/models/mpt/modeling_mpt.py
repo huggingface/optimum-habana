@@ -235,6 +235,7 @@ class GaudiMptModel(MptModel):
                     layer_past,
                     use_cache,
                     output_attentions,
+                    None,
                 )
             else:
                 outputs = block(
