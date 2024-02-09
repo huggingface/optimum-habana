@@ -449,7 +449,8 @@ class GaudiFalconModel(FalconModel):
         if self._use_sdpa and not output_attentions:
             # output_attentions=True can not be supported when using SDPA, and we fall back on
             # the manual implementation that requires a 4D causal mask in all cases.
-            if alibi is None:
+            use_sdpa_attn_mask = False
+            if alibi is None and use_sdpa_attn_mask:
                 attention_mask = _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
                     attention_mask,
                     (batch_size, seq_length),

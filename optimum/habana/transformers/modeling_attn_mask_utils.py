@@ -117,8 +117,8 @@ def _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
     Adapted from: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/modeling_attn_mask_utils.py#L331
 
     Differences:
-    - `torch.all(attention_mask == 1)` was removed here: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/modeling_attn_mask_utils.py#L371
-      for performance reasons
+    - No difference with : https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/modeling_attn_mask_utils.py#L331
+      keep for potential performance improvement
     """
     attn_mask_converter = GaudiAttentionMaskConverter(is_causal=True, sliding_window=sliding_window)
 
@@ -146,7 +146,7 @@ def _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
                 )
                 return attention_mask
 
-        elif not is_tracing:
+        elif not is_tracing and torch.all(attention_mask == 1):
             if query_length == 1:
                 # For query_length == 1, causal attention and bi-directional attention are the same.
                 attention_mask = None
