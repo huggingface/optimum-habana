@@ -29,6 +29,7 @@ except ImportError:
 import habana_frameworks.torch.core as htcore
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
@@ -45,7 +46,6 @@ from transformers.utils import logging
 from ...modeling_attn_mask_utils import (
     GaudiAttentionMaskConverter,
     _gaudi_prepare_4d_causal_attention_mask,
-    _gaudi_prepare_4d_causal_attention_mask_for_sdpa,
 )
 
 
@@ -446,11 +446,14 @@ class GaudiFalconModel(FalconModel):
                 )
                 position_ids = position_ids.unsqueeze(0)
 
-        if self._use_sdpa and not output_attentions:
+        # TODO: Due to perf degradation, disable spda_attn_mask
+        use_sdpa_attn_mask = False
+
+        if self._use_sdpa and not output_attentions and use_sdpa_attn_mask:
             # output_attentions=True can not be supported when using SDPA, and we fall back on
             # the manual implementation that requires a 4D causal mask in all cases.
             if alibi is None:
-                attention_mask = _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
+                attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
                     attention_mask,
                     (batch_size, seq_length),
                     inputs_embeds,

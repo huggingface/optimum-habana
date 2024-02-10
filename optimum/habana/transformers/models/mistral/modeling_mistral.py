@@ -27,13 +27,13 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.mistral.modeling_mistral import MistralForCausalLM, apply_rotary_pos_emb, repeat_kv
 from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
-    _gaudi_prepare_4d_causal_attention_mask_for_sdpa,
 )
 
 
@@ -266,7 +266,7 @@ def gaudi_mistral_model_forward(
     if self._attn_implementation == "sdpa" and not output_attentions:
         # output_attentions=True can not be supported when using SDPA, and we fall back on
         # the manual implementation that requires a 4D causal mask in all cases.
-        attention_mask = _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
+        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
             attention_mask,
             (batch_size, seq_length),
             inputs_embeds,

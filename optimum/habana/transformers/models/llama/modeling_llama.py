@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
@@ -20,7 +21,6 @@ from transformers.models.llama.modeling_llama import (
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
-    _gaudi_prepare_4d_causal_attention_mask_for_sdpa,
 )
 
 
@@ -629,7 +629,7 @@ class GaudiLlamaModel(LlamaModel):
         if self._use_sdpa and not output_attentions:
             # output_attentions=True can not be supported when using SDPA, and we fall back on
             # the manual implementation that requires a 4D causal mask in all cases.
-            attention_mask = _gaudi_prepare_4d_causal_attention_mask_for_sdpa(
+            attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
                 attention_mask,
                 (batch_size, seq_length),
                 inputs_embeds,
