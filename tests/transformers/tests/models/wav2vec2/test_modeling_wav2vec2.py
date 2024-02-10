@@ -343,6 +343,7 @@ class Wav2Vec2ModelTester:
         # TODO: due to limitation of index op, add mark_step
         if torch_device == "hpu":
             import habana_frameworks.torch.core as htcore
+
             htcore.mark_step()
 
         input_lengths = [input_values.shape[-1] // i for i in [4, 2, 1]]
