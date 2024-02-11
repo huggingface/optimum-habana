@@ -1,5 +1,3 @@
-# flake8: noqa
-
 # Copyright 2022 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,11 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# There is a circular import in the PPOTrainer if we let isort sort these
-# isort: on
-
-from .sft_trainer import GaudiSFTTrainer
-from .dpo_trainer import GaudiDPOTrainer
-from .ppo_config import GaudiPPOConfig
-from .ppo_trainer import GaudiPPOTrainer
-from .reward_trainer import GaudiRewardTrainer, RewardDataCollatorWithPadding
+from .modeling_base import adapt_PreTrainedModelWrapper_to_gaudi
