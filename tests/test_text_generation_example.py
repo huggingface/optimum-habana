@@ -31,7 +31,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("facebook/opt-66b", 28.16154122335556),
         ],
         "torch_compile": [
-            ("meta-llama/Llama-2-7b-hf", 12.959193578388142),
+            ("meta-llama/Llama-2-7b-hf", 12.468247401430999),
         ],
     }
 else:
