@@ -120,7 +120,6 @@ There are three main steps to the PPO training process:
 3. RL fine-tuning of llama-v2-7b-se with the llama-v2-7b-se-rm reward model:
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi ppo.py \
-        --log_with=wandb \
         --model_name=./sft/final_merged_checkpoint \
         --reward_model_name=./rm_merged_checkpoint \
         --tokenizer_name=meta-llama/Llama-2-7b-hf \
