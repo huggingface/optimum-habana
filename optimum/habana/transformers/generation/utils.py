@@ -197,6 +197,12 @@ class GaudiGenerationMixin(GenerationMixin):
                     )
                 model_kwargs["attention_mask"] = attention_mask
         else:
+            # update decoder attention mask
+            if "attention_mask" in model_kwargs:
+                attention_mask = model_kwargs["attention_mask"]
+                if token_idx is not None:
+                    attention_mask.index_fill_(1, token_idx, 1)
+                model_kwargs["attention_mask"] = attention_mask
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
                 if token_idx is not None:
