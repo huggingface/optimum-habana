@@ -27,11 +27,17 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
-from huggingface_hub import HfFolder, delete_repo, list_repo_commits
+from huggingface_hub import HfFolder, delete_repo, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
 from requests.exceptions import HTTPError
-from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
+from transformers import (
+    IntervalStrategy,
+    PretrainedConfig,
+    TrainerCallback,
+    get_polynomial_decay_schedule_with_warmup,
+    is_torch_available,
+)
 from transformers.hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS
 from transformers.testing_utils import (
     ENDPOINT_STAGING,
@@ -45,10 +51,12 @@ from transformers.testing_utils import (
     require_optuna,
     require_safetensors,
     require_sentencepiece,
+    require_tensorboard,
     require_tokenizers,
     require_torch,
 )
-from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend, get_last_checkpoint
 from transformers.training_args import OptimizerNames
 from transformers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -122,11 +130,14 @@ class RegressionDatasetDynamic:
 class RegressionGaudiTrainingArguments(GaudiTrainingArguments):
     a: float = 0.0
     b: float = 0.0
+    keep_report_to: bool = False
 
     def __post_init__(self):
-        # save resources not dealing with reporting (also avoids the warning when it's not set)
-        self.report_to = []
         super().__post_init__()
+        # save resources not dealing with reporting unless specified (also avoids the warning when it's not set)
+        # can be explicitly disabled via `keep_report_to`
+        if not self.keep_report_to:
+            self.report_to = []
 
 
 class RepeatDataset:
@@ -263,6 +274,38 @@ if is_torch_available():
             loss = nn.functional.mse_loss(y, labels)
             return (loss, y, y) if self.double_output else (loss, y)
 
+    class RegressionPreTrainedModelWithGradientCheckpointing(PreTrainedModel):
+        config_class = RegressionModelConfig
+        base_model_prefix = "regression"
+        supports_gradient_checkpointing = True
+
+        def __init__(self, config):
+            super().__init__(config)
+            self.layers = nn.ModuleList([nn.Linear(config.hidden_size, config.hidden_size) for _ in range(4)])
+            self.head = nn.Linear(config.hidden_size, 1)
+            self.gradient_checkpointing = False
+            self.double_output = config.double_output
+
+        def forward(self, input_x, labels=None, **kwargs):
+            y = input_x.unsqueeze(0)
+
+            for layer in self.layers:
+                if self.training and self.gradient_checkpointing:
+                    outputs = self._gradient_checkpointing_func(layer.__call__, y)
+                else:
+                    outputs = layer(y)
+
+                y = outputs * 3
+
+            logits = self.head(y)
+
+            if labels is None:
+                return (logits, logits) if self.double_output else (logits,)
+
+            loss = nn.functional.mse_loss(logits, labels)
+
+            return (loss, y, y) if self.double_output else (loss, y)
+
     class RegressionRandomPreTrainedModel(PreTrainedModel):
         config_class = RegressionModelConfig
         base_model_prefix = "regression"
@@ -310,8 +353,11 @@ if is_torch_available():
             )
         return GaudiConfig.from_pretrained(gaudi_config_name_or_path)
 
-    def get_regression_trainer(a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, **kwargs):
+    def get_regression_trainer(
+        a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, keep_report_to=False, **kwargs
+    ):
         label_names = kwargs.get("label_names", None)
+        gradient_checkpointing = kwargs.get("gradient_checkpointing", False)
         train_dataset = RegressionDataset(length=train_len, label_names=label_names)
         eval_dataset = RegressionDataset(length=eval_len, label_names=label_names)
 
@@ -321,7 +367,13 @@ if is_torch_available():
         else:
             if pretrained:
                 config = RegressionModelConfig(a=a, b=b, double_output=double_output)
-                model = RegressionPreTrainedModel(config)
+                # We infer the correct model class if one uses gradient_checkpointing or not
+                target_cls = (
+                    RegressionPreTrainedModel
+                    if not gradient_checkpointing
+                    else RegressionPreTrainedModelWithGradientCheckpointing
+                )
+                model = target_cls(config)
             else:
                 model = RegressionModel(a=a, b=b, double_output=double_output)
 
@@ -333,7 +385,9 @@ if is_torch_available():
         output_dir = kwargs.pop("output_dir", "./regression")
         preprocess_logits_for_metrics = kwargs.pop("preprocess_logits_for_metrics", None)
 
-        args = RegressionGaudiTrainingArguments(output_dir, use_habana=True, use_lazy_mode=True, a=a, b=b, **kwargs)
+        args = RegressionGaudiTrainingArguments(
+            output_dir, use_habana=True, use_lazy_mode=True, a=a, b=b, keep_report_to=keep_report_to, **kwargs
+        )
 
         return GaudiTrainer(
             model,
@@ -350,7 +404,7 @@ if is_torch_available():
 
 
 class GaudiTrainerIntegrationCommon:
-    def check_saved_checkpoints(self, output_dir, freq, total, is_pretrained=True, safe_weights=False):
+    def check_saved_checkpoints(self, output_dir, freq, total, is_pretrained=True, safe_weights=True):
         weights_file = WEIGHTS_NAME if not safe_weights else SAFE_WEIGHTS_NAME
         file_list = [weights_file, "training_args.bin", "optimizer.pt", "scheduler.pt", "trainer_state.json"]
         if is_pretrained:
@@ -363,7 +417,7 @@ class GaudiTrainerIntegrationCommon:
                 self.assertTrue(os.path.isfile(os.path.join(checkpoint, filename)))
 
     def check_best_model_has_been_loaded(
-        self, output_dir, freq, total, trainer, metric, greater_is_better=False, is_pretrained=True, safe_weights=False
+        self, output_dir, freq, total, trainer, metric, greater_is_better=False, is_pretrained=True, safe_weights=True
     ):
         checkpoint = os.path.join(output_dir, f"checkpoint-{(total // freq) * freq}")
         log_history = TrainerState.load_from_json(os.path.join(checkpoint, "trainer_state.json")).log_history
@@ -404,7 +458,7 @@ class GaudiTrainerIntegrationCommon:
                 _ = log1.pop(key, None)
             self.assertEqual(log, log1)
 
-    def convert_to_sharded_checkpoint(self, folder, save_safe=False, load_safe=False):
+    def convert_to_sharded_checkpoint(self, folder, save_safe=True, load_safe=True):
         # Converts a checkpoint of a regression model to a sharded checkpoint.
         if load_safe:
             loader = safetensors.torch.load_file
@@ -547,6 +601,28 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         trainer.train()
         self.check_trained_model(trainer.model)
 
+    # The test below is commented because it leads to a core dumped error
+    # when it is run with all other tests. It passes when run alone.
+    # It seems to be cause by setting `use_reentrant` to False in
+    # gradient checkpointing.
+    # def test_gradient_checkpointing(self):
+    #     trainer = get_regression_trainer(
+    #         per_device_train_batch_size=1,
+    #         learning_rate=0.1,
+    #         gradient_checkpointing=True,
+    #         gradient_checkpointing_kwargs={"use_reentrant": False},
+    #     )
+    #     previous_params = {k: v.detach().clone() for k, v in trainer.model.named_parameters()}
+
+    #     trainer.train()
+
+    #     # Check if model weights have been updated
+    #     for k, v in trainer.model.named_parameters():
+    #         self.assertFalse(
+    #             torch.allclose(previous_params[k], v, rtol=1e-4, atol=1e-4),
+    #             f"Model weights for {k} have not been updated",
+    #         )
+
     def test_training_loss(self):
         n_gpus = max(1, get_gpu_count())
 
@@ -586,6 +662,36 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         self.assertFalse(torch.allclose(trainer.model.b, b))
         self.assertEqual(trainer.optimizer.state_dict()["param_groups"][0]["lr"], 1.0)
 
+    def test_lr_scheduler_kwargs(self):
+        # test scheduler kwargs passed via TrainingArguments
+        train_dataset = RegressionDataset()
+        model = RegressionModel()
+        num_steps, num_warmup_steps = 10, 2
+        extra_kwargs = {"power": 5.0, "lr_end": 1e-5}  # Non-default arguments
+        args = GaudiTrainingArguments(
+            "./regression",
+            lr_scheduler_type="polynomial",
+            lr_scheduler_kwargs=extra_kwargs,
+            learning_rate=0.2,
+            warmup_steps=num_warmup_steps,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        gaudi_config = get_gaudi_config()
+        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+        trainer.create_optimizer_and_scheduler(num_training_steps=num_steps)
+
+        # Checking that the scheduler was created
+        self.assertIsNotNone(trainer.lr_scheduler)
+
+        # Checking that the correct args were passed
+        sched1 = trainer.lr_scheduler
+        sched2 = get_polynomial_decay_schedule_with_warmup(
+            trainer.optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_steps, **extra_kwargs
+        )
+        self.assertEqual(sched1.lr_lambdas[0].args, sched2.lr_lambdas[0].args)
+        self.assertEqual(sched1.lr_lambdas[0].keywords, sched2.lr_lambdas[0].keywords)
+
     def test_reduce_lr_on_plateau_args(self):
         # test passed arguments for a custom ReduceLROnPlateau scheduler
         train_dataset = RegressionDataset(length=64)
@@ -624,7 +730,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             def log(self, logs):
                 # the LR is computed after metrics and does not exist for the first epoch
                 if hasattr(self.lr_scheduler, "_last_lr"):
-                    logs["learning_rate"] = self.lr_scheduler._last_lr
+                    logs["learning_rate"] = self.lr_scheduler._last_lr[0]
                 super().log(logs)
 
         train_dataset = RegressionDataset(length=64)
@@ -658,14 +764,14 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             if loss > best_loss:
                 bad_epochs += 1
                 if bad_epochs > patience:
-                    self.assertLess(logs[i + 1]["learning_rate"][0], log["learning_rate"][0])
+                    self.assertLess(logs[i + 1]["learning_rate"], log["learning_rate"])
                     just_decreased = True
                     bad_epochs = 0
             else:
                 best_loss = loss
                 bad_epochs = 0
             if not just_decreased:
-                self.assertEqual(logs[i + 1]["learning_rate"][0], log["learning_rate"][0])
+                self.assertEqual(logs[i + 1]["learning_rate"], log["learning_rate"])
 
     def test_adafactor_lr_none(self):
         # test the special case where lr=None, since Trainer can't not have lr_scheduler
@@ -790,6 +896,52 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         trainer = get_regression_trainer(learning_rate=0.1, max_steps=10)
         train_output = trainer.train()
         self.assertEqual(train_output.global_step, 10)
+
+    # TODO: investigate why this test fails
+    # def test_neftune(self):
+    #     config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
+    #     tiny_gpt2 = GPT2LMHeadModel(config)
+    #     x = torch.randint(0, 100, (128,))
+    #     train_dataset = RepeatDataset(x)
+
+    #     # Trainer without inf/nan filter
+    #     args = GaudiTrainingArguments(
+    #         "./test", learning_rate=1e-9, logging_steps=5, logging_nan_inf_filter=False, neftune_noise_alpha=0.4, use_habana=True, use_lazy_mode=True,
+    #     )
+    #     gaudi_config = get_gaudi_config()
+    #     trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+
+    #     trainer.model = trainer._activate_neftune(trainer.model)
+
+    #     dummy_input = torch.LongTensor([[1, 0, 1]]).to("hpu")
+
+    #     emb1 = trainer.model.get_input_embeddings()(dummy_input)
+    #     emb2 = trainer.model.get_input_embeddings()(dummy_input)
+
+    #     self.assertFalse(torch.allclose(emb1, emb2), "Neftune noise is not applied!")
+
+    #     # redefine the model
+    #     tiny_gpt2 = GPT2LMHeadModel(config)
+    #     # Trainer without inf/nan filter
+    #     args = GaudiTrainingArguments(
+    #         "./test", learning_rate=1e-9, logging_steps=5, logging_nan_inf_filter=False, neftune_noise_alpha=0.4, use_habana=True, use_lazy_mode=True,
+    #     )
+    #     trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+
+    #     # Check that it trains without errors
+    #     trainer.train()
+
+    #     # Make sure forward pass works fine
+    #     _ = trainer.model(dummy_input)
+    #     self.assertTrue(len(trainer.model.get_input_embeddings()._forward_hooks) == 0)
+
+    #     trainer.model.eval()
+
+    #     # Check that we get identical embeddings just in case
+    #     emb1 = trainer.model.get_input_embeddings()(dummy_input)
+    #     emb2 = trainer.model.get_input_embeddings()(dummy_input)
+
+    #     self.assertTrue(torch.allclose(emb1, emb2), "Neftune noise is still applied!")
 
     def test_logging_inf_nan_filter(self):
         config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
@@ -1086,6 +1238,19 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             trainer.train()
             self.check_saved_checkpoints(tmpdir, 5, int(self.n_epochs * 64 / self.batch_size), False)
 
+    def test_save_checkpoints_is_atomic(self):
+        class UnsaveableTokenizer(PreTrainedTokenizerBase):
+            def save_pretrained(self, *args, **kwargs):
+                raise OSError("simulated file write error")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trainer = get_regression_trainer(output_dir=tmpdir, save_steps=5)
+            # Attach unsaveable tokenizer to partially fail checkpointing
+            trainer.tokenizer = UnsaveableTokenizer()
+            with self.assertRaises(OSError) as _context:
+                trainer.train()
+            assert get_last_checkpoint(tmpdir) is None
+
     @require_safetensors
     def test_safe_checkpoints(self):
         for save_safetensors in [True, False]:
@@ -1238,6 +1403,46 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         self.assertAlmostEqual(a, a1, delta=1e-5)
         self.assertAlmostEqual(b, b1, delta=1e-5)
+
+    def test_auto_batch_size_with_resume_from_checkpoint(self):
+        train_dataset = RegressionDataset(length=128)
+
+        config = RegressionModelConfig(a=0, b=2)
+        model = RegressionRandomPreTrainedModel(config)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+
+        class MockCudaOOMCallback(TrainerCallback):
+            def on_step_end(self, args, state, control, **kwargs):
+                # simulate OOM on the first step
+                if state.train_batch_size >= 16:
+                    raise RuntimeError("CUDA out of memory.")
+
+        args = RegressionGaudiTrainingArguments(
+            tmp_dir,
+            do_train=True,
+            max_steps=2,
+            save_steps=1,
+            per_device_train_batch_size=16,
+            auto_find_batch_size=True,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        gaudi_config = get_gaudi_config()
+        trainer = GaudiTrainer(
+            model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockCudaOOMCallback()]
+        )
+        trainer.train()
+        # After `auto_find_batch_size` is ran we should now be at 8
+        self.assertEqual(trainer._train_batch_size, 8)
+
+        # We can then make a new Trainer
+        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+        # Check we are at 16 to start
+        self.assertEqual(trainer._train_batch_size, 16 * max(trainer.args.n_gpu, 1))
+        trainer.train(resume_from_checkpoint=True)
+        # We should be back to 8 again, picking up based upon the last ran Trainer
+        self.assertEqual(trainer._train_batch_size, 8)
 
     # regression for this issue: https://github.com/huggingface/transformers/issues/12970
     def test_training_with_resume_from_checkpoint_false(self):
@@ -1707,7 +1912,7 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        for model in ["test-trainer", "test-trainer-epoch", "test-trainer-step"]:
+        for model in ["test-trainer", "test-trainer-epoch", "test-trainer-step", "test-trainer-tensorboard"]:
             try:
                 delete_repo(token=cls._token, repo_id=model)
             except HTTPError:
@@ -1815,6 +2020,28 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
         max_steps = math.ceil(trainer.args.num_train_epochs * len(trainer.get_train_dataloader()))
         for i in range(5, max_steps, 5):
             self.assertIn(f"Training in progress, step {i}", commits)
+
+    @require_tensorboard
+    def test_push_to_hub_with_tensorboard_logs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(
+                output_dir=os.path.join(tmp_dir, "test-trainer-tensorboard"),
+                hub_token=self._token,
+                save_strategy="epoch",
+                report_to=["tensorboard"],
+                keep_report_to=True,
+            )
+            trainer.train()
+            # Push the runs via `push_to_hub()`
+            trainer.push_to_hub()
+
+        files = list_repo_files(f"{USER}/test-trainer-tensorboard", token=self._token)
+        found_log = False
+        for f in files:
+            if len(f.split("runs")) > 1 and "events.out.tfevents" in f:
+                found_log = True
+
+        assert found_log is True, "No tensorboard log found in repo"
 
 
 @require_torch

@@ -37,7 +37,7 @@ from trl.trainer.utils import (
     pad_to_length,
 )
 
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from ... import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
 if is_peft_available():

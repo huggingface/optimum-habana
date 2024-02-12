@@ -84,7 +84,11 @@ class GaudiPartialState(PartialState):
                     # TODO: replace by `torch.device("hpu", self.local_process_index)` when hpu:x is supported
                     self.device = torch.device("hpu")
             else:
-                self.distributed_type = GaudiDistributedType.NO
+                self.distributed_type = (
+                    GaudiDistributedType.NO
+                    if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "false"
+                    else GaudiDistributedType.DEEPSPEED
+                )
                 self.num_processes = 1
                 self.process_index = self.local_process_index = 0
                 logger.info("Single-device run.")
@@ -117,7 +121,6 @@ class GaudiPartialState(PartialState):
         ```
         """
         if self.distributed_type in (
-            GaudiDistributedType.MULTI_CPU,
             GaudiDistributedType.DEEPSPEED,
             GaudiDistributedType.MULTI_HPU,
             GaudiDistributedType.FSDP,

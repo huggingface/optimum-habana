@@ -416,7 +416,8 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --max_seq_length 256 \
     --low_cpu_mem_usage True \
     --adam_epsilon 1e-08 \
-    --do_eval
+    --do_eval \
+    --validation_split_percentage 10
 ```
 
 - Multi-card finetuning of Llama1-7B:
@@ -516,7 +517,8 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --ddp_bucket_cap_mb 50 \
     --adam_epsilon 1e-08 \
     --do_eval \
-    --low_cpu_mem_usage True
+    --low_cpu_mem_usage True \
+    --validation_split_percentage 10
 ```
 
 - Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization and LoRA:
