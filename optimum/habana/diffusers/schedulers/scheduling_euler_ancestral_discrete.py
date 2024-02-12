@@ -55,6 +55,10 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
             An offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
             Diffusion.
+        rescale_betas_zero_snr (`bool`, defaults to `False`):
+            Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
+            dark samples instead of limiting it to samples with medium brightness. Loosely related to
+            [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
     @register_to_config
@@ -68,6 +72,7 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
         prediction_type: str = "epsilon",
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
+        rescale_betas_zero_snr: bool = False,
     ):
         super().__init__(
             num_train_timesteps,
@@ -215,6 +220,9 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
                 "See `StableDiffusionPipeline` for a usage example."
             )
 
+        # Upcast to avoid precision issues when computing prev_sample
+        sample = sample.to(torch.float32)
+
         sigma, sigma_up, sigma_down = self.get_params(timestep)
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
@@ -245,6 +253,9 @@ class GaudiEulerAncestralDiscreteScheduler(EulerAncestralDiscreteScheduler):
             noise = noise.to(device)
 
         prev_sample = prev_sample + noise * sigma_up
+
+        # Cast sample back to model compatible dtype
+        prev_sample = prev_sample.to(model_output.dtype)
 
         # upon completion increase step index by one
         self._step_index += 1

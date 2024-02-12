@@ -80,7 +80,7 @@ def model_on_meta(config):
 
 
 def get_optimized_model_name(config):
-    from optimum.habana.transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+    from .transformers.generation import MODELS_OPTIMIZED_WITH_STATIC_SHAPES
 
     for model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES:
         if model_type == config.model_type:

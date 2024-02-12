@@ -20,14 +20,21 @@
 
 """ PyTorch Mistral model."""
 import math
+import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.mistral.modeling_mistral import MistralForCausalLM, apply_rotary_pos_emb, repeat_kv
 from transformers.utils import logging
+
+from ...modeling_attn_mask_utils import (
+    _gaudi_prepare_4d_causal_attention_mask,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -38,17 +45,21 @@ def gaudi_mistral_attn_forward(
     hidden_states: torch.Tensor,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    past_key_value: Optional[Cache] = None,
     output_attentions: bool = False,
     use_cache: bool = False,
-    padding_mask: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     """
     Copied from MistralAttention.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
     The only differences are:
     - add new args token_idx
     """
+    if "padding_mask" in kwargs:
+        warnings.warn(
+            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+        )
     bsz, q_len, _ = hidden_states.size()
 
     query_states = self.q_proj(hidden_states)
@@ -61,10 +72,21 @@ def gaudi_mistral_attn_forward(
 
     kv_seq_len = key_states.shape[-2]
     if past_key_value is not None:
+        if self.layer_idx is None:
+            raise ValueError(
+                f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                "with a layer index."
+            )
+        kv_shape = (
+            past_key_value[0].shape[-2]
+            if isinstance(past_key_value, tuple)
+            else past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        )
         if token_idx is not None:
-            kv_seq_len = past_key_value[0].shape[-2]
+            kv_seq_len = kv_shape
         else:
-            kv_seq_len += past_key_value[0].shape[-2]
+            kv_seq_len += kv_shape
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
     query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
@@ -75,8 +97,8 @@ def gaudi_mistral_attn_forward(
             key_states = past_key_value[0]
             value_states = past_key_value[1]
         else:
-            key_states = torch.cat([past_key_value[0], key_states], dim=2)
-            value_states = torch.cat([past_key_value[1], value_states], dim=2)
+            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
     past_key_value = (key_states, value_states) if use_cache else None
 
@@ -102,6 +124,7 @@ def gaudi_mistral_attn_forward(
 
     # upcast attention to fp32
     attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+    attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
     attn_output = torch.matmul(attn_weights, value_states)
 
     if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -129,14 +152,18 @@ def gaudi_mistral_decoder_layer_forward(
     past_key_value: Optional[Tuple[torch.Tensor]] = None,
     output_attentions: Optional[bool] = False,
     use_cache: Optional[bool] = False,
-    padding_mask: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """
     Copied from MistralDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
     The only differences are:
     - add new args token_idx
     """
+    if "padding_mask" in kwargs:
+        warnings.warn(
+            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+        )
 
     residual = hidden_states
 
@@ -150,7 +177,6 @@ def gaudi_mistral_decoder_layer_forward(
         past_key_value=past_key_value,
         output_attentions=output_attentions,
         use_cache=use_cache,
-        padding_mask=padding_mask,
         token_idx=token_idx,
     )
     hidden_states = residual + hidden_states
@@ -208,12 +234,22 @@ def gaudi_mistral_model_forward(
     else:
         raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
-    seq_length_with_past = seq_length
-    past_key_values_length = 0
+    if self.gradient_checkpointing and self.training:
+        if use_cache:
+            logger.warning_once(
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+            )
+            use_cache = False
 
+    past_key_values_length = 0
+    use_legacy_cache = True
+    use_new_cache = False
     if past_key_values is not None:
-        past_key_values_length = past_key_values[0][0].shape[2]
-        seq_length_with_past = seq_length_with_past + past_key_values_length
+        if use_cache and use_new_cache:
+            use_legacy_cache = not isinstance(past_key_values, Cache)
+            if use_legacy_cache:
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            past_key_values_length = past_key_values.get_usable_length(seq_length)
 
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -227,79 +263,55 @@ def gaudi_mistral_model_forward(
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input_ids)
 
-    padding_mask = None
-
-    # embed positions
-    if attention_mask is None:
-        attention_mask = torch.ones((batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device)
-    elif 0 in attention_mask:
-        padding_mask = attention_mask
-
-    if (
-        padding_mask is not None
-        and hasattr(self.config, "_flash_attn_2_enabled")
-        and self.config._flash_attn_2_enabled
-    ):
-        is_padding_right = padding_mask[:, -1].sum().item() != batch_size
-        if is_padding_right:
-            raise ValueError(
-                "You are attempting to perform batched generation with padding_side='right'"
-                " this may lead to unexpected behaviour for Flash Attention version of Mistral. Make sure to "
-                " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
-            )
-
-    attention_mask = self._prepare_decoder_attention_mask(
-        attention_mask,
-        (batch_size, seq_length),
-        inputs_embeds,
-        past_key_values_length,
-        sliding_window=self.config.sliding_window,
-    )
+    if self._attn_implementation == "sdpa" and not output_attentions:
+        # output_attentions=True can not be supported when using SDPA, and we fall back on
+        # the manual implementation that requires a 4D causal mask in all cases.
+        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+            attention_mask,
+            (batch_size, seq_length),
+            inputs_embeds,
+            past_key_values_length,
+        )
+    else:
+        # 4d mask is passed through the layers
+        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+            attention_mask,
+            (batch_size, seq_length),
+            inputs_embeds,
+            past_key_values_length,
+            sliding_window=self.config.sliding_window,
+        )
 
     hidden_states = inputs_embeds
-
-    if self.gradient_checkpointing and self.training:
-        if use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-            )
-            use_cache = False
 
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
     all_self_attns = () if output_attentions else None
-    next_decoder_cache = () if use_cache else None
+    next_decoder_cache = () if not use_new_cache else None
 
-    for idx, decoder_layer in enumerate(self.layers):
+    for layer_idx, decoder_layer in enumerate(self.layers):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        past_key_value = past_key_values[idx] if past_key_values is not None else None
-
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, past_key_value, output_attentions, padding_mask=padding_mask)
-
-                return custom_forward
-
-            layer_outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(decoder_layer),
+            layer_outputs = self._gradient_checkpointing_func(
+                decoder_layer.__call__,
                 hidden_states,
                 attention_mask,
                 position_ids,
+                None if past_key_values is None else past_key_values[layer_idx],
+                output_attentions,
+                use_cache,
+                None,
             )
         else:
             layer_outputs = decoder_layer(
                 hidden_states,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                past_key_value=past_key_value,
+                past_key_value=None if past_key_values is None else past_key_values[layer_idx],
                 output_attentions=output_attentions,
                 use_cache=use_cache,
-                padding_mask=padding_mask,
                 token_idx=token_idx,
             )
 
@@ -317,7 +329,13 @@ def gaudi_mistral_model_forward(
     if output_hidden_states:
         all_hidden_states += (hidden_states,)
 
-    next_cache = next_decoder_cache if use_cache else None
+    next_cache = None
+    if use_cache:
+        next_cache = (
+            next_decoder_cache
+            if not use_new_cache
+            else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
+        )
     if not return_dict:
         return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
     return BaseModelOutputWithPast(
@@ -411,9 +429,36 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         """
         token_idx = kwargs.get("token_idx", None)
 
-        if past_key_values:
+        # Omit tokens covered by past_key_values
+        if past_key_values is not None:
             if token_idx is None:
-                input_ids = input_ids[:, -1:]
+                if isinstance(past_key_values, Cache):
+                    cache_length = past_key_values.get_seq_length()
+                    past_length = past_key_values.seen_tokens
+                    max_cache_length = past_key_values.get_max_length()
+                else:
+                    cache_length = past_length = past_key_values[0][0].shape[2]
+                    max_cache_length = None
+
+                # Keep only the unprocessed tokens:
+                # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
+                # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
+                # input)
+                if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
+                    input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
+                # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
+                # input_ids based on the past_length.
+                elif past_length < input_ids.shape[1]:
+                    input_ids = input_ids[:, past_length:]
+                # 3 - Otherwise (past_length >= input_ids.shape[1]), let's assume input_ids only has unprocessed tokens.
+
+                # If we are about to go beyond the maximum cache length, we need to crop the input attention mask.
+                if (
+                    max_cache_length is not None
+                    and attention_mask is not None
+                    and cache_length + input_ids.shape[1] > max_cache_length
+                ):
+                    attention_mask = attention_mask[:, -max_cache_length:]
             else:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
 
@@ -426,7 +471,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
                 if token_idx is not None:
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:

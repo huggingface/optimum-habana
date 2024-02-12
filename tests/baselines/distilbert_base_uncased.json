@@ -31,15 +31,15 @@
     },
     "gaudi2": {
         "squad": {
-            "num_train_epochs": 1,
+            "num_train_epochs": 2,
             "eval_batch_size": 8,
             "distribution": {
                 "single_card": {
                     "learning_rate": 2e-4,
                     "train_batch_size": 64,
-                    "eval_f1": 84.3138,
-                    "train_runtime": 66.7377,
-                    "train_samples_per_second": 1392.56,
+                    "eval_f1": 84.87642669075069,
+                    "train_runtime": 131.655,
+                    "train_samples_per_second": 1377.209,
                     "extra_arguments": [
                         "--max_seq_length 384",
                         "--use_hpu_graphs_for_inference"
@@ -48,9 +48,9 @@
                 "multi_card": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 64,
-                    "eval_f1": 82.7113,
-                    "train_runtime": 16.79,
-                    "train_samples_per_second": 9991.216,
+                    "eval_f1": 83.27897440376087,
+                    "train_runtime": 25.7792,
+                    "train_samples_per_second": 9951.533,
                     "extra_arguments": [
                         "--max_seq_length 384",
                         "--use_hpu_graphs_for_inference"

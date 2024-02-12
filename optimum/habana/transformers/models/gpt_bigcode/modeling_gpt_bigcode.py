@@ -6,6 +6,8 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.gpt_bigcode.modeling_gpt_bigcode import GPTBigCodeForCausalLM
 
+from ...modeling_attn_mask_utils import GaudiAttentionMaskConverter
+
 
 def gaudi_gpt_bigcode_attention_forward(
     self,
@@ -199,8 +201,6 @@ def gaudi_gpt_bigcode_model_forward(
 
     if token_type_ids is not None:
         token_type_ids = token_type_ids.view(-1, input_shape[-1])
-    if position_ids is not None:
-        position_ids = position_ids.view(-1, input_shape[-1])
 
     if past_key_values is None:
         past_length = 0
@@ -216,7 +216,7 @@ def gaudi_gpt_bigcode_model_forward(
             position_ids = position_ids[:, past_length : input_shape[-1] + past_length :]
     elif position_ids is None:
         position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
-        position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+        position_ids = position_ids.unsqueeze(0)
 
     # Self-attention mask.
     query_length = input_shape[-1]
@@ -233,7 +233,32 @@ def gaudi_gpt_bigcode_model_forward(
 
     # MQA models: (batch_size, query_length, n_heads, key_length)
     # MHA models: (batch_size, n_heads, query_length, key_length)
-    attention_mask = self_attention_mask.unsqueeze(2 if self.multi_query else 1)
+    self_attention_mask = self_attention_mask.unsqueeze(2 if self.multi_query else 1)
+
+    if self._use_sdpa and head_mask is None and not output_attentions:
+        # output_attentions=True can not be supported when using SDPA, and we fall back on
+        # the manual implementation that requires a 4D causal mask in all cases.
+        if self.multi_query:
+            # gpt_bigcode using MQA has the bad taste to use a causal mask with shape
+            # [batch_size, target_length, 1, source_length], not compatible with SDPA, hence this transpose.
+            self_attention_mask = self_attention_mask.transpose(1, 2)
+
+        if query_length > 1 and attention_mask is not None:
+            # From PyTorch 2.1 onwards, F.scaled_dot_product_attention with the memory-efficient attention backend
+            # produces nans if sequences are completely unattended in the attention mask. Details: https://github.com/pytorch/pytorch/issues/110213
+            self_attention_mask = GaudiAttentionMaskConverter._unmask_unattended(
+                self_attention_mask, attention_mask, unmasked_value=True
+            )
+
+        # SDPA with a custom mask is much faster in fp16/fp32 dtype rather than bool. Cast here to floating point instead of at every layer.
+        dtype = self.wte.weight.dtype
+        self_attention_mask = torch.where(
+            self_attention_mask,
+            torch.full([], 0.0, dtype=dtype, device=self_attention_mask.device),
+            torch.full([], torch.finfo(self.wte.weight.dtype).min, dtype=dtype, device=self_attention_mask.device),
+        )
+
+    attention_mask = self_attention_mask
 
     # If a 2D or 3D attention mask is provided for the cross-attention
     # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
@@ -273,22 +298,17 @@ def gaudi_gpt_bigcode_model_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, use_cache, output_attentions)
-
-                return custom_forward
-
-            outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(block),
+            outputs = self._gradient_checkpointing_func(
+                block.__call__,
                 hidden_states,
                 None,
                 attention_mask,
                 head_mask[i],
                 encoder_hidden_states,
                 encoder_attention_mask,
+                use_cache,
+                output_attentions,
+                None,
             )
         else:
             outputs = block(
@@ -349,16 +369,28 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         token_type_ids = kwargs.get("token_type_ids", None)
-        # only last token for inputs_ids if past is defined in kwargs
+        # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
                 if token_type_ids is not None:
                     token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
             else:
-                input_ids = input_ids[:, -1].unsqueeze(-1)
+                if self.config.multi_query:
+                    past_length = past_key_values[0].shape[1]
+                else:
+                    past_length = past_key_values[0].shape[2]
+
+                # Some generation methods already pass only the last input ID
+                if input_ids.shape[1] > past_length:
+                    remove_prefix_length = past_length
+                else:
+                    # Default to old behavior: keep only final ID
+                    remove_prefix_length = input_ids.shape[1] - 1
+
+                input_ids = input_ids[:, remove_prefix_length:]
                 if token_type_ids is not None:
-                    token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
+                    token_type_ids = token_type_ids[:, -input_ids.shape[1] :]
 
         attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
@@ -369,9 +401,9 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
                 if token_idx is not None:
-                    position_ids = torch.index_select(position_ids, 1, token_idx - 1).unsqueeze(-1)
+                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
         else:
             position_ids = None
 
