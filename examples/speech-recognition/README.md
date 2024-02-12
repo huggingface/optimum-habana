@@ -16,6 +16,22 @@ limitations under the License.
 
 # Automatic Speech Recognition Examples
 
+## Table of Contents
+
+- [Automatic Speech Recognition with CTC](#connectionist-temporal-classification)
+	- [Single GPU example](#single-gpu-ctc)
+	- [Multi GPU example](#multi-gpu-ctc)
+	- [Examples](#examples-ctc)
+		- [TIMIT](#timit-ctc)
+		- [Librispeech](#librispeech-ctc)
+		- [Common Voice](#common-voice-ctc)
+		- [Multilingual Librispeech](#multilingual-librispeech-ctc)
+- [Automatic Speech Recognition with Sequence-to-Sequence](#sequence-to-sequence)
+	- [Whisper Model](#whisper-model)
+	- [Fine tuning](#single-hpu-whisper-training-with-seq2seq)
+	- [Inference](#single-gpu-seq2seq-inference)
+
+
 ## Connectionist Temporal Classification
 
 The script [`run_speech_recognition_ctc.py`](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition/run_speech_recognition_ctc.py) can be used to fine-tune any pretrained [Connectionist Temporal Classification Model](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForCTC) for automatic speech recognition on one of the [official speech recognition datasets](https://huggingface.co/datasets?task_ids=task_ids:automatic-speech-recognition) or a custom dataset.
@@ -186,4 +202,177 @@ python run_speech_recognition_ctc.py \
     --use_lazy_mode \
     --gaudi_config_name="Habana/wav2vec2" \
     --bf16
+```
+## Sequence to Sequence
+
+The script [`run_speech_recognition_seq2seq.py`](https://github.com/huggingface/optimum-habana/examples/speech-recognition/run_speech_recognition_seq2seq.py) can be used to fine-tune any [Whisper Sequence-to-Sequence Model](https://huggingface.co/docs/transformers/main/en/model_doc/whisper#whisper) for automatic speech 
+recognition on one of the well known speech recognition datasets similar to shown below or a custom dataset. Examples of two datasets using the Whisper model from OpenAI are included below.
+
+### Whisper Model
+We can load all components of the Whisper model directly from the pretrained checkpoint, including the pretrained model weights, feature extractor and tokenizer. We simply have to specify our fine-tuning dataset and training hyperparameters.
+```bash
+# Set model dir and datasets dir as appropriate
+export MODEL_DIR=$HOME/huggingface/hub
+export DATASETS_DIR=$HOME/huggingface/datasets
+
+# Run this from the optimum-habana repository
+cd examples/speech-recognition
+# install optimum-habana 
+pip install -r requirements.txt
+```
+
+#### Single HPU Whisper Fine tuning with Seq2Seq
+The following example shows how to fine-tune the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using a single GPU device in half-precision:
+```bash
+python run_speech_recognition_seq2seq.py \
+	--model_name_or_path="openai/whisper-small" \
+	--dataset_name="mozilla-foundation/common_voice_11_0" \
+	--dataset_config_name="hi" \
+	--language="hindi" \
+	--train_split_name="train+validation" \
+	--eval_split_name="test" \
+	--gaudi_config_name="gaudi_config.json" \
+	--max_steps="5000" \
+	--output_dir="./results/whisper-small-hi" \
+	--per_device_train_batch_size="16" \
+	--gradient_accumulation_steps="2" \
+	--per_device_eval_batch_size="16" \
+	--logging_steps="25" \
+	--learning_rate="1e-5" \
+	--warmup_steps="500" \
+	--evaluation_strategy="steps" \
+	--eval_steps="1000" \
+	--save_strategy="steps" \
+	--save_steps="1000" \
+	--generation_max_length="225" \
+	--preprocessing_num_workers="16" \
+	--length_column_name="input_length" \
+	--max_duration_in_seconds="30" \
+	--text_column_name="sentence" \
+	--freeze_feature_encoder="False" \
+	--gradient_checkpointing \
+	--group_by_length \
+	--bf16 \
+	--overwrite_output_dir \
+	--do_train \
+	--do_eval \
+	--predict_with_generate \
+	--use_habana \
+	--use_hpu_graphs_for_inference
+```
+
+If training on a different language, you should be sure to change the `language` and `dataset_config_name` arguments. 
+
+#### Multi HPU Whisper Training with Seq2Seq
+The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
+```bash
+python ../gaudi_spawn.py \
+ 	--world_size 8 --use_mpi run_speech_recognition_seq2seq.py \
+	--model_name_or_path="openai/whisper-large" \
+	--dataset_name="mozilla-foundation/common_voice_11_0" \
+	--dataset_config_name="hi" \
+	--language="hindi" \
+	--train_split_name="train+validation" \
+	--eval_split_name="test" \
+	--gaudi_config_name="gaudi_config.json" \
+	--max_steps="5000" \
+	--output_dir="./results/whisper-large-hi" \
+	--per_device_train_batch_size="16" \
+	--gradient_accumulation_steps="2" \
+	--per_device_eval_batch_size="16" \
+	--logging_steps="25" \
+	--learning_rate="1e-5" \
+	--warmup_steps="500" \
+	--evaluation_strategy="steps" \
+	--eval_steps="1000" \
+	--save_strategy="steps" \
+	--save_steps="1000" \
+	--generation_max_length="225" \
+	--preprocessing_num_workers="16" \
+	--length_column_name="input_length" \
+	--max_duration_in_seconds="30" \
+	--text_column_name="sentence" \
+	--freeze_feature_encoder="False" \
+	--gradient_checkpointing \
+	--group_by_length \
+	--bf16 \
+	--overwrite_output_dir \
+	--do_train \
+	--do_eval \
+	--predict_with_generate \
+	--use_habana \
+	--use_hpu_graphs_for_inference
+```
+
+#### Single GPU Seq2Seq Inference
+
+The following example shows how to do inference with the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [librispeech_asr_demo](https://huggingface.co/datasets/librispeech_asr_demo) using 1 HPU devices in half-precision:
+
+```bash
+python run_speech_recognition_seq2seq.py \
+    --model_name_or_path="openai/whisper-small" \
+        --dataset_name="hf-internal-testing/librispeech_asr_demo" \
+        --gaudi_config_name="gaudi_config.json" \
+        --dataset_config_name="clean" \
+        --eval_split_name="validation" \
+        --max_steps="5000" \
+        --output_dir="./results/whisper-small-clean" \
+        --gradient_accumulation_steps="2" \
+        --per_device_eval_batch_size="16" \
+        --logging_steps="25" \
+        --learning_rate="1e-5" \
+        --warmup_steps="500" \
+        --evaluation_strategy="steps" \
+        --eval_steps="1000" \
+        --save_strategy="steps" \
+        --save_steps="1000" \
+        --generation_max_length="225" \
+        --preprocessing_num_workers="16" \
+        --length_column_name="input_length" \
+        --max_duration_in_seconds="30" \
+        --freeze_feature_encoder="False" \
+        --gradient_checkpointing \
+        --group_by_length \
+        --bf16 \
+        --overwrite_output_dir \
+        --do_eval \
+        --predict_with_generate \
+        --use_habana \
+		--use_hpu_graphs_for_inference
+```
+The following example shows how to do inference with the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 1 HPU devices in half-precision:
+
+```bash
+python run_speech_recognition_seq2seq.py \
+    --model_name_or_path="openai/whisper-small" \
+	--dataset_name="mozilla-foundation/common_voice_11_0" \
+	--dataset_config_name="hi" \
+	--language="hindi" \
+	--eval_split_name="test" \
+ 	--gaudi_config_name="gaudi_config.json" \
+	--max_steps="5000" \
+	--output_dir="./results/whisper-small-clean" \
+	--gradient_accumulation_steps="2" \
+	--per_device_eval_batch_size="16" \
+	--logging_steps="25" \
+	--learning_rate="1e-5" \
+	--warmup_steps="500" \
+	--evaluation_strategy="steps" \
+	--eval_steps="1000" \
+	--save_strategy="steps" \
+	--save_steps="1000" \
+	--generation_max_length="225" \
+	--preprocessing_num_workers="16" \
+	--length_column_name="input_length" \
+	--max_duration_in_seconds="30" \
+	--text_column_name="sentence" \
+	--freeze_feature_encoder="False" \
+	--gradient_checkpointing \
+	--group_by_length \
+	--bf16 \
+	--overwrite_output_dir \
+	--do_eval \
+	--predict_with_generate \
+	--use_habana \
+	--use_hpu_graphs_for_inference
 ```
