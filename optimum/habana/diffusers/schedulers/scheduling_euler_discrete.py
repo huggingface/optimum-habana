@@ -61,6 +61,10 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
             An offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
             Diffusion.
+        rescale_betas_zero_snr (`bool`, defaults to `False`):
+            Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
+            dark samples instead of limiting it to samples with medium brightness. Loosely related to
+            [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
     @register_to_config
@@ -74,8 +78,12 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         prediction_type: str = "epsilon",
         interpolation_type: str = "linear",
         use_karras_sigmas: Optional[bool] = False,
+        sigma_min: Optional[float] = None,
+        sigma_max: Optional[float] = None,
         timestep_spacing: str = "linspace",
+        timestep_type: str = "discrete",  # can be "discrete" or "continuous"
         steps_offset: int = 0,
+        rescale_betas_zero_snr: bool = False,
     ):
         super().__init__(
             num_train_timesteps,
@@ -211,6 +219,9 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
                 "See `StableDiffusionPipeline` for a usage example."
             )
 
+        # Upcast to avoid precision issues when computing prev_sample
+        sample = sample.to(torch.float32)
+
         sigma, sigma_next = self.get_params(timestep)
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
@@ -236,7 +247,7 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         elif self.config.prediction_type == "epsilon":
             pred_original_sample = sample - sigma_hat * model_output
         elif self.config.prediction_type == "v_prediction":
-            # * c_out + input * c_skip
+            # denoised = model_output * c_out + input * c_skip
             pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
         else:
             raise ValueError(
@@ -249,6 +260,9 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
         dt = sigma_next - sigma_hat
 
         prev_sample = sample + derivative * dt
+
+        # Cast sample back to model compatible dtype
+        prev_sample = prev_sample.to(model_output.dtype)
 
         # upon completion increase step index by one
         self._step_index += 1
