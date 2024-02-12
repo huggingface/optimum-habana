@@ -58,6 +58,12 @@ cd <example-folder>
 pip install -r requirements.txt
 ```
 
+> To use the example associated with the latest stable release, run:
+> ```
+> git checkout vX.Y.Z
+> ```
+> with `vX.Y.Z` the version number of this release.
+
 
 ## How to use it?
 
