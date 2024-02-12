@@ -60,9 +60,9 @@ pip install -r requirements.txt
 
 > To use the example associated with the latest stable release, run:
 > ```
-> git checkout vX.Y.Z
+> git checkout v1.10.1
 > ```
-> with `vX.Y.Z` the version number of this release.
+> with `v1.10.1` the version number of this release.
 
 
 ## How to use it?
