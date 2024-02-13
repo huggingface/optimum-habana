@@ -14,7 +14,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("facebook/mbart-large-50-many-to-many-mmt", "Habana/t5", 1.67, 1.05, 2),
+            ("facebook/mbart-large-50-many-to-many-mmt", "Habana/t5", 1.67, 1.05, 2, 1),
             #("Babelscape/mrebel-large", "Habana/t5", 4.691, 26.0688, 2),
             #("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 4.691, 26.0688, 2),
             #("Helsinki-NLP/opus-mt-en-zh", "Habana/t5", 4.691, 26.0688, 2),
@@ -31,6 +31,8 @@ def _test_text_translation(
     baseline: float,
     baseline_acc: float,
     batch_size: int,
+    num_beams: int,
+    token: str,
     deepspeed: bool = False,
     world_size: int = 8,
 ):
@@ -101,12 +103,14 @@ def _test_text_translation(
 
 
 @pytest.mark.parametrize(
-    "model_name, gaudi_config, baseline, baseline_acc, batch_size", MODELS_TO_TEST["bf16"])
+    "model_name, gaudi_config, baseline, baseline_acc, batch_size, num_beams", MODELS_TO_TEST["bf16"])
 def test_text_translation_bf16(
     model_name: str,
     gaudi_config: str,
     baseline: float,
     baseline_acc: float,
     batch_size: int,
+    num_beams: int,
+    token: str,
 ):
-    _test_text_translation(model_name, gaudi_config, baseline, baseline_acc, batch_size)
+    _test_text_translation(model_name, gaudi_config, baseline, baseline_acc, batch_size, num_beams, token)
