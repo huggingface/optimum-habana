@@ -739,6 +739,11 @@ def main(args):
     else:
         optimizer_class = torch.optim.AdamW
 
+
+    if gaudi_config.use_fused_clip_norm:
+        from habana_frameworks.torch.hpex.normalization import FusedClipNorm
+        fused_clip_norm = FusedClipNorm(unet.parameters(), args.max_grad_norm)
+
     # Optimizer creation
     params_to_optimize = unet.parameters()
     optimizer = optimizer_class(
@@ -1144,7 +1149,11 @@ def main(args):
 
                 if accelerator.sync_gradients:
                     params_to_clip = unet.parameters()
-                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                    if gaudi_config.use_fused_clip_norm:
+                        fused_clip_norm.clip_norm(params_to_clip)
+                    else:
+                        accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                htcore.mark_step()
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
