@@ -54,10 +54,26 @@ def get_repo_root(model_name_or_path, local_rank=-1, token=None):
 def get_checkpoint_files(model_name_or_path, local_rank, token=None):
     """
     Gets the list of files for the specified model checkpoint.
-    Copied from https://github.com/huggingface/transformers/blob/abbffc4525566a48a9733639797c812301218b83/src/transformers/modeling_utils.py#L414
     """
     cached_repo_dir = get_repo_root(model_name_or_path, local_rank=local_rank, token=token)
 
+    # Logic for loading individual weights from https://github.com/huggingface/transformers/blob/abbffc4525566a48a9733639797c812301218b83/src/transformers/trainer.py#L2061
+    individual_weights = [
+        os.path.join(cached_repo_dir, weight_name)
+        for weight_name in (
+            transformers.modeling_utils.SAFE_WEIGHTS_NAME,
+            transformers.modeling_utils.WEIGHTS_NAME,
+        )
+    ]
+    checkpoint_files = []
+    for weight_file in individual_weights:
+        if os.path.isfile(weight_file):
+            checkpoint_files.append(weight_file)
+            break
+    if checkpoint_files:
+        return checkpoint_files
+
+    # Code for loading sharded weights copied from https://github.com/huggingface/transformers/blob/abbffc4525566a48a9733639797c812301218b83/src/transformers/modeling_utils.py#L414
     index_file = os.path.join(cached_repo_dir, transformers.modeling_utils.WEIGHTS_INDEX_NAME)
     safe_index_file = os.path.join(cached_repo_dir, transformers.modeling_utils.SAFE_WEIGHTS_INDEX_NAME)
 
