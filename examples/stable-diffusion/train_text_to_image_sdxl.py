@@ -55,7 +55,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiEulerDiscreteScheduler, GaudiStableDiffusionXLPipeline
-from optimum.habana.utils import set_seed
+from optimum.habana.utils import set_seed, HabanaProfile
 
 
 if is_wandb_available():
@@ -483,6 +483,18 @@ def parse_args(input_args=None):
         choices=["pil", "np"],
         default="pil",
         help="Whether to return PIL images or Numpy arrays.",
+    )
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        default=0,
+        type=int,
+        help="Number of steps to ignore for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        default=0,
+        type=int,
+        help="Number of steps to capture for profiling.",
     )
 
     if input_args is not None:
@@ -966,6 +978,7 @@ def main(args):
         model = model._orig_mod if is_compiled_module(model) else model
         return model
 
+    hb_profiler = HabanaProfile(warmup=args.profiling_warmup_steps, active=args.profiling_steps, record_shapes=False)
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1019,6 +1032,8 @@ def main(args):
     t0 = None
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
+        if hb_profiler:
+            hb_profiler.start()
         for step, batch in enumerate(train_dataloader):
             if t0 is None: # and global_step == args.throughput_warmup_steps:
                 t0 = time.perf_counter()
@@ -1134,6 +1149,8 @@ def main(args):
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
                 htcore.mark_step()
+                hb_profiler.step()
+
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -1174,6 +1191,7 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
+        hb_profiler.stop()
         if accelerator.is_main_process:
             if args.validation_prompt is not None and (epoch+1) % args.validation_epochs == 0:
                 logger.info(
