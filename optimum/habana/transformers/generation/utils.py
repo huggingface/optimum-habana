@@ -27,9 +27,6 @@ from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, Co
 from transformers.generation.candidate_generator import CandidateGenerator
 from transformers.generation.logits_process import LogitsProcessorList
 from transformers.generation.stopping_criteria import (
-    MaxLengthCriteria,
-    MaxTimeCriteria,
-    StoppingCriteria,
     StoppingCriteriaList,
     validate_stopping_criteria,
 )
@@ -103,16 +100,6 @@ def incrementor(bucket_size, prompt_len):
             "token_idx": token_idx,
             "need_expansion": need_expansion,
         }
-
-
-class StaticMaxLengthCriteria(StoppingCriteria):
-    def __init__(self, max_steps: int):
-        self.max_steps = max_steps
-        self.cur_step = 0
-
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-        self.cur_step += 1
-        return self.cur_step >= self.max_steps
 
 
 class GaudiGenerationMixin(GenerationMixin):
@@ -307,33 +294,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 model_kwargs["decoder_attention_mask"] = decoder_attention_mask
         return decoder_input_ids, model_kwargs
-
-    def _get_stopping_criteria(
-        self, generation_config: GaudiGenerationConfig, stopping_criteria: Optional[StoppingCriteriaList]
-    ) -> StoppingCriteriaList:
-        criteria = StoppingCriteriaList()
-        if generation_config.max_length is not None:
-            if (
-                generation_config.static_shapes
-                and self.config.is_encoder_decoder
-                and (
-                    self.generation_config.generation_mode == GenerationMode.GREEDY_SEARCH
-                    or self.generation_config.generation_mode == GenerationMode.BEAM_SEARCH
-                )
-            ):
-                criteria.append(StaticMaxLengthCriteria(generation_config.max_length))
-            else:
-                max_position_embeddings = getattr(self.config, "max_position_embeddings", None)
-                criteria.append(
-                    MaxLengthCriteria(
-                        max_length=generation_config.max_length,
-                        max_position_embeddings=max_position_embeddings,
-                    )
-                )
-        if generation_config.max_time is not None:
-            criteria.append(MaxTimeCriteria(max_time=generation_config.max_time))
-        criteria = self._merge_criteria_processor_list(criteria, stopping_criteria)
-        return criteria
 
     @torch.no_grad()
     def update_model_kwargs_for_bucketing(
@@ -692,7 +652,11 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 generation_config.max_length = generation_config.max_new_tokens + input_ids_length
 
-        self._validate_generated_length(generation_config, input_ids_length, has_default_max_length)
+        self._validate_generated_length(
+            generation_config,
+            model_kwargs["token_idx"] if "token_idx" in model_kwargs else input_ids_length,
+            has_default_max_length,
+        )
 
         # determine whether introduce trim_logits feature
         model_kwargs["trim_logits"] = generation_config.trim_logits
@@ -772,23 +736,6 @@ class GaudiGenerationMixin(GenerationMixin):
         prepared_stopping_criteria = self._get_stopping_criteria(
             generation_config=generation_config, stopping_criteria=stopping_criteria
         )
-        if "token_idx" in model_kwargs and not self.config.is_encoder_decoder:
-            if generation_config.max_new_tokens is not None:
-                prepared_stopping_criteria.append(StaticMaxLengthCriteria(generation_config.max_new_tokens))
-            else:
-                raise ValueError(
-                    "You need to set `max_new_tokens` in your generation configuration to use static shapes."
-                )
-
-        if generation_config.static_shapes and generation_config.bucket_size > 0:
-            prepared_stopping_criteria = StoppingCriteriaList(
-                [
-                    StaticMaxLengthCriteria(generation_config.max_new_tokens)
-                    if type(crit) == MaxLengthCriteria
-                    else crit
-                    for crit in prepared_stopping_criteria
-                ]
-            )
 
         # In lazy mode, import Habana torch to be able to add mark_step()
         if lazy_mode:
@@ -1491,7 +1438,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     this_peer_finished = True
 
             # stop if we exceed the maximum length
-            if stopping_criteria(input_ids, scores):
+            if stopping_criteria(input_ids, scores, token_idx=token_idx):
                 this_peer_finished = True
 
             hb_profer.step()
@@ -1811,7 +1758,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     this_peer_finished = True
 
             # stop if we exceed the maximum length
-            if stopping_criteria(input_ids, scores):
+            if stopping_criteria(input_ids, scores, token_idx=token_idx):
                 this_peer_finished = True
 
             hb_profer.step()
@@ -2309,7 +2256,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     and num_eos_tokens >= num_beams_tensor
                 ):
                     break
-                elif stopping_criteria(input_ids[:, :token_idx], scores):
+                elif stopping_criteria(input_ids, scores, token_idx=cur_len):
                     break
             elif stopping_criteria(input_ids, scores) or (beam_scorer.is_done and not lazy_mode):
                 if not synced_gpus:
@@ -2991,7 +2938,8 @@ class GaudiGenerationMixin(GenerationMixin):
             cur_len = cur_len + 1
 
             hb_profer.step()
-            if constrained_beam_scorer.is_done or stopping_criteria(input_ids, scores):
+
+            if constrained_beam_scorer.is_done or stopping_criteria(input_ids, scores, token_idx=token_idx):
                 if not synced_gpus:
                     break
                 else:

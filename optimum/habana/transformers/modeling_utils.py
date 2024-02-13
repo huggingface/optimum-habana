@@ -15,7 +15,13 @@
 
 import transformers
 
-from .generation import GaudiGenerationConfig, GaudiGenerationMixin
+from .generation import (
+    GaudiGenerationConfig,
+    GaudiGenerationMixin,
+    gaudi_MaxLengthCriteria_call,
+    gaudi_MaxNewTokensCriteria_call,
+    gaudi_StoppingCriteriaList_call,
+)
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -140,7 +146,6 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._prepare_decoder_input_ids_for_generation = (
         GaudiGenerationMixin._prepare_decoder_input_ids_for_generation
     )
-    transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
     transformers.generation.GenerationMixin._prepare_decoder_attention_mask = (
         GaudiGenerationMixin._prepare_decoder_attention_mask
     )
@@ -153,6 +158,9 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
     transformers.generation.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
+    transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
+    transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
+    transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
 
     # Optimization for BLOOM generation on Gaudi
     transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
