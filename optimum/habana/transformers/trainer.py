@@ -1163,7 +1163,7 @@ class GaudiTrainer(Trainer):
                     metric_to_check = f"eval_{metric_to_check}"
                 self.lr_scheduler.step(metrics[metric_to_check])
 
-        if self.control.should_save:
+        if self.control.should_save and self.args.should_save:
             self._save_checkpoint(model, trial, metrics=metrics)
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
 
