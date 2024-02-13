@@ -1482,7 +1482,7 @@ class GaudiTrainer(Trainer):
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
-        if self.args.pipelining_fwd_bwd:
+        if self.args.use_lazy_mode and self.args.pipelining_fwd_bwd:
             self.htcore.mark_step()
 
         self.accelerator.backward(loss)
