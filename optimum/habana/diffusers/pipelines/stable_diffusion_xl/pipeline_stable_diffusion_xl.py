@@ -125,7 +125,6 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             scheduler,
             force_zeros_for_empty_prompt,
         )
-
         self.to(self._device)
 
     def prepare_latents(self, num_images, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -546,7 +545,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             # 4. Prepare timesteps
             self.scheduler.set_timesteps(num_inference_steps, device="cpu")
             timesteps = self.scheduler.timesteps.to(device)
-            self.scheduler.reset_timestep_dependent_params()
+            reset_timestep = getattr(self.scheduler, "reset_timestep_dependent_params", None)
+            if callable(reset_timestep):
+                self.scheduler.reset_timestep_dependent_params()
 
             # 5. Prepare latent variables
             num_channels_latents = self.unet.config.in_channels
