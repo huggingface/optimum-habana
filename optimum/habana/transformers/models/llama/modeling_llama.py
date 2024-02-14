@@ -414,7 +414,7 @@ class GaudiLlamaMLP(LlamaMLP):
 
 class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
     def __init__(self, config: LlamaConfig, layer_idx: int):
-        super().__init__(config, layer_idx)
+        super(LlamaDecoderLayer, self).__init__()
         self.hidden_size = config.hidden_size
 
         self.self_attn = GaudiLlamaAttention(config=config, layer_idx=layer_idx)
@@ -666,7 +666,7 @@ class GaudiLlamaModel(LlamaModel):
                     attn_softmax_bf16,
                     False,
                     use_flash_attention,
-                    True,
+                    flash_attention_recompute,
                 )
             else:
                 layer_outputs = decoder_layer(
