@@ -62,6 +62,7 @@ def _test_text_translation(
         '--source_prefix "translate English to Romanian: "' "--dataset_name wmt16",
         "--dataset_config_name ro-en",
         f"--per_device_eval_batch_size {batch_size}",
+        f"--generation_num_beams {num_beams}",
         "--predict_with_generate",
         "--use_habana",
         "--use_lazy_mode",
