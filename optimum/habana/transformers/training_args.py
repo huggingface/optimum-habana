@@ -283,12 +283,6 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
-    # Overriding should_save from trainer callback
-    should_save: Optional[bool] = field(
-        default=True,
-        metadata={"help": "Whether to save models and checkpoints."},
-    )
-
     def __post_init__(self):
         if self.use_hpu_graphs:
             warnings.warn(
