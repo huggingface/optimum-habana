@@ -121,7 +121,9 @@ class GaudiGPTJAttention(GPTJAttention):
                 value = torch.cat([past_value, value], dim=-2)
 
         if use_cache is True:
-            present = (key, value)
+            # Note that this cast is quite ugly, but is not implemented before ROPE as the original codebase keeps the key in float32 all along the computation.
+            # Reference: https://github.com/kingoflolz/mesh-transformer-jax/blob/f8315e3003033b23f21d78361b288953064e0e76/mesh_transformer/layers.py#L128
+            present = (key.to(hidden_states.dtype), value)
         else:
             present = None
 
@@ -234,9 +236,6 @@ def gaudi_gptj_model_forward(
     if token_type_ids is not None:
         token_type_ids = token_type_ids.view(-1, input_shape[-1])
 
-    if position_ids is not None:
-        position_ids = position_ids.view(-1, input_shape[-1]).long()
-
     if past_key_values is None:
         past_length = 0
         past_key_values = tuple([None] * len(self.h))
@@ -245,7 +244,7 @@ def gaudi_gptj_model_forward(
 
     if position_ids is None:
         position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
-        position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+        position_ids = position_ids.unsqueeze(0)
 
     # Attention mask.
     if attention_mask is not None:
@@ -328,21 +327,18 @@ def gaudi_gptj_model_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, use_cache, output_attentions, None, sin, cos)
-
-                return custom_forward
-
-            outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(block),
+            outputs = self._gradient_checkpointing_func(
+                block.__call__,
                 hidden_states,
                 None,
                 attention_mask,
                 position_ids,
                 head_mask[i],
+                use_cache,
+                output_attentions,
+                None,
+                sin,
+                cos,
             )
         else:
             outputs = block(
@@ -404,18 +400,27 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         token_type_ids = kwargs.get("token_type_ids", None)
-        # only last token for inputs_ids if past is defined in kwargs
+        # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
-                input_ids = input_ids[:, -1].unsqueeze(-1)
+                past_length = past_key_values[0][0].shape[2]
+
+                # Some generation methods already pass only the last input ID
+                if input_ids.shape[1] > past_length:
+                    remove_prefix_length = past_length
+                else:
+                    # Default to old behavior: keep only final ID
+                    remove_prefix_length = input_ids.shape[1] - 1
+
+                input_ids = input_ids[:, remove_prefix_length:]
 
             if token_type_ids is not None:
                 if token_idx is not None:
                     token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
                 else:
-                    token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
+                    token_type_ids = token_type_ids[:, -input_ids.shape[1] :]
 
         attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
@@ -428,7 +433,7 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
                 if token_idx is not None:
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:

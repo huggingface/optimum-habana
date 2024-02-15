@@ -34,7 +34,7 @@ We provide two `Dockerfile` to easily start your multi-node runs:
 - A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main.examples/multi-node-training/GaudiNIC/Dockerfile) for multi-node runs using GaudiNIC.
 
 
-The Dockerfile is based on an image compatible with Ubuntu 20.04 but you can easily adapt it to another OS.
+The Dockerfile is based on an image compatible with Ubuntu 22.04 but you can easily adapt it to another OS.
 
 To build the Docker image, run:
 ```bash

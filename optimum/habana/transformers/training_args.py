@@ -33,6 +33,7 @@ from transformers.training_args import (
     default_logdir,
 )
 from transformers.utils import (
+    ACCELERATE_MIN_VERSION,
     get_full_repo_name,
     is_accelerate_available,
     is_safetensors_available,
@@ -402,7 +403,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     if not (self.eval_steps < 1 and self.save_steps < 1):
                         raise ValueError(
                             "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
-                            "steps, which cannot get guaranteed when mixing ratio and absolute steps for save_steps"
+                            "steps, which cannot get guaranteed when mixing ratio and absolute steps for save_steps "
                             f"{self.save_steps} and eval_steps {self.eval_steps}."
                         )
                     # Work around floating point precision issues
@@ -594,7 +595,7 @@ class GaudiTrainingArguments(TrainingArguments):
             os.environ[f"{prefix}BACKWARD_PREFETCH"] = prefetch_policy.upper()
             os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefect", "false"))
             os.environ[f"{prefix}SYNC_MODULE_STATES"] = str(self.fsdp_config.get("sync_module_states", "true"))
-            os.environ[f"{prefix}USE_ORIG_PARAMS"] = str(self.fsdp_config.get("use_orig_params", "false"))
+            os.environ[f"{prefix}USE_ORIG_PARAMS"] = str(self.fsdp_config.get("use_orig_params", "true"))
             os.environ[f"{prefix}ACTIVATION_CHECKPOINTING"] = str(
                 self.fsdp_config.get("activation_checkpointing", "false")
             )
@@ -636,6 +637,9 @@ class GaudiTrainingArguments(TrainingArguments):
             mixed_precision = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
             self.deepspeed_plugin.set_mixed_precision(mixed_precision)
             self.deepspeed_plugin.set_deepspeed_weakref()
+
+        if self.use_cpu:
+            self.dataloader_pin_memory = False
 
         if self.push_to_hub_token is not None:
             warnings.warn(
@@ -713,9 +717,10 @@ class GaudiTrainingArguments(TrainingArguments):
                 gaudi_config.declare_autocast_bf16_fp32_ops()
 
         logger.info("PyTorch: setting up devices")
-        if not is_accelerate_available(min_version="0.21.0"):
+        if not is_accelerate_available():
             raise ImportError(
-                "Using the `GaudiTrainer` requires `accelerate>=0.21.0`: Please run `pip install accelerate -U`."
+                f"Using the `Trainer` with `PyTorch` requires `accelerate>={ACCELERATE_MIN_VERSION}`: "
+                "Please run `pip install transformers[torch]` or `pip install accelerate -U`"
             )
         GaudiAcceleratorState._reset_state()
         GaudiPartialState._reset_state()

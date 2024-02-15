@@ -370,6 +370,7 @@ python3 run_lora_clm.py \
     --max_grad_norm  0.3 \
     --logging_steps 1 \
     --do_train \
+    --do_eval \
     --use_habana \
     --use_lazy_mode \
     --throughput_warmup_steps 3 \
@@ -380,6 +381,7 @@ python3 run_lora_clm.py \
     --dataset_concatenation \
     --max_seq_length 512 \
     --low_cpu_mem_usage True \
+    --validation_split_percentage 4 \
     --adam_epsilon 1e-08
 ```
 
@@ -414,7 +416,8 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --max_seq_length 256 \
     --low_cpu_mem_usage True \
     --adam_epsilon 1e-08 \
-    --do_eval
+    --do_eval \
+    --validation_split_percentage 10
 ```
 
 - Multi-card finetuning of Llama1-7B:
@@ -436,6 +439,7 @@ python ../gaudi_spawn.py \
     --max_grad_norm  0.3 \
     --logging_steps 1 \
     --do_train \
+    --do_eval \
     --use_habana \
     --use_lazy_mode \
     --throughput_warmup_steps 3 \
@@ -447,6 +451,7 @@ python ../gaudi_spawn.py \
     --max_seq_length 512 \
     --ddp_bucket_cap_mb 50 \
     --adam_epsilon 1e-08 \
+    --validation_split_percentage 4 \
     --low_cpu_mem_usage True
 ```
 
@@ -512,7 +517,8 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --ddp_bucket_cap_mb 50 \
     --adam_epsilon 1e-08 \
     --do_eval \
-    --low_cpu_mem_usage True
+    --low_cpu_mem_usage True \
+    --validation_split_percentage 10
 ```
 
 - Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization and LoRA:

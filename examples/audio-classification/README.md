@@ -20,6 +20,7 @@ The following examples showcase how to fine-tune `Wav2Vec2` for audio classifica
 
 Speech recognition models that have been pretrained in an unsupervised fashion on audio data alone, *e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html), have shown to require only very little annotated data to yield good performance on speech classification datasets.
 
+
 ## Single-HPU
 
 The following command shows how to fine-tune [wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) on the 🗣️ [Keyword Spotting subset](https://huggingface.co/datasets/superb#ks) of the SUPERB dataset on a single HPU.
@@ -99,7 +100,7 @@ On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.4
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:

@@ -64,7 +64,6 @@ from .models import (
     gaudi_falcon_attention_forward,
     gaudi_falcon_attention_split_heads,
     gaudi_falcon_decoder_layer_forward,
-    gaudi_falcon_rotary_embedding_forward,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
@@ -115,9 +114,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.vit.modeling_vit.ViTSelfAttention.forward = gaudi_vit_self_attention_forward
 
     # Optimization tweak for Wav2Vec2
-    # TODO: enable _gaudi_wav2vec2_compute_mask_indices, _gaudi_wav2vec2_mask_hidden_states and
-    # gaudi_wav2vec2_encoder_forward when SynapseAI v1.13 is released
-    # They are disabled for now due to accuracy issues
     transformers.models.wav2vec2.modeling_wav2vec2._compute_mask_indices = _gaudi_wav2vec2_compute_mask_indices
     # transformers.models.wav2vec2.modeling_wav2vec2._sample_negative_indices = _gaudi_wav2vec2_sample_negative_indices
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Model._mask_hidden_states = (
@@ -253,7 +249,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.falcon.modeling_falcon.FalconModel = GaudiFalconModel
     transformers.models.falcon.modeling_falcon.FalconDecoderLayer.forward = gaudi_falcon_decoder_layer_forward
     transformers.models.falcon.modeling_falcon.FalconAttention.forward = gaudi_falcon_attention_forward
-    transformers.models.falcon.modeling_falcon.FalconRotaryEmbedding.forward = gaudi_falcon_rotary_embedding_forward
     transformers.models.falcon.modeling_falcon.FalconAttention._split_heads = gaudi_falcon_attention_split_heads
 
     # Optimization for t5 on Gaudi

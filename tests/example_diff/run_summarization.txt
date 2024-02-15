@@ -36,15 +36,11 @@
 > 
 61a68,73
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.34.0")
-> check_optimum_habana_min_version("1.8.1")
+> check_min_version("4.37.0")
+> check_optimum_habana_min_version("1.10.0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 > 
-122c134
-<                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
----
->                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
 136a149,157
 >     use_cache: bool = field(
 >         default=True,

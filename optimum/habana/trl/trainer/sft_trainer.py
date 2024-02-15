@@ -39,7 +39,7 @@ from trl.trainer.utils import (
 if is_peft_available():
     from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from ... import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
 class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):

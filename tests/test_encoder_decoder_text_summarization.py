@@ -22,8 +22,8 @@ else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("facebook/bart-large-cnn", "Habana/bart", 2.588, 26.0688, 2, 1),
-            ("t5-3b", "Habana/t5", 0.98, 21.56, 2, 1),
+            ("facebook/bart-large-cnn", "Habana/bart", 2.574, 26.5069, 2, 1),
+            ("t5-3b", "Habana/t5", 0.987, 21.3831, 2, 1),
         ],
     }
 

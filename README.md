@@ -42,7 +42,7 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 
 > To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.13.0
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
 >```
 
 Optimum Habana is a fast-moving project, and you may want to install it from source:
@@ -57,6 +57,12 @@ Last but not least, don't forget to install the requirements for every example:
 cd <example-folder>
 pip install -r requirements.txt
 ```
+
+> To use the example associated with the latest stable release, run:
+> ```
+> git checkout v1.10.1
+> ```
+> with `v1.10.1` the version number of this release.
 
 
 ## How to use it?
@@ -168,7 +174,7 @@ The following model architectures, tasks and device distributions have been vali
 | CodeGen |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | MPT |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Mistral |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| T5 | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
+| T5 / Flan T5 | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
 | BART |   | <div style="text-align:left"><li>Single card</li></div> | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
 | ViT | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
 | Swin | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
@@ -211,7 +217,7 @@ Please refer to Habana Gaudi's official [installation guide](https://docs.habana
 
 > Tests should be run in a Docker container based on Habana Docker images.
 >
-> The current version has been validated for SynapseAI 1.13.
+> The current version has been validated for SynapseAI 1.14.
 
 
 ## Development

@@ -14,24 +14,24 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 129.80481357662882),
-            ("gpt2-xl", 272.3868331435149),
-            ("EleutherAI/gpt-j-6b", 137.46821395745388),
-            ("EleutherAI/gpt-neox-20b", 50.236713606109355),
-            ("meta-llama/Llama-2-7b-hf", 139.82510055437686),
-            ("tiiuae/falcon-40b", 25.260978255750498),
-            ("bigcode/starcoder", 65.38483087362695),
-            ("Salesforce/codegen2-1B", 231.1951513223901),
-            ("mosaicml/mpt-30b", 35.825021595560855),
-            ("mistralai/Mistral-7B-v0.1", 113.64661982817469),
+            ("bigscience/bloomz-7b1", 130.10463607610703),
+            ("gpt2-xl", 293.2967921508155),
+            ("EleutherAI/gpt-j-6b", 157.39646612198123),
+            ("EleutherAI/gpt-neox-20b", 49.65827341338015),
+            ("meta-llama/Llama-2-7b-hf", 142.00624811267403),
+            ("tiiuae/falcon-40b", 25.065388035178792),
+            ("bigcode/starcoder", 65.50236665863024),
+            ("Salesforce/codegen2-1B", 456.7740998156863),
+            ("mosaicml/mpt-30b", 35.64501131267502),
+            ("mistralai/Mistral-7B-v0.1", 125.26115369093216),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 33.05719168230658),
-            ("meta-llama/Llama-2-70b-hf", 58.2750262232098),
+            ("bigscience/bloomz", 36.34664210641816),
+            ("meta-llama/Llama-2-70b-hf", 61.973950428647164),
             ("facebook/opt-66b", 28.16154122335556),
         ],
         "torch_compile": [
-            ("meta-llama/Llama-2-7b-hf", 8.95169640119334),
+            ("meta-llama/Llama-2-7b-hf", 12.468247401430999),
         ],
         "torch_compile_distributed": [
             ("meta-llama/Llama-2-7b-hf", 8.95169640119334),
@@ -41,20 +41,20 @@ else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 41.93942748147396),
-            ("gpt2-xl", 126.6292071377241),
+            ("bigscience/bloomz-7b1", 41.51855420676164),
+            ("gpt2-xl", 137.159223188195),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 37.14562499113717),
-            ("meta-llama/Llama-2-7b-hf", 43.951804139391925),
-            ("tiiuae/falcon-7b", 44.288602257903726),
-            ("bigcode/starcoder", 15.955986010526113),
-            ("Salesforce/codegen2-1B", 109.03016111561857),
-            ("mosaicml/mpt-7b", 44.888696119070424),
-            ("mistralai/Mistral-7B-v0.1", 40.0690067247771),
+            ("EleutherAI/gpt-j-6b", 50.66146537939035),
+            ("meta-llama/Llama-2-7b-hf", 44.29688546702468),
+            ("tiiuae/falcon-7b", 44.217408724737744),
+            ("bigcode/starcoder", 15.948143541091655),
+            ("Salesforce/codegen2-1B", 153.79670508220687),
+            ("mosaicml/mpt-7b", 44.80241777760578),
+            ("mistralai/Mistral-7B-v0.1", 40.00435417311187),
         ],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 27.34439410425298),
+            ("bigscience/bloomz-7b1", 31.044523676681507),
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
