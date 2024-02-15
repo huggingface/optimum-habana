@@ -32,7 +32,7 @@ INSTALL_REQUIRES = [
     "transformers >= 4.37.0, < 4.38.0",
     "optimum",
     "torch",
-    "accelerate",
+    "accelerate < 0.28.0",
     "diffusers >= 0.26.0, < 0.27.0",
 ]
 
