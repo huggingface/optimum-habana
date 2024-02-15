@@ -148,10 +148,10 @@ def test_text_generation_torch_compile(model_name: str, baseline: float, token: 
     os.environ["WORLD_SIZE"] = "0"
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
+
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
     os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
     os.environ["PT_HPU_LAZY_MODE"] = "0"
-    print("running this")
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
