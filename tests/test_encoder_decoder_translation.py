@@ -16,9 +16,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "bf16": [
             ("facebook/mbart-large-50-many-to-many-mmt", "Habana/t5", 1.67, 1.05, 2, 1),
             # ("Babelscape/mrebel-large", "Habana/t5", 4.691, 26.0688, 2, 1),
-            # ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 4.691, 26.0688, 2, 1),
-            # ("Helsinki-NLP/opus-mt-en-zh", "Habana/t5", 4.691, 26.0688, 2, 1),
-            # ("Helsinki-NLP/opus-mt-en-ar", "Habana/t5", 4.691, 26.0688, 2, 1),
+            ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 3.03, 0.813, 2, 1),
+            ("Helsinki-NLP/opus-mt-en-zh", "Habana/t5", 2.99, 0.39, 2, 1),
+            ("Helsinki-NLP/opus-mt-en-ar", "Habana/t5", 2.93, 0.18, 2, 1),
             # ("facebook/nllb-200-3.3B", "Habana/t5", 4.691, 26.0688, 2, 1),
             # ("facebook/nllb-200-distilled-600M", "Habana/t5", 4.691, 26.0688, 2, 1),
         ],
