@@ -1045,12 +1045,13 @@ def main(args):
 
     import habana_frameworks.torch as htorch
     t0 = None
+    t_start = time.perf_counter()
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
         if hb_profiler:
             hb_profiler.start()
         for step, batch in enumerate(train_dataloader):
-            if t0 is None: # and global_step == args.throughput_warmup_steps:
+            if t0 is None and global_step == args.throughput_warmup_steps:
                 t0 = time.perf_counter()
 
             with accelerator.accumulate(unet):
@@ -1162,7 +1163,7 @@ def main(args):
                         fused_clip_norm.clip_norm(params_to_clip)
                     else:
                         accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
-                htcore.mark_step()
+
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
@@ -1272,12 +1273,14 @@ def main(args):
                 del pipeline
 
     duration = time.perf_counter() - t0
-    throughput = args.max_train_steps * total_batch_size / duration
+    ttt = time.perf_counter() - t_start
+    throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         logger.info(f"Throughput = {throughput} samples/s")
         logger.info(f"Train runtime = {duration} seconds")
+        logger.info(f"Total Train runtime = {ttt} seconds")
         metrics = {
             "train_samples_per_second": throughput,
             "train_runtime": duration,
@@ -1306,7 +1309,7 @@ def main(args):
             torch_dtype=weight_dtype,
             scheduler=noise_scheduler,
             use_habana=True,
-            use_hpu_graphs_for_inference=args.use_hpu_graphs_for_inference,
+            use_hpu_graphs=args.use_hpu_graphs_for_inference,
             gaudi_config=args.gaudi_config_name,
         )
         if args.prediction_type is not None:
