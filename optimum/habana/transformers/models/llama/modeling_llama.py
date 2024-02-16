@@ -281,6 +281,13 @@ class GaudiLlamaAttention(LlamaAttention):
                 key_states = update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                 value_states = update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
 
+            if cache_idx is not None and q_len == 1:
+                key_states = key_states[:, :, :cache_idx, :]
+                value_states = value_states[:, :, :cache_idx, :]
+                if attention_mask is not None:
+                    attention_mask = attention_mask[:, :, :, :cache_idx]
+                kv_seq_len = key_states.shape[-2]
+
         if use_cache:
             if reuse_cache:
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
