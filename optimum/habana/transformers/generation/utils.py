@@ -236,6 +236,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
         if token_idx is not None:
             token_idx.add_(1)
+            if "token_idx_cpu" in model_kwargs:
+                model_kwargs["token_idx_cpu"] += 1
 
         return model_kwargs
 
@@ -608,10 +610,12 @@ class GaudiGenerationMixin(GenerationMixin):
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
         if generation_config.bucket_internal:
-            assert generation_config.bucket_size >= 0, "bucket_internal and bucket_size flags set together"
+            assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
             assert generation_config.reuse_cache, "please set reuse_cache to use bucket_internal"
         if generation_config.reuse_cache and not generation_config.bucket_internal:
-            assert generation_config.bucket_size <= 0, "reuse_cache and bucketing flags set together"
+            assert (
+                generation_config.bucket_size <= 0
+            ), "please set bucket_internal along with reuse_cache and bucket_size"
 
         if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
@@ -623,6 +627,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     # token_idx is the current index in the generation process, it is incremented each time a new token is generated
                     token_idx = inputs_tensor.shape[-1]
                     model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
+                    model_kwargs["token_idx_cpu"] = token_idx
                     inputs_tensor = torch.nn.functional.pad(
                         inputs_tensor, (0, generation_config.max_new_tokens), value=generation_config.pad_token_id
                     )
@@ -702,6 +707,7 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
 
         # determine whether limit_hpu_graphs needs to be used
+        model_kwargs["use_hpu_graphs"] = hpu_graphs
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
         # prepare for allocate kv cache
@@ -1382,13 +1388,14 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
+
         bucket_size = model_kwargs.get("bucket_size", -1)
-        prev_idx = None  # avoiding calculate cache_idx when its value is not changing
+        prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
         bucket_internal = model_kwargs["bucket_internal"]
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
         prompt_len = input_ids.shape[-1]
-        
+
         if not bucket_internal:
             if bucket_size >= 0:
                 inc = iter(incrementor(bucket_size, prompt_len))
@@ -1409,23 +1416,12 @@ class GaudiGenerationMixin(GenerationMixin):
                 if this_peer_finished_flag.item() == 0.0:
                     break
 
-            if bucket_size > 0:
-                if not bucket_internal:
-                    # it will not have been padded if bucket_size > 0
-                    params = next(inc)
-                    input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
-                        params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
-                    )
-                else:
-                    # Calculate slice idx for kv cache. Breaking down the kv cache in the attention block helps to reduce computation time.
-                    if model_kwargs.get("token_idx") <= (model_kwargs["kv_cache_len"] // bucket_size) * bucket_size:
-                        idx = torch.div(model_kwargs.get("token_idx") - 1, bucket_size, rounding_mode="floor")
-                        if idx != prev_idx:
-                            cache_idx = (idx.item() + 1) * bucket_size
-                            model_kwargs["cache_idx"] = cache_idx
-                            prev_idx = idx
-                    else:
-                        model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
+            if bucket_size > 0 and not bucket_internal:
+                # it will not have been padded if bucket_size > 0
+                params = next(inc)
+                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
+                )
 
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
@@ -1500,6 +1496,18 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs = self._update_model_kwargs_for_generation(
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
+            if bucket_size > 0 and bucket_internal:
+                # Calculate slice idx for kv cache during the decode phase.
+                # Breaking down the kv cache in the attention block helps to reduce computation time.
+                if model_kwargs.get("token_idx_cpu") <= (model_kwargs["kv_cache_len"] // bucket_size) * bucket_size:
+                    idx = (model_kwargs.get("token_idx_cpu") - 1) // bucket_size
+                    if prev_idx != idx:
+                        model_kwargs["cache_idx"] = (idx + 1) * bucket_size
+                        prev_idx = idx
+                        if model_kwargs["use_hpu_graphs"]:
+                            self.clear_cache()
+                else:
+                    model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:
@@ -1526,6 +1534,8 @@ class GaudiGenerationMixin(GenerationMixin):
             if this_peer_finished and not synced_gpus:
                 break
 
+        if model_kwargs["use_hpu_graphs"]:
+            self.clear_cache()
         hb_profer.stop()
         if streamer is not None:
             streamer.end()
