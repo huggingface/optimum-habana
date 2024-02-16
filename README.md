@@ -64,10 +64,10 @@ To use DeepSpeed on HPUs, you also need to run the following command:
 >```
 
 To install the requirements for every example:
-```bash
-cd <example-folder>
-pip install -r requirements.txt
-```
+>```bash
+>cd <example-folder>
+>pip install -r requirements.txt
+>```
 
 ## How to use it?
 
