@@ -45,7 +45,7 @@ from trl.trainer import AdaptiveKLController, BaseTrainer, FixedKLController, Ru
 from optimum.habana.utils import set_seed
 
 from . import GaudiPPOConfig
-
+_recorded_graph = None
 
 class GaudiPPOTrainer(PPOTrainer):
     def __init__(
@@ -558,7 +558,8 @@ class GaudiPPOTrainer(PPOTrainer):
 
             model = self.accelerator.unwrap_model(self.model)
             if not hasattr(model, "wrap_train_in_graph"):
-                ht.hpu.ModuleCacher()(model=model, inplace=True)
+                model.eval()
+                model = ht.hpu.wrap_in_hpu_graph(model)
                 setattr(model, "wrap_train_in_graph", model.forward)
             else:
                 model.forward = getattr(model, "wrap_train_in_graph")
@@ -816,6 +817,20 @@ class GaudiPPOTrainer(PPOTrainer):
         - add htcore.mark_step
         """
         self.model.train()
+
+        global _recorded_graph
+
+        if _recorded_graph is None:
+            _recorded_graph = ht.hpu.HPUGraph()
+            s = ht.hpu.default_stream()
+
+            with ht.hpu.stream(s):
+                _recorded_graph.capture_begin()
+                self.accelerator.backward(loss)
+                _recorded_graph.capture_end()
+        else:
+            ht.core.mark_step()
+            _recorded_graph.replay()
         loss_p, loss_v, train_stats = self.loss(
             old_logprobs, values, logits, vpreds, logprobs, mask, advantages, returns
         )
