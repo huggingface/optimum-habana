@@ -248,6 +248,10 @@ class DataArguments:
         default=False,
         metadata={"help": "Whether to have a SQL style prompt"},
     )
+    eval_split: str = field(
+        default="validation",
+        metadata={"help": "The split to use to set up the evaluation set with `--do_eval`."},
+    )
 
 
 @dataclass
@@ -424,8 +428,8 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
         )
 
-        if "validation" not in raw_datasets.keys() and training_args.do_eval:
-            raw_datasets["validation"] = load_dataset(
+        if data_args.eval_split not in raw_datasets.keys() and training_args.do_eval:
+            raw_datasets[data_args.eval_split] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
                 split=f"train[:{data_args.validation_split_percentage}%]",
@@ -612,13 +616,13 @@ def main():
         if data_args.dataset_name == "tatsu-lab/alpaca" or data_args.sql_prompt:
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(
+                tokenized_datasets_eval_ = tokenized_datasets[data_args.eval_split].remove_columns(
                     ["prompt_sources", "prompt_targets"]
                 )
         elif data_args.dataset_name == "timdettmers/openassistant-guanaco":
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
+                tokenized_datasets_eval_ = tokenized_datasets[data_args.eval_split].remove_columns(["input", "output"])
         else:
             raise ValueError("Unsupported dataset")
         tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
