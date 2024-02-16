@@ -17,8 +17,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-""" PyTorch Mistral model."""
+""" PyTorch Mixtral model."""
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -26,6 +25,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+import torch.nn.functional as F
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
@@ -152,7 +152,7 @@ def gaudi_mixtral_decoder_layer_forward(
     **kwargs,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """
-    Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
+    Copied from MixtralDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
     - add new args token_idx
     """
@@ -199,7 +199,7 @@ def gaudi_mixtral_decoder_layer_forward(
 
 def gaudi_mixtral_sparse_moe_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     """
-    Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
+    Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
     The differences: change the expert mask to keep static shape during training.
     """
 
@@ -260,7 +260,7 @@ def gaudi_mixtral_model_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, MoeModelOutputWithPast]:
     """
-    Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
+    Copied from MixtralModel.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
     - add new args token_idx
     """
@@ -432,7 +432,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
         """
-        Inherits from MistralForCausalLM: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
+        Inherits from MixtralForCausalLM: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
         The only differences are:
         - add new args token_idx
         """
