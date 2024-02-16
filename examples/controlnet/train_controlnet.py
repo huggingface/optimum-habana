@@ -113,6 +113,9 @@ def log_validation(
 
     if args.seed is None:
         generator = None
+    elif accelerator.device == "hpu":
+        # torch.Generator() is unsupported on HPU
+        generator = set_seed(args.seed)
     else:
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
@@ -138,10 +141,10 @@ def log_validation(
         images = []
 
         for _ in range(args.num_validation_images):
-            image = pipeline(validation_prompt, validation_image, num_inference_steps=20, generator=generator).images[
-                0
-            ]
-
+            with torch.autocast(device_type=accelerator.device, dtype=weight_dtype):
+                image = pipeline(
+                    validation_prompt, validation_image, num_inference_steps=20, generator=generator
+                ).images[0]
             images.append(image)
 
         image_logs.append(
@@ -1029,16 +1032,10 @@ def main(args):
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
-                # torch.randn is broken on HPU so running it on CPU
-                rand_device = "cpu" if accelerator.device == "hpu" else accelerator.device
-                noise = torch.randn_like(latents, device=rand_device)
-                if accelerator.device =="hpu":
-                    noise = noise.to(accelerator.device)
+                noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=rand_device)
-                if accelerator.device =="hpu":
-                    timesteps = timesteps.to(accelerator.device)
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
                 timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
