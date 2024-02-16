@@ -370,6 +370,7 @@ python3 run_lora_clm.py \
     --max_grad_norm  0.3 \
     --logging_steps 1 \
     --do_train \
+    --do_eval \
     --use_habana \
     --use_lazy_mode \
     --throughput_warmup_steps 3 \
@@ -380,6 +381,7 @@ python3 run_lora_clm.py \
     --dataset_concatenation \
     --max_seq_length 512 \
     --low_cpu_mem_usage True \
+    --validation_split_percentage 4 \
     --adam_epsilon 1e-08
 ```
 
@@ -436,6 +438,7 @@ python ../gaudi_spawn.py \
     --max_grad_norm  0.3 \
     --logging_steps 1 \
     --do_train \
+    --do_eval \
     --use_habana \
     --use_lazy_mode \
     --throughput_warmup_steps 3 \
@@ -447,6 +450,7 @@ python ../gaudi_spawn.py \
     --max_seq_length 512 \
     --ddp_bucket_cap_mb 50 \
     --adam_epsilon 1e-08 \
+    --validation_split_percentage 4 \
     --low_cpu_mem_usage True
 ```
 
