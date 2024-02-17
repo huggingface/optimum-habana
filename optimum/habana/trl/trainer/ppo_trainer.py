@@ -18,6 +18,7 @@ import warnings
 from contextlib import nullcontext
 from typing import Callable, List, Optional, Union
 
+import habana_frameworks.torch as ht
 import numpy as np
 import torch
 from accelerate.utils import ProjectConfiguration
@@ -39,13 +40,25 @@ from trl.core import (
     stats_to_np,
 )
 from trl.import_utils import is_torch_greater_2_0
-from trl.models import SUPPORTED_ARCHITECTURES, PreTrainedModelWrapper, create_reference_model
-from trl.trainer import AdaptiveKLController, BaseTrainer, FixedKLController, RunningMoments
+from trl.models import (
+    SUPPORTED_ARCHITECTURES,
+    PreTrainedModelWrapper,
+    create_reference_model,
+)
+from trl.trainer import (
+    AdaptiveKLController,
+    BaseTrainer,
+    FixedKLController,
+    RunningMoments,
+)
 
 from optimum.habana.utils import set_seed
 
 from . import GaudiPPOConfig
+
+
 _recorded_graph = None
+
 
 class GaudiPPOTrainer(PPOTrainer):
     def __init__(
@@ -96,7 +109,9 @@ class GaudiPPOTrainer(PPOTrainer):
 
         # Step 1.1 Runtime variables filled by the accelerator
         config.world_size = self.accelerator.num_processes
-        config.global_backward_batch_size = config.backward_batch_size * config.world_size
+        config.global_backward_batch_size = (
+            config.backward_batch_size * config.world_size
+        )
         config.global_batch_size = config.batch_size * config.world_size
 
         self.model = model.to(self.accelerator.device.type)
@@ -106,10 +121,16 @@ class GaudiPPOTrainer(PPOTrainer):
         config.is_encoder_decoder = self.is_encoder_decoder
         config.is_peft_model = self.is_peft_model
 
-        is_using_tensorboard = config.log_with is not None and config.log_with == "tensorboard"
+        is_using_tensorboard = (
+            config.log_with is not None and config.log_with == "tensorboard"
+        )
         self.accelerator.init_trackers(
             config.tracker_project_name,
-            config={"trl_ppo_trainer_config": config.to_dict()} if not is_using_tensorboard else config.to_dict(),
+            config=(
+                {"trl_ppo_trainer_config": config.to_dict()}
+                if not is_using_tensorboard
+                else config.to_dict()
+            ),
             init_kwargs=config.tracker_kwargs,
         )
         self.is_using_text_environment = getattr(config, "use_text_environment", False)
@@ -123,7 +144,9 @@ class GaudiPPOTrainer(PPOTrainer):
                     UserWarning,
                 )
         elif ref_model is None and not self.is_peft_model:
-            self.ref_model = create_reference_model(self.model, num_shared_layers=num_shared_layers)
+            self.ref_model = create_reference_model(
+                self.model, num_shared_layers=num_shared_layers
+            )
         elif self.is_peft_model:
             self.ref_model = None
         else:
@@ -137,14 +160,22 @@ class GaudiPPOTrainer(PPOTrainer):
             else nullcontext
         )
 
-        if not (isinstance(tokenizer, PreTrainedTokenizer) or isinstance(tokenizer, PreTrainedTokenizerFast)):
+        if not (
+            isinstance(tokenizer, PreTrainedTokenizer)
+            or isinstance(tokenizer, PreTrainedTokenizerFast)
+        ):
             raise ValueError(
                 "tokenizer must be a transformers.PreTrainedTokenizer or transformers.PreTrainedTokenizerFast"
             )
         self.tokenizer = tokenizer
 
-        if dataset is not None and not (isinstance(dataset, torch.utils.data.Dataset) or isinstance(dataset, Dataset)):
-            raise ValueError("dataset must be a torch.utils.data.Dataset or datasets.Dataset")
+        if dataset is not None and not (
+            isinstance(dataset, torch.utils.data.Dataset)
+            or isinstance(dataset, Dataset)
+        ):
+            raise ValueError(
+                "dataset must be a torch.utils.data.Dataset or datasets.Dataset"
+            )
         elif dataset is None:
             warnings.warn(
                 "No dataset is provided. Make sure to set config.batch_size to the correct value before training.",
@@ -190,7 +221,9 @@ class GaudiPPOTrainer(PPOTrainer):
                 )
 
         if self.config.adap_kl_ctrl:
-            self.kl_ctl = AdaptiveKLController(self.config.init_kl_coef, self.config.target, self.config.horizon)
+            self.kl_ctl = AdaptiveKLController(
+                self.config.init_kl_coef, self.config.target, self.config.horizon
+            )
         else:
             self.kl_ctl = FixedKLController(self.config.init_kl_coef)
 
@@ -203,8 +236,9 @@ class GaudiPPOTrainer(PPOTrainer):
             self.accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)
 
         # Safety checkers for DS integration
-        is_deepspeed_used = self.accelerator.distributed_type == "DEEPSPEED" and hasattr(
-            self.accelerator.state, "deepspeed_plugin"
+        is_deepspeed_used = (
+            self.accelerator.distributed_type == "DEEPSPEED"
+            and hasattr(self.accelerator.state, "deepspeed_plugin")
         )
 
         (
@@ -241,7 +275,9 @@ class GaudiPPOTrainer(PPOTrainer):
         # init variables for pushing model to hub
         if config.push_to_hub_if_best_kwargs:
             if "repo_id" not in config.push_to_hub_if_best_kwargs:
-                raise ValueError("You have to specify repo_id in order to push the model to the hub!")
+                raise ValueError(
+                    "You have to specify repo_id in order to push the model to the hub!"
+                )
             self.push_to_hub_kwargs = config.push_to_hub_if_best_kwargs
             self.compare_step = 0
             self.highest_reward = torch.tensor(-float("inf"))
@@ -320,7 +356,9 @@ class GaudiPPOTrainer(PPOTrainer):
                 with self.optional_peft_ctx():
                     if self.config.use_habana:
                         self.wrap_generation_for_hpu_graph_mode(ref_model)
-                    ref_response = ref_model.generate(input_ids=query_tensor.unsqueeze(dim=0), **generation_kwargs)
+                    ref_response = ref_model.generate(
+                        input_ids=query_tensor.unsqueeze(dim=0), **generation_kwargs
+                    )
 
             if not return_prompt and not self.is_encoder_decoder:
                 response = response[:, query_tensor.shape[0] :]
@@ -390,7 +428,9 @@ class GaudiPPOTrainer(PPOTrainer):
                 generation_kwargs["lazy_mode"] = True
                 generation_kwargs["hpu_graphs"] = True
 
-            generations = self.accelerator.unwrap_model(model).generate(**padded_inputs, **generation_kwargs)
+            generations = self.accelerator.unwrap_model(model).generate(
+                **padded_inputs, **generation_kwargs
+            )
 
             for generation, mask in zip(generations, padded_inputs["attention_mask"]):
                 if not self.is_encoder_decoder:
@@ -435,16 +475,22 @@ class GaudiPPOTrainer(PPOTrainer):
             # Score scaling
             scores_mean, scores_std = self.running.update(scores)
             tensor_to_kwargs = {"dtype": scores.dtype, "device": scores.device}
-            score_scaling_factor = self.running.std.to(**tensor_to_kwargs) + torch.finfo(scores.dtype).eps
+            score_scaling_factor = (
+                self.running.std.to(**tensor_to_kwargs) + torch.finfo(scores.dtype).eps
+            )
             if self.config.use_score_norm:
-                scores = (scores - self.running.mean.to(**tensor_to_kwargs)) / score_scaling_factor
+                scores = (
+                    scores - self.running.mean.to(**tensor_to_kwargs)
+                ) / score_scaling_factor
             else:
                 scores /= score_scaling_factor
 
         if self.config.score_clip is not None:
             # Score clipping
             scores_dtype = scores.dtype
-            scores = torch.clip(scores.float(), -self.config.score_clip, self.config.score_clip).to(dtype=scores_dtype)
+            scores = torch.clip(
+                scores.float(), -self.config.score_clip, self.config.score_clip
+            ).to(dtype=scores_dtype)
 
         # if we want to push best model to the hub
         if hasattr(self, "highest_reward"):
@@ -477,17 +523,21 @@ class GaudiPPOTrainer(PPOTrainer):
                 model_inputs["attention_mask"], dim=1, pad_index=0, pad_first=pad_first
             )
             if self.is_encoder_decoder:
-                model_inputs["decoder_input_ids"] = self.accelerator.pad_across_processes(
-                    model_inputs["decoder_input_ids"],
-                    dim=1,
-                    pad_index=self.tokenizer.pad_token_id,
-                    pad_first=pad_first,
+                model_inputs["decoder_input_ids"] = (
+                    self.accelerator.pad_across_processes(
+                        model_inputs["decoder_input_ids"],
+                        dim=1,
+                        pad_index=self.tokenizer.pad_token_id,
+                        pad_first=pad_first,
+                    )
                 )
-                model_inputs["decoder_attention_mask"] = self.accelerator.pad_across_processes(
-                    model_inputs["decoder_attention_mask"],
-                    dim=1,
-                    pad_index=0,
-                    pad_first=pad_first,
+                model_inputs["decoder_attention_mask"] = (
+                    self.accelerator.pad_across_processes(
+                        model_inputs["decoder_attention_mask"],
+                        dim=1,
+                        pad_index=0,
+                        pad_first=pad_first,
+                    )
                 )
 
         model_inputs_names = list(model_inputs.keys())
@@ -523,18 +573,26 @@ class GaudiPPOTrainer(PPOTrainer):
         with torch.no_grad():
             t = time.time()
             if full_kl_penalty:
-                active_full_logprobs = logprobs_from_logits(logits_or_none, None, gather=False)
-                ref_full_logprobs = logprobs_from_logits(ref_logits_or_none, None, gather=False)
+                active_full_logprobs = logprobs_from_logits(
+                    logits_or_none, None, gather=False
+                )
+                ref_full_logprobs = logprobs_from_logits(
+                    ref_logits_or_none, None, gather=False
+                )
 
                 rewards, non_score_reward = self.compute_rewards(
                     scores, active_full_logprobs, ref_full_logprobs, masks
                 )
             else:
-                rewards, non_score_reward = self.compute_rewards(scores, all_logprobs, ref_logprobs, masks)
+                rewards, non_score_reward = self.compute_rewards(
+                    scores, all_logprobs, ref_logprobs, masks
+                )
             timing["time/ppo/compute_rewards"] = time.time() - t
 
             t = time.time()
-            values, advantages, returns = self.compute_advantages(values, rewards, masks)
+            values, advantages, returns = self.compute_advantages(
+                values, rewards, masks
+            )
             timing["time/ppo/compute_advantages"] = time.time() - t
 
         # upcast to float32 to avoid dataset issues
@@ -569,26 +627,36 @@ class GaudiPPOTrainer(PPOTrainer):
                 break
             b_inds = np.random.permutation(bs)
             for backward_batch_start in range(0, bs, self.config.backward_batch_size):
-                backward_batch_end = backward_batch_start + self.config.backward_batch_size
+                backward_batch_end = (
+                    backward_batch_start + self.config.backward_batch_size
+                )
                 backward_batch_inds = b_inds[backward_batch_start:backward_batch_end]
 
-                for mini_batch_start in range(0, self.config.backward_batch_size, self.config.mini_batch_size):
+                for mini_batch_start in range(
+                    0, self.config.backward_batch_size, self.config.mini_batch_size
+                ):
                     mini_batch_end = mini_batch_start + self.config.mini_batch_size
-                    mini_batch_inds = backward_batch_inds[mini_batch_start:mini_batch_end]
+                    mini_batch_inds = backward_batch_inds[
+                        mini_batch_start:mini_batch_end
+                    ]
                     mini_batch_dict = {
                         "logprobs": batch_dict["logprobs"][mini_batch_inds],
                         "values": batch_dict["values"][mini_batch_inds],
                         "masks": batch_dict["masks"][mini_batch_inds],
                         # hacks: the queries and responses are ragged.
                         "queries": [batch_dict["queries"][i] for i in mini_batch_inds],
-                        "responses": [batch_dict["responses"][i] for i in mini_batch_inds],
+                        "responses": [
+                            batch_dict["responses"][i] for i in mini_batch_inds
+                        ],
                         "advantages": batch_dict["advantages"][mini_batch_inds],
                         "returns": batch_dict["returns"][mini_batch_inds],
                     }
                     for k in model_inputs_names:
                         mini_batch_dict[k] = batch_dict[k][mini_batch_inds]
                     with self.accelerator.accumulate(self.model):
-                        model_inputs = {k: mini_batch_dict[k] for k in model_inputs_names}
+                        model_inputs = {
+                            k: mini_batch_dict[k] for k in model_inputs_names
+                        }
 
                         logprobs, logits, vpreds, _ = self.batched_forward_pass(
                             self.model,
@@ -622,9 +690,15 @@ class GaudiPPOTrainer(PPOTrainer):
         train_stats = stack_dicts(all_stats)
 
         # reshape advantages/ratios such that they are not averaged.
-        train_stats["policy/advantages"] = torch.flatten(train_stats["policy/advantages"]).unsqueeze(0)
-        train_stats["policy/advantages"] = torch.nan_to_num(train_stats["policy/advantages"], WANDB_PADDING)
-        train_stats["policy/ratio"] = torch.flatten(train_stats["policy/ratio"]).unsqueeze(0)
+        train_stats["policy/advantages"] = torch.flatten(
+            train_stats["policy/advantages"]
+        ).unsqueeze(0)
+        train_stats["policy/advantages"] = torch.nan_to_num(
+            train_stats["policy/advantages"], WANDB_PADDING
+        )
+        train_stats["policy/ratio"] = torch.flatten(
+            train_stats["policy/ratio"]
+        ).unsqueeze(0)
 
         stats = self.record_step_stats(
             scores=scores,
@@ -671,11 +745,17 @@ class GaudiPPOTrainer(PPOTrainer):
         """
         if self.is_encoder_decoder:
             input_data = self.data_collator(
-                [{"input_ids": q, "attention_mask": torch.ones_like(q)} for q in queries]
+                [
+                    {"input_ids": q, "attention_mask": torch.ones_like(q)}
+                    for q in queries
+                ]
             ).to(self.current_device)
 
             decoder_inputs = self.data_collator(
-                [{"input_ids": r, "attention_mask": torch.ones_like(r)} for r in responses]
+                [
+                    {"input_ids": r, "attention_mask": torch.ones_like(r)}
+                    for r in responses
+                ]
             ).to(self.current_device)
 
             input_data["decoder_input_ids"] = decoder_inputs["input_ids"]
@@ -683,7 +763,10 @@ class GaudiPPOTrainer(PPOTrainer):
         else:
             input_ids = [torch.cat([q, r]) for q, r in zip(queries, responses)]
             input_data = self.data_collator(
-                [{"input_ids": ids, "attention_mask": torch.ones_like(ids)} for ids in input_ids]
+                [
+                    {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
+                    for ids in input_ids
+                ]
             ).to(self.current_device)
 
         if self.config.pad_for_acceleration:
@@ -705,7 +788,8 @@ class GaudiPPOTrainer(PPOTrainer):
                     input_data["decoder_input_ids"],
                     (
                         0,
-                        self.config.pad_max_len - input_data["decoder_input_ids"].shape[1],
+                        self.config.pad_max_len
+                        - input_data["decoder_input_ids"].shape[1],
                     ),
                     value=self.tokenizer.pad_token_id,
                 )
@@ -713,7 +797,8 @@ class GaudiPPOTrainer(PPOTrainer):
                     input_data["decoder_attention_mask"],
                     (
                         0,
-                        self.config.pad_max_len - input_data["decoder_attention_mask"].shape[1],
+                        self.config.pad_max_len
+                        - input_data["decoder_attention_mask"].shape[1],
                     ),
                     value=0,
                 )
@@ -746,7 +831,10 @@ class GaudiPPOTrainer(PPOTrainer):
         model.eval()
 
         for i in range(math.ceil(bs / fbs)):
-            input_kwargs = {key: value[i * fbs : (i + 1) * fbs].clone() for key, value in model_inputs.items()}
+            input_kwargs = {
+                key: value[i * fbs : (i + 1) * fbs].clone()
+                for key, value in model_inputs.items()
+            }
             query_batch = queries[i * fbs : (i + 1) * fbs]
             response_batch = responses[i * fbs : (i + 1) * fbs]
             if response_masks is not None:
@@ -770,7 +858,9 @@ class GaudiPPOTrainer(PPOTrainer):
                     start = 1
                     end = attention_mask[j, :].sum() - 1
                 else:
-                    start = len(query_batch[j]) - 1  # logprobs starts from the second query token
+                    start = (
+                        len(query_batch[j]) - 1
+                    )  # logprobs starts from the second query token
                     if attention_mask[j, 0] == 0:  # offset left padding
                         start += attention_mask[j, :].nonzero()[0]
                     end = start + len(response_batch[j])
@@ -782,7 +872,9 @@ class GaudiPPOTrainer(PPOTrainer):
                 masks[j, :start] = 0
                 masks[j, end:] = 0
                 if response_masks is not None:
-                    masks[j, start:end] = masks[j, start:end] * response_masks_batch[j][start:end]
+                    masks[j, start:end] = (
+                        masks[j, start:end] * response_masks_batch[j][start:end]
+                    )
 
             if return_logits:
                 all_logits.append(logits.clone())
@@ -817,7 +909,10 @@ class GaudiPPOTrainer(PPOTrainer):
         - add htcore.mark_step
         """
         self.model.train()
-
+        loss_p, loss_v, train_stats = self.loss(
+            old_logprobs, values, logits, vpreds, logprobs, mask, advantages, returns
+        )
+        loss = loss_p + loss_v
         global _recorded_graph
 
         if _recorded_graph is None:
@@ -831,14 +926,11 @@ class GaudiPPOTrainer(PPOTrainer):
         else:
             ht.core.mark_step()
             _recorded_graph.replay()
-        loss_p, loss_v, train_stats = self.loss(
-            old_logprobs, values, logits, vpreds, logprobs, mask, advantages, returns
-        )
-        loss = loss_p + loss_v
-        self.accelerator.backward(loss)
         if self.config.max_grad_norm is not None:
             if self.accelerator.sync_gradients:
-                self.accelerator.clip_grad_norm_(self.model_params, self.config.max_grad_norm)
+                self.accelerator.clip_grad_norm_(
+                    self.model_params, self.config.max_grad_norm
+                )
         self.optimizer.step()
         if self.config.use_habana:
             self.htcore.mark_step()
@@ -869,11 +961,19 @@ class GaudiPPOTrainer(PPOTrainer):
         model = self.accelerator.unwrap_model(model)
         if getattr(model, "is_peft_model", False):
             if hasattr(model.pretrained_model.base_model.model, "hpu_graph_fw"):
-                model.pretrained_model.base_model.model.forward = model.pretrained_model.base_model.model.hpu_graph_fw
+                model.pretrained_model.base_model.model.forward = (
+                    model.pretrained_model.base_model.model.hpu_graph_fw
+                )
             else:
-                model.pretrained_model.base_model.model.orig_fw = model.pretrained_model.base_model.model.forward
-                model.pretrained_model.base_model.model = wrap_in_hpu_graph(model.pretrained_model.base_model.model)
-                model.pretrained_model.base_model.model.hpu_graph_fw = model.pretrained_model.base_model.model.forward
+                model.pretrained_model.base_model.model.orig_fw = (
+                    model.pretrained_model.base_model.model.forward
+                )
+                model.pretrained_model.base_model.model = wrap_in_hpu_graph(
+                    model.pretrained_model.base_model.model
+                )
+                model.pretrained_model.base_model.model.hpu_graph_fw = (
+                    model.pretrained_model.base_model.model.forward
+                )
         else:
             if hasattr(model.pretrained_model, "hpu_graph_fw"):
                 model.pretrained_model.forward = model.pretrained_model.hpu_graph_fw
@@ -886,7 +986,9 @@ class GaudiPPOTrainer(PPOTrainer):
         model = self.accelerator.unwrap_model(model)
         if getattr(model, "is_peft_model", False):
             if hasattr(model.pretrained_model.base_model.model, "orig_fw"):
-                model.pretrained_model.base_model.model.forward = model.pretrained_model.base_model.model.orig_fw
+                model.pretrained_model.base_model.model.forward = (
+                    model.pretrained_model.base_model.model.orig_fw
+                )
         else:
             if hasattr(model.pretrained_model, "orig_fw"):
                 model.pretrained_model.forward = model.pretrained_model.orig_fw
