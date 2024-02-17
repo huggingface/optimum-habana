@@ -31,9 +31,9 @@ Check out [this blog post about BERT pre-training](https://huggingface.co/blog/p
 If you are not familiar with HPUs and would like to know more about them, we recommend you take a look at [our conceptual guide](https://huggingface.co/docs/optimum/habana/concept_guides/hpu).
 
 
-## Install library and get example scripts
+## Install the library and get example scripts
 
-### Option1: Use the latest stable release
+### Option 1: Use the latest stable release
 
 To install the latest stable release of this package
 >```bash
@@ -50,6 +50,7 @@ To use the example associated with the latest stable release, run:
 > with `v1.10.2` the version number of this release.
 
 ### Option 2: Use the latest main branch under development
+
 Optimum Habana is a fast-moving project, and you may want to install it from source and get the latest scripts :
 
 ```bash
@@ -58,6 +59,7 @@ git clone https://github.com/huggingface/optimum-habana
 ```
 
 ## Install dependencies
+
 To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
 >pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
@@ -68,6 +70,7 @@ To install the requirements for every example:
 >cd <example-folder>
 >pip install -r requirements.txt
 >```
+
 
 ## How to use it?
 

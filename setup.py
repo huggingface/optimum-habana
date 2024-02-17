@@ -32,11 +32,7 @@ INSTALL_REQUIRES = [
     "transformers >= 4.37.0, < 4.38.0",
     "optimum",
     "torch",
-<<<<<<< HEAD
-    "accelerate",
-=======
     "accelerate < 0.28.0",
->>>>>>> main
     "diffusers >= 0.26.0, < 0.27.0",
 ]
 
@@ -53,7 +49,7 @@ TESTS_REQUIRE = [
 
 QUALITY_REQUIRES = [
     "ruff",
-    "hf_doc_builder",
+    "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
 ]
 
 EXTRAS_REQUIRE = {
