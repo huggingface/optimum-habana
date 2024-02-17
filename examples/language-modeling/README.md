@@ -417,7 +417,7 @@ LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
     --low_cpu_mem_usage True \
     --adam_epsilon 1e-08 \
     --do_eval \
-    --validation_split_percentage 10
+    --validation_split_percentage 5
 ```
 
 - Multi-card finetuning of Llama1-7B:
@@ -518,7 +518,7 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --adam_epsilon 1e-08 \
     --do_eval \
     --low_cpu_mem_usage True \
-    --validation_split_percentage 10
+    --validation_split_percentage 6
 ```
 
 - Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization and LoRA:
@@ -593,6 +593,7 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --max_seq_length 256 \
     --adam_epsilon 1e-08 \
     --do_eval \
+    --validation_split_percentage 5 \
     --deepspeed ds_falcon_180b_z3.json
 ```
 ## Streaming
