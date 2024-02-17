@@ -250,5 +250,8 @@ python run_clip.py \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
-    --bf16
+    --bf16 \
+    --mediapipe_dataloader
 ```
+
+> `--mediapipe_dataloader` only works on Gaudi2.

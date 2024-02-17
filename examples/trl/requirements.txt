@@ -3,3 +3,5 @@ peft == 0.6.2
 datasets
 wandb
 tyro
+evaluate
+scikit-learn

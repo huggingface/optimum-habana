@@ -138,7 +138,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
+                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
                 "execute code present on the Hub on your local machine."
             )
@@ -242,6 +242,9 @@ class DataTrainingArguments:
     )
     keep_linebreaks: bool = field(
         default=True, metadata={"help": "Whether to keep line breaks when using TXT files or not."}
+    )
+    save_last_ckpt: bool = field(
+        default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
     )
 
     def __post_init__(self):
@@ -643,7 +646,8 @@ def main():
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
-        trainer.save_model()  # Saves the tokenizer too for easy upload
+        if data_args.save_last_ckpt:
+            trainer.save_model()  # Saves the tokenizer too for easy upload
 
         metrics = train_result.metrics
 
