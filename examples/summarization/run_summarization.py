@@ -502,9 +502,6 @@ def main():
             "Training is not yet supported for BART. Eval or predict can be enabled with `--do_eval` and `--do_predict`."
         )
 
-    if is_bart and data_args.num_beams != 1:
-        raise ValueError("Only --num_beams 1 is supported for BART")
-
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
     embeddings = model.get_input_embeddings()
