@@ -197,7 +197,7 @@ The following model architectures, tasks and device distributions have been vali
 <div align="center">
 
 | Architecture     | Training | Inference            | Tasks |
-|------------------|:--------:|:--------------------:|:-----:|
+|------------------|:--------:|:--------------------:|:------|
 | Stable Diffusion |          | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | LDM3D            |          | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 
@@ -208,8 +208,9 @@ The following model architectures, tasks and device distributions have been vali
 <div align="center">
 
 | Architecture     | Training | Inference            | Tasks |
-|------------------|:--------:|:--------------------:|:-----:|
-| Llama 2          | <li>Multi card</li> |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+|------------------|:--------:|:--------------------:|:------|
+| Llama 2          | :heavy_check_mark: |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+| Llama 2          | :heavy_check_mark: |           | <li>[PPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
 
 </div>
 
