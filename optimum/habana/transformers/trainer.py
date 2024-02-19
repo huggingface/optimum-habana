@@ -876,7 +876,7 @@ class GaudiTrainer(Trainer):
                             inputs["flash_attention_recompute"] = True
                         if self.model.generation_config.flash_attention_causal_mask:
                             inputs["flash_attention_causal_mask"] = True
-                        if not self.model.generation_config.use_fused_rope:
+                        if self.model.generation_config.use_fused_rope is False:
                             inputs["use_fused_rope"] = False
 
                 # TODO: keep syncs for fast DDP?
@@ -1632,7 +1632,7 @@ class GaudiTrainer(Trainer):
                         inputs["flash_attention_recompute"] = True
                     if self.model.generation_config.flash_attention_causal_mask:
                         inputs["flash_attention_causal_mask"] = True
-                    if not self.model.generation_config.use_fused_rope:
+                    if self.model.generation_config.use_fused_rope is False:
                         inputs["use_fused_rope"] = False
 
             # Prediction step

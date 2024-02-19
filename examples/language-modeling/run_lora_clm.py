@@ -555,7 +555,7 @@ def main():
             model.generation_config.use_flash_attention = True
             model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
             model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
-        if not model_args.use_fused_rope:
+        if model_args.use_fused_rope is False:
             model.generation_config.use_fused_rope = False
 
     if hasattr(model.generation_config, "pad_token_id") and model.generation_config.pad_token_id is not None:
