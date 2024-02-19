@@ -1332,7 +1332,11 @@ class GaudiGenerationMixin(GenerationMixin):
             inc = iter(incrementor(bucket_size, prompt_len))
         if bucket_size > 0:
             assert "position_ids" not in model_kwargs, "Untested path"
-
+        cur_len = prompt_len
+        token_idx = model_kwargs.get("token_idx", None)
+        if token_idx is not None:
+            # Update cur_len in case of static shapes
+            cur_len = token_idx.item()
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1427,6 +1431,7 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs = self._update_model_kwargs_for_generation(
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
+            cur_len = cur_len + 1
 
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:
@@ -1438,7 +1443,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     this_peer_finished = True
 
             # stop if we exceed the maximum length
-            if stopping_criteria(input_ids, scores, token_idx=token_idx):
+            if stopping_criteria(input_ids, scores, token_idx=cur_len):
                 this_peer_finished = True
 
             hb_profer.step()
@@ -1663,6 +1668,12 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
+        cur_len = input_ids.shape[-1]
+        token_idx = model_kwargs.get("token_idx", None)
+        if token_idx is not None:
+            # Update cur_len in case of static shapes
+            cur_len = token_idx.item()
+
         # auto-regressive generation
         while True:
             if lazy_mode:
@@ -1746,7 +1757,7 @@ class GaudiGenerationMixin(GenerationMixin):
             model_kwargs = self._update_model_kwargs_for_generation(
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
-
+            cur_len = cur_len + 1
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:
                 unfinished_sequences = unfinished_sequences.mul(
@@ -1758,7 +1769,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     this_peer_finished = True
 
             # stop if we exceed the maximum length
-            if stopping_criteria(input_ids, scores, token_idx=token_idx):
+            if stopping_criteria(input_ids, scores, token_idx=cur_len):
                 this_peer_finished = True
 
             hb_profer.step()
@@ -2939,7 +2950,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hb_profer.step()
 
-            if constrained_beam_scorer.is_done or stopping_criteria(input_ids, scores, token_idx=token_idx):
+            if constrained_beam_scorer.is_done or stopping_criteria(input_ids, scores, token_idx=cur_len):
                 if not synced_gpus:
                     break
                 else:
