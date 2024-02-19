@@ -23,24 +23,28 @@ import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
-import torch.nn.functional as F
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
-from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM, apply_rotary_pos_emb, repeat_kv
+from transformers.models.mixtral.modeling_mixtral import (
+    MixtralForCausalLM,
+    apply_rotary_pos_emb,
+    load_balancing_loss_func,
+    repeat_kv,
+)
 from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
 
 
-
-def gaudi_mixtral_attn_forward(
+def gaudi_mixtral_attention_forward(
     self,
     hidden_states: torch.Tensor,
     attention_mask: Optional[torch.Tensor] = None,
@@ -56,7 +60,6 @@ def gaudi_mixtral_attn_forward(
     The only differences are:
     - add new args token_idx
     """
-
     if "padding_mask" in kwargs:
         warnings.warn(
             "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
@@ -138,6 +141,55 @@ def gaudi_mixtral_attn_forward(
     return attn_output, attn_weights, past_key_value
 
 
+def gaudi_mixtral_sparse_moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    """
+    Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
+    The differences: change the expert mask to keep static shape during training.
+    """
+
+    batch_size, sequence_length, hidden_dim = hidden_states.shape
+    hidden_states = hidden_states.view(-1, hidden_dim)
+    # router_logits: (batch * sequence_length, n_experts)
+    router_logits = self.gate(hidden_states)
+
+    routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+    routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+    routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+    # we cast back to the input dtype
+    routing_weights = routing_weights.to(hidden_states.dtype)
+
+    final_hidden_states = torch.zeros(
+        (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+    )
+
+    # create an expert mask
+    experts_routing_weights_mask = torch.zeros(
+        (batch_size * sequence_length, self.num_experts), dtype=routing_weights.dtype, device=routing_weights.device
+    )
+    selected_experts = selected_experts.flatten()  # shape(batch_size*num_selects)
+    routing_weights = routing_weights.flatten()
+    token_indices = torch.arange(batch_size * sequence_length, device=selected_experts.device).repeat_interleave(
+        self.top_k
+    )
+    experts_routing_weights_mask[token_indices, selected_experts] = routing_weights
+
+    # Loop over all available experts in the model and perform the computation on each expert
+    for expert_idx in range(self.num_experts):
+        expert_layer = self.experts[expert_idx]
+        expert_mask = experts_routing_weights_mask[:, expert_idx].unsqueeze(-1)
+
+        if expert_mask.sum() == 0:
+            continue
+
+        # Index the correct hidden states and compute the expert hidden state for
+        # the current expert. We need to make sure to multiply the output hidden
+        current_hidden_states = expert_layer(hidden_states) * expert_mask
+
+        final_hidden_states.add_(current_hidden_states.to(hidden_states.dtype))
+
+    final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
+    return final_hidden_states, router_logits
+
 
 def gaudi_mixtral_decoder_layer_forward(
     self,
@@ -156,11 +208,6 @@ def gaudi_mixtral_decoder_layer_forward(
     The only differences are:
     - add new args token_idx
     """
-
-    if "padding_mask" in kwargs:
-        warnings.warn(
-            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-        )
 
     residual = hidden_states
 
@@ -196,53 +243,6 @@ def gaudi_mixtral_decoder_layer_forward(
         outputs += (router_logits,)
 
     return outputs
-
-def gaudi_mixtral_sparse_moe_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-    """
-    Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
-    The differences: change the expert mask to keep static shape during training.
-    """
-
-    batch_size, sequence_length, hidden_dim = hidden_states.shape
-    hidden_states = hidden_states.view(-1, hidden_dim)
-    # router_logits: (batch * sequence_length, n_experts)
-    router_logits = self.gate(hidden_states)
-
-    routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-    routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-    routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-    # we cast back to the input dtype
-    routing_weights = routing_weights.to(hidden_states.dtype)
-
-    final_hidden_states = torch.zeros(
-        (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
-    )
-
-    # create an expert mask
-    experts_routing_weights_mask = torch.zeros((batch_size * sequence_length, self.num_experts),
-            dtype=routing_weights.dtype, device=routing_weights.device)
-    selected_experts = selected_experts.flatten()  # shape(batch_size*num_selects)
-    routing_weights = routing_weights.flatten()
-    token_indices = torch.arange(batch_size * sequence_length,
-            device=selected_experts.device).repeat_interleave(self.top_k)
-    experts_routing_weights_mask[token_indices,selected_experts] = routing_weights
-
-    # Loop over all available experts in the model and perform the computation on each expert
-    for expert_idx in range(self.num_experts):
-        expert_layer = self.experts[expert_idx]
-        expert_mask = experts_routing_weights_mask[:,expert_idx].unsqueeze(-1)
-
-        if expert_mask.sum() == 0:
-            continue
-
-        # Index the correct hidden states and compute the expert hidden state for
-        # the current expert. We need to make sure to multiply the output hidden
-        current_hidden_states = expert_layer(hidden_states) *  expert_mask
-
-        final_hidden_states.add_(current_hidden_states.to(hidden_states.dtype))
-
-    final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
-    return final_hidden_states, router_logits
 
 
 def gaudi_mixtral_model_forward(
@@ -535,7 +535,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                     max_cache_length is not None
                     and attention_mask is not None
                     and cache_length + input_ids.shape[1] > max_cache_length
-                    ):
+                ):
                     attention_mask = attention_mask[:, -max_cache_length:]
             else:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
