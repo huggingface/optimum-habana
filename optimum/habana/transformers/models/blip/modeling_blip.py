@@ -20,12 +20,13 @@ def gaudi_BlipForConditionalGeneration_generate(
     The only differences are:
         - wrap hpu graph for each part
     """
-    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+    if generate_kwargs.get("hpu_graphs", True):
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-    if not hasattr(self.vision_model, "clear_cache"):
-        self.vision_model = wrap_in_hpu_graph(self.vision_model)
-    if not hasattr(self.text_decoder, "clear_cache"):
-        self.text_decoder = wrap_in_hpu_graph(self.text_decoder)
+        if not hasattr(self.vision_model, "clear_cache"):
+            self.vision_model = wrap_in_hpu_graph(self.vision_model)
+        if not hasattr(self.text_decoder, "clear_cache"):
+            self.text_decoder = wrap_in_hpu_graph(self.text_decoder)
 
     batch_size = pixel_values.shape[0]
     vision_outputs = self.vision_model(pixel_values=pixel_values)
@@ -73,14 +74,15 @@ def gaudi_BlipForQuestionAnswering_generate(
         - wrap hpu graph for each part
         - torch.full add dtype=torch.int64, or else the default type is torch.float32. lead to coredump in embeding layer
     """
-    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+    if generate_kwargs.get("hpu_graphs", True):
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-    if not hasattr(self.vision_model, "clear_cache"):
-        self.vision_model = wrap_in_hpu_graph(self.vision_model)
-    if not hasattr(self.text_encoder, "clear_cache"):
-        self.text_encoder = wrap_in_hpu_graph(self.text_encoder)
-    if not hasattr(self.text_decoder, "clear_cache"):
-        self.text_decoder = wrap_in_hpu_graph(self.text_decoder)
+        if not hasattr(self.vision_model, "clear_cache"):
+            self.vision_model = wrap_in_hpu_graph(self.vision_model)
+        if not hasattr(self.text_encoder, "clear_cache"):
+            self.text_encoder = wrap_in_hpu_graph(self.text_encoder)
+        if not hasattr(self.text_decoder, "clear_cache"):
+            self.text_decoder = wrap_in_hpu_graph(self.text_decoder)
 
     vision_outputs = self.vision_model(pixel_values=pixel_values)
 
