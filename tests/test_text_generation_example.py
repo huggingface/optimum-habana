@@ -72,7 +72,6 @@ def _test_text_generation(
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
 
-    deepspeed = deepspeed and not torch_compile
     if deepspeed:
         command += [
             f"{path_to_example_dir / 'gaudi_spawn.py'}",
