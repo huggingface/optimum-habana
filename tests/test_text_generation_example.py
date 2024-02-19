@@ -71,6 +71,7 @@ def _test_text_generation(
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
+    env_variables = os.environ.copy()
 
     if deepspeed:
         command += [
@@ -94,6 +95,8 @@ def _test_text_generation(
             "--trim_logits",
             "--torch_compile",
         ]
+        env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
+        env_variables["PT_HPU_LAZY_MODE"] = "0"
     else:
         command += [
             "--use_hpu_graphs",
@@ -111,7 +114,7 @@ def _test_text_generation(
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
         command = [x for y in command for x in re.split(pattern, y) if x]
 
-        proc = subprocess.run(command)
+        proc = subprocess.run(command, env=env_variables)
 
         # Ensure the run finished without any issue
         # Use try-except to avoid logging the token if used
@@ -142,15 +145,10 @@ def test_text_generation_deepspeed(model_name: str, baseline: float, token: str)
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
-    os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
-    os.environ["PT_HPU_LAZY_MODE"] = "0"
-    os.environ["WORLD_SIZE"] = "0"
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
-    os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
-    os.environ["PT_HPU_LAZY_MODE"] = "0"
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
