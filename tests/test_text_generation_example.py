@@ -34,7 +34,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 12.468247401430999),
         ],
         "torch_compile_distributed": [
-            ("meta-llama/Llama-2-7b-hf", 8.95169640119334),
+            ("meta-llama/Llama-2-7b-hf", 20.178927030275947),
         ],
     }
 else:
