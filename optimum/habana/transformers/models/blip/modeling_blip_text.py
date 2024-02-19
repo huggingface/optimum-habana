@@ -28,7 +28,7 @@ def gaudi_BlipTextSelfAttention_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor]:
     """
-    Copied from BlipTextSelfAttention.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/blip/modeling_blip_text.py#L143
+    Copied from BlipTextSelfAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L143
     The only differences are:
         - add token_idx
     """
@@ -121,7 +121,7 @@ def gaudi_BlipTextAttention_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor]:
     """
-    Copied from BlipTextAttention.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/blip/modeling_blip_text.py#L265
+    Copied from BlipTextAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L265
     The only differences are:
         - add token_idx
     """
@@ -152,7 +152,7 @@ def gaudi_BlipTextLayer_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor]:
     """
-    Copied from BlipTextLayer.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/blip/modeling_blip_text.py#L333
+    Copied from BlipTextLayer.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L333
     The only differences are:
         - add token_idx
     """
@@ -206,7 +206,7 @@ def gaudi_BlipTextEncoder_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
     """
-    Copied from BlipTextEncoder.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/blip/modeling_blip_text.py#L391
+    Copied from BlipTextEncoder.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L391
     The only differences are:
         - add token_idx
     """
@@ -231,20 +231,15 @@ def gaudi_BlipTextEncoder_forward(
         past_key_value = past_key_values[i] if past_key_values is not None else None
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return module(*inputs, past_key_value, output_attentions)
-
-                return custom_forward
-
-            layer_outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(layer_module),
+            layer_outputs = self._gradient_checkpointing_func(
+                layer_module.__call__,
                 hidden_states,
                 attention_mask,
                 layer_head_mask,
                 encoder_hidden_states,
                 encoder_attention_mask,
+                past_key_value,
+                output_attentions,
             )
         else:
             layer_outputs = layer_module(
@@ -308,12 +303,10 @@ def gaudi_BlipTextModel_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
     """
-    Copied from BlipTextModel.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/blip/modeling_blip_text.py#L671
+    Copied from BlipTextModel.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L666
     The only differences are:
         - add token_idx
-        - fix format error, use isinstance instead of type()==xx
     """
-
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
         output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -441,7 +434,7 @@ def gaudi_BlipTextLMHead_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
     """
-    Copied from BlipTextLMHeadModel.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/blip/modeling_blip_text.py#L825
+    Copied from BlipTextLMHeadModel.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L820
     The only differences are:
         - add token_idx
     """
@@ -500,9 +493,9 @@ def gaudi_BlipTextLMHead_prepare_inputs_for_generation(
     self, input_ids, past_key_values=None, attention_mask=None, token_idx=None, **model_kwargs
 ):
     """
-    Copied from BlipTextLMHeadModel.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/blip/modeling_blip_text.py#L915
+    Copied from BlipTextLMHeadModel.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L910
     The only differences are:
-        - add token_idx support
+        - add token_idx support, add position_ids
     """
     input_shape = input_ids.shape
     # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
@@ -514,7 +507,16 @@ def gaudi_BlipTextLMHead_prepare_inputs_for_generation(
         if token_idx is not None:
             input_ids = torch.index_select(input_ids, 1, token_idx - 1)
         else:
-            input_ids = input_ids[:, -1:]
+            past_length = past_key_values[0][0].shape[2]
+
+            # Some generation methods already pass only the last input ID
+            if input_ids.shape[1] > past_length:
+                remove_prefix_length = past_length
+            else:
+                # Default to old behavior: keep only final ID
+                remove_prefix_length = input_ids.shape[1] - 1
+
+            input_ids = input_ids[:, remove_prefix_length:]
 
     position_ids = None
 
