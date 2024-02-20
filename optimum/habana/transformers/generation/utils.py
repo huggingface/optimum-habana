@@ -654,7 +654,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         self._validate_generated_length(
             generation_config,
-            model_kwargs["token_idx"] if "token_idx" in model_kwargs else input_ids_length,
+            model_kwargs["token_idx"].item() if "token_idx" in model_kwargs else input_ids_length,
             has_default_max_length,
         )
 
