@@ -98,12 +98,9 @@ def setup_distributed(args):
 
 def setup_quantization(args, model):
     import habana_frameworks.torch.core as htcore
-    from habana_frameworks.torch.core.quantization import _check_params_as_const, _mark_params_as_const
     from habana_frameworks.torch.hpu import hpu
 
     print("Initializing inference with quantization")
-    _mark_params_as_const(model)
-    _check_params_as_const(model)
     if not args.quant_config:
         hpu.enable_quantization()
     htcore.hpu_initialize(model)
@@ -368,6 +365,10 @@ def initialize_model(args, logger):
         "revision": args.model_revision,
         "token": args.token,
     }
+    if args.disk_offload:
+        model_kwargs["device_map"] = "auto"
+        model_kwargs["offload_folder"] = "/tmp/offload_folder/"
+
     model = (
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
@@ -375,6 +376,14 @@ def initialize_model(args, logger):
     )
     tokenizer, model = setup_tokenizer(args, model)
     generation_config = setup_generation_config(args, model, tokenizer)
+
+    if args.const_serialization_path:
+        import uuid
+        args.const_serialization_path = os.path.join(args.const_serialization_path  + uuid.uuid4().hex)
+        os.makedirs(args.const_serialization_path)
+        from habana_frameworks.torch.hpu import enable_const_section_serialization
+        print("Serializing const params to {}".format(args.const_serialization_path))
+        enable_const_section_serialization(args.const_serialization_path, False, True)
     if args.fp8:
         model = setup_quantization(args, model)
     init_end = time.perf_counter()
