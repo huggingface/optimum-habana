@@ -1,2 +1,5 @@
 datasets
 peft
+transformers_stream_generator
+einops
+tiktoken

@@ -296,6 +296,7 @@ def setup_tokenizer(args, model):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
+        "trust_remote_code": args.trust_remote_code,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True
@@ -314,6 +315,8 @@ def setup_tokenizer(args, model):
         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+    elif model.config.model_type == "qwen":
+        tokenizer.pad_token = '<|endoftext|>'
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -371,6 +374,7 @@ def initialize_model(args, logger):
     model_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
+        "trust_remote_code": args.trust_remote_code,
     }
     model = (
         setup_model(args, model_dtype, model_kwargs, logger)

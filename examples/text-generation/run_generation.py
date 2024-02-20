@@ -161,6 +161,11 @@ def setup_parser(parser):
         "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
     )
     parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Allow custom models, which are defined on the Hub in their own modeling files",
+    )
+    parser.add_argument(
         "--model_revision",
         default="main",
         type=str,
