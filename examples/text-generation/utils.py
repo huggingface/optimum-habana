@@ -244,6 +244,10 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.prep_model(model)
+
+    if args.torch_compile and model.config.model_type == "llama":
+        model = get_torch_compiled_model(model)
+
     return model
 
 

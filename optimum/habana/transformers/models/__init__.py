@@ -10,6 +10,17 @@ from .bart import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
 )
+from .blip import (
+    gaudi_BlipForConditionalGeneration_generate,
+    gaudi_BlipForQuestionAnswering_generate,
+    gaudi_BlipTextAttention_forward,
+    gaudi_BlipTextEncoder_forward,
+    gaudi_BlipTextLayer_forward,
+    gaudi_BlipTextLMHead_forward,
+    gaudi_BlipTextLMHead_prepare_inputs_for_generation,
+    gaudi_BlipTextModel_forward,
+    gaudi_BlipTextSelfAttention_forward,
+)
 from .bloom import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -67,7 +78,7 @@ from .llama import (
 )
 from .mistral import (
     GaudiMistralForCausalLM,
-    gaudi_mistral_attn_forward,
+    gaudi_mistral_attention_forward,
     gaudi_mistral_decoder_layer_forward,
     gaudi_mistral_model_forward,
 )

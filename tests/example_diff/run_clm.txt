@@ -67,11 +67,15 @@
 ---
 > 
 >     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
-250c267
+228a246,248
+>     save_last_ckpt: bool = field(
+>         default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
+>     )
+250c270
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-288a306,312
+288a309,315
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
@@ -79,26 +83,26 @@
 >         use_auth_token=True if model_args.use_auth_token else None,
 >     )
 > 
-289a314
+289a317
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-291,292c316,318
+291,292c319,321
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-403a430
+403a433
 >         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
-499a527
+499a530
 > 
-597c625
+597c628
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-598a627
+598a630
 >         gaudi_config=gaudi_config,
-605,608c634,635
+605,608c637,638
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_tpu_available()
@@ -106,7 +110,12 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-623,626c650,656
+619c649,650
+<         trainer.save_model()  # Saves the tokenizer too for easy upload
+---
+>         if data_args.save_last_ckpt:
+>             trainer.save_model()  # Saves the tokenizer too for easy upload
+623,626c654,660
 <         max_train_samples = (
 <             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 <         )
@@ -119,9 +128,9 @@
 >                 data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-635d664
+635d668
 < 
-638,639c667,672
+638,639c671,676
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 ---
@@ -131,7 +140,7 @@
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 > 
-662,666d694
+662,666d698
 < 
 < 
 < def _mp_fn(index):

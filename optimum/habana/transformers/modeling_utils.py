@@ -15,7 +15,13 @@
 
 import transformers
 
-from .generation import GaudiGenerationConfig, GaudiGenerationMixin
+from .generation import (
+    GaudiGenerationConfig,
+    GaudiGenerationMixin,
+    gaudi_MaxLengthCriteria_call,
+    gaudi_MaxNewTokensCriteria_call,
+    gaudi_StoppingCriteriaList_call,
+)
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -51,6 +57,15 @@ from .models import (
     gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
+    gaudi_BlipForConditionalGeneration_generate,
+    gaudi_BlipForQuestionAnswering_generate,
+    gaudi_BlipTextAttention_forward,
+    gaudi_BlipTextEncoder_forward,
+    gaudi_BlipTextLayer_forward,
+    gaudi_BlipTextLMHead_forward,
+    gaudi_BlipTextLMHead_prepare_inputs_for_generation,
+    gaudi_BlipTextModel_forward,
+    gaudi_BlipTextSelfAttention_forward,
     gaudi_bloom_attention_forward,
     gaudi_bloom_block_forward,
     gaudi_bloom_convert_to_bloom_cache,
@@ -77,7 +92,7 @@ from .models import (
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
-    gaudi_mistral_attn_forward,
+    gaudi_mistral_attention_forward,
     gaudi_mistral_decoder_layer_forward,
     gaudi_mistral_model_forward,
     gaudi_mpt_attention_forward,
@@ -140,7 +155,6 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._prepare_decoder_input_ids_for_generation = (
         GaudiGenerationMixin._prepare_decoder_input_ids_for_generation
     )
-    transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
     transformers.generation.GenerationMixin._prepare_decoder_attention_mask = (
         GaudiGenerationMixin._prepare_decoder_attention_mask
     )
@@ -153,6 +167,9 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
     transformers.generation.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
+    transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
+    transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
+    transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
 
     # Optimization for BLOOM generation on Gaudi
     transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
@@ -270,6 +287,19 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for mistral on Gaudi
     transformers.models.mistral.modeling_mistral.MistralForCausalLM = GaudiMistralForCausalLM
-    transformers.models.mistral.modeling_mistral.MistralModel.forward = gaudi_mistral_model_forward
-    transformers.models.mistral.modeling_mistral.MistralAttention.forward = gaudi_mistral_attn_forward
+    transformers.models.mistral.modeling_mistral.MistralAttention.forward = gaudi_mistral_attention_forward
     transformers.models.mistral.modeling_mistral.MistralDecoderLayer.forward = gaudi_mistral_decoder_layer_forward
+    transformers.models.mistral.modeling_mistral.MistralModel.forward = gaudi_mistral_model_forward
+
+    # Optimization for blip Text model on Gaudi
+    transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
+    transformers.models.blip.modeling_blip_text.BlipTextLMHeadModel.forward = gaudi_BlipTextLMHead_forward
+    transformers.models.blip.modeling_blip_text.BlipTextLMHeadModel.prepare_inputs_for_generation = (
+        gaudi_BlipTextLMHead_prepare_inputs_for_generation
+    )
+    transformers.models.blip.modeling_blip_text.BlipTextEncoder.forward = gaudi_BlipTextEncoder_forward
+    transformers.models.blip.modeling_blip_text.BlipTextLayer.forward = gaudi_BlipTextLayer_forward
+    transformers.models.blip.modeling_blip_text.BlipTextAttention.forward = gaudi_BlipTextAttention_forward
+    transformers.models.blip.modeling_blip_text.BlipTextSelfAttention.forward = gaudi_BlipTextSelfAttention_forward
+    transformers.models.blip.BlipForQuestionAnswering.generate = gaudi_BlipForQuestionAnswering_generate
+    transformers.models.blip.BlipForConditionalGeneration.generate = gaudi_BlipForConditionalGeneration_generate
