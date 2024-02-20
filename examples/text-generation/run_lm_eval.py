@@ -176,6 +176,9 @@ def main():
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.finish_measurements(model)
+    if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
+        import shutil
+        shutil.rmtree(args.const_serialization_path)
 
 
 if __name__ == "__main__":
