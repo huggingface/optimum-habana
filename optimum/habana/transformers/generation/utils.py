@@ -550,6 +550,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 inputs_tensor, generation_config.pad_token_id, generation_config.eos_token_id
             )
 
+        if (self.config.model_type == "bart"):
+            assert generation_config.num_beams == 1, "For BART models make sure that `num_beams` is set to 1"
+
         is_greedy_or_beam_and_bucket = generation_config.bucket_size > 0 and (
             self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
             or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
