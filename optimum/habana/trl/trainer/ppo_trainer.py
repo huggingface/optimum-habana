@@ -616,7 +616,6 @@ class GaudiPPOTrainer(PPOTrainer):
 
             model = self.accelerator.unwrap_model(self.model)
             if not hasattr(model, "wrap_train_in_graph"):
-                model.eval()
                 model = ht.hpu.wrap_in_hpu_graph(model)
                 setattr(model, "wrap_train_in_graph", model.forward)
             else:
@@ -924,7 +923,6 @@ class GaudiPPOTrainer(PPOTrainer):
                 self.accelerator.backward(loss)
                 _recorded_graph.capture_end()
         else:
-            ht.core.mark_step()
             _recorded_graph.replay()
         if self.config.max_grad_norm is not None:
             if self.accelerator.sync_gradients:
