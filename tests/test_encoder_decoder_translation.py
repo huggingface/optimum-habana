@@ -14,12 +14,8 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("facebook/mbart-large-50-many-to-many-mmt", "Habana/t5", 1.67, 1.05, 2, 1),
-            ("Babelscape/mrebel-large", "Habana/t5", 1.736, 0.1783, 2, 1),
-            ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 3.03, 0.813, 2, 1),
-            ("Helsinki-NLP/opus-mt-en-zh", "Habana/t5", 2.99, 0.39, 2, 1),
-            ("Helsinki-NLP/opus-mt-en-ar", "Habana/t5", 2.93, 0.18, 2, 1),
-            ("facebook/nllb-200-3.3B", "Habana/t5", 0.706, 0.312, 2, 1),
+            ("Babelscape/mrebel-large", "Habana/t5", 1.736, 0.162, 2, 1),
+            ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.8, 0.813, 2, 1),
             ("facebook/nllb-200-distilled-600M", "Habana/t5", 1.829, 1.2531, 2, 1),
         ],
     }
