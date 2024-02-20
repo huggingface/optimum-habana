@@ -74,6 +74,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mpt",
     "t5",
     "mistral",
+    "blip_text_model",
 ]
 
 
@@ -612,6 +613,8 @@ class GaudiGenerationMixin(GenerationMixin):
                     # token_idx is the current index in the generation process, it is incremented each time a new token is generated
                     token_idx = inputs_tensor.shape[-1]
                     model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
+                    if generation_config.max_new_tokens is None:
+                        generation_config.max_new_tokens = generation_config.max_length - token_idx
                     inputs_tensor = torch.nn.functional.pad(
                         inputs_tensor, (0, generation_config.max_new_tokens), value=generation_config.pad_token_id
                     )
