@@ -36,7 +36,8 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration
+from accelerate.utils import ProjectConfiguration, DistributedDataParallelKwargs
+
 from datasets import load_dataset
 from diffusers import (
     AutoencoderKL,
@@ -57,7 +58,7 @@ from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiEulerDiscreteScheduler, GaudiStableDiffusionXLPipeline
 from optimum.habana.utils import set_seed, HabanaProfile
-
+from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 
 if is_wandb_available():
     import wandb
@@ -894,6 +895,7 @@ def main(args):
         }
 
     # DataLoaders creation:
+
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
@@ -969,30 +971,38 @@ def main(args):
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    unet.to("hpu")
+    unet = unet.to("hpu")
     # Prepare everything with our `accelerator`.
     unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         unet, optimizer, train_dataloader, lr_scheduler
     )
-    if args.use_hpu_graphs_for_training:
-        unet = htcore.hpu.ModuleCacher(max_graphs=10)(model=unet, inplace=True)
+
+
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
-
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune-sdxl", config=vars(args))
 
-    def unwrap_model(model):
+    def unwrap_model(model, training=False):
         model = accelerator.unwrap_model(model)
         model = model._orig_mod if is_compiled_module(model) else model
-        return model
+        if not training:
+            return model
+        else:
+            if accelerator.distributed_type == GaudiDistributedType.MULTI_HPU:
+                kwargs = {}
+                kwargs["gradient_as_bucket_view"] = True
+                accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)
+            if args.use_hpu_graphs_for_training:
+                htcore.hpu.ModuleCacher()(model=model, inplace=True)
 
+    unwrap_model(model=unet, training=True)
     hb_profiler = HabanaProfile(warmup=args.profiling_warmup_steps, active=args.profiling_steps, record_shapes=False)
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
