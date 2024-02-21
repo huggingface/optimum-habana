@@ -254,16 +254,7 @@ def setup_parser(parser):
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
-    parser.add_argument(
-        '--const_serialization_path',
-        '--csp',
-        type=str,
-        help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.")
-    parser.add_argument(
-        "--disk_offload",
-        action="store_true",
-        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
-    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -284,6 +275,13 @@ def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
     model, tokenizer, generation_config = initialize_model(args, logger)
+
+    # Enable hpu dynamic shape
+    try:
+        import habana_frameworks.torch.hpu as hthpu
+        hthpu.enable_dynamic_shape()
+    except ImportError:
+        print("habana_frameworks could not be loaded")
 
     use_lazy_mode = True
     if args.torch_compile and model.config.model_type == "llama":
@@ -369,7 +367,10 @@ def main():
                     truncation=True,
                 )
             else:
-                input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+                if args.batch_size == 1:
+                    input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt")
+                else:
+                    input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
 
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
@@ -629,9 +630,6 @@ def main():
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.finish_measurements(model)
-    if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
-        import shutil
-        shutil.rmtree(args.const_serialization_path)
 
 
 if __name__ == "__main__":
