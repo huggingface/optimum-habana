@@ -17,7 +17,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """ PyTorch Mistral model."""
 import math
 import warnings
@@ -40,7 +39,7 @@ from ...modeling_attn_mask_utils import (
 logger = logging.get_logger(__name__)
 
 
-def gaudi_mistral_attn_forward(
+def gaudi_mistral_attention_forward(
     self,
     hidden_states: torch.Tensor,
     attention_mask: Optional[torch.Tensor] = None,
