@@ -2,7 +2,7 @@
     "method": "HOOKS",
     "mode": "QUANTIZE",
     "observer": "maxabs",
-    "scale_method": "ACT_MAXABS_HW_WEIGHTS_PCS_MAXABS_POW2",
+    "scale_method": "ACT_MAXABS_POW2_WEIGHTS_PCS_OPT_POW2",
     "whitelist": {"types": [], "names":  []},
     "blacklist": {"types": [], "names":  []},
     "dump_stats_path": "./hqt_output/measure",
