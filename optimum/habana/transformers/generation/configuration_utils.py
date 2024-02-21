@@ -27,6 +27,8 @@ class GaudiGenerationConfig(GenerationConfig):
         If negative (default=-1) pad to max if `static_shapes` is set. Else start with
         `shape = bucket_size * ceil(prompt_len/bucket_size)` and then grow space by `bucket_size` when needed.
         Only active if `static_shapes` is used. Can't be used with `reuse_cache`.
+    bucket_internal (`bool`, *optional*):
+        Split kv sequence into buckets in decode phase. It improves throughput when max_new_tokens is large.
     kv_cache_fp8 (`bool`, *optional*):
         Store kv-cache in float8 when kv-cache is used
     use_flash_attention (`bool`, *optional*):
