@@ -169,6 +169,7 @@ def gaudi_mixtral_sparse_moe_block_forward(self, hidden_states: torch.Tensor) ->
     # Compute the top-k routing weights based on the expert mask
     top_k_routing_weights = (expert_mask.transpose(1, 2) * routing_weights).sum(2).unsqueeze(-1)
 
+    # Loop over all available experts in the model and perform the computation on each expert
     for expert_idx in range(self.num_experts):
         expert_layer = self.experts[expert_idx]
         current_hidden_states = expert_layer(hidden_states) * top_k_routing_weights[expert_idx]
