@@ -6,6 +6,9 @@ import torch
 from datasets import Dataset, load_dataset
 from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
+from transformers.integrations.deepspeed import (
+    is_deepspeed_available,
+)
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiDPOTrainer
@@ -84,6 +87,7 @@ class ScriptArguments:
     seed: Optional[int] = field(
         default=0, metadata={"help": "Random seed that will be set at the beginning of training."}
     )
+    deepspeed: Optional[str] = field(default=None, metadata={"help": "the deepspeed json config file"})
 
 
 def get_stack_exchange_paired(
@@ -156,18 +160,26 @@ if __name__ == "__main__":
         run_name="dpo_llama2",
         use_habana=True,
         use_lazy_mode=True,
-        use_hpu_graphs_for_training=not script_args.gradient_checkpointing,
-        use_hpu_graphs_for_inference=True,
+        use_hpu_graphs_for_training=not script_args.gradient_checkpointing and (not script_args.deepspeed),
+        use_hpu_graphs_for_inference=not script_args.deepspeed,
         seed=script_args.seed,
+        deepspeed=script_args.deepspeed,
     )
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
+    low_cpu_mem_usage = True
+    if is_deepspeed_available():
+        from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
+
+        if is_deepspeed_zero3_enabled():
+            low_cpu_mem_usage = False
+
     # 2. load a pretrained model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
-        low_cpu_mem_usage=True,
+        low_cpu_mem_usage=low_cpu_mem_usage,
         torch_dtype=torch.bfloat16,
     )
     model.config.use_cache = False
@@ -180,7 +192,7 @@ if __name__ == "__main__":
 
     model_ref = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
-        low_cpu_mem_usage=True,
+        low_cpu_mem_usage=low_cpu_mem_usage,
         torch_dtype=torch.bfloat16,
     )
     model_ref.config.use_cache = False

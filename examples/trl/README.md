@@ -40,6 +40,11 @@ There are two main steps to the DPO training process:
         --use_habana \
         --use_lazy_mode
     ```
+    To merge the adaptors to get the final sft merged checkpoint, we can use the `merge_peft_adapter.py` helper script that comes with TRL:
+    ```
+    python merge_peft_adapter.py --base_model_name="meta-llama/Llama-2-7b-hf" --adapter_model_name="sft" --output_name="sft/final_merged_checkpoint"
+    ```
+
 2. Run the DPO trainer using the model saved by the previous step:
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi dpo.py \
@@ -103,6 +108,10 @@ There are three main steps to the PPO training process:
         --report_to=none \
         --use_habana \
         --use_lazy_mode
+    ```
+    To merge the adaptors to get the final sft merged checkpoint, we can use the `merge_peft_adapter.py` helper script that comes with TRL:
+    ```
+    python merge_peft_adapter.py --base_model_name="meta-llama/Llama-2-7b-hf" --adapter_model_name="sft" --output_name="sft/final_merged_checkpoint"
     ```
 2. Reward modeling using dialog pairs from the SE dataset on the llama-v2-7b-se to create llama-v2-7b-se-rm
     ```
