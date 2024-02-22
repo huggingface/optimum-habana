@@ -211,15 +211,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 model_kwargs["attention_mask"] = attention_mask
         else:
             # update decoder attention mask
-            if "attention_mask" in model_kwargs:
-                attention_mask = model_kwargs["attention_mask"]
-                if token_idx is not None:
-                    attention_mask.index_fill_(1, token_idx, 1)
-                else:
-                    attention_mask = torch.cat(
-                        [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
-                    )
-                model_kwargs["attention_mask"] = attention_mask
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
                 if token_idx is not None:
@@ -1391,7 +1382,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         bucket_size = model_kwargs.get("bucket_size", -1)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
-        bucket_internal = model_kwargs["bucket_internal"]
+        bucket_internal = model_kwargs.get("bucket_internal", False)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
         prompt_len = input_ids.shape[-1]
