@@ -141,7 +141,9 @@ def gaudi_mixtral_attention_forward(
     return attn_output, attn_weights, past_key_value
 
 
-def gaudi_mixtral_sparse_moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+def gaudi_mixtral_sparse_moe_block_forward(
+    self, hidden_states: torch.Tensor, is_hpu_graph: Optional[bool] = False
+) -> torch.Tensor:
     """
     Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
     The differences: change the expert mask to keep static shape during training.
@@ -172,7 +174,12 @@ def gaudi_mixtral_sparse_moe_block_forward(self, hidden_states: torch.Tensor) ->
     # Loop over all available experts in the model and perform the computation on each expert
     for expert_idx in range(self.num_experts):
         expert_layer = self.experts[expert_idx]
-        current_hidden_states = expert_layer(hidden_states) * top_k_routing_weights[expert_idx]
+
+        if not is_hpu_graph and top_k_routing_weights[expert_idx].sum() == 0:
+            continue
+        else:
+            current_hidden_states = expert_layer(hidden_states) * top_k_routing_weights[expert_idx]
+
         final_hidden_states.add_(current_hidden_states.to(hidden_states.dtype))
 
     final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
@@ -189,6 +196,7 @@ def gaudi_mixtral_decoder_layer_forward(
     output_router_logits: Optional[bool] = False,
     use_cache: Optional[bool] = False,
     token_idx: Optional[torch.Tensor] = None,
+    is_hpu_graph: Optional[bool] = False,
     **kwargs,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """
@@ -216,7 +224,7 @@ def gaudi_mixtral_decoder_layer_forward(
     # Fully Connected
     residual = hidden_states
     hidden_states = self.post_attention_layernorm(hidden_states)
-    hidden_states, router_logits = self.block_sparse_moe(hidden_states)
+    hidden_states, router_logits = self.block_sparse_moe(hidden_states, is_hpu_graph)
     hidden_states = residual + hidden_states
 
     outputs = (hidden_states,)
@@ -246,6 +254,7 @@ def gaudi_mixtral_model_forward(
     output_router_logits: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
+    is_hpu_graph: Optional[bool] = False,
 ) -> Union[Tuple, MoeModelOutputWithPast]:
     """
     Copied from MixtralModel.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/mixtral/modeling_mixtral.py
@@ -354,6 +363,8 @@ def gaudi_mixtral_model_forward(
                 output_attentions,
                 output_router_logits,
                 use_cache,
+                token_idx,
+                is_hpu_graph,
             )
         else:
             layer_outputs = decoder_layer(
@@ -365,6 +376,7 @@ def gaudi_mixtral_model_forward(
                 output_router_logits=output_router_logits,
                 use_cache=use_cache,
                 token_idx=token_idx,
+                is_hpu_graph=is_hpu_graph,
             )
 
         hidden_states = layer_outputs[0]
@@ -435,6 +447,9 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # Hacky way to detect if we are running HPU graphs
+        is_hpu_graph = getattr(self, "clear_cache", None) is not None
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
@@ -448,6 +463,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             output_router_logits=output_router_logits,
             return_dict=return_dict,
             token_idx=token_idx,
+            is_hpu_graph=is_hpu_graph,
         )
 
         hidden_states = outputs[0]
