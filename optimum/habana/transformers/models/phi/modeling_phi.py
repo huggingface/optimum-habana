@@ -244,20 +244,22 @@ def gaudi_phi_model_forward(
     else:
         raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-    past_key_values_length = 0
-
     if self.gradient_checkpointing and self.training:
         if use_cache:
             logger.warning_once(
                 "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
             )
             use_cache = False
-
-    if use_cache:
-        use_legacy_cache = not isinstance(past_key_values, Cache)
-        if use_legacy_cache:
-            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-        past_key_values_length = past_key_values.get_usable_length(seq_length)
+    
+    past_key_values_length = 0
+    use_legacy_cache = True
+    use_new_cache = False
+    if past_key_values is not None:
+        if use_cache and use_new_cache:
+            use_legacy_cache = not isinstance(past_key_values, Cache)
+            if use_legacy_cache:
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            past_key_values_length = past_key_values.get_usable_length(seq_length)
 
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -328,7 +330,12 @@ def gaudi_phi_model_forward(
 
     next_cache = None
     if use_cache:
-        next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
+        next_cache = (
+            next_decoder_cache
+            if not use_new_cache
+            else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
+        )
+
     if not return_dict:
         return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
     return BaseModelOutputWithPast(
