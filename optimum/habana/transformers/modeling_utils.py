@@ -40,6 +40,7 @@ from .models import (
     GaudiLlamaForCausalLM,
     GaudiLlamaMLP,
     GaudiLlamaModel,
+    GaudiPhiForCausalLM,
     GaudiMistralForCausalLM,
     GaudiMptForCausalLM,
     GaudiMptModel,
@@ -95,6 +96,9 @@ from .models import (
     gaudi_mistral_attention_forward,
     gaudi_mistral_decoder_layer_forward,
     gaudi_mistral_model_forward,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
     gaudi_mpt_attention_forward,
     gaudi_mpt_block_forward,
     gaudi_opt_attention_forward,
@@ -290,6 +294,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.mistral.modeling_mistral.MistralAttention.forward = gaudi_mistral_attention_forward
     transformers.models.mistral.modeling_mistral.MistralDecoderLayer.forward = gaudi_mistral_decoder_layer_forward
     transformers.models.mistral.modeling_mistral.MistralModel.forward = gaudi_mistral_model_forward
+
+    # Optimization for phi on Gaudi
+    transformers.models.phi.modeling_phi.PhiForCausalLM = GaudiPhiForCausalLM
+    transformers.models.phi.modeling_phi.PhiAttention.forward = gaudi_phi_attention_forward
+    transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
+    transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward

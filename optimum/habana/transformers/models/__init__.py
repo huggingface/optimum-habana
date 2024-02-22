@@ -114,3 +114,9 @@ from .wav2vec2 import (
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
 )
+from .phi import (
+    GaudiPhiForCausalLM,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
+)
