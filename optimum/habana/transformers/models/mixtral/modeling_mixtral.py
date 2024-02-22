@@ -162,29 +162,16 @@ def gaudi_mixtral_sparse_moe_block_forward(self, hidden_states: torch.Tensor) ->
         (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
     )
 
-    # create an expert mask
-    experts_routing_weights_mask = torch.zeros(
-        (batch_size * sequence_length, self.num_experts), dtype=routing_weights.dtype, device=routing_weights.device
-    )
-    selected_experts = selected_experts.flatten()  # shape(batch_size*num_selects)
-    routing_weights = routing_weights.flatten()
-    token_indices = torch.arange(batch_size * sequence_length, device=selected_experts.device).repeat_interleave(
-        self.top_k
-    )
-    experts_routing_weights_mask[token_indices, selected_experts] = routing_weights
+    # One hot encode the selected experts to create an expert mask
+    # this will be used to easily index which expert is going to be sollicitated
+    expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
 
-    # Loop over all available experts in the model and perform the computation on each expert
+    # Compute the top-k routing weights based on the expert mask
+    top_k_routing_weights = (expert_mask.transpose(1, 2) * routing_weights).sum(2).unsqueeze(-1)
+
     for expert_idx in range(self.num_experts):
         expert_layer = self.experts[expert_idx]
-        expert_mask = experts_routing_weights_mask[:, expert_idx].unsqueeze(-1)
-
-        if expert_mask.sum() == 0:
-            continue
-
-        # Index the correct hidden states and compute the expert hidden state for
-        # the current expert. We need to make sure to multiply the output hidden
-        current_hidden_states = expert_layer(hidden_states) * expert_mask
-
+        current_hidden_states = expert_layer(hidden_states) * top_k_routing_weights[expert_idx]
         final_hidden_states.add_(current_hidden_states.to(hidden_states.dtype))
 
     final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
