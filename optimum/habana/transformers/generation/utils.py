@@ -553,7 +553,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
-        model_kwargs["bucket_internal"] = generation_config.bucket_internal
+        model_kwargs[""] = generation_config.
         model_kwargs["reduce_recompile"] = (
             generation_config.reduce_recompile if generation_config.reduce_recompile is not None else False
         )
@@ -561,12 +561,12 @@ class GaudiGenerationMixin(GenerationMixin):
             assert generation_config.bucket_size
         if generation_config.reuse_cache:
             assert self.config.model_type in ["llama"], "reuse_cache only supported by llama at the moment"
-            if not generation_config.bucket_internal:
+            if not generation_config.:
                 assert (
                     generation_config.bucket_size <= 0
-                ), "please set bucket_internal along with reuse_cache and bucket_size"
+                ), "please set  along with reuse_cache and bucket_size"
             else:
-                assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
+                assert generation_config.bucket_size >= 0, "please set valid bucket_size to use "
 
         if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
@@ -1337,12 +1337,8 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
-
         bucket_size = model_kwargs.get("bucket_size", -1)
-<<<<<<< HEAD
-=======
         bucket_internal = model_kwargs["bucket_internal"]
->>>>>>> bd18f40 (Further fix merge conflicts)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
         bucket_internal = model_kwargs.get("bucket_internal", None)
