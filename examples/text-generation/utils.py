@@ -244,6 +244,10 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.prep_model(model)
+
+    if args.torch_compile and model.config.model_type == "llama":
+        model = get_torch_compiled_model(model)
+
     return model
 
 
@@ -332,6 +336,7 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.use_cache = args.use_kv_cache
     generation_config.static_shapes = is_optimized
     generation_config.bucket_size = args.bucket_size if is_optimized else -1
+    generation_config.bucket_internal = args.bucket_internal
     generation_config.do_sample = args.do_sample
     generation_config.num_beams = args.num_beams
     generation_config.bad_words_ids = bad_words_ids
