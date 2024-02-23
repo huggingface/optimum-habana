@@ -1339,6 +1339,10 @@ class GaudiGenerationMixin(GenerationMixin):
         this_peer_finished = False  # used by synced_gpus only
 
         bucket_size = model_kwargs.get("bucket_size", -1)
+<<<<<<< HEAD
+=======
+        bucket_internal = model_kwargs["bucket_internal"]
+>>>>>>> bd18f40 (Further fix merge conflicts)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
         bucket_internal = model_kwargs.get("bucket_internal", None)
