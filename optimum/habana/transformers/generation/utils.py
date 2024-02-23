@@ -569,12 +569,12 @@ class GaudiGenerationMixin(GenerationMixin):
             assert generation_config.bucket_size
         if generation_config.reuse_cache:
             assert self.config.model_type in ["llama"], "reuse_cache only supported by llama at the moment"
-            if not generation_config.:
+            if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
-                ), "please set  along with reuse_cache and bucket_size"
+                ), "please set bucket_internal along with reuse_cache and bucket_size"
             else:
-                assert generation_config.bucket_size >= 0, "please set valid bucket_size to use "
+                assert generation_config.bucket_size >= 0, "please set valid bucket_size to use bucket_internal"
 
         if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
