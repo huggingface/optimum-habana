@@ -160,25 +160,23 @@ def gaudi_mixtral_sparse_moe_block_forward(
     # we cast back to the input dtype
     routing_weights = routing_weights.to(hidden_states.dtype)
 
-    final_hidden_states = torch.zeros(
-        (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
-    )
+    final_hidden_states = torch.zeros_like(hidden_states)
 
     # One hot encode the selected experts to create an expert mask
     # this will be used to easily index which expert is going to be sollicitated
-    expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
+    expert_mask = F.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
 
     # Compute the top-k routing weights based on the expert mask
     top_k_routing_weights = (expert_mask.transpose(1, 2) * routing_weights).sum(2).unsqueeze(-1)
 
     # Loop over all available experts in the model and perform the computation on each expert
     for expert_idx in range(self.num_experts):
-        expert_layer = self.experts[expert_idx]
-
         if not is_hpu_graph and top_k_routing_weights[expert_idx].sum() == 0:
             continue
-        else:
-            current_hidden_states = expert_layer(hidden_states) * top_k_routing_weights[expert_idx]
+        
+        expert_layer = self.experts[expert_idx]
+
+        current_hidden_states = expert_layer(hidden_states) * top_k_routing_weights[expert_idx]
 
         final_hidden_states.add_(current_hidden_states.to(hidden_states.dtype))
 
