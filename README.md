@@ -45,9 +45,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 > ```
 > git clone https://github.com/huggingface/optimum-habana
-> cd optimum-habana && git checkout v1.10.2
+> cd optimum-habana && git checkout v1.10.4
 > ```
-> with `v1.10.2` the version number of this release.
+> with `v1.10.4` the version number of this release.
 
 ### Option 2: Use the latest main branch under development
 
