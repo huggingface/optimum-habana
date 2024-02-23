@@ -24,6 +24,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("Salesforce/codegen2-1B", 456.7740998156863),
             ("mosaicml/mpt-30b", 35.64501131267502),
             ("mistralai/Mistral-7B-v0.1", 125.26115369093216),
+            ("mistralai/Mixtral-8x7B-v0.1", 22.920145230408753),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 36.34664210641816),
