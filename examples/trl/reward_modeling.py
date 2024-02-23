@@ -17,6 +17,7 @@ from transformers import (
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiRewardTrainer, RewardDataCollatorWithPadding
+from optimum.habana.utils import set_seed
 
 
 # Define and parse arguments.
@@ -100,11 +101,14 @@ class ScriptArguments:
         default_factory=lambda: None,
         metadata={"help": "Target modules for the LoRA method."},
     )
+    seed: Optional[int] = field(
+        default=0, metadata={"help": "Random seed that will be set at the beginning of training."}
+    )
 
 
 parser = HfArgumentParser(ScriptArguments)
 script_args = parser.parse_args_into_dataclasses()[0]
-
+set_seed(script_args.seed)
 # Load the human stack-exchange-paired dataset for tuning the reward model.
 train_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/reward", split="train")
 if script_args.train_subset > 0:
@@ -139,7 +143,9 @@ training_args = GaudiTrainingArguments(
     report_to="none",
     use_habana=True,
     use_lazy_mode=True,
+    seed=script_args.seed,
 )
+
 # Load the value-head model and tokenizer.
 tokenizer_name = script_args.tokenizer_name if script_args.tokenizer_name is not None else script_args.model_name
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_auth_token=True)

@@ -16,6 +16,7 @@ from trl.trainer import ConstantLengthDataset
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiSFTTrainer
+from optimum.habana.utils import set_seed
 
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,8 @@ peft_config = LoraConfig(
 if training_args.group_by_length and script_args.packing:
     raise ValueError("Cannot use both packing and group by length")
 
+set_seed(training_args.seed)
+
 
 def chars_token_ratio(dataset, tokenizer, nb_examples=400):
     """
@@ -81,7 +84,7 @@ def prepare_sample_text(example):
     return text
 
 
-def create_datasets(tokenizer, args):
+def create_datasets(tokenizer, args, seed=None):
     dataset = load_dataset(
         args.dataset_name,
         data_dir=args.subset,
@@ -94,9 +97,9 @@ def create_datasets(tokenizer, args):
         print("Loading the dataset in streaming mode")
         valid_data = dataset.take(args.size_valid_set)
         train_data = dataset.skip(args.size_valid_set)
-        train_data = train_data.shuffle(buffer_size=args.shuffle_buffer, seed=None)
+        train_data = train_data.shuffle(buffer_size=args.shuffle_buffer, seed=seed)
     else:
-        dataset = dataset.train_test_split(test_size=0.005, seed=None)
+        dataset = dataset.train_test_split(test_size=0.005, seed=seed)
         train_data = dataset["train"]
         valid_data = dataset["test"]
         print(f"Size of the train set: {len(train_data)}. Size of the validation set: {len(valid_data)}")
@@ -141,7 +144,7 @@ transformers.utils.logging.set_verbosity(log_level)
 transformers.utils.logging.enable_default_handler()
 transformers.utils.logging.enable_explicit_format()
 
-train_dataset, eval_dataset = create_datasets(tokenizer, script_args)
+train_dataset, eval_dataset = create_datasets(tokenizer, script_args, seed=training_args.seed)
 
 gaudi_config = GaudiConfig()
 gaudi_config.use_fused_adam = True
