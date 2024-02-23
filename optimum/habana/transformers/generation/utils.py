@@ -561,7 +561,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
-        model_kwargs[""] = generation_config.
+        model_kwargs["bucket_internal"] = generation_config.bucket_internal
         model_kwargs["reduce_recompile"] = (
             generation_config.reduce_recompile if generation_config.reduce_recompile is not None else False
         )
