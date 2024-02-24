@@ -210,16 +210,6 @@ recognition on one of the well known speech recognition datasets similar to show
 
 ### Whisper Model
 We can load all components of the Whisper model directly from the pretrained checkpoint, including the pretrained model weights, feature extractor and tokenizer. We simply have to specify our fine-tuning dataset and training hyperparameters.
-```bash
-# Set model dir and datasets dir as appropriate
-export MODEL_DIR=$HOME/huggingface/hub
-export DATASETS_DIR=$HOME/huggingface/datasets
-
-# Run this from the optimum-habana repository
-cd examples/speech-recognition
-# install optimum-habana 
-pip install -r requirements.txt
-```
 
 #### Single HPU Whisper Fine tuning with Seq2Seq
 The following example shows how to fine-tune the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using a single HPU device in bf16 precision:
@@ -306,40 +296,6 @@ python ../gaudi_spawn.py \
 
 #### Single HPU Seq2Seq Inference
 
-The following example shows how to do inference with the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [librispeech_asr_demo](https://huggingface.co/datasets/librispeech_asr_demo) using 1 HPU device in half-precision:
-
-```bash
-python run_speech_recognition_seq2seq.py \
-    --model_name_or_path="openai/whisper-small" \
-        --dataset_name="hf-internal-testing/librispeech_asr_demo" \
-        --gaudi_config_name="gaudi_config.json" \
-        --dataset_config_name="clean" \
-        --eval_split_name="validation" \
-        --max_steps="5000" \
-        --output_dir="./results/whisper-small-clean" \
-        --gradient_accumulation_steps="2" \
-        --per_device_eval_batch_size="16" \
-        --logging_steps="25" \
-        --learning_rate="1e-5" \
-        --warmup_steps="500" \
-        --evaluation_strategy="steps" \
-        --eval_steps="1000" \
-        --save_strategy="steps" \
-        --save_steps="1000" \
-        --generation_max_length="225" \
-        --preprocessing_num_workers="16" \
-        --length_column_name="input_length" \
-        --max_duration_in_seconds="30" \
-        --freeze_feature_encoder="False" \
-        --gradient_checkpointing \
-        --group_by_length \
-        --bf16 \
-        --overwrite_output_dir \
-        --do_eval \
-        --predict_with_generate \
-        --use_habana \
-		--use_hpu_graphs_for_inference
-```
 The following example shows how to do inference with the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 1 HPU devices in half-precision:
 
 ```bash
