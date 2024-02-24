@@ -222,7 +222,7 @@ pip install -r requirements.txt
 ```
 
 #### Single HPU Whisper Fine tuning with Seq2Seq
-The following example shows how to fine-tune the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using a single GPU device in half-precision:
+The following example shows how to fine-tune the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using a single HPU device in bf16 precision:
 ```bash
 python run_speech_recognition_seq2seq.py \
 	--model_name_or_path="openai/whisper-small" \
