@@ -55,7 +55,8 @@ except ImportError:
         return ()
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.34.0")
+check_min_version("4.37.0")
+check_optimum_habana_min_version("1.10.0")
 
 require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 
