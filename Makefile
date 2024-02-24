@@ -22,10 +22,12 @@ REAL_CLONE_URL = $(if $(CLONE_URL),$(CLONE_URL),$(DEFAULT_CLONE_URL))
 
 # Run code quality checks
 style_check: clean
+	pip install -U pip ruff
 	ruff check . setup.py
 	ruff format --check . setup.py
 
 style: clean
+	pip install -U pip ruff
 	ruff check . setup.py --fix
 	ruff format . setup.py
 
@@ -53,6 +55,7 @@ slow_tests_deepspeed: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
+	python -m pip install git+https://github.com/huggingface/diffusers.git
 	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_textual_inversion"
 
@@ -112,4 +115,3 @@ clean:
 
 test_installs:
 	python -m pip install .[tests]
-	python -m pip install git+https://github.com/huggingface/accelerate.git

@@ -57,9 +57,9 @@
                 "multi_card": {
                     "learning_rate": 2e-4,
                     "train_batch_size": 32,
-                    "eval_rougeLsum": 38.4327,
-                    "train_runtime": 201.9517,
-                    "train_samples_per_second": 1522.349,
+                    "eval_rougeLsum": 38.5749,
+                    "train_runtime": 162.5389,
+                    "train_samples_per_second": 1870.707,
                     "eval_samples_per_second": 78.586,
                     "extra_arguments": [
                         "--dataset_config \"3.0.0\"",
@@ -80,9 +80,9 @@
                 "multi_card": {
                     "learning_rate": 2e-3,
                     "train_batch_size": 64,
-                    "eval_f1": 66.1802,
-                    "train_runtime": 56.5184,
-                    "train_samples_per_second": 5836.473,
+                    "eval_f1": 66.4991,
+                    "train_runtime": 53.9037,
+                    "train_samples_per_second": 5710.614,
                     "extra_arguments": [
                         "--context_column context",
                         "--question_column question",

@@ -31,9 +31,9 @@ import huggingface_hub.utils as hf_hub_utils
 import numpy as np
 import torch
 from accelerate import skip_first_batches
-from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin
+from accelerate.data_loader import SeedableRandomSampler
+from accelerate.utils import DistributedDataParallelKwargs, GradientAccumulationPlugin, save_fsdp_model
 from huggingface_hub import upload_folder
-from packaging import version
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from transformers import Trainer
 from transformers.data.data_collator import DataCollator
@@ -118,7 +118,6 @@ if is_deepspeed_available():
     from accelerate.utils import DeepSpeedSchedulerWrapper
 
 if is_accelerate_available():
-    from accelerate import __version__ as accelerate_version
     from accelerate.utils import (
         load_fsdp_optimizer,
         save_fsdp_optimizer,
@@ -126,6 +125,9 @@ if is_accelerate_available():
 
 if TYPE_CHECKING:
     import optuna
+
+
+DATA_SAMPLERS = [RandomSampler, SeedableRandomSampler]
 
 
 def _is_peft_model(model):
@@ -309,6 +311,7 @@ class GaudiTrainer(Trainer):
     def create_optimizer(self):
         """
         Setup the optimizer.
+
         We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
         Trainer's init through `optimizers`, or subclass and override this method in a subclass.
         """
@@ -353,19 +356,13 @@ class GaudiTrainer(Trainer):
 
         return self.optimizer
 
-    def _tune_save_checkpoint(self):
-        from ray import tune
-
-        if not self.use_tune_checkpoints:
-            return
-        with tune.checkpoint_dir(step=self.state.global_step) as checkpoint_dir:
-            output_dir = os.path.join(checkpoint_dir, f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}")
-            self.save_model(output_dir)
-            if self.args.should_save:
-                self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
-                if not self.args.use_habana:
-                    torch.save(self.optimizer.state_dict(), os.path.join(output_dir, OPTIMIZER_NAME))
-                torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
+    def _tune_save_checkpoint(self, checkpoint_dir: str):
+        output_dir = os.path.join(checkpoint_dir, f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}")
+        self.save_model(output_dir, _internal_call=True)
+        if self.args.should_save:
+            self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
+            torch.save(self.optimizer.state_dict(), os.path.join(output_dir, OPTIMIZER_NAME))
+            torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
 
     def _wrap_model(self, model, training=True, dataloader=None):
         # train/eval could be run multiple-times - if already wrapped, don't re-wrap it again
@@ -435,6 +432,10 @@ class GaudiTrainer(Trainer):
 
         self.is_in_train = True
 
+        # Attach NEFTune hooks if necessary
+        if self.neftune_noise_alpha is not None:
+            self.model = self._activate_neftune(self.model)
+
         # do_train is not a reliable argument, as it might not be set and .train() still called, so
         # the following is a workaround:
         if (args.fp16_full_eval or args.bf16_full_eval) and not args.do_train:
@@ -474,8 +475,13 @@ class GaudiTrainer(Trainer):
             if resume_from_checkpoint is None:
                 raise ValueError(f"No valid checkpoint found in output directory ({args.output_dir})")
 
-        if resume_from_checkpoint is not None and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
-            self._load_from_checkpoint(resume_from_checkpoint)
+        if resume_from_checkpoint is not None:
+            if not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
+                self._load_from_checkpoint(resume_from_checkpoint)
+            # In case of repeating the find_executable_batch_size, set `self._train_batch_size` properly
+            state = TrainerState.load_from_json(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME))
+            if state.train_batch_size is not None:
+                self._train_batch_size = state.train_batch_size
 
         # If model was re-initialized, put it on the right device and update self.model_wrapped
         if model_reloaded:
@@ -517,6 +523,21 @@ class GaudiTrainer(Trainer):
     ):
         self.accelerator.free_memory()
         self._train_batch_size = batch_size
+        if self.args.auto_find_batch_size:
+            if self.state.train_batch_size != self._train_batch_size:
+                from accelerate.utils import release_memory
+
+                (self.model_wrapped,) = release_memory(self.model_wrapped)
+                self.model_wrapped = self.model
+
+                # Check for DeepSpeed *after* the intial pass and modify the config
+                if self.is_deepspeed_enabled:
+                    # Temporarily unset `self.args.train_batch_size`
+                    original_bs = self.args.per_device_train_batch_size
+                    self.args.per_device_train_batch_size = self._train_batch_size // max(1, self.args.n_gpu)
+                    self.propagate_args_to_deepspeed(True)
+                    self.args.per_device_train_batch_size = original_bs
+            self.state.train_batch_size = self._train_batch_size
         logger.debug(f"Currently training with a batch size of: {self._train_batch_size}")
         # Data loader and number of training steps
         train_dataloader = self.get_train_dataloader()
@@ -585,6 +606,7 @@ class GaudiTrainer(Trainer):
 
         self.state = TrainerState()
         self.state.is_hyper_param_search = trial is not None
+        self.state.train_batch_size = self._train_batch_size
 
         # Compute absolute values for logging, eval, and save if given as ratio
         if args.logging_steps is not None:
@@ -605,7 +627,13 @@ class GaudiTrainer(Trainer):
 
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
-            self.model.gradient_checkpointing_enable()
+            if args.gradient_checkpointing_kwargs is None:
+                gradient_checkpointing_kwargs = {}
+            else:
+                gradient_checkpointing_kwargs = args.gradient_checkpointing_kwargs
+
+            import transformers.modeling_utils
+
             if args.deepspeed:
                 from deepspeed.runtime.activation_checkpointing.checkpointing import CheckpointFunction
 
@@ -620,19 +648,14 @@ class GaudiTrainer(Trainer):
                     return tuple(all_outputs)
 
                 torch.utils.checkpoint.checkpoint = hpu_deepspeed_checkpointing
+                transformers.modeling_utils.checkpoint = hpu_deepspeed_checkpointing
             elif args.use_lazy_mode:
                 from .gradient_checkpointing import checkpoint as lazy_mode_checkpointing
 
                 torch.utils.checkpoint.checkpoint = lazy_mode_checkpointing
+                transformers.modeling_utils.checkpoint = lazy_mode_checkpointing
 
-            # HACK for gradient checkpointing with T5
-            # For T5, checkpointing is imported with `from torch.utils.checkpoint import checkpoint`: https://github.com/huggingface/transformers/blob/04ab5605fbb4ef207b10bf2772d88c53fc242e83/src/transformers/models/t5/modeling_t5.py#L27
-            # Whereas for other models we do `import torch.utils.checkpoint`
-            # So monkey patching at Torch's level does not work
-            if self.model.config.model_type == "t5":
-                import transformers.models.t5.modeling_t5 as modeling_t5
-
-                modeling_t5.checkpoint = torch.utils.checkpoint.checkpoint
+            self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
             if hasattr(self.model, "gradient_checkpointing_disable"):
@@ -646,8 +669,6 @@ class GaudiTrainer(Trainer):
         use_accelerator_prepare = True if model is self.model else False
 
         if delay_optimizer_creation:
-            if use_accelerator_prepare:
-                self.model = self.accelerator.prepare(self.model)
             self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
         # prepare using `accelerator` prepare
@@ -787,7 +808,8 @@ class GaudiTrainer(Trainer):
         if not args.ignore_data_skip:
             for epoch in range(epochs_trained):
                 sampler = get_dataloader_sampler(train_dataloader)
-                is_random_sampler = isinstance(sampler, RandomSampler)
+                sampler_kinds = [RandomSampler, SeedableRandomSampler]
+                is_random_sampler = isinstance(sampler, tuple(sampler_kinds))
                 if not is_random_sampler:
                     # We just need to begin an iteration to create the randomization of the sampler.
                     for _ in train_dataloader:
@@ -813,6 +835,8 @@ class GaudiTrainer(Trainer):
         total_batched_samples = 0
         for epoch in range(epochs_trained, num_train_epochs):
             epoch_iterator = train_dataloader
+            if hasattr(epoch_iterator, "set_epoch"):
+                epoch_iterator.set_epoch(epoch)
 
             # Reset the past mems state at the beginning of each epoch if necessary.
             if args.past_index >= 0:
@@ -846,6 +870,17 @@ class GaudiTrainer(Trainer):
                     start_time_after_warmup = time.time()
 
                 total_batched_samples += 1
+
+                if self.args.include_num_input_tokens_seen:
+                    main_input_name = getattr(self.model, "main_input_name", "input_ids")
+                    if main_input_name not in inputs:
+                        logger.warning(
+                            "Tried to track the number of tokens seen, however the current model is "
+                            "not configured properly to know what item is the input. To fix this, add "
+                            "a `main_input_name` attribute to the model class you are using."
+                        )
+                    else:
+                        self.state.num_input_tokens_seen += self.accelerator.gather(inputs[main_input_name]).numel()
                 if rng_to_sync:
                     self._load_rng_state(resume_from_checkpoint)
                     rng_to_sync = False
@@ -919,13 +954,7 @@ class GaudiTrainer(Trainer):
                     if args.max_grad_norm is not None and args.max_grad_norm > 0:
                         # deepspeed does its own clipping
 
-                        if hasattr(self.optimizer, "clip_grad_norm"):
-                            # Some optimizers (like the sharded optimizer) have a specific way to do gradient clipping
-                            self.optimizer.clip_grad_norm(args.max_grad_norm)
-                        elif hasattr(model, "clip_grad_norm_"):
-                            # Some models (like FullyShardedDDP) have a specific way to do gradient clipping
-                            model.clip_grad_norm_(args.max_grad_norm)
-                        elif self.gaudi_config.use_fused_clip_norm and args.use_habana:
+                        if self.gaudi_config.use_fused_clip_norm and args.use_habana:
                             # TODO: to merge self.accelerator.clip_grad_norm_ when HMP is removed
                             self.FusedNorm.clip_norm(model.parameters())
                         else:
@@ -939,7 +968,6 @@ class GaudiTrainer(Trainer):
                     optimizer_was_run = True
                     self.optimizer.step()
                     optimizer_was_run = not self.accelerator.optimizer_step_was_skipped
-
                     if optimizer_was_run:
                         # Delay optimizer scheduling until metrics are generated
                         if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -1029,6 +1057,11 @@ class GaudiTrainer(Trainer):
         # Wait for the checkpoint to be uploaded.
         self._finish_current_push()
 
+        # After training we make sure to retrieve back the original forward pass method
+        # for the embedding layer by removing the forward post hook.
+        if self.neftune_noise_alpha is not None:
+            self._deactivate_neftune(self.model)
+
         return TrainOutput(self.state.global_step, train_loss, metrics)
 
     def _load_best_model(self):
@@ -1077,7 +1110,11 @@ class GaudiTrainer(Trainer):
                 if self.args.save_safetensors and os.path.isfile(best_safe_model_path):
                     state_dict = safetensors.torch.load_file(best_safe_model_path, device="cpu")
                 else:
-                    state_dict = torch.load(best_model_path, map_location="cpu")
+                    state_dict = torch.load(
+                        best_model_path,
+                        map_location="cpu",
+                        weights_only=True,
+                    )
 
                 # If the model is on the GPU, it still works!
                 load_result = model.load_state_dict(state_dict, False)
@@ -1097,7 +1134,7 @@ class GaudiTrainer(Trainer):
         if self.args.adjust_throughput:
             save_start = time.perf_counter()
 
-        if self.control.should_log:
+        if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
             logs: Dict[str, float] = {}
 
             # all_gather + mean() to get average loss over all processes
@@ -1116,17 +1153,7 @@ class GaudiTrainer(Trainer):
 
         metrics = None
         if self.control.should_evaluate:
-            if isinstance(self.eval_dataset, dict):
-                metrics = {}
-                for eval_dataset_name, eval_dataset in self.eval_dataset.items():
-                    dataset_metrics = self.evaluate(
-                        eval_dataset=eval_dataset,
-                        ignore_keys=ignore_keys_for_eval,
-                        metric_key_prefix=f"eval_{eval_dataset_name}",
-                    )
-                    metrics.update(dataset_metrics)
-            else:
-                metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+            metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
             self._report_to_hp_search(trial, self.state.global_step, metrics)
 
             # Run delayed LR scheduler now that metrics are populated
@@ -1192,45 +1219,24 @@ class GaudiTrainer(Trainer):
 
         if self.hp_search_backend is None and trial is None:
             self.store_flos()
+
         run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
-        self.save_model(output_dir, _internal_call=True)
-        if self.is_deepspeed_enabled:
-            # under zero3 model file itself doesn't get saved since it's bogus! Unless deepspeed
-            # config `stage3_gather_16bit_weights_on_model_save` is True
-            accept_exclude_frozen_parameters = "exclude_frozen_parameters" in set(
-                inspect.signature(self.model_wrapped.save_checkpoint).parameters.keys()
+        if os.path.exists(output_dir) and len(os.listdir(output_dir)) > 0:
+            logger.warning(
+                f"Checkpoint destination directory {output_dir} already exists and is non-empty."
+                "Saving will proceed but saved results may be invalid."
             )
-            if accept_exclude_frozen_parameters and _is_peft_model(self.model):
-                self.model_wrapped.save_checkpoint(output_dir, exclude_frozen_parameters=True)
-            else:
-                self.model_wrapped.save_checkpoint(output_dir)
+            staging_output_dir = output_dir
+        else:
+            staging_output_dir = os.path.join(run_dir, f"tmp-{checkpoint_folder}")
+        self.save_model(staging_output_dir, _internal_call=True)
 
-        if self.is_fsdp_enabled:
-            save_fsdp_optimizer(
-                self.accelerator.state.fsdp_plugin, self.accelerator, self.optimizer, self.model, output_dir
-            )
-
-        # Save optimizer and scheduler
-        if self.args.should_save and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
-            # deepspeed.save_checkpoint above saves model/optim/sched
-            # This block is exectuted by the main process only
-            optim_dict = self.optimizer.state_dict()
-            scheduler_dict = self.lr_scheduler.state_dict()
-            if self.args.use_habana:
-                # Move the state dict from HPU to CPU before saving
-                optim_dict = to_device_dtype(optim_dict, target_device=torch.device("cpu"))
-                scheduler_dict = to_device_dtype(scheduler_dict, target_device=torch.device("cpu"))
-            torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
-
-        # Save SCHEDULER & SCALER
-        is_deepspeed_custom_scheduler = self.is_deepspeed_enabled and not isinstance(
-            self.lr_scheduler, DeepSpeedSchedulerWrapper
-        )
-        if self.args.should_save and (not self.is_deepspeed_enabled or is_deepspeed_custom_scheduler):
-            with warnings.catch_warnings(record=True) as caught_warnings:
-                torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
-            reissue_pt_warnings(caught_warnings)
+        if not self.args.save_only_model:
+            # Save optimizer and scheduler
+            self._save_optimizer_and_scheduler(staging_output_dir)
+            # Save RNG state
+            self._save_rng_state(staging_output_dir)
 
         # Determine the new best metric / best model checkpoint
         if metrics is not None and self.args.metric_for_best_model is not None:
@@ -1250,8 +1256,33 @@ class GaudiTrainer(Trainer):
 
         # Save the Trainer state
         if self.args.should_save:
-            self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
+            self.state.save_to_json(os.path.join(staging_output_dir, TRAINER_STATE_NAME))
 
+        if self.args.push_to_hub:
+            self._push_from_checkpoint(staging_output_dir)
+
+        # Place checkpoint in final location after all saving is finished.
+        # First wait for everyone to finish writing
+        self.args.distributed_state.wait_for_everyone()
+
+        # Then go through the rewriting process, only renaming and rotating from main process(es)
+        if self.is_local_process_zero() if self.args.save_on_each_node else self.is_world_process_zero():
+            if staging_output_dir != output_dir:
+                if os.path.exists(staging_output_dir):
+                    os.rename(staging_output_dir, output_dir)
+
+                    # Ensure rename completed in cases where os.rename is not atomic
+                    fd = os.open(output_dir, os.O_RDONLY)
+                    os.fsync(fd)
+                    os.close(fd)
+
+            # Maybe delete some older checkpoints.
+            if self.args.should_save:
+                self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
+
+        self.args.distributed_state.wait_for_everyone()
+
+    def _save_rng_state(self, output_dir):
         # Save RNG state in non-distributed training
         rng_states = {
             "python": random.getstate(),
@@ -1275,16 +1306,44 @@ class GaudiTrainer(Trainer):
         else:
             torch.save(rng_states, os.path.join(output_dir, f"rng_state_{self.args.process_index}.pth"))
 
-        if self.args.push_to_hub:
-            self._push_from_checkpoint(output_dir)
+    def _save_optimizer_and_scheduler(self, output_dir):
+        if self.is_deepspeed_enabled:
+            # under zero3 model file itself doesn't get saved since it's bogus! Unless deepspeed
+            # config `stage3_gather_16bit_weights_on_model_save` is True
+            accept_exclude_frozen_parameters = "exclude_frozen_parameters" in set(
+                inspect.signature(self.model_wrapped.save_checkpoint).parameters.keys()
+            )
+            if accept_exclude_frozen_parameters and _is_peft_model(self.model):
+                self.model_wrapped.save_checkpoint(output_dir, exclude_frozen_parameters=True)
+            else:
+                self.model_wrapped.save_checkpoint(output_dir)
+        elif self.is_fsdp_enabled:
+            # save fsdp specific ckpt for resuming from ckpt
+            save_fsdp_model(self.accelerator.state.fsdp_plugin, self.accelerator, self.model, output_dir)
+            save_fsdp_optimizer(
+                self.accelerator.state.fsdp_plugin, self.accelerator, self.optimizer, self.model, output_dir
+            )
+        elif self.args.should_save:
+            # deepspeed.save_checkpoint above saves model/optim/sched
+            # This block is exectuted by the main process only
+            optim_dict = self.optimizer.state_dict()
+            if self.args.use_habana:
+                # Move the state dict from HPU to CPU before saving
+                optim_dict = to_device_dtype(optim_dict, target_device=torch.device("cpu"))
+            torch.save(optim_dict, os.path.join(output_dir, OPTIMIZER_NAME))
 
-        # Maybe delete some older checkpoints.
-        if self.args.should_save:
-            self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
-
-        # Synchronize all processes after saving the current checkpoint
-        if self.args.parallel_mode == ParallelMode.DISTRIBUTED and self.args.use_habana:
-            torch.distributed.barrier()
+        # Save SCHEDULER & SCALER
+        is_deepspeed_custom_scheduler = self.is_deepspeed_enabled and not isinstance(
+            self.lr_scheduler, DeepSpeedSchedulerWrapper
+        )
+        if self.args.should_save and (not self.is_deepspeed_enabled or is_deepspeed_custom_scheduler):
+            if self.args.use_habana:
+                # Move the state dict from HPU to CPU before saving
+                scheduler_dict = self.lr_scheduler.state_dict()
+                scheduler_dict = to_device_dtype(scheduler_dict, target_device=torch.device("cpu"))
+            with warnings.catch_warnings(record=True) as caught_warnings:
+                torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
+            reissue_pt_warnings(caught_warnings)
 
     def _load_optimizer_and_scheduler(self, checkpoint):
         """If optimizer and scheduler states exist, load them."""
@@ -1350,6 +1409,8 @@ class GaudiTrainer(Trainer):
         """
         if self.state.epoch is not None:
             logs["epoch"] = round(self.state.epoch, 2)
+        if self.args.include_num_input_tokens_seen:
+            logs["num_input_tokens_seen"] = self.state.num_input_tokens_seen
 
         mem_stats = get_hpu_memory_stats(self.args.device)
         logs.update(mem_stats)
@@ -1421,7 +1482,7 @@ class GaudiTrainer(Trainer):
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
-        if self.args.pipelining_fwd_bwd:
+        if self.args.use_lazy_mode and self.args.pipelining_fwd_bwd:
             self.htcore.mark_step()
 
         self.accelerator.backward(loss)
@@ -1435,18 +1496,13 @@ class GaudiTrainer(Trainer):
         """
         if output_dir is None:
             output_dir = self.args.output_dir
-        # copy from https://github.com/huggingface/transformers/blob/a7cab3c283312b8d4de5df3bbe719971e24f4281/src/transformers/trainer.py#L2825
-        # Note we picked this code from transformers 0.36.2 (when rest of code is from older version) because without this checkpoint with LoRA
-        # was not coming out correct.
+
         if self.is_fsdp_enabled:
-            if ("FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type)) and (
-                version.parse(accelerate_version) > version.parse("0.24.1")
-            ):
+            if "FULL_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type):
                 state_dict = self.accelerator.get_state_dict(self.model)
                 if self.args.should_save:
                     self._save(output_dir, state_dict=state_dict)
         elif self.is_deepspeed_enabled:
-            # this takes care of everything as long as we aren't under zero3
             try:
                 state_dict = self.accelerator.get_state_dict(self.deepspeed)
                 if self.args.should_save:
@@ -1498,7 +1554,9 @@ class GaudiTrainer(Trainer):
             else:
                 logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
                 if self.args.save_safetensors:
-                    safetensors.torch.save_file(state_dict, os.path.join(output_dir, SAFE_WEIGHTS_NAME))
+                    safetensors.torch.save_file(
+                        state_dict, os.path.join(output_dir, SAFE_WEIGHTS_NAME), metadata={"format": "pt"}
+                    )
                 else:
                     torch.save(state_dict, os.path.join(output_dir, WEIGHTS_NAME))
         else:
@@ -1639,15 +1697,15 @@ class GaudiTrainer(Trainer):
 
             # Update containers on host
             if loss is not None:
-                losses = self.accelerator.gather_for_metrics((loss.repeat(batch_size)))
+                losses = self.gather_function((loss.repeat(batch_size)))
                 losses_host = losses if losses_host is None else nested_concat(losses_host, losses, padding_index=-100)
             if labels is not None:
                 labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
-                labels = self.accelerator.gather_for_metrics((labels))
+                labels = self.gather_function((labels))
                 labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
             if inputs_decode is not None:
                 inputs_decode = self.accelerator.pad_across_processes(inputs_decode, dim=1, pad_index=-100)
-                inputs_decode = self.accelerator.gather_for_metrics((inputs_decode))
+                inputs_decode = self.gather_function((inputs_decode))
                 inputs_host = (
                     inputs_decode
                     if inputs_host is None
@@ -1659,17 +1717,13 @@ class GaudiTrainer(Trainer):
                 logits = self.accelerator.pad_across_processes(logits, dim=1, pad_index=-100)
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits, labels)
-                logits = self.accelerator.gather_for_metrics((logits))
+                logits = self.gather_function((logits))
                 preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
 
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
             # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
-            if (
-                args.eval_accumulation_steps is not None
-                and (step + 1) % args.eval_accumulation_steps == 0
-                and self.accelerator.sync_gradients
-            ):
+            if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
                 if losses_host is not None:
                     losses = nested_numpify(losses_host)
                     all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
@@ -1699,6 +1753,8 @@ class GaudiTrainer(Trainer):
             if args.use_lazy_mode:
                 self.htcore.mark_step()
 
+        # After all calls to `.gather_function`, reset to `gather_for_metrics`:
+        self.gather_function = self.accelerator.gather_for_metrics
         if args.past_index and hasattr(self, "_past"):
             # Clean the state at the end of the evaluation loop
             delattr(self, "_past")
@@ -1886,7 +1942,7 @@ class GaudiTrainer(Trainer):
             commit_message=commit_message,
             token=self.args.hub_token,
             run_as_future=True,
-            ignore_patterns=["_*", "**/*"],
+            ignore_patterns=["_*", f"{PREFIX_CHECKPOINT_DIR}-*"],
         )
 
         push_jobs = [model_push_job]
@@ -2088,26 +2144,20 @@ class GaudiTrainer(Trainer):
         # create accelerator object
         self.accelerator = GaudiAccelerator(
             dispatch_batches=self.args.dispatch_batches,
+            split_batches=self.args.split_batches,
             deepspeed_plugin=self.args.deepspeed_plugin,
             gradient_accumulation_plugin=gradient_accumulation_plugin,
             even_batches=not self.args.dataloader_drop_last,
             distribution_strategy=self.args.distribution_strategy,
         )
+        # some Trainer classes need to use `gather` instead of `gather_for_metrics`, thus we store a flag
+        self.gather_function = self.accelerator.gather_for_metrics
 
         # deepspeed and accelerate flags covering both trainer args and accelerate launcher
         self.is_deepspeed_enabled = getattr(self.accelerator.state, "deepspeed_plugin", None) is not None
         self.is_fsdp_enabled = getattr(self.accelerator.state, "fsdp_plugin", None) is not None
 
         # post accelerator creation setup
-        if self.is_deepspeed_enabled:
-            if getattr(self.args, "hf_deepspeed_config", None) is None:
-                from .integrations.deepspeed import GaudiTrainerDeepSpeedConfig
-
-                ds_plugin = self.accelerator.state.deepspeed_plugin
-
-                ds_plugin.hf_ds_config = GaudiTrainerDeepSpeedConfig(ds_plugin.hf_ds_config.config)
-                ds_plugin.deepspeed_config = ds_plugin.hf_ds_config.config
-
         # copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/trainer.py#L3991
         # post accelerator creation setup
         if self.is_fsdp_enabled:
@@ -2125,6 +2175,21 @@ class GaudiTrainer(Trainer):
                         "can't be set to True simultaneously. Please use FSDP's activation_checkpointing logic "
                         "when using FSDP."
                     )
+
+        if self.is_deepspeed_enabled and getattr(self.args, "hf_deepspeed_config", None) is None:
+            self.propagate_args_to_deepspeed()
+
+    def propagate_args_to_deepspeed(self, auto_find_batch_size=False):
+        """
+        Sets values in the deepspeed plugin based on the Trainer args
+        """
+        from .integrations.deepspeed import GaudiTrainerDeepSpeedConfig
+
+        ds_plugin = self.accelerator.state.deepspeed_plugin
+
+        ds_plugin.hf_ds_config = GaudiTrainerDeepSpeedConfig(ds_plugin.hf_ds_config.config)
+        ds_plugin.deepspeed_config = ds_plugin.hf_ds_config.config
+        ds_plugin.hf_ds_config.trainer_config_process(self.args, auto_find_batch_size)
 
     def _zero_model_grad(self, model):
         if hasattr(model, "_zero_grad_kwargs"):

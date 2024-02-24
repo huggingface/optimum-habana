@@ -5,7 +5,6 @@ import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
-from torch.utils.checkpoint import checkpoint
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
@@ -357,17 +356,12 @@ def gaudi_T5Stack_forward(
         if not self.is_decoder:
             raise ValueError(f"`use_cache` can only be set to `True` if {self} is used as a decoder")
 
-    if attention_mask is None:
-        attention_mask = torch.ones(batch_size, mask_seq_length, device=inputs_embeds.device)
-    if self.is_decoder and encoder_attention_mask is None and encoder_hidden_states is not None:
-        encoder_seq_length = encoder_hidden_states.shape[1]
-        encoder_attention_mask = torch.ones(
-            batch_size, encoder_seq_length, device=inputs_embeds.device, dtype=torch.long
-        )
-
     # initialize past_key_values with `None` if past does not exist
     if past_key_values is None:
         past_key_values = [None] * len(self.block)
+
+    if attention_mask is None:
+        attention_mask = torch.ones(batch_size, mask_seq_length, device=inputs_embeds.device)
 
     # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
     # ourselves in which case we just need to make it broadcastable to all heads.
@@ -379,7 +373,7 @@ def gaudi_T5Stack_forward(
         encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
         encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
         if encoder_attention_mask is None:
-            encoder_attention_mask = torch.ones(encoder_hidden_shape, device=inputs_embeds.device)
+            encoder_attention_mask = torch.ones(encoder_hidden_shape, device=inputs_embeds.device, dtype=torch.long)
         encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
     else:
         encoder_extended_attention_mask = None
@@ -411,15 +405,8 @@ def gaudi_T5Stack_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return tuple(module(*inputs, use_cache, output_attentions))
-
-                return custom_forward
-
-            layer_outputs = checkpoint(
-                create_custom_forward(layer_module),
+            layer_outputs = self._gradient_checkpointing_func(
+                layer_module.forward,
                 hidden_states,
                 extended_attention_mask,
                 position_bias,
@@ -429,6 +416,10 @@ def gaudi_T5Stack_forward(
                 layer_head_mask,
                 cross_attn_layer_head_mask,
                 None,  # past_key_value is always None with gradient checkpointing
+                use_cache,
+                output_attentions,
+                True,
+                None,
             )
         else:
             layer_outputs = layer_module(
@@ -615,12 +606,21 @@ def gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation(
     token_idx=None,
     **kwargs,
 ):
-    # cut decoder_input_ids if past is used
+    # cut decoder_input_ids if past_key_values is used
     if past_key_values is not None:
         if token_idx is not None:
             input_ids = torch.index_select(input_ids, 1, token_idx - 1)
         else:
-            input_ids = input_ids[:, -1:].unsqueeze(-1)
+            past_length = past_key_values[0][0].shape[2]
+
+            # Some generation methods already pass only the last input ID
+            if input_ids.shape[1] > past_length:
+                remove_prefix_length = past_length
+            else:
+                # Default to old behavior: keep only final ID
+                remove_prefix_length = input_ids.shape[1] - 1
+
+            input_ids = input_ids[:, remove_prefix_length:]
 
     return {
         "decoder_input_ids": input_ids,
