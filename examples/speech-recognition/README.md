@@ -304,7 +304,7 @@ python ../gaudi_spawn.py \
 	--use_hpu_graphs_for_inference
 ```
 
-#### Single GPU Seq2Seq Inference
+#### Single HPU Seq2Seq Inference
 
 The following example shows how to do inference with the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [librispeech_asr_demo](https://huggingface.co/datasets/librispeech_asr_demo) using 1 HPU devices in half-precision:
 
