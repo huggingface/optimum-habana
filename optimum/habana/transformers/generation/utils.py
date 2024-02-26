@@ -710,8 +710,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     unwrap_deepspeed_model(self).allocate_kv_cache(
                         bs * generation_config.num_beams,
                         calculated_max_length,
-                        token_idx,
-                        generation_config.kv_cache_fp8,
+                        token_idx
                     )
             if self.config.model_type in ["llama"]:
                 if self.config.max_position_embeddings < calculated_max_length:

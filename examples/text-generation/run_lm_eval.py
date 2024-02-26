@@ -134,8 +134,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
                 self.model.allocate_kv_cache(
                     bs,
                     bucket_length + 1,
-                    bucket_length,
-                    False,
+                    bucket_length
                 )
             padding_length = bucket_length - seq_length
             inps = F.pad(inps, (0, padding_length), value=self.model.config.pad_token_id)

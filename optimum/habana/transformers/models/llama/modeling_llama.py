@@ -35,23 +35,6 @@ except ImportError:
     FusedSDPA = None
 
 
-def update(prev, cur, dim, idx, inp_seq_len):
-    orig_cur = cur
-    if prev.dtype == torch.float8_e4m3fn:
-        from habana_frameworks.torch.hpex.kernels.Fp8Ops import cast_to_fp8_v2
-
-        cur = cast_to_fp8_v2(cur, None, False, False, prev.dtype)[0]
-    if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-        # Initialize
-        prev[:, :, :inp_seq_len, :].copy_(cur)
-        return orig_cur
-    assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-    if idx is not None:
-        prev.index_copy_(dim, idx - 1, cur)
-        prev_cast = prev.to(orig_cur.dtype)
-        return prev_cast
-    else:
-        return torch.cat((prev, cur), dim=dim)
 
 
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
@@ -125,11 +108,9 @@ class KVCache(torch.nn.Module):
         self.cache = None
         self.inp_seq_len = -1
 
-    def allocate(self, inp_seq_len, kv_cache_fp8, dtype, device, shape):
+    def allocate(self, inp_seq_len, dtype, device, shape):
         if self.cache is None or self.cache.shape != shape:
             self.inp_seq_len = inp_seq_len
-            if kv_cache_fp8:
-                dtype = torch.float8_e4m3fn
             self.cache = torch.zeros(shape, dtype=dtype, device=device)
         else:
             assert (
@@ -137,13 +118,29 @@ class KVCache(torch.nn.Module):
             ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
             self.cache.fill_(0)
 
+    def update(self, prev, cur, dim, idx, inp_seq_len):
+        orig_cur = cur
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+            # Initialize
+            prev[:, :, :inp_seq_len, :].copy_(cur)
+            return orig_cur
+        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
+
     def get_shape(self):
         if self.cache is None:
             return None
         return self.cache.shape
 
     def forward(self, cur, dim, idx):
-        return update(self.cache, cur, dim, idx, self.inp_seq_len)
+        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
 class GaudiLlamaAttention(LlamaAttention):
@@ -157,12 +154,12 @@ class GaudiLlamaAttention(LlamaAttention):
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
         device = self.k_proj.weight.device
         dtype = self.config.torch_dtype
-        self.k_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
-        self.v_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
+        self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
+        self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
 
     def update_sincos_cache(self, seq_len):
         # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
@@ -251,20 +248,26 @@ class GaudiLlamaAttention(LlamaAttention):
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
-        if past_key_value is not None or reuse_cache:
+        if use_cache:
             # reuse k, v, self_attention
             if reuse_cache:
                 key_states = self.k_cache(key_states, 2, token_idx)
                 value_states = self.v_cache(value_states, 2, token_idx)
-            else:
-                key_states = update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                value_states = update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
-
-        if use_cache:
-            if reuse_cache:
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
-                past_key_value = (key_states.contiguous(), value_states.contiguous())
+                if past_key_value is None:
+                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_value = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_key_value = (past_key, past_value)
+                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+
+            if cache_idx is not None and q_len == 1:
+                key_states = key_states[:, :, :cache_idx, :]
+                value_states = value_states[:, :, :cache_idx, :]
+                if attention_mask is not None:
+                    attention_mask = attention_mask[:, :, :, :cache_idx]
+                kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
 
@@ -392,8 +395,18 @@ class GaudiLlamaMLP(LlamaMLP):
 
 
 class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
-        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
+    def __init__(self, config: LlamaConfig, layer_idx: int):
+        super(LlamaDecoderLayer, self).__init__()
+        self.hidden_size = config.hidden_size
+
+        self.self_attn = GaudiLlamaAttention(config=config, layer_idx=layer_idx)
+
+        self.mlp = GaudiLlamaMLP(config)
+        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.self_attn.reorder_kv_cache(beam_idx)
@@ -500,9 +513,9 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
 
 
 class GaudiLlamaModel(LlamaModel):
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         for layer in self.layers:
-            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
+            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.layers)
@@ -676,8 +689,8 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - add new args reuse_cache
     """
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
-        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)
