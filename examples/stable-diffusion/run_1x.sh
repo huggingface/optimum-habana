@@ -2,7 +2,8 @@ python train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
   --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
   --dataset_name lambdalabs/pokemon-blip-captions \
-  --resolution 1024 \
+  --resolution 512 \
+  --crop_resolution 512 \
   --center_crop \
   --random_flip \
   --proportion_empty_prompts=0.2 \
@@ -22,5 +23,4 @@ python train_text_to_image_sdxl.py \
   --validation_prompt="a robotic cat with wings" \
   --validation_epochs 48 \
   --checkpointing_steps 2500 \
-  --logging_step 10 \
-  --cache_dir /root/software/data/pytorch/huggingface/sdxl 2>&1 | tee log_1x_bs16.txt
+  --logging_step 10 2>&1 | tee log_1x_r512.txt
