@@ -1464,8 +1464,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     if prev_idx != idx:
                         model_kwargs["cache_idx"] = (idx + 1) * bucket_size
                         prev_idx = idx
-                        if model_kwargs["use_hpu_graphs"]:
-                            self.clear_cache()
                 else:
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
@@ -1489,8 +1487,6 @@ class GaudiGenerationMixin(GenerationMixin):
             if this_peer_finished and not synced_gpus:
                 break
 
-        if model_kwargs["use_hpu_graphs"]:
-            self.clear_cache()
         hb_profer.stop()
         if streamer is not None:
             streamer.end()
