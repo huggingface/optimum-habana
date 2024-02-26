@@ -27,8 +27,6 @@ class GaudiGenerationConfig(GenerationConfig):
         If negative (default=-1) pad to max if `static_shapes` is set. Else start with
         `shape = bucket_size * ceil(prompt_len/bucket_size)` and then grow space by `bucket_size` when needed.
         Only active if `static_shapes` is used. Can't be used with `reuse_cache`.
-    kv_cache_fp8 (`bool`, *optional*):
-        Store kv-cache in float8 when kv-cache is used
     use_flash_attention (`bool`, *optional*):
         Whether to use flash attention optimization.
     flash_attention_recompute (`bool`, *optional*):
@@ -48,7 +46,6 @@ class GaudiGenerationConfig(GenerationConfig):
         self.bucket_size = kwargs.get("bucket_size", -1)
         self.bucket_internal = kwargs.get("bucket_internal", None)
         self.reduce_recompile = kwargs.get("reduce_recompile", None)
-        self.kv_cache_fp8 = kwargs.get("kv_cache_fp8", None)
         self.use_flash_attention = kwargs.get("use_flash_attention", None)
         self.flash_attention_recompute = kwargs.get("flash_attention_recompute", None)
         self.flash_attention_causal_mask = kwargs.get("flash_attention_causal_mask", None)
