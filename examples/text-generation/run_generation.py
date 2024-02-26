@@ -221,11 +221,6 @@ def setup_parser(parser):
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
 
-    parser.add_argument(
-        "--kv_cache_fp8",
-        action="store_true",
-        help="Store kv-cache in float8 when kv-cache is used. Can't use this argument together with QUANT_CONFIG env var",
-    )
     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--use_flash_attention",
@@ -258,10 +253,6 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
-    if args.quant_config and args.kv_cache_fp8:
-        # can't use both quant_config and kv_cache_fp8, since quant_config may trigger kv cache quantization
-        # with habana quantization toolkit
-        raise parser.error("Can't use QUANT_CONFIG env var with kv_cache_fp8 argument")
     return args
 
 
