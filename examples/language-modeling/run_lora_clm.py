@@ -42,7 +42,6 @@ from transformers import (
 from transformers.trainer_utils import is_main_process
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.peft.layer import GaudiLoraLayerLinearForward
 from optimum.habana.utils import set_seed
 
 
@@ -692,7 +691,10 @@ def main():
         )
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
-        tuners.lora.layer.Linear.forward = GaudiLoraLayerLinearForward
+        if training_args.torch_compile:
+            from optimum.habana.peft.layer import GaudiLoraLayerLinearForward
+
+            tuners.lora.layer.Linear.forward = GaudiLoraLayerLinearForward
         lora_model = get_peft_model(model, peft_config)
         if training_args.bf16:
             lora_model = lora_model.to(torch.bfloat16)
