@@ -549,6 +549,11 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
 
 
 class GaudiLlamaModel(LlamaModel):
+    def __init__(self, config: LlamaConfig):
+        super().__init__(config)
+        self._use_sdpa = False
+        self._use_flash_attention_2 = False
+
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         for layer in self.layers:
             layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
@@ -638,20 +643,10 @@ class GaudiLlamaModel(LlamaModel):
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
-        if self._use_sdpa and not output_attentions:
-            # output_attentions=True can not be supported when using SDPA, and we fall back on
-            # the manual implementation that requires a 4D causal mask in all cases.
-            attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
-                attention_mask,
-                (batch_size, seq_length),
-                inputs_embeds,
-                past_key_values_length,
-            )
-        else:
-            # 4d mask is passed through the layers
-            attention_mask = _gaudi_prepare_4d_causal_attention_mask(
-                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
-            )
+        # 4d mask is passed through the layers
+        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+        )
 
         # embed positions
         hidden_states = inputs_embeds
