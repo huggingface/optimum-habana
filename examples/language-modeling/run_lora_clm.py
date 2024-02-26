@@ -249,8 +249,7 @@ class DataArguments:
         metadata={"help": "Whether to have a SQL style prompt"},
     )
     save_last_ckpt: bool = field(
-        default=True,
-        metadata={"help": "Whether to save checkpoint at the end of the training."}
+        default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
     )
 
 
