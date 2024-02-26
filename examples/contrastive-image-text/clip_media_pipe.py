@@ -36,7 +36,7 @@ except ImportError:
     pass
 
 read_image_text_from_dataset_params = {
-    "label_dtype": dtype.UINT64,
+    "label_dtype": dtype.UINT32,
     "dataset": None,
 }
 
