@@ -259,6 +259,12 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
     )
+    parser.add_argument(
+        "--disable_sdpa_attention",
+        action="store_true",
+        help="Whether to disable SDPA Attention.",
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:

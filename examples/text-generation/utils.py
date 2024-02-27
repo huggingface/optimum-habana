@@ -379,6 +379,9 @@ def initialize_model(args, logger):
         model_kwargs["device_map"] = "auto"
         model_kwargs["offload_folder"] = "/tmp/offload_folder/"
 
+    if args.disable_sdpa_attention:
+        model_kwargs["attn_implementation"] = 'eager'
+
     model = (
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
