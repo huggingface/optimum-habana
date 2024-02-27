@@ -82,6 +82,15 @@ from .mistral import (
     gaudi_mistral_decoder_layer_forward,
     gaudi_mistral_model_forward,
 )
+from .mixtral import (
+    GaudiMixtralForCausalLM,
+    gaudi_mixtral_attn_forward,
+    gaudi_mixtral_block_sparse_moe_forward,
+    gaudi_mixtral_block_sparse_top2_mlp_forward,
+    gaudi_mixtral_decoder_layer_forward,
+    gaudi_mixtral_model_forward,
+    gaudi_mixtral_rmsnorm_forward,
+)
 from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
 from .mpt import (
     GaudiMptForCausalLM,
