@@ -90,10 +90,9 @@ def update(prev, cur, dim, idx, inp_seq_len):
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-        )
+        return FusedRoPE.apply(
+            q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
+        ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
 
@@ -249,19 +248,15 @@ def gaudi_mixtral_attn_forward(
         if q_len == 1:
             # next token
             with ht.sdp_kernel(enable_recompute=False):
-                attn_output = FusedSDPA.apply(
-                    query_states, key_states, value_states, attention_mask, 0.0, False, None
-                )
+                attn_output = FusedSDPA.apply(query_states, key_states, value_states, attention_mask, 0.0, False, None)
         else:
             # first token
-            with ht.sdp_kernel(enable_recompute=False): # inference: flash_attention_recompute = False
-                attn_output = FusedSDPA.apply(
-                    query_states, key_states, value_states, attention_mask, 0.0, False, None
-                )
+            with ht.sdp_kernel(enable_recompute=False):  # inference: flash_attention_recompute = False
+                attn_output = FusedSDPA.apply(query_states, key_states, value_states, attention_mask, 0.0, False, None)
     else:
         query_states, key_states, value_states, attention_mask = gaudi_mixtral_repeat_kv(
-                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-            )
+            query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+        )
 
         attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) / math.sqrt(self.head_dim)
 
@@ -325,7 +320,9 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
         expert_layer = self.experts[expert_idx]
         padded_weight = padded_weights[expert_idx]
         current_state_static = hidden_states.reshape(-1, hidden_dim)
-        current_hidden_states_static = expert_layer(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
+        current_hidden_states_static = (
+            expert_layer(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
+        )
         final_hidden_states += current_hidden_states_static
 
     return final_hidden_states, router_logits
