@@ -37,7 +37,13 @@ else:
                 ("t5-3b", "Habana/t5", 0.987, 21.3831, 2, 1),
             ],
         },
-        "translation": {"bf16": []},
+        "translation": {
+            "bf16": [
+                ("Babelscape/mrebel-large", "Habana/t5", 1.015, 0.162, 2, 1),
+                ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.421, 0.7995, 2, 1),
+                ("facebook/nllb-200-distilled-600M", "Habana/t5", 1.03, 1.2531, 2, 1),
+            ],
+        },
     }
 
 
