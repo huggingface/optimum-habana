@@ -404,7 +404,7 @@ def gaudi_mixtral_model_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, MoeModelOutputWithPast]:
     """
-    Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+    Copied from MixtralModel.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py#L1069
     The only differences are:
     - add new args token_idx
     """
