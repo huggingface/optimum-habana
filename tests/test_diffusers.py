@@ -16,6 +16,7 @@
 
 import json
 import os
+import random
 import re
 import subprocess
 import tempfile
@@ -26,14 +27,30 @@ from unittest import TestCase, skipUnless
 import numpy as np
 import requests
 import torch
-from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel, UniPCMultistepScheduler
+from diffusers import (
+    AutoencoderKL,
+    AutoencoderKLTemporalDecoder,
+    ControlNetModel,
+    UNet2DConditionModel,
+    UNetSpatioTemporalConditionModel,
+    UniPCMultistepScheduler,
+)
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils import load_image
+from diffusers.utils.testing_utils import floats_tensor
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 from transformers.testing_utils import parse_flag_from_env, slow
 
 from optimum.habana import GaudiConfig
@@ -47,6 +64,7 @@ from optimum.habana.diffusers import (
     GaudiStableDiffusionPipeline,
     GaudiStableDiffusionUpscalePipeline,
     GaudiStableDiffusionXLPipeline,
+    GaudiStableVideoDiffusionPipeline,
 )
 from optimum.habana.utils import set_seed
 
@@ -427,7 +445,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
 
-        # Test batch_size > 1 where batch_size is a divider of the total number of generated images
+        # Test num_images > 1 where num_images is a divider of the total number of generated images
         batch_size = 3
         num_images_per_prompt = batch_size**2
         images = sd_pipe(
@@ -454,7 +472,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
-        # Test batch_size when it is not a divider of the toal number of generated images for a single prompt
+        # Test num_images when it is not a divider of the total number of generated images for a single prompt
         num_images_per_prompt = 7
         images = sd_pipe(
             prompt,
@@ -1948,3 +1966,207 @@ class TrainControlNet(TestCase):
             ).images[0]
 
             self.assertEqual(image.shape, (512, 512, 3))
+
+
+class GaudiStableVideoDiffusionPipelineTester(TestCase):
+    """
+    Tests the StableVideoDiffusionPipeline for Gaudi.
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.24.0-release/tests/pipelines/stable_video_diffusion/test_stable_video_diffusion.py
+    """
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNetSpatioTemporalConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=8,
+            out_channels=4,
+            down_block_types=(
+                "CrossAttnDownBlockSpatioTemporal",
+                "DownBlockSpatioTemporal",
+            ),
+            up_block_types=("UpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal"),
+            cross_attention_dim=32,
+            num_attention_heads=8,
+            projection_class_embeddings_input_dim=96,
+            addition_time_embed_dim=32,
+        )
+        scheduler = GaudiEulerDiscreteScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            interpolation_type="linear",
+            num_train_timesteps=1000,
+            prediction_type="v_prediction",
+            sigma_max=700.0,
+            sigma_min=0.002,
+            steps_offset=1,
+            timestep_spacing="leading",
+            timestep_type="continuous",
+            trained_betas=None,
+            use_karras_sigmas=True,
+        )
+
+        torch.manual_seed(0)
+        vae = AutoencoderKLTemporalDecoder(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            latent_channels=4,
+        )
+
+        torch.manual_seed(0)
+        config = CLIPVisionConfig(
+            hidden_size=32,
+            projection_dim=32,
+            num_hidden_layers=5,
+            num_attention_heads=4,
+            image_size=32,
+            intermediate_size=37,
+            patch_size=1,
+        )
+        image_encoder = CLIPVisionModelWithProjection(config)
+
+        torch.manual_seed(0)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
+        components = {
+            "unet": unet,
+            "image_encoder": image_encoder,
+            "scheduler": scheduler,
+            "vae": vae,
+            "feature_extractor": feature_extractor,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(device)
+        inputs = {
+            "generator": generator,
+            "image": image,
+            "num_inference_steps": 2,
+            "output_type": "pt",
+            "min_guidance_scale": 1.0,
+            "max_guidance_scale": 2.5,
+            "num_frames": 2,
+            "height": 32,
+            "width": 32,
+        }
+        return inputs
+
+    def test_stable_video_diffusion_single_video(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+        sd_pipe = GaudiStableVideoDiffusionPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        for component in sd_pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        outputs = sd_pipe(
+            **self.get_dummy_inputs(device),
+        ).frames
+        image = outputs[0]
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(len(outputs), 1)
+        self.assertEqual(image.shape, (2, 3, 32, 32))
+
+        expected_slice = np.array([0.5910, 0.5797, 0.5521, 0.6628, 0.6212, 0.6422, 0.5681, 0.5232, 0.5343])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+
+    def test_stable_video_diffusion_batch_sizes(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+        sd_pipe = GaudiStableVideoDiffusionPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        for component in sd_pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # Test num_videos_per_prompt > 1 where num_videos is divisible by batch size
+        batch_size = 3
+        num_videos_per_prompt = batch_size**2
+
+        outputs = sd_pipe(
+            **self.get_dummy_inputs(device),
+            num_videos_per_prompt=num_videos_per_prompt,
+            batch_size=batch_size,
+        ).frames
+        image = outputs[0]
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(len(outputs), num_videos_per_prompt)
+        self.assertEqual(image.shape, (2, 3, 32, 32))
+        # output of diffusers cpu model for 3 video generations (i.e., batch size)
+        # Using batch size instead of total video generations for expected output
+        # because classifier-free model output changes based on number of generations
+        expected_slice = np.array([0.5899, 0.5799, 0.5515, 0.6655, 0.6219, 0.6437, 0.5732, 0.5227, 0.5328])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+
+        # Test num_videos_per_prompt > 1 where num_videos is not divisible by batch size
+        batch_size = 3
+        num_videos_per_prompt = 7
+
+        outputs = sd_pipe(
+            **self.get_dummy_inputs(device), num_videos_per_prompt=num_videos_per_prompt, batch_size=batch_size
+        ).frames
+        image = outputs[0]
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(len(outputs), num_videos_per_prompt)
+        self.assertEqual(image.shape, (2, 3, 32, 32))
+
+        # output of diffusers cpu model for 3 video generations (i.e., batch size)
+        expected_slice = np.array([0.5899, 0.5799, 0.5515, 0.6655, 0.6219, 0.6437, 0.5732, 0.5227, 0.5328])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+
+        # Same test without classifier-free guidance
+        inputs = self.get_dummy_inputs(device)
+        inputs["max_guidance_scale"] = 1.0
+        outputs = sd_pipe(**inputs, num_videos_per_prompt=num_videos_per_prompt, batch_size=batch_size).frames
+        image = outputs[0]
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(len(outputs), num_videos_per_prompt)
+        self.assertEqual(image.shape, (2, 3, 32, 32))
+
+        # output of diffusers cpu model for 7 video generations (i.e., total videos)
+        # this output is identical when we don't use classifier-free guidance
+        expected_slice = np.array([0.5879, 0.5690, 0.5291, 0.6601, 0.6250, 0.6384, 0.5533, 0.5244, 0.5091])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+
+        # Test with several image prompts
+        batch_size = 3
+        num_images = 3
+        num_videos_per_prompt = 2
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["image"] = inputs["image"].repeat(num_images, 1, 1, 1)
+        outputs = sd_pipe(**inputs, num_videos_per_prompt=num_videos_per_prompt, batch_size=batch_size).frames
+        image = outputs[0]
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(len(outputs), num_images * num_videos_per_prompt)
+        self.assertEqual(image.shape, (2, 3, 32, 32))
+
+        # output of diffusers cpu model for 3 input images with 1 video per prompt
+        expected_slice = np.array([0.5026, 0.5873, 0.5591, 0.6236, 0.6200, 0.6158, 0.5214, 0.5603, 0.5245])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)

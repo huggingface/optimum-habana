@@ -1,1 +1,2 @@
 from .unet_2d_condition import gaudi_unet_2d_condition_model_forward
+from .unet_spatio_temporal_condition import gaudi_unet_spatio_temporal_condition_model_forward
