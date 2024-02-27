@@ -1841,3 +1841,62 @@ class TrainTextToImage(TestCase):
 
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+
+class TrainControlNet(TestCase):
+    """
+    Tests the train_controlnet.py script for Gaudi.
+    """
+
+    def test_train_controlnet_script(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_controlnet.py"
+        )
+
+        cmd_line = f"""ls {path_to_script}""".split()
+
+        # check find existence
+        p = subprocess.Popen(cmd_line)
+        return_code = p.wait()
+
+        # Ensure the run finished without any issue
+        self.assertEqual(return_code, 0)
+
+    def test_train_controlnet(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path_to_script = (
+                Path(os.path.dirname(__file__)).parent
+                / "examples"
+                / "stable-diffusion"
+                / "training"
+                / "train_controlnet.py"
+            )
+
+            cmd_line = f"""
+                    python3
+                    {path_to_script}
+                    --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5
+                    --dataset_name fusing/fill50k
+                    --resolution 256
+                    --train_batch_size 4
+                    --learning_rate 1e-05
+                    --gaudi_config_name Habana/stable-diffusion
+                    --throughput_warmup_steps 1
+                    --bf16
+                    --max_train_steps 2
+                    --output_dir {tmpdir}
+                    --lr_scheduler constant
+                    --lr_warmup_steps 0
+                    --gaudi_config_name Habana/stable-diffusion
+                """.split()
+
+            # Run train_controlnet.y
+            p = subprocess.Popen(cmd_line)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
