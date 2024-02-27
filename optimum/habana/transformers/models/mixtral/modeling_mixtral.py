@@ -99,7 +99,7 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
 
 def gaudi_mixtral_rmsnorm_forward(self, hidden_states):
     """
-    Copied from MixtralRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
+    Copied from MixtralRMSNorm.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
         - override RMSNorm with Habana fused RMSNorm
     """
