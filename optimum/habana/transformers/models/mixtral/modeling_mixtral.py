@@ -561,7 +561,7 @@ def gaudi_mixtral_model_forward(
 
 class GaudiMixtralForCausalLM(MixtralForCausalLM):
     """
-    Inherits from MixtralForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+    Inherits from MixtralForCausalLM: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py#L1231
     The only differences are:
     - add new args token_idx
     - add token_idx into model_inputs
