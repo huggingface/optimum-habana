@@ -128,7 +128,7 @@ def gaudi_mixtral_repeat_kv(
     n_rep: int,
 ):
     """
-    Copied from repeat_kv: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
+    Copied from repeat_kv: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
     - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
     - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
@@ -193,7 +193,7 @@ def gaudi_mixtral_attn_forward(
     **kwargs,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     """
-    Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
+    Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
     - add new args token_idx
     - optimize KV cache
@@ -284,7 +284,7 @@ def gaudi_mixtral_attn_forward(
 
 def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     """
-    Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
+    Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
     - optimize expert forward, remove dynamic control and dynamic shape
     """
@@ -341,7 +341,7 @@ def gaudi_mixtral_decoder_layer_forward(
     **kwargs,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """
-    Copied from MixtralDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
+    Copied from MixtralDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
     - add new args token_idx
     """
