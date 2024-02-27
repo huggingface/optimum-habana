@@ -765,7 +765,12 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
                 if not output_type == "latent":
                     # Post-processing
-                    image = self.vae.decode(latents_batch / self.vae.config.scaling_factor, return_dict=False)[0]
+                    # To resolve the dtype mismatch issue
+                    image = self.vae.decode(
+                        (latents_batch / self.vae.config.scaling_factor).to(self.vae.encoder.conv_in.weight.dtype),
+                        return_dict=False,
+                    )[0]
+
                 else:
                     image = latents_batch
 
