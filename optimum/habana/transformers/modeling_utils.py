@@ -98,7 +98,6 @@ from .models import (
     gaudi_mistral_model_forward,
     gaudi_mixtral_attn_forward,
     gaudi_mixtral_block_sparse_moe_forward,
-    gaudi_mixtral_block_sparse_top2_mlp_forward,
     gaudi_mixtral_decoder_layer_forward,
     gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
@@ -315,7 +314,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM = GaudiMixtralForCausalLM
     transformers.models.mixtral.modeling_mixtral.MixtralModel.forward = gaudi_mixtral_model_forward
     transformers.models.mixtral.modeling_mixtral.MixtralAttention.forward = gaudi_mixtral_attn_forward
-    transformers.models.mixtral.modeling_mixtral.MixtralBLockSparseTop2MLP.forward = gaudi_mixtral_block_sparse_top2_mlp_forward
     transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = gaudi_mixtral_block_sparse_moe_forward
     transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer.forward = gaudi_mixtral_decoder_layer_forward
     transformers.models.mixtral.modeling_mixtral.MixtralRMSNorm.forward = gaudi_mixtral_rmsnorm_forward

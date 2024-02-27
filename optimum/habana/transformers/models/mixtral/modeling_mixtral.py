@@ -23,13 +23,11 @@ import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
+import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
-
-import habana_frameworks.torch.core as htcore
-
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
@@ -102,7 +100,7 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
 
 def gaudi_mixtral_rmsnorm_forward(self, hidden_states):
     """
-    Copied from MixtralRMSNorm.forward:
+    Copied from MixtralRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
         - override RMSNorm with Habana fused RMSNorm
     """
@@ -131,10 +129,10 @@ def gaudi_mixtral_repeat_kv(
     n_rep: int,
 ):
     """
-    Copied from repeat_kv:
+    Copied from repeat_kv: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
-        - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
-        - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
+    - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
+    - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
     The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
     The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
     """
@@ -196,9 +194,10 @@ def gaudi_mixtral_attn_forward(
     **kwargs,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     """
-    Copied from MixtralAttention.forward:
+    Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
     - add new args token_idx
+    - optimize KV cache
     """
     if "padding_mask" in kwargs:
         warnings.warn(
@@ -288,14 +287,12 @@ def gaudi_mixtral_attn_forward(
     return attn_output, attn_weights, past_key_value
 
 
-def gaudi_mixtral_block_sparse_top2_mlp_forward(self, hidden_states, routing_weights):
-    current_hidden_states = self.act_fn(self.w1(hidden_states)) * self.w3(hidden_states)
-    current_hidden_states = self.w2(current_hidden_states)
-    return current_hidden_states # .unsqueeze(-1) * routing_weights.unsqueeze(1)
-
-
 def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-    """ """
+    """
+    Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
+    The only differences are:
+    - optimize expert forward, remove dynamic control and dynamic shape
+    """
     batch_size, sequence_length, hidden_dim = hidden_states.shape
     hidden_states = hidden_states.view(-1, hidden_dim)
     # router_logits: (batch * sequence_length, n_experts)
@@ -325,67 +322,13 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
 
     # Loop over all available experts in the model and perform the computation on each expert
     for expert_idx in range(self.num_experts):
-        # htcore.mark_step()
-        # htcore.hpu.current_stream().synchronize()
         expert_layer = self.experts[expert_idx]
         padded_weight = padded_weights[expert_idx]
         current_state_static = hidden_states.reshape(-1, hidden_dim)
-        current_hidden_states_static = expert_layer(current_state_static, padded_weight).reshape(-1, sequence_length, hidden_dim) * padded_weight
+        current_hidden_states_static = expert_layer(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
         final_hidden_states += current_hidden_states_static
-        # htcore.mark_step()
-        # htcore.hpu.current_stream().synchronize()
 
-    # final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
     return final_hidden_states, router_logits
-
-
-'''
-# transformers>=4.36.0
-def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-    """ """
-    batch_size, sequence_length, hidden_dim = hidden_states.shape
-    hidden_states = hidden_states.view(-1, hidden_dim)
-    # router_logits: (batch * sequence_length, n_experts)
-    router_logits = self.gate(hidden_states)
-
-    routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-    routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-    routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-    # we cast back to the input dtype
-    routing_weights = routing_weights.to(hidden_states.dtype)
-
-    final_hidden_states = torch.zeros(
-        (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
-    )
-
-    # One hot encode the selected experts to create an expert mask
-    # this will be used to easily index which expert is going to be sollicitated
-    expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
-
-    # Loop over all available experts in the model and perform the computation on each expert
-    for expert_idx in range(self.num_experts):
-        expert_layer = self.experts[expert_idx]
-        idx, top_x = torch.where(expert_mask[expert_idx])
-
-        if top_x.shape[0] == 0:
-            continue
-
-        # in torch it is faster to index using lists than torch tensors
-        top_x_list = top_x.tolist()
-        idx_list = idx.tolist()
-
-        # Index the correct hidden states and compute the expert hidden state for
-        # the current expert. We need to make sure to multiply the output hidden
-        # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
-        current_state = hidden_states[None, top_x_list].reshape(-1, hidden_dim)
-        current_hidden_states = expert_layer(current_state, routing_weights[top_x_list, idx_list, None])
-
-        # However `index_add_` only support torch tensors for indexing so we'll use
-        # the `top_x` tensor here.
-        final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
-    final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
-    return final_hidden_states, router_logits
-'''
 
 
 def gaudi_mixtral_decoder_layer_forward(
@@ -401,7 +344,7 @@ def gaudi_mixtral_decoder_layer_forward(
     **kwargs,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """
-    Copied from MixtralDecoderLayer.forward:
+    Copied from MixtralDecoderLayer.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
     - add new args token_idx
     """
@@ -464,7 +407,7 @@ def gaudi_mixtral_model_forward(
     token_idx: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, MoeModelOutputWithPast]:
     """
-    Copied from MixtralModel.forward:
+    Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
     The only differences are:
     - add new args token_idx
     """
@@ -620,22 +563,14 @@ def gaudi_mixtral_model_forward(
 
 
 class GaudiMixtralForCausalLM(MixtralForCausalLM):
-    '''
-    def __init__(self, config):
-        super().__init__(config)
-        import habana_frameworks.torch as ht
-        # # 36.66 tokens/second
-        self.model = ht.hpu.wrap_in_hpu_graph(self.model)
-
-        # # 6.21 tokens/second
-        # self.model.embed_tokens = ht.hpu.wrap_in_hpu_graph(self.model.embed_tokens)
-        # for layer_idx in range(config.num_hidden_layers):
-        #     self.model.layers[layer_idx].self_attn = ht.hpu.wrap_in_hpu_graph(self.model.layers[layer_idx].self_attn)
-        #     # self.model.layers[layer_idx].block_sparse_moe = ht.hpu.wrap_in_hpu_graph(self.model.layers[layer_idx].block_sparse_moe)
-        #     self.model.layers[layer_idx].input_layernorm = ht.hpu.wrap_in_hpu_graph(self.model.layers[layer_idx].input_layernorm)
-        #     self.model.layers[layer_idx].post_attention_layernorm = ht.hpu.wrap_in_hpu_graph(self.model.layers[layer_idx].post_attention_layernorm)
-        # self.model.norm = ht.hpu.wrap_in_hpu_graph(self.model.norm)
-    '''
+    """
+    Inherits from MixtralForCausalLM: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+    The only differences are:
+    - add new args token_idx
+    - add token_idx into model_inputs
+    - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
+    - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
+    """
 
     def forward(
         self,
@@ -652,12 +587,6 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
-        """
-        Inherits from MixtralForCausalLM:
-        The only differences are:
-        - add new args token_idx
-        """
-
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.output_router_logits
@@ -727,14 +656,6 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
     ):
-        """
-        Inherits from MistralForCausalLM: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
-        The only differences are:
-        - add new args token_idx
-        - add token_idx into model_inputs
-        - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
-        - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
-        """
         token_idx = kwargs.get("token_idx", None)
 
         if past_key_values:
