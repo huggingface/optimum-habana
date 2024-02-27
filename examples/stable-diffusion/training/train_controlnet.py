@@ -12,6 +12,11 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+"""
+Training script for Conditional Control to Text-to-Image Diffusion Models
+Adapted from the following source:
+https://github.com/huggingface/diffusers/blob/v0.26.3/examples/controlnet/train_controlnet.py
+"""
 
 import argparse
 import json
