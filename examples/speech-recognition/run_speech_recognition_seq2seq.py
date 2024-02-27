@@ -29,9 +29,8 @@ from typing import Any, Dict, List, Optional, Union
 import datasets
 import evaluate
 import torch
-from datasets import DatasetDict, load_dataset
-
 import transformers
+from datasets import DatasetDict, load_dataset
 from transformers import (
     AutoConfig,
     AutoFeatureExtractor,
@@ -47,12 +46,14 @@ from transformers.utils.versions import require_version
 from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 from optimum.habana.utils import set_seed
 
+
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
 except ImportError:
 
     def check_optimum_habana_min_version(*a, **b):
         return ()
+
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.37.0")
@@ -334,7 +335,7 @@ def main():
         training_args.gaudi_config_name,
         cache_dir=model_args.cache_dir,
         # use_auth_token=True if data_args.use_auth_token else None,
-        use_auth_token=False
+        use_auth_token=False,
     )
 
     # Log on each process the small summary:
@@ -540,7 +541,7 @@ def main():
         return
 
     # 8. Load Metric
-    metric = evaluate.load("wer")
+    metric = evaluate.load("wer", cache_dir=model_args.cache_dir)
 
     def compute_metrics(pred):
         pred_ids = pred.predictions

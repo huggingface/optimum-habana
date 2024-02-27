@@ -19,17 +19,12 @@ limitations under the License.
 ## Table of Contents
 
 - [Automatic Speech Recognition with CTC](#connectionist-temporal-classification)
-	- [Single GPU example](#single-gpu-ctc)
-	- [Multi GPU example](#multi-gpu-ctc)
-	- [Examples](#examples-ctc)
-		- [TIMIT](#timit-ctc)
-		- [Librispeech](#librispeech-ctc)
-		- [Common Voice](#common-voice-ctc)
-		- [Multilingual Librispeech](#multilingual-librispeech-ctc)
+	- [Single GPU example](#single-hpu-ctc)
+	- [Multi GPU example](#multi-hpu-ctc)
 - [Automatic Speech Recognition with Sequence-to-Sequence](#sequence-to-sequence)
 	- [Whisper Model](#whisper-model)
-	- [Fine tuning](#single-hpu-whisper-training-with-seq2seq)
-	- [Inference](#single-gpu-seq2seq-inference)
+	- [Fine tuning](#single-hpu-whisper-fine-tuning-with-seq2seq)
+	- [Inference](#single-hpu-seq2seq-inference)
 
 
 ## Connectionist Temporal Classification
@@ -211,7 +206,7 @@ recognition on one of the well known speech recognition datasets similar to show
 ### Whisper Model
 We can load all components of the Whisper model directly from the pretrained checkpoint, including the pretrained model weights, feature extractor and tokenizer. We simply have to specify our fine-tuning dataset and training hyperparameters.
 
-#### Single HPU Whisper Fine tuning with Seq2Seq
+### Single HPU Whisper Fine tuning with Seq2Seq
 The following example shows how to fine-tune the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using a single HPU device in bf16 precision:
 ```bash
 python run_speech_recognition_seq2seq.py \
@@ -253,7 +248,7 @@ python run_speech_recognition_seq2seq.py \
 
 If training on a different language, you should be sure to change the `language` and `dataset_config_name` arguments. 
 
-#### Multi HPU Whisper Training with Seq2Seq
+### Multi HPU Whisper Training with Seq2Seq
 The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
 ```bash
 python ../gaudi_spawn.py \
