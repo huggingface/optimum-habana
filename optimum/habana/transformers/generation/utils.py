@@ -202,10 +202,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 attention_mask = model_kwargs["attention_mask"]
                 if token_idx is not None:
                     attention_mask.index_fill_(1, token_idx, 1)
-                else:
-                    attention_mask = torch.cat(
-                        [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
-                    )
                 model_kwargs["attention_mask"] = attention_mask
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
