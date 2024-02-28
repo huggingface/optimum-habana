@@ -20,7 +20,7 @@ limitations under the License.
 
 - [Automatic Speech Recognition with CTC](#connectionist-temporal-classification)
 	- [Single HPU example](#single-hpu-ctc)
-	- [Multi GPU example](#multi-hpu-ctc)
+	- [Multi HPU example](#multi-hpu-ctc)
 - [Automatic Speech Recognition with Sequence-to-Sequence](#sequence-to-sequence)
 	- [Whisper Model](#whisper-model)
 	- [Fine tuning](#single-hpu-whisper-fine-tuning-with-seq2seq)
