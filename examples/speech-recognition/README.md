@@ -300,7 +300,7 @@ python run_speech_recognition_seq2seq.py \
 	--dataset_config_name="hi" \
 	--language="hindi" \
 	--eval_split_name="test" \
- 	--gaudi_config_name="gaudi_config.json" \
+ 	--gaudi_config_name="Habana/whisper" \
 	--max_steps="5000" \
 	--output_dir="./results/whisper-small-clean" \
 	--gradient_accumulation_steps="2" \
