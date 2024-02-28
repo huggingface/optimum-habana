@@ -181,7 +181,7 @@ class KVCache(torch.nn.Module):
         return update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
-def gaudi_mixtral_attn_forward(
+def gaudi_mixtral_attention_forward(
     self,
     hidden_states: torch.Tensor,
     attention_mask: Optional[torch.Tensor] = None,
