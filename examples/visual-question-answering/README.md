@@ -25,6 +25,7 @@ python3 run_pipeline.py \
     --model_name_or_path Salesforce/blip-vqa-capfilt-large \
     --image_path "https://storage.googleapis.com/sfr-vision-language-research/BLIP/demo.jpg" \
     --question "how many dogs are in the picture?" \
-    --use_hpu_graphs
+    --use_hpu_graphs \
+    --bf16
 ```
 valided models: Salesforce/blip-vqa-base,dandelin/vilt-b32-finetuned-vqa,Salesforce/blip-vqa-capfilt-large
