@@ -42,8 +42,6 @@ def _test_fsdp(
     world_size: int = 8,
 ):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
-    os.environ["PT_HPU_EAGER_4_STAGE_PIPELINE_ENABLE"] = "0"  # To be removed later
-    os.environ["PT_HPU_EAGER_PIPELINE_ENABLE"] = "0"  # To be removed later
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
 
     # Install question-answering example requirements
