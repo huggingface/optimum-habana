@@ -30,6 +30,7 @@ from pathlib import Path
 
 import accelerate
 import diffusers
+import habana_frameworks.torch.core as htcore
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -47,6 +48,7 @@ from diffusers import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
@@ -69,12 +71,12 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.8.1")
+check_optimum_habana_min_version("1.10.0")
 if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.23.0")
+check_min_version("0.26.0")
 
 logger = get_logger(__name__)
 
@@ -109,16 +111,17 @@ def log_validation(
         variant=args.variant,
         scheduler=noise_scheduler,
         use_habana=True,
-        use_hpu_graphs=True,
+        use_hpu_graphs=args.use_hpu_graphs,
         gaudi_config=args.gaudi_config_name,
     )
+    gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
     if args.seed is None:
         generator = None
-    elif accelerator.device == "hpu":
+    elif accelerator.device == torch.device("hpu"):
         # torch.Generator() is unsupported on HPU
         generator = set_seed(args.seed)
     else:
@@ -146,7 +149,9 @@ def log_validation(
         images = []
 
         for _ in range(args.num_validation_images):
-            with torch.autocast(device_type=accelerator.device, dtype=weight_dtype):
+            with torch.autocast(
+                device_type="hpu", dtype=weight_dtype, enabled=gaudi_config.use_torch_autocast or args.bf16
+            ):
                 image = pipeline(
                     validation_prompt, validation_image, num_inference_steps=20, generator=generator
                 ).images[0]
@@ -569,6 +574,7 @@ def parse_args(input_args=None):
             " lazy mode."
         ),
     )
+    parser.add_argument("--use_hpu_graphs", action="store_true", help="Use HPU graphs on HPU.")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -769,8 +775,6 @@ def main(args):
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 
-    import habana_frameworks.torch.core as htcore
-
     # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)
@@ -817,6 +821,12 @@ def main(args):
     else:
         logger.info("Initializing controlnet weights from unet")
         controlnet = ControlNetModel.from_unet(unet)
+
+    # Taken from [Sayak Paul's Diffusers PR #6511](https://github.com/huggingface/diffusers/pull/6511/files)
+    def unwrap_model(model):
+        model = accelerator.unwrap_model(model)
+        model = model._orig_mod if is_compiled_module(model) else model
+        return model
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -877,9 +887,9 @@ def main(args):
         " doing mixed precision training, copy of the weights should still be float32."
     )
 
-    if accelerator.unwrap_model(controlnet).dtype != torch.float32:
+    if unwrap_model(controlnet).dtype != torch.float32:
         raise ValueError(
-            f"Controlnet loaded as datatype {accelerator.unwrap_model(controlnet).dtype}. {low_precision_error_string}"
+            f"Controlnet loaded as datatype {unwrap_model(controlnet).dtype}. {low_precision_error_string}"
         )
 
     if args.scale_lr:
@@ -1048,7 +1058,7 @@ def main(args):
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False)[0]
 
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
 
@@ -1069,7 +1079,8 @@ def main(args):
                         sample.to(dtype=weight_dtype) for sample in down_block_res_samples
                     ],
                     mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -1156,7 +1167,7 @@ def main(args):
         }
         with open(f"{args.output_dir}/speed_metrics.json", mode="w") as file:
             json.dump(metrics, file)
-        controlnet = accelerator.unwrap_model(controlnet)
+        controlnet = unwrap_model(controlnet)
         controlnet.save_pretrained(args.output_dir)
 
         if args.push_to_hub:

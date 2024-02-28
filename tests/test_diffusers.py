@@ -1892,6 +1892,7 @@ class TrainControlNet(TestCase):
                     --lr_scheduler constant
                     --lr_warmup_steps 0
                     --gaudi_config_name Habana/stable-diffusion
+                    --use_hpu_graphs
                 """.split()
 
             # Run train_controlnet.y

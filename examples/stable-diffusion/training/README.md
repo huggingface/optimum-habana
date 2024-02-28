@@ -90,7 +90,9 @@ accelerate launch train_controlnet.py \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=4 \
- --throughput_warmup_steps=3
+ --throughput_warmup_steps=3 \
+ --use_hpu_graphs \
+ --bf16
 ```
 
 ### Multi-card Run
@@ -113,7 +115,9 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
   --output_dir /tmp/textual_inversion_cat \
   --save_as_full_pipeline \
   --gaudi_config_name Habana/stable-diffusion \
-  --throughput_warmup_steps 3
+  --throughput_warmup_steps 3 \
+  --use_hpu_graphs \
+  --bf16
 ```
 
 
