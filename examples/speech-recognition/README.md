@@ -216,7 +216,7 @@ python run_speech_recognition_seq2seq.py \
 	--language="hindi" \
 	--train_split_name="train+validation" \
 	--eval_split_name="test" \
-	--gaudi_config_name="gaudi_config.json" \
+	--gaudi_config_name="Habana/whisper" \
 	--max_steps="5000" \
 	--output_dir="./results/whisper-small-hi" \
 	--per_device_train_batch_size="16" \
