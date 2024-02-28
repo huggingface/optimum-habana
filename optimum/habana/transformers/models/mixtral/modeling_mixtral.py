@@ -63,7 +63,7 @@ except ImportError:
 try:
     from deepspeed import comm as dist
 except ImportError:
-    print("Not using HPU deepspeed.")
+    print("Not using HPU DeepSpeed.")
     dist = None
 
 logger = logging.get_logger(__name__)
