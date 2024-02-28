@@ -282,7 +282,7 @@ def gaudi_mixtral_attn_forward(
     return attn_output, attn_weights, past_key_value
 
 
-def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
     The only differences are:
