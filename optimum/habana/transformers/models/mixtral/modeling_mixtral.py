@@ -670,7 +670,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                 if token_idx is not None:
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
