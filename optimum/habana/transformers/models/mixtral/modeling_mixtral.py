@@ -655,7 +655,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
     ):
         token_idx = kwargs.get("token_idx", None)
 
-        if past_key_values:
+        if past_key_values is not None:
             if token_idx is None:
                 input_ids = input_ids[:, -1:]
             else:
