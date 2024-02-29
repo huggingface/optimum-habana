@@ -67,7 +67,9 @@ python run_speech_recognition_ctc.py \
     --use_lazy_mode \
     --gaudi_config_name="Habana/wav2vec2" \
     --throughput_warmup_steps="3" \
-    --bf16
+    --bf16 \
+    --use_hpu_graphs_for_training \
+    --use_hpu_grpahs_for_inference
 ```
 
 On a single HPU, this script should run in *ca.* 6 hours and yield a CTC loss of **0.059** and a word error rate of **0.0423**.
@@ -106,7 +108,9 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
-    --bf16
+    --bf16 \
+    --use_hpu_graphs_for_training \
+    --use_hpu_graphs_for_inference
 ```
 
 On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **0.0613** and a word error rate of **0.0458**.
@@ -185,5 +189,6 @@ python run_speech_recognition_ctc.py \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name="Habana/wav2vec2" \
-    --bf16
+    --bf16 \
+    --use_hpu_graphs_for_inference
 ```

@@ -21,7 +21,9 @@
                         "--layerdrop 0.0",
                         "--freeze_feature_encoder",
                         "--dataloader_num_workers 8",
-                        "--chars_to_ignore ',?.!-;:\"“%‘”'"
+                        "--chars_to_ignore ',?.!-;:\"“%‘”'",
+                        "--use_hpu_graphs_for_training",
+                        "--use_hpu_graphs_for_inference"
                     ]
                 }
             }
@@ -49,7 +51,9 @@
                         "--layerdrop 0.0",
                         "--freeze_feature_encoder",
                         "--dataloader_num_workers 8",
-                        "--chars_to_ignore ',?.!-;:\"“%‘”'"
+                        "--chars_to_ignore ',?.!-;:\"“%‘”'",
+			"--use_hpu_graphs_for_training",
+			"--use_hpu_graphs_for_inference"
                     ]
                 }
             }
