@@ -77,16 +77,11 @@ def gaudi_phi_attention_forward(
                 "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                 "with a layer index."
             )
-
-        kv_shape = (
-            past_key_value[0].shape[-2]
-            if isinstance(past_key_value, tuple)
-            else past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-        )
         if token_idx is not None:
-            kv_seq_len = kv_shape
+            if 0 <= self.layer_idx < len(past_key_value.key_cache):
+                kv_seq_len = past_key_value.key_cache[self.layer_idx].shape[-2]
         else:
-            kv_seq_len += kv_shape
+            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
@@ -108,10 +103,14 @@ def gaudi_phi_attention_forward(
 
     if past_key_value is not None:
         if token_idx is not None:
-            past_key_value[0].index_copy_(2, token_idx - 1, key_states)
-            past_key_value[1].index_copy_(2, token_idx - 1, value_states)
-            key_states = past_key_value[0]
-            value_states = past_key_value[1]
+            if 0 <= self.layer_idx < len(past_key_value.key_cache):
+                past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
+                past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
+                key_states = past_key_value.key_cache[self.layer_idx]
+                value_states = past_key_value.value_cache[self.layer_idx]
+            else:
+                past_key_value.key_cache.append(key_states)
+                past_key_value.value_cache.append(value_states)
         else:
             cache_kwargs = {"sin": sin, "cos": cos, "partial_rotation_size": self.rotary_emb.dim}
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
@@ -248,16 +247,12 @@ def gaudi_phi_model_forward(
                 "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
             )
             use_cache = False
-    
-    past_key_values_length = 0
-    use_legacy_cache = True
-    use_new_cache = False
-    if past_key_values is not None:
-        if use_cache and use_new_cache:
-            use_legacy_cache = not isinstance(past_key_values, Cache)
-            if use_legacy_cache:
-                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-            past_key_values_length = past_key_values.get_usable_length(seq_length)
+
+    if use_cache:
+        use_legacy_cache = not isinstance(past_key_values, Cache)
+        if use_legacy_cache:
+            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+        past_key_values_length = past_key_values.get_usable_length(seq_length)
 
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -328,11 +323,7 @@ def gaudi_phi_model_forward(
 
     next_cache = None
     if use_cache:
-        next_cache = (
-            next_decoder_cache
-            if not use_new_cache
-            else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
-        )
+        next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
 
     if not return_dict:
         return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
