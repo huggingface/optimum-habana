@@ -99,16 +99,13 @@ def main():
 
         generator.model = wrap_in_hpu_graph(generator.model)
 
-    autocast_enable = model_dtype == torch.bfloat16
     # warm up
     for i in range(args.warmup):
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=autocast_enable):
-            generator(images, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+        generator(images, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
 
     start = time.time()
     for i in range(args.n_iterations):
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=autocast_enable):
-            result = generator(images, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+        result = generator(images, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
     end = time.time()
     logger.info(f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms")
 
