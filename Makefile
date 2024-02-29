@@ -58,12 +58,13 @@ slow_tests_diffusers: test_installs
 	python -m pip install git+https://github.com/huggingface/diffusers.git
 	python -m pytest tests/test_diffusers.py -v -s -k "test_no_"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_textual_inversion"
+	python -m pip install peft==0.7.0
+	python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_"
 
 # Run text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
 	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
-	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder_text_summarization.py -v -s --token $(TOKEN)
-	python -m pytest tests/test_encoder_decoder_translation.py -v -s --token $(TOKEN)
+	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s
