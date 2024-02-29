@@ -61,7 +61,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.8.1")
+check_optimum_habana_min_version("1.10.0")
 
 
 @dataclass
@@ -247,6 +247,9 @@ class DataArguments:
     sql_prompt: bool = field(
         default=False,
         metadata={"help": "Whether to have a SQL style prompt"},
+    )
+    save_last_ckpt: bool = field(
+        default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
     )
 
 
@@ -700,7 +703,8 @@ def main():
 
     if training_args.do_train:
         train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
-        trainer.save_model()
+        if data_args.save_last_ckpt:
+            trainer.save_model()
 
         metrics = train_result.metrics
         trainer.log_metrics("train", metrics)

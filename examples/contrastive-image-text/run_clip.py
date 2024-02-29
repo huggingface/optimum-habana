@@ -62,8 +62,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.34.0")
-check_optimum_habana_min_version("1.8.1")
+check_min_version("4.37.0")
+check_optimum_habana_min_version("1.10.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/contrastive-image-text/requirements.txt")
 
@@ -114,7 +114,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
+                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
                 "execute code present on the Hub on your local machine."
             )
@@ -309,7 +309,7 @@ def main():
     )
     logger.info(f"Training/evaluation parameters {training_args}")
 
-    # 3. Detecting last checkpoint and eventualy continue from last checkpoint
+    # 3. Detecting last checkpoint and eventually continue from last checkpoint
     last_checkpoint = None
     if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
@@ -570,7 +570,7 @@ def main():
             # Transform images on the fly as doing it on the whole dataset takes too much time.
             test_dataset.set_transform(transform_images)
 
-    # 8. Initalize our trainer
+    # 8. Initialize our trainer
     trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
     trainer = trainer_cls(
         model=model,

@@ -33,12 +33,12 @@
             "eval_batch_size": 8,
             "distribution": {
                 "multi_card": {
-                    "learning_rate": 6e-4,
+                    "learning_rate": 3e-4,
                     "train_batch_size": 8,
-                    "eval_wer": 0.0464,
-                    "train_runtime": 371.36,
-                    "train_samples_per_second": 175.129,
-                    "eval_samples_per_second": 153.24,
+                    "eval_wer": 0.0531535105117017,
+                    "train_runtime": 356.4723,
+                    "train_samples_per_second": 183.245,
+                    "eval_samples_per_second": 158.985,
                     "extra_arguments": [
                         "--dataset_config_name clean",
                         "--train_split_name train.100",

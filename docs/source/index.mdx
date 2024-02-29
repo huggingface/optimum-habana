@@ -53,7 +53,7 @@ In the tables below, ✅ means single-card, multi-card and DeepSpeed have all be
 | CodeGen      |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | MPT          |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Mistral      |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| T5           | ✅       | ✅        | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
+| T5 / Flan T5 | ✅       | ✅        | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
 | BART         |          | <div style="text-align:left"><li>Single card</li></div> | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
 | ViT          | ✅       | ✅        | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
 | Swin         | ✅       | ✅        | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
@@ -64,10 +64,19 @@ In the tables below, ✅ means single-card, multi-card and DeepSpeed have all be
 
 - Diffusers
 
-| Architecture     | Training | Inference | <center>Tasks</center> |
-|------------------|:--------:|:---------:|------------------------|
+| Architecture     | Training | Inference | Tasks |
+|------------------|:--------:|:---------:|:------|
 | Stable Diffusion |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | LDM3D            |          | <div style="text-align:left"><li>Single card</li></div> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+
+
+- TRL:
+
+| Architecture     | Training | Inference            | Tasks |
+|------------------|:--------:|:--------------------:|:------|
+| Llama 2          | ✅       |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+| Llama 2          | ✅       |           | <li>[PPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+
 
 Other models and tasks supported by the 🤗 Transformers and 🤗 Diffusers library may also work.
 You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana.

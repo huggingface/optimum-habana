@@ -225,6 +225,81 @@ def _gaudi_wav2vec2_mask_hidden_states(
     return hidden_states
 
 
+def gaudi_wav2vec2_encoder_forward(
+    self,
+    hidden_states: torch.tensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    output_attentions: bool = False,
+    output_hidden_states: bool = False,
+    return_dict: bool = True,
+):
+    """
+    Copied from Transformers: https://github.com/huggingface/transformers/blob/7790943c91411f4234d11dfbf4c2f21ce7caf088/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L755
+    The only difference is that torch.rand device is set to 'hpu' (required to capture operation as part of HPU graph)
+    """
+    all_hidden_states = () if output_hidden_states else None
+    all_self_attentions = () if output_attentions else None
+
+    if attention_mask is not None:
+        # make sure padded tokens output 0
+        expand_attention_mask = attention_mask.unsqueeze(-1).repeat(1, 1, hidden_states.shape[2])
+        hidden_states[~expand_attention_mask] = 0
+
+        # extend attention_mask
+        attention_mask = 1.0 - attention_mask[:, None, None, :].to(dtype=hidden_states.dtype)
+        attention_mask = attention_mask * torch.finfo(hidden_states.dtype).min
+        attention_mask = attention_mask.expand(
+            attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1]
+        )
+
+    position_embeddings = self.pos_conv_embed(hidden_states)
+    hidden_states = hidden_states + position_embeddings
+    hidden_states = self.layer_norm(hidden_states)
+    hidden_states = self.dropout(hidden_states)
+
+    deepspeed_zero3_is_enabled = is_deepspeed_zero3_enabled()
+
+    for layer in self.layers:
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
+        dropout_probability = torch.rand([], device="hpu")
+
+        skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
+        if not skip_the_layer or deepspeed_zero3_is_enabled:
+            # under deepspeed zero3 all gpus must run in sync
+            if self.gradient_checkpointing and self.training:
+                layer_outputs = self._gradient_checkpointing_func(
+                    layer.__call__,
+                    hidden_states,
+                    attention_mask,
+                    output_attentions,
+                )
+            else:
+                layer_outputs = layer(
+                    hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
+                )
+            hidden_states = layer_outputs[0]
+
+        if skip_the_layer:
+            layer_outputs = (None, None)
+
+        if output_attentions:
+            all_self_attentions = all_self_attentions + (layer_outputs[1],)
+
+    if output_hidden_states:
+        all_hidden_states = all_hidden_states + (hidden_states,)
+
+    if not return_dict:
+        return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+    return BaseModelOutput(
+        last_hidden_state=hidden_states,
+        hidden_states=all_hidden_states,
+        attentions=all_self_attentions,
+    )
+
+
 def gaudi_wav2vec2_forward(
     self,
     input_values: Optional[torch.Tensor],
@@ -279,85 +354,4 @@ def gaudi_wav2vec2_forward(
         extract_features=extract_features,
         hidden_states=encoder_outputs.hidden_states,
         attentions=encoder_outputs.attentions,
-    )
-
-
-def gaudi_wav2vec2_encoder_forward(
-    self,
-    hidden_states: torch.tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    output_attentions: bool = False,
-    output_hidden_states: bool = False,
-    return_dict: bool = True,
-):
-    """
-    Copied from Transformers: https://github.com/huggingface/transformers/blob/7790943c91411f4234d11dfbf4c2f21ce7caf088/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L755
-    The only difference is that torch.rand device is set to 'hpu' (required to capture operation as part of HPU graph)
-    """
-    all_hidden_states = () if output_hidden_states else None
-    all_self_attentions = () if output_attentions else None
-
-    if attention_mask is not None:
-        # make sure padded tokens output 0
-        expand_attention_mask = attention_mask.unsqueeze(-1).repeat(1, 1, hidden_states.shape[2])
-        hidden_states[~expand_attention_mask] = 0
-
-        # extend attention_mask
-        attention_mask = 1.0 - attention_mask[:, None, None, :].to(dtype=hidden_states.dtype)
-        attention_mask = attention_mask * torch.finfo(hidden_states.dtype).min
-        attention_mask = attention_mask.expand(
-            attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1]
-        )
-
-    position_embeddings = self.pos_conv_embed(hidden_states)
-    hidden_states = hidden_states + position_embeddings
-    hidden_states = self.layer_norm(hidden_states)
-    hidden_states = self.dropout(hidden_states)
-
-    deepspeed_zero3_is_enabled = is_deepspeed_zero3_enabled()
-
-    for layer in self.layers:
-        if output_hidden_states:
-            all_hidden_states = all_hidden_states + (hidden_states,)
-
-        # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
-        dropout_probability = torch.rand([], device="hpu")
-
-        skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
-        if not skip_the_layer or deepspeed_zero3_is_enabled:
-            # under deepspeed zero3 all gpus must run in sync
-            if self.gradient_checkpointing and self.training:
-                # create gradient checkpointing function
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs, output_attentions)
-
-                    return custom_forward
-
-                layer_outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(layer),
-                    hidden_states,
-                    attention_mask,
-                )
-            else:
-                layer_outputs = layer(
-                    hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
-                )
-            hidden_states = layer_outputs[0]
-
-        if skip_the_layer:
-            layer_outputs = (None, None)
-
-        if output_attentions:
-            all_self_attentions = all_self_attentions + (layer_outputs[1],)
-
-    if output_hidden_states:
-        all_hidden_states = all_hidden_states + (hidden_states,)
-
-    if not return_dict:
-        return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
-    return BaseModelOutput(
-        last_hidden_state=hidden_states,
-        hidden_states=all_hidden_states,
-        attentions=all_self_attentions,
     )
