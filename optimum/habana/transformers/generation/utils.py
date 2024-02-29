@@ -1414,6 +1414,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # prepare model inputs
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -1756,6 +1757,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
 
             # prepare model inputs
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -2192,6 +2194,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
                 )
 
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -2923,6 +2926,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 if this_peer_finished_flag.item() == 0.0:
                     break
 
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
