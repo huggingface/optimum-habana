@@ -219,8 +219,8 @@ python run_speech_recognition_seq2seq.py \
 	--gaudi_config_name="Habana/whisper" \
 	--max_steps="5000" \
 	--output_dir="/tmp/whisper-small-hi" \
-	--per_device_train_batch_size="64" \
-	--per_device_eval_batch_size="16" \
+	--per_device_train_batch_size="48" \
+	--per_device_eval_batch_size="2" \
 	--logging_steps="25" \
 	--learning_rate="1e-5" \
 	--warmup_steps="500" \
@@ -243,8 +243,7 @@ python run_speech_recognition_seq2seq.py \
 	--use_habana \
 	--use_hpu_graphs_for_inference \
 	--label_features_max_length 128 \
-	--dataloader_num_workers 8 \
-	--pipelining_fwd_bwd True
+	--dataloader_num_workers 8
 ```
 
 If training on a different language, you should be sure to change the `language` and `dataset_config_name` arguments.
