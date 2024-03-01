@@ -616,7 +616,9 @@ class GaudiStableDiffusionControlNetPipeline(GaudiDiffusionPipeline, StableDiffu
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
-                num_samples=num_batches * batch_size if t1 == t0 else (num_batches - throughput_warmup_steps) * batch_size,
+                num_samples=num_batches * batch_size
+                if t1 == t0
+                else (num_batches - throughput_warmup_steps) * batch_size,
                 num_steps=num_batches,
                 start_time_after_warmup=t1,
             )
