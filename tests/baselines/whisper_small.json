@@ -5,12 +5,12 @@
             "eval_batch_size": 2,
             "distribution": {
                 "multi_card": {
-                    "learning_rate": 6e-4,
-                    "train_batch_size": 64,
-                    "eval_wer": 0.0555,
-                    "train_runtime": 889.0079,
-                    "train_samples_per_second": 70.036,
-                    "eval_samples_per_second": 57.302,
+                    "learning_rate": 1e-4,
+                    "train_batch_size": 8,
+                    "eval_wer": 1.352786940708788,
+                    "train_runtime": 532.0875,
+                    "train_samples_per_second": 147.56,
+                    "eval_samples_per_second": 7.683,
                     "extra_arguments": [
                         "--dataset_config_name hi",
                         "--language hindi",
