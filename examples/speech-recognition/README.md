@@ -200,7 +200,7 @@ python run_speech_recognition_ctc.py \
 ```
 ## Sequence to Sequence
 
-The script [`run_speech_recognition_seq2seq.py`](https://github.com/huggingface/optimum-habana/examples/speech-recognition/run_speech_recognition_seq2seq.py) can be used to fine-tune any [Whisper Sequence-to-Sequence Model](https://huggingface.co/docs/transformers/main/en/model_doc/whisper#whisper) for automatic speech 
+The script [`run_speech_recognition_seq2seq.py`](https://github.com/huggingface/optimum-habana/examples/speech-recognition/run_speech_recognition_seq2seq.py) can be used to fine-tune any [Whisper Sequence-to-Sequence Model](https://huggingface.co/docs/transformers/main/en/model_doc/whisper#whisper) for automatic speech
 recognition on one of the well known speech recognition datasets similar to shown below or a custom dataset. Examples of two datasets using the Whisper model from OpenAI are included below.
 
 ### Whisper Model
@@ -218,9 +218,8 @@ python run_speech_recognition_seq2seq.py \
 	--eval_split_name="test" \
 	--gaudi_config_name="Habana/whisper" \
 	--max_steps="5000" \
-	--output_dir="./results/whisper-small-hi" \
-	--per_device_train_batch_size="16" \
-	--gradient_accumulation_steps="2" \
+	--output_dir="/tmp/whisper-small-hi" \
+	--per_device_train_batch_size="64" \
 	--per_device_eval_batch_size="16" \
 	--logging_steps="25" \
 	--learning_rate="1e-5" \
@@ -230,12 +229,11 @@ python run_speech_recognition_seq2seq.py \
 	--save_strategy="steps" \
 	--save_steps="1000" \
 	--generation_max_length="225" \
-	--preprocessing_num_workers="16" \
+	--preprocessing_num_workers="1" \
 	--length_column_name="input_length" \
 	--max_duration_in_seconds="30" \
 	--text_column_name="sentence" \
 	--freeze_feature_encoder="False" \
-	--gradient_checkpointing \
 	--group_by_length \
 	--bf16 \
 	--overwrite_output_dir \
@@ -243,10 +241,13 @@ python run_speech_recognition_seq2seq.py \
 	--do_eval \
 	--predict_with_generate \
 	--use_habana \
-	--use_hpu_graphs_for_inference
+	--use_hpu_graphs_for_inference \
+	--label_features_max_length 128 \
+	--dataloader_num_workers 8 \
+	--pipelining_fwd_bwd True
 ```
 
-If training on a different language, you should be sure to change the `language` and `dataset_config_name` arguments. 
+If training on a different language, you should be sure to change the `language` and `dataset_config_name` arguments.
 
 ### Multi HPU Whisper Training with Seq2Seq
 The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
@@ -260,25 +261,18 @@ python ../gaudi_spawn.py \
 	--train_split_name="train+validation" \
 	--eval_split_name="test" \
 	--gaudi_config_name="Habana/whisper" \
-	--max_steps="5000" \
-	--output_dir="./results/whisper-large-hi" \
+	--max_steps="625" \
+	--output_dir="/tmp/whisper-large-hi" \
 	--per_device_train_batch_size="16" \
-	--gradient_accumulation_steps="2" \
-	--per_device_eval_batch_size="16" \
+	--per_device_eval_batch_size="2" \
 	--logging_steps="25" \
 	--learning_rate="1e-5" \
-	--warmup_steps="500" \
-	--evaluation_strategy="steps" \
-	--eval_steps="1000" \
-	--save_strategy="steps" \
-	--save_steps="1000" \
 	--generation_max_length="225" \
-	--preprocessing_num_workers="16" \
+	--preprocessing_num_workers="1" \
 	--length_column_name="input_length" \
 	--max_duration_in_seconds="30" \
 	--text_column_name="sentence" \
 	--freeze_feature_encoder="False" \
-	--gradient_checkpointing \
 	--group_by_length \
 	--bf16 \
 	--overwrite_output_dir \
@@ -286,7 +280,10 @@ python ../gaudi_spawn.py \
 	--do_eval \
 	--predict_with_generate \
 	--use_habana \
-	--use_hpu_graphs_for_inference
+	--use_hpu_graphs_for_inference \
+	--label_features_max_length 128 \
+	--dataloader_num_workers 8 \
+	--gradient_checkpointing
 ```
 
 #### Single HPU Seq2Seq Inference
@@ -301,29 +298,21 @@ python run_speech_recognition_seq2seq.py \
 	--language="hindi" \
 	--eval_split_name="test" \
  	--gaudi_config_name="Habana/whisper" \
-	--max_steps="5000" \
 	--output_dir="./results/whisper-small-clean" \
-	--gradient_accumulation_steps="2" \
-	--per_device_eval_batch_size="16" \
-	--logging_steps="25" \
-	--learning_rate="1e-5" \
-	--warmup_steps="500" \
-	--evaluation_strategy="steps" \
-	--eval_steps="1000" \
-	--save_strategy="steps" \
-	--save_steps="1000" \
+	--per_device_eval_batch_size="32" \
 	--generation_max_length="225" \
-	--preprocessing_num_workers="16" \
+	--preprocessing_num_workers="1" \
 	--length_column_name="input_length" \
 	--max_duration_in_seconds="30" \
 	--text_column_name="sentence" \
 	--freeze_feature_encoder="False" \
-	--gradient_checkpointing \
 	--group_by_length \
 	--bf16 \
 	--overwrite_output_dir \
 	--do_eval \
 	--predict_with_generate \
 	--use_habana \
-	--use_hpu_graphs_for_inference
+	--use_hpu_graphs_for_inference \
+	--label_features_max_length 128 \
+	--dataloader_num_workers 8
 ```
