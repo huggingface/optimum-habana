@@ -950,7 +950,7 @@ def main():
                 break
 
     duration = time.perf_counter() - t0
-    throughput = args.max_train_steps * total_batch_size / duration
+    throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
