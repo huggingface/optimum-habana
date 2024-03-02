@@ -283,6 +283,15 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    # Use this to override default attn_implementation in transformers
+    attn_implementation: Optional[str] = field(
+        default="eager",
+        metadata={
+            "help": "choose whether to use scale dot product attention (SDPA) or not.",
+            "choices": ["eager", "sdpa"],
+        },
+    )
+
     def __post_init__(self):
         if self.use_hpu_graphs:
             warnings.warn(

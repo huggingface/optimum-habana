@@ -477,6 +477,7 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
+        _attn_implementation=training_args.attn_implementation,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
