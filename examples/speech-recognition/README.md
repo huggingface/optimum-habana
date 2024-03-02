@@ -164,7 +164,7 @@ python ../gaudi_spawn.py \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 3\
+    --throughput_warmup_steps 3 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json
 ```
 
@@ -210,40 +210,41 @@ We can load all components of the Whisper model directly from the pretrained che
 The following example shows how to fine-tune the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using a single HPU device in bf16 precision:
 ```bash
 python run_speech_recognition_seq2seq.py \
-	--model_name_or_path="openai/whisper-small" \
-	--dataset_name="mozilla-foundation/common_voice_11_0" \
-	--dataset_config_name="hi" \
-	--language="hindi" \
-	--train_split_name="train+validation" \
-	--eval_split_name="test" \
-	--gaudi_config_name="Habana/whisper" \
-	--max_steps="5000" \
-	--output_dir="/tmp/whisper-small-hi" \
-	--per_device_train_batch_size="48" \
-	--per_device_eval_batch_size="2" \
-	--logging_steps="25" \
-	--learning_rate="1e-5" \
-	--warmup_steps="500" \
-	--evaluation_strategy="steps" \
-	--eval_steps="1000" \
-	--save_strategy="steps" \
-	--save_steps="1000" \
-	--generation_max_length="225" \
-	--preprocessing_num_workers="1" \
-	--length_column_name="input_length" \
-	--max_duration_in_seconds="30" \
-	--text_column_name="sentence" \
-	--freeze_feature_encoder="False" \
-	--group_by_length \
-	--bf16 \
-	--overwrite_output_dir \
-	--do_train \
-	--do_eval \
-	--predict_with_generate \
-	--use_habana \
-	--use_hpu_graphs_for_inference \
-	--label_features_max_length 128 \
-	--dataloader_num_workers 8
+    --model_name_or_path="openai/whisper-small" \
+    --dataset_name="mozilla-foundation/common_voice_11_0" \
+    --dataset_config_name="hi" \
+    --language="hindi" \
+    --train_split_name="train+validation" \
+    --eval_split_name="test" \
+    --gaudi_config_name="Habana/whisper" \
+    --max_steps="5000" \
+    --output_dir="/tmp/whisper-small-hi" \
+    --per_device_train_batch_size="48" \
+    --per_device_eval_batch_size="2" \
+    --logging_steps="25" \
+    --learning_rate="1e-5" \
+    --warmup_steps="500" \
+    --evaluation_strategy="steps" \
+    --eval_steps="1000" \
+    --save_strategy="steps" \
+    --save_steps="1000" \
+    --generation_max_length="225" \
+    --preprocessing_num_workers="1" \
+    --length_column_name="input_length" \
+    --max_duration_in_seconds="30" \
+    --text_column_name="sentence" \
+    --freeze_feature_encoder="False" \
+    --group_by_length \
+    --bf16 \
+    --overwrite_output_dir \
+    --do_train \
+    --do_eval \
+    --predict_with_generate \
+    --use_habana \
+    --use_hpu_graphs_for_inference \
+    --label_features_max_length 128 \
+    --dataloader_num_workers 8 \
+    --throughput_warmup_steps 3
 ```
 
 If training on a different language, you should be sure to change the `language` and `dataset_config_name` arguments.
@@ -252,37 +253,38 @@ If training on a different language, you should be sure to change the `language`
 The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
 ```bash
 python ../gaudi_spawn.py \
- 	--world_size 8 --use_mpi run_speech_recognition_seq2seq.py \
-	--model_name_or_path="openai/whisper-large" \
-	--dataset_name="mozilla-foundation/common_voice_11_0" \
-	--dataset_config_name="hi" \
-	--language="hindi" \
-	--train_split_name="train+validation" \
-	--eval_split_name="test" \
-	--gaudi_config_name="Habana/whisper" \
-	--max_steps="625" \
-	--output_dir="/tmp/whisper-large-hi" \
-	--per_device_train_batch_size="16" \
-	--per_device_eval_batch_size="2" \
-	--logging_steps="25" \
-	--learning_rate="1e-5" \
-	--generation_max_length="225" \
-	--preprocessing_num_workers="1" \
-	--length_column_name="input_length" \
-	--max_duration_in_seconds="30" \
-	--text_column_name="sentence" \
-	--freeze_feature_encoder="False" \
-	--group_by_length \
-	--bf16 \
-	--overwrite_output_dir \
-	--do_train \
-	--do_eval \
-	--predict_with_generate \
-	--use_habana \
-	--use_hpu_graphs_for_inference \
-	--label_features_max_length 128 \
-	--dataloader_num_workers 8 \
-	--gradient_checkpointing
+    --world_size 8 --use_mpi run_speech_recognition_seq2seq.py \
+    --model_name_or_path="openai/whisper-large" \
+    --dataset_name="mozilla-foundation/common_voice_11_0" \
+    --dataset_config_name="hi" \
+    --language="hindi" \
+    --train_split_name="train+validation" \
+    --eval_split_name="test" \
+    --gaudi_config_name="Habana/whisper" \
+    --max_steps="625" \
+    --output_dir="/tmp/whisper-large-hi" \
+    --per_device_train_batch_size="16" \
+    --per_device_eval_batch_size="2" \
+    --logging_steps="25" \
+    --learning_rate="1e-5" \
+    --generation_max_length="225" \
+    --preprocessing_num_workers="1" \
+    --length_column_name="input_length" \
+    --max_duration_in_seconds="30" \
+    --text_column_name="sentence" \
+    --freeze_feature_encoder="False" \
+    --group_by_length \
+    --bf16 \
+    --overwrite_output_dir \
+    --do_train \
+    --do_eval \
+    --predict_with_generate \
+    --use_habana \
+    --use_hpu_graphs_for_inference \
+    --label_features_max_length 128 \
+    --dataloader_num_workers 8 \
+    --gradient_checkpointing \
+    --throughput_warmup_steps 3
 ```
 
 #### Single HPU Seq2Seq Inference
@@ -292,26 +294,26 @@ The following example shows how to do inference with the [Whisper small](https:/
 ```bash
 python run_speech_recognition_seq2seq.py \
     --model_name_or_path="openai/whisper-small" \
-	--dataset_name="mozilla-foundation/common_voice_11_0" \
-	--dataset_config_name="hi" \
-	--language="hindi" \
-	--eval_split_name="test" \
- 	--gaudi_config_name="Habana/whisper" \
-	--output_dir="./results/whisper-small-clean" \
-	--per_device_eval_batch_size="32" \
-	--generation_max_length="225" \
-	--preprocessing_num_workers="1" \
-	--length_column_name="input_length" \
-	--max_duration_in_seconds="30" \
-	--text_column_name="sentence" \
-	--freeze_feature_encoder="False" \
-	--group_by_length \
-	--bf16 \
-	--overwrite_output_dir \
-	--do_eval \
-	--predict_with_generate \
-	--use_habana \
-	--use_hpu_graphs_for_inference \
-	--label_features_max_length 128 \
-	--dataloader_num_workers 8
+    --dataset_name="mozilla-foundation/common_voice_11_0" \
+    --dataset_config_name="hi" \
+    --language="hindi" \
+    --eval_split_name="test" \
+    --gaudi_config_name="Habana/whisper" \
+    --output_dir="./results/whisper-small-clean" \
+    --per_device_eval_batch_size="32" \
+    --generation_max_length="225" \
+    --preprocessing_num_workers="1" \
+    --length_column_name="input_length" \
+    --max_duration_in_seconds="30" \
+    --text_column_name="sentence" \
+    --freeze_feature_encoder="False" \
+    --group_by_length \
+    --bf16 \
+    --overwrite_output_dir \
+    --do_eval \
+    --predict_with_generate \
+    --use_habana \
+    --use_hpu_graphs_for_inference \
+    --label_features_max_length 128 \
+    --dataloader_num_workers 8
 ```
