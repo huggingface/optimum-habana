@@ -692,6 +692,9 @@ class GaudiLlamaModel(LlamaModel):
             htcore.mark_step()
 
         for layer_idx, decoder_layer in enumerate(self.layers):
+            if lazy_mode and torch.distributed.is_initialized() == False:
+                htcore.mark_step()
+
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
