@@ -263,7 +263,10 @@ class GaudiLlamaAttention(LlamaAttention):
                     "with a layer index."
                 )
             if token_idx is None:
-                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                if hasattr(past_key_value, "get_usable_length"):
+                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                else:
+                    kv_seq_len += past_key_value[0].shape[-2]
             else:
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][-2]
