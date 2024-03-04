@@ -51,10 +51,17 @@ def main():
     )
 
     parser.add_argument(
+        "--prompt",
+        default=None,
+        type=str,
+        help='Optional argument to give a prompt of your choice as input. is a single string (eg: --prompt "Hello world")',
+    )
+    parser.add_argument(
         "--use_hpu_graphs",
         action="store_true",
         help="Whether to use HPU graphs or not. Using HPU graphs should give better latencies.",
     )
+    parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
     parser.add_argument(
         "--bf16",
         action="store_true",
@@ -93,7 +100,12 @@ def main():
         torch_dtype=model_dtype,
         device="hpu",
     )
-    generate_kwargs = {"lazy_mode": True, "hpu_graphs": args.use_hpu_graphs}
+    generate_kwargs = {
+        "lazy_mode": True,
+        "hpu_graphs": args.use_hpu_graphs,
+        "max_new_tokens": args.max_new_tokens,
+        "ignore_eos": False,
+    }
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
@@ -101,11 +113,11 @@ def main():
 
     # warm up
     for i in range(args.warmup):
-        generator(images, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+        generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
 
     start = time.time()
     for i in range(args.n_iterations):
-        result = generator(images, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+        result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
     end = time.time()
     logger.info(f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms")
 
