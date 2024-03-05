@@ -4,8 +4,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
+from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
@@ -17,10 +16,6 @@ from transformers.models.llama.modeling_llama import (
     LlamaRMSNorm,
     apply_rotary_pos_emb,
     logger,
-)
-
-from ...modeling_attn_mask_utils import (
-    _gaudi_prepare_4d_causal_attention_mask,
 )
 
 
@@ -286,11 +281,6 @@ class GaudiLlamaAttention(LlamaAttention):
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
         past_key_value = getattr(self, "past_key_value", past_key_value)
-        if token_idx is not None:
-            if reuse_cache:
-                kv_seq_len = past_key_value[0][-2]
-            else:
-                kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, position_ids)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
@@ -308,7 +298,6 @@ class GaudiLlamaAttention(LlamaAttention):
                 key_states = key_states[:, :, :cache_idx, :]
                 value_states = value_states[:, :, :cache_idx, :]
                 attention_mask = attention_mask[:, :, :, :cache_idx]
-                kv_seq_len = key_states.shape[-2]
 
         if use_cache:
             if reuse_cache:

@@ -15,6 +15,7 @@
 
 import contextlib
 import copy
+import importlib.metadata
 import inspect
 import math
 import os
@@ -43,6 +44,7 @@ from transformers.integrations import hp_params
 from transformers.integrations.deepspeed import deepspeed_load_checkpoint, is_deepspeed_available
 from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint, unwrap_model
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.trainer import _get_fsdp_ckpt_kwargs
 from transformers.trainer_callback import TrainerCallback, TrainerState
 from transformers.trainer_pt_utils import (
     DistributedTensorGatherer,
@@ -90,7 +92,7 @@ from transformers.utils import (
 from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
-from .accelerate.utils import GaudiDistributedType
+from ..accelerate.utils import GaudiDistributedType
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -2185,23 +2187,11 @@ class GaudiTrainer(Trainer):
         gradient_accumulation_plugin = GradientAccumulationPlugin(**grad_acc_kwargs)
 
         # create accelerator object
-        accelerator_kwargs = {}
-        if self.args.accelerator_config is not None:
-            accelerator_kwargs = self.args.accelerator_config
-            # dict and AcceleratorConfigs are parseable, json files are not
-            if isinstance(accelerator_kwargs, AcceleratorConfig):
-                accelerator_kwargs = accelerator_kwargs.to_dict()
-            elif isinstance(accelerator_kwargs, dict):
-                # Some values may need to go through non-accelerate aligned defaults
-                # and we need to run the `__post_init__` to set them
-                accelerator_kwargs = AcceleratorConfig(**accelerator_kwargs).to_dict()
-
         self.accelerator = GaudiAccelerator(
             deepspeed_plugin=self.args.deepspeed_plugin,
             gradient_accumulation_plugin=gradient_accumulation_plugin,
-            even_batches=not self.args.dataloader_drop_last,
             distribution_strategy=self.args.distribution_strategy,
-            **accelerator_kwargs,
+            **self.args.accelerator_config.to_dict(),
         )
         # some Trainer classes need to use `gather` instead of `gather_for_metrics`, thus we store a flag
         self.gather_function = self.accelerator.gather_for_metrics

@@ -603,9 +603,11 @@ class GaudiTrainingArguments(TrainingArguments):
             )
 
         if is_accelerate_available():
-            if not isinstance(self.accelerator_config, (AcceleratorConfig, dict)):
+            if not isinstance(self.accelerator_config, (AcceleratorConfig)):
                 if self.accelerator_config is None:
                     self.accelerator_config = AcceleratorConfig()
+                elif isinstance(self.accelerator_config, dict):
+                    self.accelerator_config = AcceleratorConfig(**self.accelerator_config)
                 else:
                     self.accelerator_config = AcceleratorConfig.from_json_file(self.accelerator_config)
             if self.dispatch_batches is not None:
@@ -614,7 +616,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     " `--accelerator_config {'dispatch_batches':VALUE} instead",
                     FutureWarning,
                 )
-                self.accelerator_config["dispatch_batches"] = self.dispatch_batches
+                self.accelerator_config.dispatch_batches = self.dispatch_batches
 
             if self.split_batches is not None:
                 warnings.warn(
@@ -622,7 +624,10 @@ class GaudiTrainingArguments(TrainingArguments):
                     " `--accelerator_config {'split_batches':VALUE} instead",
                     FutureWarning,
                 )
-                self.accelerator_config["split_batches"] = self.split_batches
+                self.accelerator_config.split_batches = self.split_batches
+
+            if self.dataloader_drop_last:
+                self.accelerator_config.even_batches = False
 
         if isinstance(self.debug, str):
             self.debug = [DebugOption(s) for s in self.debug.split()]

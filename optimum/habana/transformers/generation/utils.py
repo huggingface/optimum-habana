@@ -31,6 +31,7 @@ from transformers.generation.stopping_criteria import (
     validate_stopping_criteria,
 )
 from transformers.generation.utils import (
+    NEED_SETUP_CACHE_CLASSES_MAPPING,
     GenerateBeamDecoderOnlyOutput,
     GenerateBeamEncoderDecoderOutput,
     GenerateBeamOutput,
@@ -40,6 +41,8 @@ from transformers.generation.utils import (
     GenerateOutput,
     GenerationMixin,
     GenerationMode,
+    _split_model_inputs,
+    stack_model_outputs,
 )
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.utils import ModelOutput
