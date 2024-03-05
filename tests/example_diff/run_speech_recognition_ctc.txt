@@ -1,3 +1,7 @@
+17c17
+< """ Fine-tuning a 🤗 Transformers CTC model for automatic speech recognition"""
+---
+> """Fine-tuning a 🤗 Transformers CTC model for automatic speech recognition"""
 33,34d32
 < from datasets import DatasetDict, load_dataset
 < 
@@ -13,7 +17,7 @@
 > from optimum.habana.utils import set_seed
 53,54d50
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.38.0.dev0")
+< check_min_version("4.39.0.dev0")
 56c52,57
 < require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 ---
@@ -25,8 +29,8 @@
 >         return ()
 60a62,67
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.34.0")
-> check_optimum_habana_min_version("1.8.1")
+> check_min_version("4.37.0")
+> check_optimum_habana_min_version("1.10.0")
 > 
 > require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 > 
@@ -36,10 +40,6 @@
 >             "help": "Whether a convolutional attention network should be stacked on top of the Wav2Vec2Bert Encoder. Can be very "
 155d161
 < 
-265c271
-<                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
----
->                 "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
 407c413
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---

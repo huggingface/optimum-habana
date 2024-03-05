@@ -233,6 +233,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: int = None,
+        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -435,10 +436,11 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
             t1 = t0
 
             # 10. Denoising loop
+            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
-                if j == 2:
+                if j == throughput_warmup_steps:
                     t1 = time.time()
 
                 latents_batch = latents_batches[0]
@@ -453,8 +455,6 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
                 for i in range(num_inference_steps):
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-
-                    capture = True if self.use_hpu_graphs and i < 2 else False
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
@@ -473,7 +473,6 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
                         timestep,
                         text_embeddings_batch,
                         cross_attention_kwargs,
-                        capture,
                         class_labels=noise_level_input,
                     )
 
@@ -524,7 +523,9 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
-                num_samples=num_batches * batch_size if t1 == t0 else (num_batches - 2) * batch_size,
+                num_samples=num_batches * batch_size
+                if t1 == t0
+                else (num_batches - throughput_warmup_steps) * batch_size,
                 num_steps=num_batches,
                 start_time_after_warmup=t1,
             )
@@ -574,11 +575,9 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
             )
 
     @torch.no_grad()
-    def unet_hpu(
-        self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs, capture, class_labels
-    ):
+    def unet_hpu(self, latent_model_input, timestep, encoder_hidden_states, cross_attention_kwargs, class_labels):
         if self.use_hpu_graphs:
-            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, capture, class_labels)
+            return self.capture_replay(latent_model_input, timestep, encoder_hidden_states, class_labels)
         else:
             return self.unet(
                 latent_model_input,
@@ -590,12 +589,12 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
             )[0]
 
     @torch.no_grad()
-    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, capture, class_labels):
+    def capture_replay(self, latent_model_input, timestep, encoder_hidden_states, class_labels):
         inputs = [latent_model_input, timestep, encoder_hidden_states, False, class_labels]
         h = self.ht.hpu.graphs.input_hash(inputs)
         cached = self.cache.get(h)
 
-        if capture:
+        if cached is None:
             # Capture the graph and cache it
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()

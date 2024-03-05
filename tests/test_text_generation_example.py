@@ -14,24 +14,28 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 129.80481357662882),
-            ("gpt2-xl", 272.3868331435149),
-            ("EleutherAI/gpt-j-6b", 137.46821395745388),
-            ("EleutherAI/gpt-neox-20b", 50.236713606109355),
-            ("meta-llama/Llama-2-7b-hf", 139.82510055437686),
-            ("tiiuae/falcon-40b", 25.260978255750498),
-            ("bigcode/starcoder", 65.38483087362695),
-            ("Salesforce/codegen2-1B", 231.1951513223901),
-            ("mosaicml/mpt-30b", 35.825021595560855),
-            ("mistralai/Mistral-7B-v0.1", 113.64661982817469),
+            ("bigscience/bloomz-7b1", 130.10463607610703),
+            ("gpt2-xl", 293.2967921508155),
+            ("EleutherAI/gpt-j-6b", 157.39646612198123),
+            ("EleutherAI/gpt-neox-20b", 49.65827341338015),
+            ("meta-llama/Llama-2-7b-hf", 142.00624811267403),
+            ("tiiuae/falcon-40b", 25.065388035178792),
+            ("bigcode/starcoder", 65.50236665863024),
+            ("Salesforce/codegen2-1B", 456.7740998156863),
+            ("mosaicml/mpt-30b", 35.64501131267502),
+            ("mistralai/Mistral-7B-v0.1", 125.26115369093216),
+            ("mistralai/Mixtral-8x7B-v0.1", 23.78652574031883),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 33.05719168230658),
-            ("meta-llama/Llama-2-70b-hf", 58.2750262232098),
+            ("bigscience/bloomz", 36.34664210641816),
+            ("meta-llama/Llama-2-70b-hf", 61.973950428647164),
             ("facebook/opt-66b", 28.16154122335556),
         ],
         "torch_compile": [
-            ("meta-llama/Llama-2-7b-hf", 8.95169640119334),
+            ("meta-llama/Llama-2-7b-hf", 12.468247401430999),
+        ],
+        "torch_compile_distributed": [
+            ("meta-llama/Llama-2-7b-hf", 20.178927030275947),
         ],
     }
 else:
@@ -54,6 +58,7 @@ else:
             ("bigscience/bloomz-7b1", 31.044523676681507),
         ],
         "torch_compile": [],
+        "torch_compile_distributed": [],
     }
 
 
@@ -67,8 +72,8 @@ def _test_text_generation(
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
+    env_variables = os.environ.copy()
 
-    deepspeed = deepspeed and not torch_compile
     if deepspeed:
         command += [
             f"{path_to_example_dir / 'gaudi_spawn.py'}",
@@ -91,6 +96,8 @@ def _test_text_generation(
             "--trim_logits",
             "--torch_compile",
         ]
+        env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
+        env_variables["PT_HPU_LAZY_MODE"] = "0"
     else:
         command += [
             "--use_hpu_graphs",
@@ -108,7 +115,7 @@ def _test_text_generation(
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
         command = [x for y in command for x in re.split(pattern, y) if x]
 
-        proc = subprocess.run(command)
+        proc = subprocess.run(command, env=env_variables)
 
         # Ensure the run finished without any issue
         # Use try-except to avoid logging the token if used
@@ -139,7 +146,10 @@ def test_text_generation_deepspeed(model_name: str, baseline: float, token: str)
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
-    os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
-    os.environ["PT_HPU_LAZY_MODE"] = "0"
-    os.environ["WORLD_SIZE"] = "0"
     _test_text_generation(model_name, baseline, token, torch_compile=True)
+
+
+@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile_distributed"])
+def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
+    world_size = 8
+    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)

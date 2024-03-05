@@ -7,9 +7,9 @@
                 "multi_card": {
                     "learning_rate": 4e-4,
                     "train_batch_size": 1,
-                    "perplexity": 4.0581,
-                    "train_runtime": 1097.492,
-                    "train_samples_per_second": 26.047,
+                    "perplexity": 4.0596,
+                    "train_runtime": 944.9201,
+                    "train_samples_per_second": 27.045,
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 16",
@@ -29,7 +29,8 @@
                         "--low_cpu_mem_usage True",
                         "--adam_epsilon 1e-08",
                         "--ddp_bucket_cap_mb 50",
-                        "--pipelining_fwd_bwd"
+                        "--pipelining_fwd_bwd",
+                        "--validation_split_percentage 10"
                     ]
                 }
             }

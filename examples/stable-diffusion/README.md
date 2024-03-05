@@ -202,98 +202,77 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
+### ControlNet
 
-## Textual Inversion
+ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
+It is a type of model for controlling StableDiffusion by conditioning the model with an additional input image.
 
-[Textual Inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like Stable Diffusion on your own images using just 3-5 examples.
-The `textual_inversion.py` script shows how to implement the training procedure on Habana Gaudi.
-
-
-### Cat toy example
-
-Let's get our dataset. For this example, we will use some cat images: https://huggingface.co/datasets/diffusers/cat_toy_example .
-
-Let's first download it locally:
-
-```py
-from huggingface_hub import snapshot_download
-
-local_dir = "./cat"
-snapshot_download("diffusers/cat_toy_example", local_dir=local_dir, repo_type="dataset", ignore_patterns=".gitattributes")
-```
-
-This will be our training data.
-Now we can launch the training using:
-
+Here is how to generate images conditioned by canny edge model:
 ```bash
-python textual_inversion.py \
-  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
-  --train_data_dir ./cat \
-  --learnable_property object \
-  --placeholder_token "<cat-toy>" \
-  --initializer_token toy \
-  --resolution 512 \
-  --train_batch_size 4 \
-  --max_train_steps 3000 \
-  --learning_rate 5.0e-04 \
-  --scale_lr \
-  --lr_scheduler constant \
-  --lr_warmup_steps 0 \
-  --output_dir /tmp/textual_inversion_cat \
-  --save_as_full_pipeline \
-  --gaudi_config_name Habana/stable-diffusion \
-  --throughput_warmup_steps 3
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
 ```
 
-> Change `--resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
-
-> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`. However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters. This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one, *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
-
-
-### Multi-card Run
-
-You can run this fine-tuning script in a distributed fashion as follows:
+Here is how to generate images conditioned by canny edge model and with multiple prompts:
 ```bash
-python ../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
-  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
-  --train_data_dir ./cat \
-  --learnable_property object \
-  --placeholder_token '"<cat-toy>"' \
-  --initializer_token toy \
-  --resolution 512 \
-  --train_batch_size 4 \
-  --max_train_steps 375 \
-  --learning_rate 5.0e-04 \
-  --scale_lr \
-  --lr_scheduler constant \
-  --lr_warmup_steps 0 \
-  --output_dir /tmp/textual_inversion_cat \
-  --save_as_full_pipeline \
-  --gaudi_config_name Habana/stable-diffusion \
-  --throughput_warmup_steps 3
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" "a rusty robot" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --num_images_per_prompt 10 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
 ```
 
+Here is how to generate images conditioned by open pose model:
+```bash
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-openpose \
+    --prompts "Chef in the kitchen" \
+    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png \
+    --control_preprocessing_type "none" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
 
-### Inference
-
-Once you have trained a model as described right above, inference can be done simply using the `GaudiStableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
-
-```python
-import torch
-from optimum.habana.diffusers import GaudiStableDiffusionPipeline
-
-model_id = "path-to-your-trained-model"
-pipe = GaudiStableDiffusionPipeline.from_pretrained(
-  model_id,
-  torch_dtype=torch.bfloat16,
-  use_habana=True,
-  use_hpu_graphs=True,
-  gaudi_config="Habana/stable-diffusion",
-)
-
-prompt = "A <cat-toy> backpack"
-
-image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
-
-image.save("cat-backpack.png")
+Here is how to generate images with conditioned by canny edge model using Stable Diffusion 2
+```bash
+pip install -r requirements.txt
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-2-1 \
+    --controlnet_model_name_or_path thibaud/controlnet-sd21-canny-diffusers \
+    --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png \
+    --control_preprocessing_type "none" \
+    --prompts "bird" \
+    --seed 0 \
+    --num_images_per_prompt 10 \
+    --batch_size 2 \
+    --image_save_dir /tmp/controlnet-2-1_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion-2
 ```
