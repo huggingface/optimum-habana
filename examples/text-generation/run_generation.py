@@ -259,6 +259,13 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
     )
+    parser.add_argument(
+        "--attn_implementation",
+        type=str,
+        help={"Choose whether to override framework configuration to use torch scale dot product attention or not. Note this is not same as HPU FusedSDPA."},
+        choices= ["eager", "sdpa"],
+    )
+
     args = parser.parse_args()
 
     if args.torch_compile:
