@@ -1885,15 +1885,14 @@ class TrainControlNet(TestCase):
                     --resolution 256
                     --train_batch_size 4
                     --learning_rate 1e-05
-                    --gaudi_config_name Habana/stable-diffusion
-                    --throughput_warmup_steps 1
-                    --bf16
-                    --max_train_steps 2
-                    --output_dir {tmpdir}
                     --lr_scheduler constant
                     --lr_warmup_steps 0
                     --gaudi_config_name Habana/stable-diffusion
+                    --throughput_warmup_steps 1
                     --use_hpu_graphs
+                    --bf16
+                    --max_train_steps 2
+                    --output_dir {tmpdir}
                 """.split()
 
             # Run train_controlnet.y

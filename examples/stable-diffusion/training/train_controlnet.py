@@ -28,7 +28,6 @@ import shutil
 import time
 from pathlib import Path
 
-import accelerate
 import diffusers
 import habana_frameworks.torch.core as htcore
 import numpy as np
@@ -47,10 +46,8 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
-from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo, upload_folder
-from packaging import version
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -93,7 +90,17 @@ def image_grid(imgs, rows, cols):
 
 
 def log_validation(
-    vae, text_encoder, tokenizer, unet, controlnet, args, accelerator, noise_scheduler, weight_dtype, step
+    vae,
+    text_encoder,
+    tokenizer,
+    unet,
+    controlnet,
+    args,
+    accelerator,
+    noise_scheduler,
+    weight_dtype,
+    step,
+    gaudi_config,
 ):
     logger.info("Running validation... ")
 
@@ -114,7 +121,6 @@ def log_validation(
         use_hpu_graphs=args.use_hpu_graphs,
         gaudi_config=args.gaudi_config_name,
     )
-    gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -149,9 +155,7 @@ def log_validation(
         images = []
 
         for _ in range(args.num_validation_images):
-            with torch.autocast(
-                device_type="hpu", dtype=weight_dtype, enabled=gaudi_config.use_torch_autocast or args.bf16
-            ):
+            with torch.autocast(device_type="hpu", dtype=weight_dtype, enabled=gaudi_config.use_torch_autocast):
                 image = pipeline(
                     validation_prompt, validation_image, num_inference_steps=20, generator=generator
                 ).images[0]
@@ -439,18 +443,6 @@ def parse_args(input_args=None):
         action="store_true",
         default=False,
         help=("Whether to use bf16 mixed precision."),
-    )
-    parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
-    )
-    parser.add_argument(
-        "--set_grads_to_none",
-        action="store_true",
-        help=(
-            "Save more memory by using setting grads to None instead of zero. Be aware, that this changes certain"
-            " behaviors, so disable this argument if it causes any problems. More info:"
-            " https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html"
-        ),
     )
     parser.add_argument(
         "--dataset_name",
@@ -753,12 +745,15 @@ def main(args):
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
 
+    # Set autocast to True for --bf16
+    if args.bf16:
+        gaudi_config.use_torch_autocast = True
     accelerator = GaudiAccelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision="bf16" if gaudi_config.use_torch_autocast or args.bf16 else "no",
+        mixed_precision="bf16" if gaudi_config.use_torch_autocast else "no",
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        force_autocast=gaudi_config.use_torch_autocast or args.bf16,
+        force_autocast=gaudi_config.use_torch_autocast,
     )
 
     # Make one log on every process with the configuration for debugging.
@@ -828,55 +823,39 @@ def main(args):
         model = model._orig_mod if is_compiled_module(model) else model
         return model
 
-    # `accelerate` 0.16.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
-        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
-        def save_model_hook(models, weights, output_dir):
-            if accelerator.is_main_process:
-                i = len(weights) - 1
+    # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+    def save_model_hook(models, weights, output_dir):
+        if accelerator.is_main_process:
+            i = len(weights) - 1
 
-                while len(weights) > 0:
-                    weights.pop()
-                    model = models[i]
+            while len(weights) > 0:
+                weights.pop()
+                model = models[i]
 
-                    sub_dir = "controlnet"
-                    model.save_pretrained(os.path.join(output_dir, sub_dir))
+                sub_dir = "controlnet"
+                model.save_pretrained(os.path.join(output_dir, sub_dir))
 
-                    i -= 1
+                i -= 1
 
-        def load_model_hook(models, input_dir):
-            while len(models) > 0:
-                # pop models so that they are not loaded again
-                model = models.pop()
+    def load_model_hook(models, input_dir):
+        while len(models) > 0:
+            # pop models so that they are not loaded again
+            model = models.pop()
 
-                # load diffusers style into model
-                load_model = ControlNetModel.from_pretrained(input_dir, subfolder="controlnet")
-                model.register_to_config(**load_model.config)
+            # load diffusers style into model
+            load_model = ControlNetModel.from_pretrained(input_dir, subfolder="controlnet")
+            model.register_to_config(**load_model.config)
 
-                model.load_state_dict(load_model.state_dict())
-                del load_model
+            model.load_state_dict(load_model.state_dict())
+            del load_model
 
-        accelerator.register_save_state_pre_hook(save_model_hook)
-        accelerator.register_load_state_pre_hook(load_model_hook)
+    accelerator.register_save_state_pre_hook(save_model_hook)
+    accelerator.register_load_state_pre_hook(load_model_hook)
 
     vae.requires_grad_(False)
     unet.requires_grad_(False)
     text_encoder.requires_grad_(False)
     controlnet.train()
-
-    if args.enable_xformers_memory_efficient_attention:
-        if is_xformers_available():
-            import xformers
-
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warn(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
-                )
-            unet.enable_xformers_memory_efficient_attention()
-            controlnet.enable_xformers_memory_efficient_attention()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
         controlnet.enable_gradient_checkpointing()
@@ -953,7 +932,7 @@ def main(args):
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
-    if gaudi_config.use_torch_autocast or args.bf16:
+    if gaudi_config.use_torch_autocast:
         weight_dtype = torch.bfloat16
 
     # Move controlnet to device prior to calling prepare()
@@ -1144,6 +1123,7 @@ def main(args):
                             noise_scheduler,
                             weight_dtype,
                             global_step,
+                            gaudi_config,
                         )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1154,7 +1134,7 @@ def main(args):
                 break
 
     duration = time.perf_counter() - t0
-    throughput = args.max_train_steps * total_batch_size / duration
+    throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
