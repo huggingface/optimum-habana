@@ -347,6 +347,11 @@ def gaudi_mistral_model_forward(
 
 
 class GaudiMistralForCausalLM(MistralForCausalLM):
+    def __init__(self, config):
+        #Disable SDPA until it's supported for Mistral model in Gaudi
+        config._attn_implementation='eager'
+        super().__init__(config)
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,

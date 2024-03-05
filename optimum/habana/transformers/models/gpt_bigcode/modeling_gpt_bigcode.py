@@ -363,7 +363,12 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
     - add token_idx into model_inputs
     - when KV cache is enabled, slice next_input_ids from input_ids based on the token_idx
     - when KV cache is enabled, slice next_position_ids from position_ids based on the token_idx
+    - disable sdpa attention layer
     """
+    def __init__(self, config):
+        #Disable SDPA until it's supported in GPTBigCode for Gaudi
+        config._attn_implementation='eager'
+        super().__init__(config)
 
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
