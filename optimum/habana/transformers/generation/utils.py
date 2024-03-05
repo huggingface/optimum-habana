@@ -73,6 +73,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mistral",
     "mixtral",
     "blip_text_model",
+    "llava",
 ]
 
 
