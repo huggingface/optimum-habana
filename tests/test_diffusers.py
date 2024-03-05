@@ -1866,6 +1866,7 @@ class TrainControlNet(TestCase):
         # Ensure the run finished without any issue
         self.assertEqual(return_code, 0)
 
+    @slow
     def test_train_controlnet(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (
