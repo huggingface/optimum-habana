@@ -379,9 +379,6 @@ def initialize_model(args, logger):
         model_kwargs["device_map"] = "auto"
         model_kwargs["offload_folder"] = "/tmp/offload_folder/"
 
-    if args.attn_implementation:
-        model_kwargs["attn_implementation"] = args.attn_implementation
-
     model = (
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
