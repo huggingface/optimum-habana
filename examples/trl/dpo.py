@@ -88,6 +88,7 @@ class ScriptArguments:
         default=0, metadata={"help": "Random seed that will be set at the beginning of training."}
     )
     deepspeed: Optional[str] = field(default=None, metadata={"help": "the deepspeed json config file"})
+    num_workers: Optional[int] = field(default=None, metadata={"help": "the number of workers to map the data"})
 
 
 def get_stack_exchange_paired(
@@ -200,14 +201,18 @@ if __name__ == "__main__":
     tokenizer.pad_token = tokenizer.eos_token
 
     # 3. Load the Stack-exchange paired dataset
-    train_dataset = get_stack_exchange_paired(data_dir="data/rl", sanity_check=script_args.sanity_check)
+    train_dataset = get_stack_exchange_paired(
+        data_dir="data/rl", sanity_check=script_args.sanity_check, num_proc=script_args.num_workers
+    )
     train_dataset = train_dataset.filter(
         lambda x: len(x["prompt"]) + len(x["chosen"]) <= script_args.max_length
         and len(x["prompt"]) + len(x["rejected"]) <= script_args.max_length
     )
 
     # 4. Load evaluation dataset
-    eval_dataset = get_stack_exchange_paired(data_dir="data/evaluation", sanity_check=True)
+    eval_dataset = get_stack_exchange_paired(
+        data_dir="data/evaluation", sanity_check=True, num_proc=script_args.num_workers
+    )
     eval_dataset = eval_dataset.filter(
         lambda x: len(x["prompt"]) + len(x["chosen"]) <= script_args.max_length
         and len(x["prompt"]) + len(x["rejected"]) <= script_args.max_length
