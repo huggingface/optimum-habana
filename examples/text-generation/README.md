@@ -241,7 +241,7 @@ While `--bucket_size` works for any model without model file changes, an even mo
 
 ### Running with FP8
 
-Llama2-70b and Llama2-7b in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llama2-70b, Llama2-7b and Mixtral-8x7B in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -293,6 +293,35 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --max_input_tokens 2048 \
 --limit_hpu_graphs \
 --fp8
+```
+
+Here is an example to measure the tensor quantization statistics on Mixtral-8x7B with 1 card:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py \
+--model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+--use_hpu_graphs \
+--use_kv_cache \
+--limit_hpu_graphs \
+--bucket_size 128 \
+--max_new_tokens 128 \
+--batch_size 1 \
+--bf16 \
+--attn_implementation eager
+```
+
+Here is an example to quantize the model based on previous measurements for Mixtral-8x7B with 1 card:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generation.py \
+--model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+--use_hpu_graphs \
+--use_kv_cache \
+--limit_hpu_graphs \
+--bucket_size 128 \
+--max_new_tokens 2048 \
+--batch_size 16 \
+--bf16 \
+--fp8 \
+--attn_implementation eager
 ```
 `--fp8` is required to enable quantization in fp8.
 
