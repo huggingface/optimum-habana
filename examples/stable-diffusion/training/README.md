@@ -81,7 +81,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 Then proceed to training with command:
 
 ```bash
-accelerate launch train_controlnet.py \
+python train_controlnet.py \
  --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5\
  --output_dir=/tmp/stable_diffusion1_5 \
  --dataset_name=fusing/fill50k \
@@ -97,9 +97,9 @@ accelerate launch train_controlnet.py \
 
 ### Multi-card Run
 
-You can run this fine-tuning script in a distributed fashion as follows:
+You can run these fine-tuning scripts in a distributed fashion as follows:
 ```bash
-python ../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
+python ../../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
   --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
   --train_data_dir ./cat \
   --learnable_property object \

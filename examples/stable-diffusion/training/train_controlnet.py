@@ -119,7 +119,7 @@ def log_validation(
         scheduler=noise_scheduler,
         use_habana=True,
         use_hpu_graphs=args.use_hpu_graphs,
-        gaudi_config=args.gaudi_config_name,
+        gaudi_config=gaudi_config,
     )
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
