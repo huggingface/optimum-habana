@@ -38,7 +38,7 @@ def convert_model(model, to_transformer_engine=True, _convert_linear=True):
     for name, module in model.named_children():
         if type(module) == PEFTLinear and to_transformer_engine and _convert_linear:
             LoRALinear.replace_forward(module)
-        elif isinstance(module, torch.nn.Linear) and not type(module) == PEFTLinear and to_transformer_engine and _convert_linear:
+        if isinstance(module, torch.nn.Linear) and not type(module) == PEFTLinear and to_transformer_engine and _convert_linear:
             has_bias = module.bias is not None
             te_module = te.Linear(
                 module.in_features, module.out_features, bias=has_bias, params_dtype=module.weight.dtype, skip_weight_param_allocation=True
