@@ -58,8 +58,10 @@ def get_checkpoint_files(model_name_or_path, local_rank, token=None):
 
     # Extensions: .bin | .pt
     # Creates a list of paths from all downloaded files in cache dir
-    file_list = [str(entry) for entry in Path(cached_repo_dir).rglob("*.[bp][it][n]") if entry.is_file()]
-    return file_list
+    for suffix in ["bin", "safetensors", "pt"]:
+        file_list = [str(entry) for entry in Path(cached_repo_dir).rglob(f"*.{suffix}") if entry.is_file()]
+        if len(file_list) > 0:
+            return file_list
 
 
 def write_checkpoints_json(model_name_or_path, local_rank, f, token=None):
