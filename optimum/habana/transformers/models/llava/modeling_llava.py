@@ -42,7 +42,7 @@ def _pad_inputs(input_ids, attention_mask, image_token_index, num_patches,
                 cur_input_ids_extend.extend([image_token_index] * num_patches)
                 cur_attention_mask_extend.extend([1] * num_patches)
                 cur_token_pos.append(image_token_indice)
-            start = start + image_token_indice + 1
+            start = image_token_indice + 1
 
         new_input_ids.append(cur_input_ids_extend)
         new_attention_mask.append(cur_attention_mask_extend)
@@ -54,18 +54,20 @@ def _pad_inputs(input_ids, attention_mask, image_token_index, num_patches,
     # padding
     new_input_ids_padded = []
     new_attention_mask_padded = []
+    tokens_pos_padded = []
 
-    # right padding for no image in example, so we don't need change token_idx
-    for cur_new_ids, cur_attention_mask in zip(new_input_ids, new_attention_mask):
-        new_input_ids_padded.append(cur_new_ids + [pad_token_id] * (max_len - len(cur_new_ids)))
-        new_attention_mask_padded.append(cur_attention_mask + [0] * (max_len - len(cur_new_ids)))
+    # left padding for no image in example, so we don't need change token_idx
+    for cur_new_ids, cur_attention_mask, cur_token_pos in zip(new_input_ids, new_attention_mask, tokens_pos):
+        pad_len = max_len - len(cur_new_ids)
+        new_input_ids_padded.append([pad_token_id] * pad_len + cur_new_ids)
+        new_attention_mask_padded.append([0] * pad_len + cur_attention_mask)
+        tokens_pos_padded.append([x + pad_len for x in cur_token_pos])
 
     input_ids = torch.tensor(new_input_ids_padded).to(input_ids.device)
     attention_mask = torch.tensor(new_attention_mask_padded).to(input_ids.device)
-    tokens_pos = torch.tensor(tokens_pos).to(input_ids.device)
+    tokens_pos = torch.tensor(tokens_pos_padded).to(input_ids.device)
 
     return input_ids, attention_mask, image_offset, tokens_pos
-
 
 
 def _merge_input_ids_with_image_features(image_features, inputs_embeds, input_ids, image_token_index):
@@ -108,7 +110,6 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         - add new args image_offset
         - add new args tokens_pos
         """
-        print("token_idx: ", token_idx)
 
         if token_idx is not None:
             output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -159,7 +160,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 token_idx=token_idx + image_offset,
             )
 
-            if input_ids.shape[1] != 1:
+            if input_ids.shape[1] != 1 and pixel_values is not None:
                 batch_size, seq_len = tokens_pos.shape
                 batch_indices = torch.arange(batch_size).repeat_interleave(seq_len)
                 logits = outputs[0][batch_indices, tokens_pos.reshape(-1), :].reshape(batch_size, seq_len, -1)
