@@ -88,7 +88,10 @@ def retrieve_timesteps(
     else:
         scheduler.set_timesteps(num_inference_steps, device="cpu", **kwargs)
         timesteps = scheduler.timesteps.to(device)
-    scheduler.reset_timestep_dependent_params()
+
+    reset_timestep = getattr(scheduler, "reset_timestep_dependent_params", None)
+    if callable(reset_timestep):
+        scheduler.reset_timestep_dependent_params()
     return timesteps, num_inference_steps
 
 
