@@ -269,9 +269,9 @@ class ExampleTestMeta(type):
                 self.assertEqual(return_code, 0)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
-                from .clip_coco_utils import create_clip_roberta_model, download_coco
+                from .clip_coco_utils import COCO_URLS, create_clip_roberta_model, download_files
 
-                download_coco()
+                download_files(COCO_URLS)
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
