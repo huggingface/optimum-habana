@@ -67,9 +67,6 @@ from optimum.habana.diffusers import GaudiEulerDiscreteScheduler, GaudiStableDif
 from optimum.habana.utils import HabanaProfile, set_seed, to_gb_rounded
 
 
-if is_wandb_available():
-    import wandb
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.26.0")
 
@@ -257,7 +254,7 @@ def parse_args(input_args=None):
         default=1024,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
-            " resolution"
+            " resolution."
         ),
     )
     parser.add_argument(
@@ -265,8 +262,8 @@ def parse_args(input_args=None):
         type=int,
         default=1024,
         help=(
-            "The resolution for crop input images, all the images in the train/validation dataset will be resized to this"
-            " resolution"
+            "The resolution for cropping input images, all the images in the train/validation dataset will be resized to this"
+            " resolution."
         ),
     )
     parser.add_argument(
@@ -281,7 +278,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--random_flip",
         action="store_true",
-        help="whether to randomly flip images horizontally",
+        help="whether to randomly flip images horizontally.",
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
@@ -634,13 +631,19 @@ def main(args):
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
+    gaudi_config.use_torch_autocast = gaudi_config.use_torch_autocast or args.bf16
     accelerator = GaudiAccelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision="bf16" if gaudi_config.use_torch_autocast or args.bf16 else "no",
+        mixed_precision="bf16" if gaudi_config.use_torch_autocast else "no",
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        force_autocast=gaudi_config.use_torch_autocast or args.bf16,
+        force_autocast=gaudi_config.use_torch_autocast,
     )
+
+    if args.report_to == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -708,7 +711,7 @@ def main(args):
     # For mixed precision training we cast all non-trainable weigths to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
-    if gaudi_config.use_torch_autocast or args.bf16:
+    if gaudi_config.use_torch_autocast:
         weight_dtype = torch.bfloat16
 
     vae_path = (
