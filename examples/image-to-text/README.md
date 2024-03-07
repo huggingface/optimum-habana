@@ -16,7 +16,7 @@ limitations under the License.
 
 # Image to Text Examples
 
-This directory contains a script that showcases how to use transformers pipeline API to run image to text task on HPUs.
+This directory contains a script that showcases how to use the Transformers pipeline API to run image to text task on HPUs.
 
 ## Single-HPU inference
 
@@ -27,4 +27,7 @@ python3 run_pipeline.py \
     --use_hpu_graphs \
     --bf16
 ```
-valided models: nlpconnect/vit-gpt2-image-captioning,Salesforce/blip-image-captioning-large,Salesforce/blip-image-captioning-base
+Models that have been validated:
+  - [nlpconnect/vit-gpt2-image-captioning](https://huggingface.co/nlpconnect/vit-gpt2-image-captioning)
+  - [Salesforce/blip-image-captioning-large](https://huggingface.co/Salesforce/blip-image-captioning-large)
+  - [Salesforce/blip-image-captioning-base](https://huggingface.co/Salesforce/blip-image-captioning-base)

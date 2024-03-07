@@ -78,16 +78,16 @@ def main():
     args = parser.parse_args()
 
     adapt_transformers_to_gaudi()
-    image_pathes = args.image_path
-    image_pathes_len = len(image_pathes)
+    image_paths = args.image_path
+    image_paths_len = len(image_paths)
 
-    if args.batch_size > image_pathes_len:
+    if args.batch_size > image_paths_len:
         # Dynamically extends to support larger batch sizes
-        num_path_to_add = args.batch_size - image_pathes_len
+        num_path_to_add = args.batch_size - image_paths_len
         for i in range(num_path_to_add):
-            image_pathes.append(image_pathes[i % image_pathes_len])
-    elif args.batch_size < image_pathes_len:
-        image_pathes = image_pathes[: args.batch_size]
+            image_paths.append(image_paths[i % image_paths_len])
+    elif args.batch_size < image_paths_len:
+        image_paths = image_paths[: args.batch_size]
 
     questions = args.question
     questions_len = len(questions)
@@ -101,7 +101,7 @@ def main():
 
     images = []
 
-    for image_path in image_pathes:
+    for image_path in image_paths:
         images.append(PIL.Image.open(requests.get(image_path, stream=True, timeout=3000).raw).convert("RGB"))
 
     if args.bf16:
@@ -115,7 +115,7 @@ def main():
         torch_dtype=model_dtype,
         device="hpu",
     )
-    if not generator.model.can_generate() and args.use_hpu_graphs:
+    if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
         generator.model = wrap_in_hpu_graph(generator.model)
