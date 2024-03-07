@@ -210,3 +210,4 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
   --bf16
 ```
 
+**Note:** There is a known issue that first 2 steps graph compilation takes long.
