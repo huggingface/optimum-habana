@@ -241,7 +241,7 @@ While `--bucket_size` works for any model without model file changes, an even mo
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b and Mixtral-8x7B in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llama2-70b, Llama2-7b,  Mixtral-8x7B, Falcon-7B, Falcon-40B, and Falcon-180B in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -319,6 +319,39 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generati
 --max_new_tokens 2048 \
 --batch_size 16 \
 --bf16 \
+--fp8
+```
+
+Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path tiiuae/falcon-180B \
+--use_hpu_graphs \
+--use_kv_cache \
+--limit_hpu_graphs \
+--max_input_tokens 128 \
+--max_new_tokens 128 \
+--batch_size 1 \
+--bf16 \
+--reuse_cache \
+--trim_logits
+```
+
+Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
+--use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path tiiuae/falcon-180B \
+--use_hpu_graphs \
+--use_kv_cache \
+--limit_hpu_graphs \
+--max_input_tokens 128 \
+--max_new_tokens 2048 \
+--batch_size 110 \
+--bf16 \
+--reuse_cache \
+--trim_logits \
 --fp8
 ```
 `--fp8` is required to enable quantization in fp8.
