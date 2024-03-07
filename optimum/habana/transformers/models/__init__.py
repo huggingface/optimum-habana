@@ -114,6 +114,12 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .qwen2 import (
+    GaudiQwen2ForCausalLM,
+    gaudi_qwen2_model_forward,
+    gaudi_qwen2_attention_forward,
+    gaudi_qwen2_decoder_layer_forward,
+)
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,
