@@ -66,11 +66,40 @@ python textual_inversion.py \
 > As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`. However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters. This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one, *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
 
 
+## ControlNet Training
+
+ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala. It is a type of model for controlling StableDiffusion by conditioning the model with an additional input image.
+This example is adapted from [controlnet example in the diffusers repository](https://github.com/huggingface/diffusers/tree/main/examples/controlnet#training).
+
+First, download the conditioning images as shown below:
+
+```bash
+wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png
+wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
+```
+
+Then proceed to training with command:
+
+```bash
+python train_controlnet.py \
+ --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5\
+ --output_dir=/tmp/stable_diffusion1_5 \
+ --dataset_name=fusing/fill50k \
+ --resolution=512 \
+ --learning_rate=1e-5 \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+ --train_batch_size=4 \
+ --throughput_warmup_steps=3 \
+ --use_hpu_graphs \
+ --bf16
+```
+
 ### Multi-card Run
 
-You can run this fine-tuning script in a distributed fashion as follows:
+You can run these fine-tuning scripts in a distributed fashion as follows:
 ```bash
-python ../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
+python ../../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
   --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
   --train_data_dir ./cat \
   --learnable_property object \
@@ -86,7 +115,9 @@ python ../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
   --output_dir /tmp/textual_inversion_cat \
   --save_as_full_pipeline \
   --gaudi_config_name Habana/stable-diffusion \
-  --throughput_warmup_steps 3
+  --throughput_warmup_steps 3 \
+  --use_hpu_graphs \
+  --bf16
 ```
 
 
