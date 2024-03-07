@@ -264,7 +264,10 @@ class GaudiLlamaAttention(LlamaAttention):
                     "with a layer index."
                 )
             if token_idx is None:
-                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                if hasattr(past_key_value, "get_usable_length"):
+                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                else:
+                    kv_seq_len += past_key_value[0].shape[-2]
             else:
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][-2]
@@ -922,7 +925,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
 def apply_customized_rope(q, k, cos, sin, position_ids, use_fused_rope=True):
     if q.device.type == "hpu" and FusedRoPE and use_fused_rope:
-        # TODO: remove `.clone()` when SynapseAI v1.15 is released
+        # TODO: remove `.clone()` when it is fixed in SynapseAI
         return FusedRoPE.apply(
             q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
         ), FusedRoPE.apply(
