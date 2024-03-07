@@ -103,6 +103,7 @@ class GaudiAccelerator(Accelerator):
         gradient_accumulation_plugin: GradientAccumulationPlugin | None = None,
         dispatch_batches: bool | None = None,
         even_batches: bool = True,
+        use_seedable_sampler: bool = False,
         step_scheduler_with_optimizer: bool = True,
         kwargs_handlers: list[KwargsHandler] | None = None,
         dynamo_backend: GaudiDynamoBackend | str | None = None,
@@ -249,6 +250,7 @@ class GaudiAccelerator(Accelerator):
         self.split_batches = split_batches
         self.dispatch_batches = dispatch_batches
         self.even_batches = even_batches
+        self.use_seedable_sampler = use_seedable_sampler
         self.step_scheduler_with_optimizer = step_scheduler_with_optimizer
 
         # Mixed precision attributes
@@ -329,42 +331,12 @@ class GaudiAccelerator(Accelerator):
                 " Please rerun your script specifying `--num_processes=1` or by launching with `python {{myscript.py}}`."
             )
 
-        if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
-            model, "hf_device_map", False
-        ):
-            model_devices = set(model.hf_device_map.values())
-            if len(model_devices) > 1 and self.distributed_type != DistributedType.NO:
-                raise ValueError(
-                    "You can't train a model that has been loaded in 8-bit precision on multiple devices in any distributed mode."
-                    " In order to use 8-bit models that have been loaded across multiple GPUs the solution is to use Naive Pipeline Parallelism."
-                    " Therefore you should not specify that you are under any distributed regime in your accelerate config."
-                )
-            current_device = list(model_devices)[0]
-            current_device_index = current_device.index if isinstance(current_device, torch.device) else current_device
-
-            if torch.device(current_device_index) != self.device:
-                # if on the first device (GPU 0) we don't care
-                if (self.device.index is not None) or (current_device_index != 0):
-                    raise ValueError(
-                        "You can't train a model that has been loaded in 8-bit precision on a different device than the one "
-                        "you're training on. Make sure you loaded the model on the correct device using for example `device_map={'':torch.cuda.current_device()}"
-                        "you're training on. Make sure you loaded the model on the correct device using for example `device_map={'':torch.cuda.current_device() or device_map={'':torch.xpu.current_device()}"
-                    )
-
-            if "cpu" in model_devices or "disk" in model_devices:
-                raise ValueError(
-                    "You can't train a model that has been loaded in 8-bit precision with CPU or disk offload."
-                )
-        elif device_placement and not self.verify_device_map(model):
-            model = model.to(self.device)
-
         # The following block is executed only when force_autocast is True
         # because forward+backward+loss is already wrapped with autocast in Trainer
         if self.native_amp and self.force_autocast:
             model._original_forward = model.forward
             model_forward_func = model.forward.__func__ if hasattr(model.forward, "__func__") else model.forward
             new_forward = torch.autocast(device_type=self.state.device.type, dtype=torch.bfloat16)(model_forward_func)
-
             if hasattr(model.forward, "__func__"):
                 model.forward = MethodType(new_forward, model)
                 model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
@@ -393,6 +365,34 @@ class GaudiAccelerator(Accelerator):
         #             "or higher, compute capability of 8.9 or higher). Will use FP16 instead."
         #         )
         #     model.forward = fp8_autocast(enabled=fp8_enabled, fp8_recipe=fp8_recipe)(model.forward)
+
+        if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
+            model, "hf_device_map", False
+        ):
+            model_devices = set(model.hf_device_map.values())
+            if len(model_devices) > 1 and self.distributed_type != DistributedType.NO:
+                raise ValueError(
+                    "You can't train a model that has been loaded in 8-bit precision on multiple devices in any distributed mode."
+                    " In order to use 8-bit models that have been loaded across multiple GPUs the solution is to use Naive Pipeline Parallelism."
+                    " Therefore you should not specify that you are under any distributed regime in your accelerate config."
+                )
+            current_device = list(model_devices)[0]
+            current_device_index = current_device.index if isinstance(current_device, torch.device) else current_device
+
+            if torch.device(current_device_index) != self.device:
+                # if on the first device (GPU 0) we don't care
+                if (self.device.index is not None) or (current_device_index != 0):
+                    raise ValueError(
+                        "You can't train a model that has been loaded in 8-bit precision on a different device than the one "
+                        "you're training on. Make sure you loaded the model on the correct device using for example `device_map={'':torch.cuda.current_device() or device_map={'':torch.xpu.current_device()}"
+                    )
+
+            if "cpu" in model_devices or "disk" in model_devices:
+                raise ValueError(
+                    "You can't train a model that has been loaded in 8-bit precision with CPU or disk offload."
+                )
+        elif device_placement and not self.verify_device_map(model):
+            model = model.to(self.device)
         if not evaluation_mode:
             if self.distributed_type == GaudiDistributedType.MULTI_HPU and self._distribution_strategy != "fast_ddp":
                 if any(p.requires_grad for p in model.parameters()):
@@ -457,38 +457,38 @@ class GaudiAccelerator(Accelerator):
         deepspeed_plugin = self.state.deepspeed_plugin
 
         is_dataloader_present = any(isinstance(obj, torch.utils.data.DataLoader) for obj in args)
-        if deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] == "auto" or is_dataloader_present:
-            result = [
-                self._prepare_one(obj, first_pass=True) if isinstance(obj, torch.utils.data.DataLoader) else obj
-                for obj in args
-            ]
+        result = [
+            self._prepare_one(obj, first_pass=True) if isinstance(obj, torch.utils.data.DataLoader) else obj
+            for obj in args
+        ]
 
-            batch_sizes = [obj.batch_size for obj in args if hasattr(obj, "batch_size")]
-            if self.split_batches:
-                batch_sizes = [batch_size // self.num_processes for batch_size in batch_sizes]
+        if deepspeed_plugin.is_auto("train_micro_batch_size_per_gpu"):
+            if is_dataloader_present:
+                batch_sizes = [obj.batch_size for obj in args if hasattr(obj, "batch_size")]
+                if any(bs is None for bs in batch_sizes):
+                    raise ValueError(
+                        "At least one of the dataloaders passed to `accelerate.prepare()` has `None` as batch size. "
+                        "Please set an integer value in `train_micro_batch_size_per_gpu` in the deepspeed config file "
+                        "or assign integer value to `AcceleratorState().deepspeed_plugin.deepspeed_config['train_micro_batch_size_per_gpu']`."
+                    )
+                if self.split_batches:
+                    batch_sizes = [batch_size // self.num_processes for batch_size in batch_sizes]
 
-            if any(bs is None for bs in batch_sizes):
+                batch_size_per_device = min(batch_sizes) if deepspeed_plugin.is_train_batch_min else max(batch_sizes)
+                if len(batch_sizes) > 1:
+                    logger.info(
+                        "Since you passed both train and evaluation dataloader, `is_train_batch_min` (here "
+                        f"{deepspeed_plugin.is_train_batch_min} will decide the `train_batch_size` ({batch_size_per_device})."
+                    )
+            else:
                 raise ValueError(
-                    "At least one of the dataloaders passed to `accelerate.prepare()` has `None` as batch size."
-                    "Please set an integer value in `train_micro_batch_size_per_gpu` in the deepspeed config file"
+                    "When using DeepSpeed, `accelerate.prepare()` requires you to pass at least one of training or evaluation dataloaders "
+                    "with `batch_size` attribute returning an integer value "
+                    "or alternatively set an integer value in `train_micro_batch_size_per_gpu` in the deepspeed config file "
                     "or assign integer value to `AcceleratorState().deepspeed_plugin.deepspeed_config['train_micro_batch_size_per_gpu']`."
-                )
-            if len(batch_sizes) == 0:
-                raise ValueError(
-                    "When using DeepSpeed `accelerate.prepare()` requires you to pass at least one of training or evaluation dataloaders "
-                    "or alternatively set an integer value in `train_micro_batch_size_per_gpu` in the deepspeed config file"
-                    "or assign integer value to `AcceleratorState().deepspeed_plugin.deepspeed_config['train_micro_batch_size_per_gpu']`."
-                )
-
-            batch_size_per_device = min(batch_sizes) if deepspeed_plugin.is_train_batch_min else max(batch_sizes)
-            if len(batch_sizes) > 1:
-                logger.info(
-                    "Since you passed both train and evaluation dataloader, `is_train_batch_min` (here "
-                    f"{deepspeed_plugin.is_train_batch_min} will decide the `train_batch_size` ({batch_size_per_device})."
                 )
         else:
-            batch_size_per_device = deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"]
-            result = list(args)
+            batch_size_per_device = deepspeed_plugin.get_value("train_micro_batch_size_per_gpu")
 
         # handle `gradient_accumulation_steps` when the value is `auto`
         deepspeed_plugin.fill_match(
@@ -500,7 +500,7 @@ class GaudiAccelerator(Accelerator):
         config_kwargs = {
             "train_micro_batch_size_per_gpu": batch_size_per_device,
             "train_batch_size": batch_size_per_device
-            * deepspeed_plugin.deepspeed_config["gradient_accumulation_steps"]
+            * deepspeed_plugin.get_value("gradient_accumulation_steps")
             * self.num_processes,
             "gradient_clipping": 1.0,
             "zero_optimization.stage3_gather_16bit_weights_on_model_save": False,
@@ -559,20 +559,39 @@ class GaudiAccelerator(Accelerator):
                 )
 
         if model is not None:
-            if hasattr(model, "config"):
-                hidden_size = (
-                    max(model.config.hidden_sizes)
-                    if getattr(model.config, "hidden_sizes", None)
-                    else getattr(model.config, "hidden_size", None)
+            # deal with config keys that use `auto` value and rely on model's hidden_size
+            hidden_size_based_keys = [
+                "zero_optimization.reduce_bucket_size",
+                "zero_optimization.stage3_prefetch_bucket_size",
+                "zero_optimization.stage3_param_persistence_threshold",
+            ]
+            hidden_size_auto_keys = [x for x in hidden_size_based_keys if deepspeed_plugin.is_auto(x)]
+            if len(hidden_size_auto_keys) > 0:
+                reasoning = (
+                    "therefore it's not possible to automatically fill out the following `auto` entries "
+                    + f"in the DeepSpeed config file: {hidden_size_auto_keys}. You can fix that by replacing "
+                    + "`auto` values for these keys with an integer value of your choice."
                 )
-                if hidden_size is not None:
-                    config_kwargs.update(
-                        {
-                            "zero_optimization.reduce_bucket_size": hidden_size * hidden_size,
-                            "zero_optimization.stage3_prefetch_bucket_size": 0.9 * hidden_size * hidden_size,
-                            "zero_optimization.stage3_param_persistence_threshold": 10 * hidden_size,
-                        }
+                if not hasattr(model, "config"):
+                    raise ValueError("Can't find `model.config` entry, " + reasoning)
+
+                if hasattr(model.config, "hidden_size"):
+                    hidden_size = model.config.hidden_size
+                elif hasattr(model.config, "hidden_sizes"):
+                    # if there are many hidden sizes pick the largest one
+                    hidden_size = max(model.config.hidden_sizes)
+                else:
+                    raise ValueError(
+                        "Can find neither `model.config.hidden_size` nor `model.config.hidden_sizes`, " + reasoning
                     )
+
+                config_kwargs.update(
+                    {
+                        "zero_optimization.reduce_bucket_size": hidden_size * hidden_size,
+                        "zero_optimization.stage3_prefetch_bucket_size": 0.9 * hidden_size * hidden_size,
+                        "zero_optimization.stage3_param_persistence_threshold": 10 * hidden_size,
+                    }
+                )
 
             if isinstance(optimizer, (DummyOptim)):
                 config_kwargs.update(
@@ -615,10 +634,7 @@ class GaudiAccelerator(Accelerator):
                         optimizer = DeepSpeedCPUAdam(optimizer.param_groups, **defaults)
                     kwargs["optimizer"] = optimizer
                     if scheduler is not None:
-                        if (
-                            isinstance(scheduler, LRScheduler)
-                            or type(scheduler).__name__ in deepspeed.runtime.lr_schedules.VALID_LR_SCHEDULES
-                        ):
+                        if type(scheduler).__name__ in deepspeed.runtime.lr_schedules.VALID_LR_SCHEDULES:
                             kwargs["lr_scheduler"] = scheduler
 
             HabanaArgs = make_dataclass("HabanaArgs", [("use_hpu", bool), ("no_cuda", bool)])
@@ -714,6 +730,7 @@ class GaudiAccelerator(Accelerator):
             dispatch_batches=self.dispatch_batches,
             even_batches=self.even_batches,
             slice_fn_for_dispatch=slice_fn_for_dispatch,
+            use_seedable_sampler=self.use_seedable_sampler,
         )
         self._dataloaders.append(prepared_data_loader)
         return prepared_data_loader

@@ -10,6 +10,17 @@ from .bart import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
 )
+from .blip import (
+    gaudi_BlipForConditionalGeneration_generate,
+    gaudi_BlipForQuestionAnswering_generate,
+    gaudi_BlipTextAttention_forward,
+    gaudi_BlipTextEncoder_forward,
+    gaudi_BlipTextLayer_forward,
+    gaudi_BlipTextLMHead_forward,
+    gaudi_BlipTextLMHead_prepare_inputs_for_generation,
+    gaudi_BlipTextModel_forward,
+    gaudi_BlipTextSelfAttention_forward,
+)
 from .bloom import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -37,7 +48,6 @@ from .falcon import (
     gaudi_falcon_attention_forward,
     gaudi_falcon_attention_split_heads,
     gaudi_falcon_decoder_layer_forward,
-    gaudi_falcon_rotary_embedding_forward,
 )
 from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
 from .gpt_bigcode import (
@@ -68,9 +78,17 @@ from .llama import (
 )
 from .mistral import (
     GaudiMistralForCausalLM,
-    gaudi_mistral_attn_forward,
+    gaudi_mistral_attention_forward,
     gaudi_mistral_decoder_layer_forward,
     gaudi_mistral_model_forward,
+)
+from .mixtral import (
+    GaudiMixtralForCausalLM,
+    gaudi_mixtral_attention_forward,
+    gaudi_mixtral_block_sparse_moe_forward,
+    gaudi_mixtral_decoder_layer_forward,
+    gaudi_mixtral_model_forward,
+    gaudi_mixtral_rmsnorm_forward,
 )
 from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
 from .mpt import (

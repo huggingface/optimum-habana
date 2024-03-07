@@ -38,7 +38,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.8.1")
+check_optimum_habana_min_version("1.10.0")
 
 
 logger = logging.getLogger(__name__)
@@ -240,7 +240,7 @@ def main():
             control_image = Image.fromarray(image)
 
     # Import selected pipeline
-    sdxl_models = ["stable-diffusion-xl-base-1.0", "sdxl-turbo"]
+    sdxl_models = ["stable-diffusion-xl", "sdxl"]
 
     if args.control_image is not None:
         from diffusers import ControlNetModel

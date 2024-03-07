@@ -66,8 +66,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.34.0")
-check_optimum_habana_min_version("1.8.1")
+check_min_version("4.37.0")
+check_optimum_habana_min_version("1.10.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
@@ -399,11 +399,11 @@ def main():
     logger.info(f"Training/evaluation parameters {training_args}")
 
     if data_args.source_prefix is None and model_args.model_name_or_path in [
-        "t5-small",
-        "t5-base",
-        "t5-large",
-        "t5-3b",
-        "t5-11b",
+        "google-t5/t5-small",
+        "google-t5/t5-base",
+        "google-t5/t5-large",
+        "google-t5/t5-3b",
+        "google-t5/t5-11b",
     ]:
         logger.warning(
             "You're running a t5 model but didn't provide a source prefix, which is the expected, e.g. with "

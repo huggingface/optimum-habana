@@ -31,32 +31,45 @@ Check out [this blog post about BERT pre-training](https://huggingface.co/blog/p
 If you are not familiar with HPUs and would like to know more about them, we recommend you take a look at [our conceptual guide](https://huggingface.co/docs/optimum/habana/concept_guides/hpu).
 
 
-## Install
-To install the latest stable release of this package:
+## Install the library and get example scripts
 
-```bash
-pip install --upgrade-strategy eager optimum[habana]
-```
+### Option 1: Use the latest stable release
+
+To install the latest stable release of this package
+>```bash
+>pip install --upgrade-strategy eager optimum[habana]
+>```
 
 The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is upgraded to the latest stable release.
 
-> To use DeepSpeed on HPUs, you also need to run the following command:
+To use the example associated with the latest stable release, run:
+> ```
+> git clone https://github.com/huggingface/optimum-habana
+> cd optimum-habana && git checkout v1.10.4
+> ```
+> with `v1.10.4` the version number of this release.
+
+### Option 2: Use the latest main branch under development
+
+Optimum Habana is a fast-moving project, and you may want to install it from source and get the latest scripts :
+
+```bash
+pip install git+https://github.com/huggingface/optimum-habana.git
+git clone https://github.com/huggingface/optimum-habana
+```
+
+## Install dependencies
+
+To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
 >pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
 >```
 
-Optimum Habana is a fast-moving project, and you may want to install it from source:
-
-```bash
-pip install git+https://github.com/huggingface/optimum-habana.git
-```
-
-Last but not least, don't forget to install the requirements for every example:
-
-```bash
-cd <example-folder>
-pip install -r requirements.txt
-```
+To install the requirements for every example:
+>```bash
+>cd <example-folder>
+>pip install -r requirements.txt
+>```
 
 
 ## How to use it?
@@ -168,6 +181,7 @@ The following model architectures, tasks and device distributions have been vali
 | CodeGen |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | MPT |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Mistral |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| Mixtral |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | T5 / Flan T5 | :heavy_check_mark: | :heavy_check_mark: | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
 | BART |   | <div style="text-align:left"><li>Single card</li></div> | <li>[summarization](https://github.com/huggingface/optimum-habana/tree/main/examples/summarization)</li><li>[translation](https://github.com/huggingface/optimum-habana/tree/main/examples/translation)</li><li>[question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/question-answering#fine-tuning-t5-on-squad20)</li> |
 | ViT | :heavy_check_mark: | :heavy_check_mark: | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
@@ -184,7 +198,7 @@ The following model architectures, tasks and device distributions have been vali
 <div align="center">
 
 | Architecture     | Training | Inference            | Tasks |
-|------------------|:--------:|:--------------------:|:-----:|
+|------------------|:--------:|:--------------------:|:------|
 | Stable Diffusion |          | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | LDM3D            |          | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 
@@ -195,8 +209,9 @@ The following model architectures, tasks and device distributions have been vali
 <div align="center">
 
 | Architecture     | Training | Inference            | Tasks |
-|------------------|:--------:|:--------------------:|:-----:|
-| Llama 2          | <li>Multi card</li> |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+|------------------|:--------:|:--------------------:|:------|
+| Llama 2          | :heavy_check_mark: |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+| Llama 2          | :heavy_check_mark: |           | <li>[PPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
 
 </div>
 

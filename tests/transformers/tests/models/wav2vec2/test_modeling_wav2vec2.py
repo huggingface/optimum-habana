@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch Wav2Vec2 model. """
+"""Testing suite for the PyTorch Wav2Vec2 model."""
 
 import gc
 import math
@@ -340,6 +340,11 @@ class Wav2Vec2ModelTester:
 
         input_values = input_values[:3]
         attention_mask = torch.ones(input_values.shape, device=torch_device, dtype=torch.long)
+        # TODO: due to limitation of index op, add mark_step
+        if torch_device == "hpu":
+            import habana_frameworks.torch.core as htcore
+
+            htcore.mark_step()
 
         input_lengths = [input_values.shape[-1] // i for i in [4, 2, 1]]
         max_length_labels = model._get_feat_extract_output_lengths(torch.tensor(input_lengths))
