@@ -96,13 +96,6 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
-def setup_inference(args, model):
-    import habana_frameworks.torch.core as htcore
-
-    print("Initializing inference mode")
-    htcore.hpu_initialize(model)
-    return model
-
 def setup_const_serialization(const_serialization_path):
     import uuid
     const_serialization_path = os.path.join(const_serialization_path  + uuid.uuid4().hex)
@@ -388,7 +381,9 @@ def initialize_model(args, logger):
     if args.const_serialization_path:
         setup_const_serialization(args.const_serialization_path)
     if args.fp8:
-        model = setup_inference(args, model)
+        import habana_frameworks.torch.core as htcore
+        print("Initializing inference mode")
+        htcore.hpu_initialize(model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
