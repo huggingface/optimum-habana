@@ -18,6 +18,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 from habana_frameworks.torch.hpex.kernels import CTCLoss
+from habana_frameworks.torch.hpu import get_device_name
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import (
     BaseModelOutput,
@@ -128,9 +129,13 @@ def _gaudi_wav2vec2_compute_mask_indices(
     spec_aug_mask_idxs = spec_aug_mask_idxs + offsets
 
     # ensure that we cannot have indices larger than sequence_length
-    mask = (spec_aug_mask_idxs > sequence_length - 1) * (spec_aug_mask_idxs.max() > sequence_length - 1)
-    inverse_mask = torch.bitwise_not(mask)
-    spec_aug_mask_idxs = spec_aug_mask_idxs * inverse_mask + (sequence_length - 1) * mask
+    if get_device_name() == "GAUDI":
+        if spec_aug_mask_idxs.max() > sequence_length - 1:
+            spec_aug_mask_idxs[spec_aug_mask_idxs > sequence_length - 1] = sequence_length - 1
+    else:
+        mask = (spec_aug_mask_idxs > sequence_length - 1) * (spec_aug_mask_idxs.max() > sequence_length - 1)
+        inverse_mask = torch.bitwise_not(mask)
+        spec_aug_mask_idxs = spec_aug_mask_idxs * inverse_mask + (sequence_length - 1) * mask
 
     # scatter indices to mask
     spec_aug_mask.scatter_(-1, spec_aug_mask_idxs, 1)
@@ -414,19 +419,32 @@ def gaudi_wav2vec2forctc_forward(
         # when not being attended to
         labels_mask = labels >= 0
         target_lengths = labels_mask.sum(-1)
-        flattened_targets = labels
         # ctc_loss doesn't support fp16
         log_probs = torch.nn.functional.log_softmax(logits, dim=-1, dtype=torch.float32).transpose(0, 1)
-        with torch.backends.cudnn.flags(enabled=False):
-            loss = ctc_loss_fwd(
-                log_probs,
-                flattened_targets,
-                input_lengths,
-                target_lengths,
-                self.config.pad_token_id,
-                self.config.ctc_loss_reduction,
-                self.config.ctc_zero_infinity,
-            )
+        if get_device_name() == "GAUDI":
+            flattened_targets = labels.masked_select(labels_mask)
+            with torch.backends.cudnn.flags(enabled=False):
+                loss = torch.nn.functional.ctc_loss(
+                    log_probs,
+                    flattened_targets,
+                    input_lengths,
+                    target_lengths,
+                    blank=self.config.pad_token_id,
+                    reduction=self.config.ctc_loss_reduction,
+                    zero_infinity=self.config.ctc_zero_infinity,
+                )
+        else:
+            flattened_targets = labels
+            with torch.backends.cudnn.flags(enabled=False):
+                loss = ctc_loss_fwd(
+                    log_probs,
+                    flattened_targets,
+                    input_lengths,
+                    target_lengths,
+                    self.config.pad_token_id,
+                    self.config.ctc_loss_reduction,
+                    self.config.ctc_zero_infinity,
+                )
 
     if not return_dict:
         output = (logits,) + outputs[_HIDDEN_STATES_START_POSITION:]
