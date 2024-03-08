@@ -63,7 +63,10 @@ def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: 
     https://github.com/huggingface/transformers/blob/b338a6c3b8eda29610d4d472cad8cd87cbfdaaed/src/transformers/models/falcon/modeling_falcon.py#L248
     """
     out = F.dropout(x, p=prob, training=training)
-    out.add_(residual)
+    if training:
+        out = residual + out
+    else:
+        out.add_(residual)
     return out
 
 

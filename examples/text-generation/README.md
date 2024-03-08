@@ -325,17 +325,15 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generati
 Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
---use_deepspeed --world_size 8 run_generation.py \
+--use_deepspeed --world_size 8 run_lm_eval.py \
+-o acc_falcon180b_bs1_quant.txt \
 --model_name_or_path tiiuae/falcon-180B \
 --use_hpu_graphs \
 --use_kv_cache \
---limit_hpu_graphs \
---max_input_tokens 128 \
---max_new_tokens 128 \
+--trim_logits \
 --batch_size 1 \
 --bf16 \
---reuse_cache \
---trim_logits
+--reuse_cache
 ```
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
