@@ -192,7 +192,7 @@ python train_text_to_image_sdxl.py \
 ### Multi-card Training
 ```bash
 PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024  \
-python ../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py \
+python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
   --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
   --dataset_name lambdalabs/pokemon-blip-captions \
