@@ -74,6 +74,7 @@ from .llama import (
     GaudiLlamaForCausalLM,
     GaudiLlamaMLP,
     GaudiLlamaModel,
+    GaudiLlamaRotaryEmbedding,
     gaudi_llama_rmsnorm_forward,
 )
 from .mistral import (

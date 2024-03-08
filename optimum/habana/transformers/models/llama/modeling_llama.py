@@ -14,6 +14,7 @@ from transformers.models.llama.modeling_llama import (
     LlamaMLP,
     LlamaModel,
     LlamaRMSNorm,
+    LlamaRotaryEmbedding,
     apply_rotary_pos_emb,
     logger,
 )
@@ -184,6 +185,27 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return update(self.cache, cur, dim, idx, self.inp_seq_len)
 
+class GaudiLlamaRotaryEmbedding(LlamaRotaryEmbedding):
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self._cos_cached = emb.cos().to(dtype)
+        self._sin_cached = emb.sin().to(dtype)
+    
+    def forward(self, x, seq_len=None):
+        # x: [bs, num_attention_heads, seq_len, head_size]
+        if seq_len > self.max_seq_len_cached:
+            self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
+
+        return (
+            self._cos_cached[:seq_len].to(dtype=x.dtype),
+            self._sin_cached[:seq_len].to(dtype=x.dtype),
+        )
+
 
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
@@ -203,6 +225,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.k_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
         self.v_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
 
+      
     def update_sincos_cache(self, seq_len):
         # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
         # This helps in avoiding creation of these caches during actual model forward pass and
@@ -210,7 +233,7 @@ class GaudiLlamaAttention(LlamaAttention):
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
             _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
-
+    
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
         tensor.copy_(updated)
@@ -291,34 +314,30 @@ class GaudiLlamaAttention(LlamaAttention):
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
-        if kv_seq_len < self.rotary_emb.max_seq_len_cached:
-            cos = self.rotary_emb.cos_cached[:kv_seq_len].to(value_states.dtype)
-            sin = self.rotary_emb.sin_cached[:kv_seq_len].to(value_states.dtype)
-        else:
-            cos, sin = self.rotary_emb(value_states, position_ids)
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
-        # reuse k, v, self_attention
-        if use_cache:
+        if past_key_value is not None or reuse_cache:
+            # reuse k, v, self_attention
             if reuse_cache:
                 key_states = self.k_cache(key_states, 2, token_idx)
                 value_states = self.v_cache(value_states, 2, token_idx)
-                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
-                if past_key_value is None:
-                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
-                    past_value = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
-                    past_key_value = (past_key, past_value)
-                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
-
+                key_states = update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                value_states = update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
 
             if cache_idx is not None and q_len == 1:
                 key_states = key_states[:, :, :cache_idx, :]
                 value_states = value_states[:, :, :cache_idx, :]
                 attention_mask = attention_mask[:, :, :, :cache_idx]
+                kv_seq_len = key_states.shape[-2]
+
+        if use_cache:
+            if reuse_cache:
+                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
+            else:
+                past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
             past_key_value = None
-
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
