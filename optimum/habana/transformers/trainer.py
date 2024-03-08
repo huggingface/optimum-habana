@@ -816,7 +816,7 @@ class GaudiTrainer(Trainer):
         self._globalstep_last_logged = self.state.global_step
 
         self._zero_model_grad(model)
-        grad_norm: Optional[float] = None
+        _grad_norm: Optional[float] = None
 
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
@@ -980,14 +980,6 @@ class GaudiTrainer(Trainer):
                                 args.max_grad_norm,
                             )
 
-                        if (
-                            is_accelerate_available()
-                            and self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED
-                        ):
-                            grad_norm = model.get_global_grad_norm()
-                        else:
-                            grad_norm = _grad_norm.item() if _grad_norm is not None else None
-
                     # Optimizer step
                     optimizer_was_run = True
                     self.optimizer.step()
@@ -1005,7 +997,7 @@ class GaudiTrainer(Trainer):
                         self.htcore.mark_step()
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
-                    self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval)
+                    self._maybe_log_save_evaluate(tr_loss, _grad_norm, model, trial, epoch, ignore_keys_for_eval)
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
 
@@ -1021,7 +1013,7 @@ class GaudiTrainer(Trainer):
                 self.control.should_training_stop = True
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval)
+            self._maybe_log_save_evaluate(tr_loss, _grad_norm, model, trial, epoch, ignore_keys_for_eval)
 
             if self.control.should_training_stop:
                 break
@@ -1162,7 +1154,7 @@ class GaudiTrainer(Trainer):
                 "on multiple nodes, you should activate `--save_on_each_node`."
             )
 
-    def _maybe_log_save_evaluate(self, tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval):
+    def _maybe_log_save_evaluate(self, tr_loss, _grad_norm, model, trial, epoch, ignore_keys_for_eval):
         if self.args.adjust_throughput:
             save_start = time.perf_counter()
 
@@ -1175,6 +1167,14 @@ class GaudiTrainer(Trainer):
             # reset tr_loss to zero
             tr_loss -= tr_loss
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+
+            # This grad_norm block was outside of _maybe_log_save_evaluate method causing perf degradataion.
+            # Moving it here so the grad tensor is only copied when it's needed.
+            if is_accelerate_available() and self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
+                grad_norm = model.get_global_grad_norm()
+            else:
+                grad_norm = _grad_norm.item() if _grad_norm is not None else None
+
             if grad_norm is not None:
                 logs["grad_norm"] = grad_norm
             logs["learning_rate"] = self._get_learning_rate()
