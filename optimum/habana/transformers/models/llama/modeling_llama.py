@@ -227,12 +227,13 @@ class GaudiLlamaAttention(LlamaAttention):
 
       
     def update_sincos_cache(self, seq_len):
-        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
-        # This helps in avoiding creation of these caches during actual model forward pass and
-        # reduce memory consumption and improve performance.
-        if seq_len > self.max_position_embeddings:
-            self.max_position_embeddings = seq_len
-            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
+        if self.config.rope_scaling is None:
+            # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
+            # This helps in avoiding creation of these caches during actual model forward pass and
+            # reduce memory consumption and improve performance.
+            if seq_len > self.max_position_embeddings:
+                self.max_position_embeddings = seq_len
+                _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
     
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -314,7 +315,10 @@ class GaudiLlamaAttention(LlamaAttention):
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        if self.config.rope_scaling is None:
+            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        else:
+            cos, sin = self.rotary_emb(value_states, position_ids)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
         if past_key_value is not None or reuse_cache:
             # reuse k, v, self_attention
