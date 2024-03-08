@@ -17,8 +17,9 @@ from transformers.models.llama.modeling_llama import (
     apply_rotary_pos_emb,
     logger,
 )
-
-
+from ...modeling_attn_mask_utils import (
+    _gaudi_prepare_4d_causal_attention_mask,
+)
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 except ImportError:
@@ -274,38 +275,50 @@ class GaudiLlamaAttention(LlamaAttention):
             query_states = self.q_proj(hidden_states)
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
-
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         # TODO: update when auto mp params is enabled in DeepSpeed (cf. https://github.com/HabanaAI/DeepSpeed/blob/94309c7b5dfc1a69858f5c9f25737b2f81a332a5/deepspeed/module_inject/replace_module.py#L440)
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-
-        past_key_value = getattr(self, "past_key_value", past_key_value)
-
-        cos, sin = self.rotary_emb(value_states, position_ids)
+  
+        kv_seq_len = key_states.shape[-2]
+        # Why do we need this if we pass in?
+        #past_key_value = getattr(self, "past_key_value", past_key_value)
+        if past_key_value is not None:
+            if token_idx is None:
+                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+            else:
+                if reuse_cache:
+                    kv_seq_len = past_key_value[0][-2]
+                else:
+                    kv_seq_len = past_key_value[0].shape[-2]
+        if kv_seq_len < self.rotary_emb.max_seq_len_cached:
+            cos = self.rotary_emb.cos_cached[:kv_seq_len].to(value_states.dtype)
+            sin = self.rotary_emb.sin_cached[:kv_seq_len].to(value_states.dtype)
+        else:
+            cos, sin = self.rotary_emb(value_states, position_ids)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
-
-        if past_key_value is not None or reuse_cache:
-            # reuse k, v, self_attention
+        # reuse k, v, self_attention
+        if use_cache:
             if reuse_cache:
                 key_states = self.k_cache(key_states, 2, token_idx)
                 value_states = self.v_cache(value_states, 2, token_idx)
+                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
-                key_states = update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                value_states = update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+                if past_key_value is None:
+                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_value = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_key_value = (past_key, past_value)
+                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+
 
             if cache_idx is not None and q_len == 1:
                 key_states = key_states[:, :, :cache_idx, :]
                 value_states = value_states[:, :, :cache_idx, :]
                 attention_mask = attention_mask[:, :, :, :cache_idx]
-
-        if use_cache:
-            if reuse_cache:
-                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
-            else:
-                past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
             past_key_value = None
+
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
@@ -442,6 +455,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             cache_idx=cache_idx,
             **kwargs,
         )
+
         self.self_attn.attention_all_reduce(output_pre_attn)
         output_post_attn_pre_mlp, residual_mlp = self.post_attn_pre_mlp(output_pre_attn, residual)
         self.mlp.mlp_all_reduce(output_post_attn_pre_mlp)
@@ -558,6 +572,12 @@ class GaudiLlamaModel(LlamaModel):
             raise ValueError(
                 "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
             )
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape[:2]
+        elif inputs_embeds is not None:
+            batch_size, seq_length = inputs_embeds.shape[:2]
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
@@ -580,10 +600,11 @@ class GaudiLlamaModel(LlamaModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-
+        ignore_cache_position = True  # Ignoring cache position for HPU
         use_new_cache = False  # Ignoring new Cache path for HPU
         past_seen_tokens = 0
-        if use_cache:  # kept for BC (cache positions)
+
+        if past_key_values is not None and use_cache:  # kept for BC (cache positions)
             if reuse_cache:
                 past_seen_tokens = past_key_values[0][0][2]
             else:
@@ -594,16 +615,26 @@ class GaudiLlamaModel(LlamaModel):
                 else:
                     past_seen_tokens = past_key_values[0][0].shape[2]
 
-        if cache_position is None:
-            cache_position = torch.arange(
-                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+        if ignore_cache_position is False:
+            if cache_position is None:
+                cache_position = torch.arange(
+                    past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+                )
+            if position_ids is None and cache_position:
+                position_ids = cache_position.unsqueeze(0)
+
+        else:
+            if position_ids is None:
+                position_ids = torch.arange(
+                    past_seen_tokens, seq_length + past_seen_tokens, dtype=torch.long, device=inputs_embeds.device
             )
+            cache_position = None
 
-        if position_ids is None:
-            position_ids = cache_position.unsqueeze(0)
-
-        causal_mask = self._update_causal_mask(attention_mask, inputs_embeds)
-
+        # HPU specific mask generation
+        if ignore_cache_position:
+            causal_mask =  _gaudi_prepare_4d_causal_attention_mask(attention_mask, input_ids.shape, inputs_embeds, past_seen_tokens) 
+        else:
+            causal_mask = self._update_causal_mask(attention_mask, inputs_embeds)
         # embed positions
         hidden_states = inputs_embeds
 
@@ -648,7 +679,6 @@ class GaudiLlamaModel(LlamaModel):
                     flash_attention_recompute=flash_attention_recompute,
                     cache_idx=cache_idx,
                 )
-
             hidden_states = layer_outputs[0]
 
             if use_cache:
@@ -790,6 +820,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         past_length = 0
+
         reuse_cache = kwargs.get("reuse_cache")
         if past_key_values is not None:
             if token_idx is not None:
@@ -837,21 +868,22 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
-
-        if self.generation_config.cache_implementation == "static":
+        #TODO: we are using token_idx, disable this for now
+        #if self.generation_config.cache_implementation == "static":
             # generation with static cache
-            cache_position = kwargs.get("cache_position", None)
-            if cache_position is None:
-                past_length = 0
-            else:
-                past_length = cache_position[-1] + 1
-            input_ids = input_ids[:, past_length:]
-            position_ids = position_ids[:, past_length:]
+            #cache_position = kwargs.get("cache_position", None)
+            #if cache_position is None:
+                #past_length = 0
+            #else:
+                #past_length = cache_position[-1] + 1
+            #input_ids = input_ids[:, past_length:]
+            #position_ids = position_ids[:, past_length:]
 
         # TODO @gante we should only keep a `cache_position` in generate, and do +=1.
         # same goes for position ids. Could also help with continued generation.
-        cache_position = torch.arange(past_length, past_length + position_ids.shape[-1], device=position_ids.device)
-
+        #cache_position = torch.arange(past_length, past_length + position_ids.shape[-1], device=position_ids.device)
+        # keep cache_position implementation as None for HPU
+        cache_position = None
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
