@@ -650,7 +650,8 @@ class GaudiLlamaModel(LlamaModel):
             if position_ids is None:
                 position_ids = torch.arange(
                     past_seen_tokens, seq_length + past_seen_tokens, dtype=torch.long, device=inputs_embeds.device
-            )
+                )
+                position_ids = position_ids.unsqueeze(0)
             cache_position = None
 
         # HPU specific mask generation
