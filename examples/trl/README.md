@@ -95,6 +95,8 @@ steps like:
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
         --lora_target_modules "q_proj" "v_proj" "k_proj" "out_proj" "fc_in" "fc_out" "wte" \
         --output_dir="dpo" \
+        --max_prompt_length=256 \
+        --max_length=512 \
         --report_to=none
     ```
 
