@@ -254,6 +254,10 @@ class GenerationTesterMixin:
         attention_mask = None
         return encoder_outputs, input_ids, attention_mask
 
+    @staticmethod
+    def _get_static_shapes():
+        return False
+
     def _greedy_generate(
         self,
         model,
@@ -277,7 +281,7 @@ class GenerationTesterMixin:
 
         kwargs = {}
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
-
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -337,6 +341,7 @@ class GenerationTesterMixin:
         torch.manual_seed(0)
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         self._update_default_model_kwargs(model_kwargs)
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=True,
@@ -406,6 +411,7 @@ class GenerationTesterMixin:
     ):
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         self._update_default_model_kwargs(model_kwargs)
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -603,6 +609,7 @@ class GenerationTesterMixin:
     ):
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         self._update_default_model_kwargs(model_kwargs)
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -679,6 +686,7 @@ class GenerationTesterMixin:
         kwargs = {}
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         self._update_default_model_kwargs(model_kwargs)
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=False,
