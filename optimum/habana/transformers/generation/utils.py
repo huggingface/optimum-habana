@@ -553,7 +553,7 @@ class GaudiGenerationMixin(GenerationMixin):
             )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
-        model_kwargs[""] = generation_config.
+        model_kwargs["bucket_internal"] = generation_config.bucket_internal
         model_kwargs["reduce_recompile"] = (
             generation_config.reduce_recompile if generation_config.reduce_recompile is not None else False
         )
@@ -561,10 +561,8 @@ class GaudiGenerationMixin(GenerationMixin):
             assert generation_config.bucket_size
         if generation_config.reuse_cache:
             assert self.config.model_type in ["llama"], "reuse_cache only supported by llama at the moment"
-            if not generation_config.:
-                assert (
-                    generation_config.bucket_size <= 0
-                ), "please set  along with reuse_cache and bucket_size"
+            if not generation_config.bucket_internal:
+                assert generation_config.bucket_size <= 0, "please set  along with reuse_cache and bucket_size"
             else:
                 assert generation_config.bucket_size >= 0, "please set valid bucket_size to use "
 
