@@ -16,6 +16,7 @@
 import numpy as np
 from torch.utils.data.sampler import BatchSampler
 
+from optimum.habana.utils import check_habana_frameworks_version
 from optimum.utils import logging
 
 
@@ -128,9 +129,10 @@ schema.add_operator(
     read_image_text_from_dataset,
     dtype.NDT,
 )
-#TODO : NEED to add version check and have backward compatible
-op_class = fn.operator_add("ClipDataReader", False)
-#op_class = fn.operator_add("ClipDataReader")
+if check_habana_frameworks_version("1.14.0"):
+    op_class = fn.operator_add("ClipDataReader")
+else:
+    op_class = fn.operator_add("ClipDataReader", False)
 op_class.__module__ = fn.__name__
 setattr(fn, "ClipDataReader", op_class)
 
