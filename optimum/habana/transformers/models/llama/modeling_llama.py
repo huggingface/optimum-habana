@@ -308,11 +308,12 @@ class GaudiLlamaAttention(LlamaAttention):
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
-        # Why do we need this if we pass in?
-        # past_key_value = getattr(self, "past_key_value", past_key_value)
         if past_key_value is not None:
             if token_idx is None:
-                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                if hasattr(past_key_value, "get_usable_length"):
+                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                else:
+                    kv_seq_len += past_key_value[0].shape[-2]
             else:
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][-2]
