@@ -74,6 +74,7 @@ from .llama import (
     GaudiLlamaForCausalLM,
     GaudiLlamaMLP,
     GaudiLlamaModel,
+    GaudiLlamaRotaryEmbedding,
     gaudi_llama_rmsnorm_forward,
 )
 from .mistral import (
@@ -90,7 +91,12 @@ from .mixtral import (
     gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
-from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
+from .modeling_all_models import (
+    gaudi_check_and_enable_sdpa,
+    gaudi_conv1d_forward,
+    gaudi_get_extended_attention_mask,
+    gaudi_invert_attention_mask,
+)
 from .mpt import (
     GaudiMptForCausalLM,
     GaudiMptModel,
