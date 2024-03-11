@@ -384,9 +384,11 @@ def initialize_model(args, logger):
 
     if args.const_serialization_path:
         import uuid
-        args.const_serialization_path = os.path.join(args.const_serialization_path  + uuid.uuid4().hex)
+
+        args.const_serialization_path = os.path.join(args.const_serialization_path + uuid.uuid4().hex)
         os.makedirs(args.const_serialization_path)
         from habana_frameworks.torch.hpu import enable_const_section_serialization
+
         print("Serializing const params to {}".format(args.const_serialization_path))
         enable_const_section_serialization(args.const_serialization_path, False, True)
     if args.fp8:
