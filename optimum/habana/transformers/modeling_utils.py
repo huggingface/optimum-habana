@@ -113,6 +113,7 @@ from .models import (
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
+    gaudi_owlvitclasspredictionhead_forward,
 )
 
 
@@ -303,3 +304,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.blip.modeling_blip_text.BlipTextSelfAttention.forward = gaudi_BlipTextSelfAttention_forward
     transformers.models.blip.BlipForQuestionAnswering.generate = gaudi_BlipForQuestionAnswering_generate
     transformers.models.blip.BlipForConditionalGeneration.generate = gaudi_BlipForConditionalGeneration_generate
+
+    # Optimization for Owl ViT model on Gaudi
+    transformers.models.owlvit.modeling_owlvit.OwlViTClassPredictionHead.forward = gaudi_owlvitclasspredictionhead_forward
