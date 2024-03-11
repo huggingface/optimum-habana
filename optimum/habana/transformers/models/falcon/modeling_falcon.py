@@ -178,27 +178,6 @@ class ScaledDotProductAttention(nn.Module):
         return self.bmm2(attn_weight, value)
 
 
-def update(prev, cur, dim, idx, inp_seq_len):
-    orig_cur = cur
-    cur = cur.to(dtype=prev.dtype)
-
-    if prev.shape == cur.shape:
-        prev.copy_(cur)
-        return orig_cur
-
-    if cur.shape[-2] > 1 and cur.shape[-2] <= prev.shape[-2]:
-        # Initialize
-        prev[:, :, :inp_seq_len, :].copy_(cur)
-        return orig_cur
-    assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-    if idx is not None:
-        prev.index_copy_(dim, idx - 1, cur)
-        prev_cast = prev.to(orig_cur.dtype)
-        return prev_cast
-    else:
-        return torch.cat((prev, cur), dim=dim)
-
-
 class KVCache(torch.nn.Module):
     def __init__(self):
         super(KVCache, self).__init__()
@@ -224,7 +203,23 @@ class KVCache(torch.nn.Module):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
     def update(self, prev, cur, dim, idx, inp_seq_len):
-        return update(prev, cur, dim, idx, inp_seq_len)
+        orig_cur = cur
+        cur = cur.to(dtype=prev.dtype)
+
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+
+        if cur.shape[-2] > 1 and cur.shape[-2] <= prev.shape[-2]:
+            # Initialize
+            prev[:, :, :inp_seq_len, :].copy_(cur)
+            return orig_cur
+        assert cur.shape[-2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
 
 
 class GaudiFalconAttention(FalconAttention):
@@ -310,30 +305,38 @@ class GaudiFalconAttention(FalconAttention):
             cos, sin = self.rotary_emb(value_layer, seq_len=kv_seq_len)
             query_layer, key_layer = apply_customized_rope(query_layer, key_layer, cos, sin, position_ids)
 
-        if layer_past is not None or reuse_cache:
+        if use_cache:
             if reuse_cache:
                 key_layer = self.k_cache(key_layer, -2, token_idx)
                 value_layer = self.v_cache(value_layer, -2, token_idx)
+                present = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
-                key_layer = update(
+                if layer_past is None:
+                    past_key = torch.zeros(
+                        key_layer.shape,
+                        dtype=self.query_key_value.weight.dtype,
+                        device=self.query_key_value.weight.device,
+                    )
+                    past_value = torch.zeros(
+                        key_layer.shape,
+                        dtype=self.query_key_value.weight.dtype,
+                        device=self.query_key_value.weight.device,
+                    )
+                    layer_past = (past_key, past_value)
+                key_layer = self.k_cache.update(
                     layer_past[0], key_layer, -2, token_idx, self.inp_seq_len
                 )  # k_layer bs*1, q_len, head_dim
-                value_layer = update(layer_past[1], value_layer, -2, token_idx, self.inp_seq_len)
+                value_layer = self.v_cache.update(layer_past[1], value_layer, -2, token_idx, self.inp_seq_len)
+                present = layer_past
 
             if cache_idx is not None and query_length == 1:
                 key_layer = key_layer[:, :, :cache_idx, :]
                 value_layer = value_layer[:, :, :cache_idx, :]
                 attention_mask = attention_mask[:, :, :, :cache_idx]
-                kv_seq_len = key_layer.shape[-2]
-
-        kv_length = key_layer.shape[-2]
-        if use_cache:
-            if reuse_cache:
-                present = (self.k_cache.get_shape(), self.v_cache.get_shape())
-            else:
-                present = (key_layer, value_layer)
         else:
             present = None
+
+        kv_length = present[0][-2] if reuse_cache else present[0].shape[-2]
 
         if alibi is None:
             if output_attentions:
@@ -349,7 +352,6 @@ class GaudiFalconAttention(FalconAttention):
                         attn_output = self.sdpa(
                             query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal=False
                         )
-
                     else:
                         with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
                             attn_output = FusedSDPA.apply(
