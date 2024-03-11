@@ -128,7 +128,9 @@ schema.add_operator(
     read_image_text_from_dataset,
     dtype.NDT,
 )
-op_class = fn.operator_add("ClipDataReader")
+#TODO : NEED to add version check and have backward compatible
+op_class = fn.operator_add("ClipDataReader", False)
+#op_class = fn.operator_add("ClipDataReader")
 op_class.__module__ = fn.__name__
 setattr(fn, "ClipDataReader", op_class)
 
