@@ -98,11 +98,14 @@ def setup_distributed(args):
 
 def setup_const_serialization(const_serialization_path):
     import uuid
-    const_serialization_path = os.path.join(const_serialization_path  + uuid.uuid4().hex)
+
+    const_serialization_path = os.path.join(const_serialization_path + uuid.uuid4().hex)
     os.makedirs(const_serialization_path)
     from habana_frameworks.torch.hpu import enable_const_section_serialization
+
     print("Serializing const params to {}".format(const_serialization_path))
     enable_const_section_serialization(const_serialization_path, False, True)
+
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -382,6 +385,7 @@ def initialize_model(args, logger):
         setup_const_serialization(args.const_serialization_path)
     if args.fp8:
         import habana_frameworks.torch.core as htcore
+
         print("Initializing inference mode")
         htcore.hpu_initialize(model)
     init_end = time.perf_counter()
