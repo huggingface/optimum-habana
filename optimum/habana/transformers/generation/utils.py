@@ -581,6 +581,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["token_idx_cpu"] = token_idx
                     if generation_config.max_new_tokens is None:
                         generation_config.max_new_tokens = generation_config.max_length - token_idx
+                    model_kwargs["token_idx_cpu"] = token_idx
                     inputs_tensor = torch.nn.functional.pad(
                         inputs_tensor, (0, generation_config.max_new_tokens), value=generation_config.pad_token_id
                     )
@@ -1336,6 +1337,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
+
         bucket_size = model_kwargs.get("bucket_size", -1)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
@@ -1461,6 +1463,18 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
             cur_len = cur_len + 1
+            if bucket_size > 0 and bucket_internal:
+                # Calculate slice idx for kv cache during the decode phase.
+                # Breaking down the kv cache in the attention block helps to reduce computation time.
+                if model_kwargs.get("token_idx_cpu") <= (model_kwargs["kv_cache_len"] // bucket_size) * bucket_size:
+                    idx = (model_kwargs.get("token_idx_cpu") - 1) // bucket_size
+                    if prev_idx != idx:
+                        model_kwargs["cache_idx"] = (idx + 1) * bucket_size
+                        prev_idx = idx
+                        if model_kwargs["use_hpu_graphs"]:
+                            self.clear_cache()
+                else:
+                    model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:
@@ -1480,6 +1494,8 @@ class GaudiGenerationMixin(GenerationMixin):
             if this_peer_finished and not synced_gpus:
                 break
 
+        if model_kwargs["use_hpu_graphs"]:
+            self.clear_cache()
         hb_profer.stop()
         if streamer is not None:
             streamer.end()
