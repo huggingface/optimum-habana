@@ -657,19 +657,6 @@ class GaudiLlamaModel(LlamaModel):
             )
             use_cache = False
 
-        # past_key_values_length = 0
-        # use_legacy_cache = True
-        # use_new_cache = False  # Ignoring new Cache path for HPU
-        # if past_key_values is not None:
-        #     if use_cache:
-        #         if reuse_cache:
-        #             past_key_values_length = past_key_values[0][0][2]
-        #         else:
-        #             if use_new_cache:
-        #                 past_key_values_length = past_key_values.get_usable_length(seq_length)
-        #             else:
-        #                 past_key_values_length = past_key_values[0][0].shape[2]
-
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
         ignore_cache_position = True  # Ignoring cache position for HPU
