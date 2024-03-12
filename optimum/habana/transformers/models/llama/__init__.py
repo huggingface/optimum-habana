@@ -5,5 +5,7 @@ from .modeling_llama import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    GaudiLlamaLinearScalingRotaryEmbedding,
+    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     gaudi_llama_rmsnorm_forward,
 )

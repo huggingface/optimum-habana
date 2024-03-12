@@ -15,6 +15,8 @@ from transformers.models.llama.modeling_llama import (
     LlamaModel,
     LlamaRMSNorm,
     LlamaRotaryEmbedding,
+    LlamaLinearScalingRotaryEmbedding,
+    LlamaDynamicNTKScalingRotaryEmbedding,
     apply_rotary_pos_emb,
     logger,
 )
@@ -210,6 +212,39 @@ class GaudiLlamaRotaryEmbedding(LlamaRotaryEmbedding):
             self._sin_cached[:seq_len].to(dtype=x.dtype),
         )
 
+class GaudiLlamaLinearScalingRotaryEmbedding(LlamaLinearScalingRotaryEmbedding, GaudiLlamaRotaryEmbedding):
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+        t = t / self.scaling_factor
+
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self._cos_cached = emb.cos().to(dtype)
+        self._sin_cached = emb.sin().to(dtype)
+
+    def forward(self, x, seq_len=None):
+        return GaudiLlamaRotaryEmbedding.forward(self, x, seq_len)
+
+class GaudiLlamaDynamicNTKScalingRotaryEmbedding(LlamaDynamicNTKScalingRotaryEmbedding, GaudiLlamaRotaryEmbedding):
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        if seq_len > self.max_position_embeddings:
+            base = self.base * (
+                (self.scaling_factor * seq_len / self.max_position_embeddings) - (self.scaling_factor - 1)
+            ) ** (self.dim / (self.dim - 2))
+            self.inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self._cos_cached = emb.cos().to(dtype)
+        self._sin_cached = emb.sin().to(dtype)
+
+    def forward(self, x, seq_len=None):
+        return GaudiLlamaRotaryEmbedding.forward(self, x, seq_len)
 
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
@@ -230,13 +265,12 @@ class GaudiLlamaAttention(LlamaAttention):
         self.v_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
 
     def update_sincos_cache(self, seq_len):
-        if self.config.rope_scaling is None:
-            # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
-            # This helps in avoiding creation of these caches during actual model forward pass and
-            # reduce memory consumption and improve performance.
-            if seq_len > self.max_position_embeddings:
-                self.max_position_embeddings = seq_len
-                _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
+        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
+        # This helps in avoiding creation of these caches during actual model forward pass and
+        # reduce memory consumption and improve performance.
+        if seq_len > self.max_position_embeddings:
+            self.max_position_embeddings = seq_len
+            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -306,7 +340,6 @@ class GaudiLlamaAttention(LlamaAttention):
         # TODO: update when auto mp params is enabled in DeepSpeed (cf. https://github.com/HabanaAI/DeepSpeed/blob/94309c7b5dfc1a69858f5c9f25737b2f81a332a5/deepspeed/module_inject/replace_module.py#L440)
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             if token_idx is None:
@@ -319,11 +352,10 @@ class GaudiLlamaAttention(LlamaAttention):
                     kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
-        if self.config.rope_scaling is None:
-            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        else:
-            cos, sin = self.rotary_emb(value_states, position_ids)
+
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+
         if past_key_value is not None or reuse_cache:
             # reuse k, v, self_attention
             if reuse_cache:
@@ -401,7 +433,6 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if not output_attentions:
             attn_weights = None
-
         return attn_output, attn_weights, past_key_value
 
     def attention_all_reduce(self, attn_output):
@@ -660,9 +691,7 @@ class GaudiLlamaModel(LlamaModel):
 
         # HPU specific mask generation
         if ignore_cache_position:
-            causal_mask = _gaudi_prepare_4d_causal_attention_mask(
-                attention_mask, input_ids.shape, inputs_embeds, past_seen_tokens
-            )
+            causal_mask =  _gaudi_prepare_4d_causal_attention_mask(attention_mask, input_ids.shape if input_ids is not None else (batch_size, seq_length), inputs_embeds, past_seen_tokens)
         else:
             causal_mask = self._update_causal_mask(attention_mask, inputs_embeds)
         # embed positions
