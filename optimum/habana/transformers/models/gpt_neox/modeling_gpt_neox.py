@@ -31,6 +31,11 @@ def gaudi_gpt_neox_attention_forward(
     - add new args token_idx
     - optimize KV cache
     """
+    # Workaround till FusedRoPE is fixed
+    global FusedRoPE
+    if self.training and FusedRoPE is not None:
+        FusedRoPE = None
+
     has_layer_past = layer_past is not None
 
     # Compute QKV
