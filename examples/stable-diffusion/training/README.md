@@ -99,22 +99,15 @@ python train_controlnet.py \
 
 You can run these fine-tuning scripts in a distributed fashion as follows:
 ```bash
-python ../../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
+python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
   --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
-  --train_data_dir ./cat \
-  --learnable_property object \
-  --placeholder_token '"<cat-toy>"' \
-  --initializer_token toy \
-  --resolution 512 \
-  --train_batch_size 4 \
-  --max_train_steps 375 \
-  --learning_rate 5.0e-04 \
-  --scale_lr \
-  --lr_scheduler constant \
-  --lr_warmup_steps 0 \
-  --output_dir /tmp/textual_inversion_cat \
-  --save_as_full_pipeline \
-  --gaudi_config_name Habana/stable-diffusion \
+  --output_dir=/tmp/stable_diffusion1_5 \
+  --dataset_name=fusing/fill50k \
+  --resolution=512 \
+  --learning_rate=1e-5 \
+  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
+  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+  --train_batch_size=4 \
   --throughput_warmup_steps 3 \
   --use_hpu_graphs \
   --bf16
@@ -126,23 +119,36 @@ python ../../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
 Once you have trained a model as described right above, inference can be done simply using the `GaudiStableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
 
 ```python
+from diffusers import ControlNetModel, UniPCMultistepScheduler
+from diffusers.utils import load_image
 import torch
-from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
 
-model_id = "path-to-your-trained-model"
-pipe = GaudiStableDiffusionPipeline.from_pretrained(
-  model_id,
-  torch_dtype=torch.bfloat16,
-  use_habana=True,
-  use_hpu_graphs=True,
-  gaudi_config="Habana/stable-diffusion",
+base_model_path = "runwayml/stable-diffusion-v1-5"
+controlnet_path = "/tmp/stable_diffusion1_5"
+
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.bfloat16)
+pipe = GaudiStableDiffusionControlNetPipeline.from_pretrained(
+    base_model_path,
+    controlnet=controlnet,
+    torch_dtype=torch.bfloat16,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
 )
 
-prompt = "A <cat-toy> backpack"
+# speed up diffusion process with faster scheduler and memory optimization
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
-image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+control_image = load_image("./conditioning_image_1.png")
+prompt = "pale golden rod circle with old lace background"
 
-image.save("cat-backpack.png")
+# generate image
+generator = torch.manual_seed(0)
+image = pipe(
+    prompt, num_inference_steps=20, generator=generator, image=control_image
+).images[0]
+image.save("./output.png")
 ```
 
 
