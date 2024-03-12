@@ -1,7 +1,9 @@
 from .modeling_llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
+    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
+    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
