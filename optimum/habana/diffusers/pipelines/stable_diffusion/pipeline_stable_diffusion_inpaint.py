@@ -30,11 +30,10 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from optimum.utils import logging
-
+from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import speed_metrics
-from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
+from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)
@@ -203,7 +202,9 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
         return_image_latents=False,
     ):
         # TODO(Joey Chou, joey.t.p.chou@gmail.com): Try to support it return_noise == True and/or return_image_latents==True
-        assert not return_noise and not return_image_latents, "Gaudi doesn't support return_noise==True and/or return_image_latents==True yet."
+        assert (
+            not return_noise and not return_image_latents
+        ), "Gaudi doesn't support return_noise==True and/or return_image_latents==True yet."
 
         shape = (num_images, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != num_images:
@@ -312,7 +313,9 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
         return mask, masked_image_latents
 
     @classmethod
-    def _split_inputs_into_batches(cls, batch_size, latents, prompt_embeds, negative_prompt_embeds, mask, masked_image_latents):
+    def _split_inputs_into_batches(
+        cls, batch_size, latents, prompt_embeds, negative_prompt_embeds, mask, masked_image_latents
+    ):
         # Use torch.split to generate num_batches batches of size batch_size
         latents_batches = list(torch.split(latents, batch_size))
         prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
@@ -646,7 +649,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 raise NotImplementedError("Inpaiting with num_channels_unet == 4 is not supported yet")
                 # latents, image_latents = latents_outputs
             else:
-                latents, = latents_outputs
+                (latents,) = latents_outputs
 
             # 7. Prepare mask latent variables
             mask_condition = self.mask_processor.preprocess(
@@ -675,7 +678,10 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 # default case for runwayml/stable-diffusion-inpainting
                 num_channels_mask = mask.shape[1]
                 num_channels_masked_image = masked_image_latents.shape[1]
-                if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
+                if (
+                    num_channels_latents + num_channels_mask + num_channels_masked_image
+                    != self.unet.config.in_channels
+                ):
                     raise ValueError(
                         f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                         f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
@@ -709,13 +715,15 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 ).to(device=device, dtype=latents.dtype)
 
             # 10. Split into batches (HPU-specific step)
-            latents_batches, text_embeddings_batches, num_dummy_samples, mask_batches, masked_image_latents_batches = self._split_inputs_into_batches(
-                batch_size,
-                latents,
-                prompt_embeds,
-                negative_prompt_embeds,
-                mask,
-                masked_image_latents,
+            latents_batches, text_embeddings_batches, num_dummy_samples, mask_batches, masked_image_latents_batches = (
+                self._split_inputs_into_batches(
+                    batch_size,
+                    latents,
+                    prompt_embeds,
+                    negative_prompt_embeds,
+                    mask,
+                    masked_image_latents,
+                )
             )
 
             outputs = {
@@ -764,9 +772,13 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                             torch.cat([mask_batch] * 2) if self.do_classifier_free_guidance else mask_batch
                         )
                         masked_image_latents_batch_input = (
-                            torch.cat([masked_image_latents_batch] * 2) if self.do_classifier_free_guidance else masked_image_latents_batch
+                            torch.cat([masked_image_latents_batch] * 2)
+                            if self.do_classifier_free_guidance
+                            else masked_image_latents_batch
                         )
-                        latent_model_input = torch.cat([latent_model_input, mask_batch_input, masked_image_latents_batch_input], dim=1)
+                        latent_model_input = torch.cat(
+                            [latent_model_input, mask_batch_input, masked_image_latents_batch_input], dim=1
+                        )
 
                     # predict the noise residual
                     noise_pred = self.unet_hpu(
@@ -791,7 +803,9 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                         )
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents_batch = self.scheduler.step(noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False)[0]
+                    latents_batch = self.scheduler.step(
+                        noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False
+                    )[0]
 
                     # TODO(Joey Chou, joey.t.p.chou@gmail.com): Need to supprot older version of inpaiting which has num_channels_unet == 4
                     # if num_channels_unet == 4:
@@ -929,8 +943,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()
                 graph.capture_begin()
-                outputs = self.unet(
-                    inputs[0], inputs[1], inputs[2], inputs[3])[0]
+                outputs = self.unet(inputs[0], inputs[1], inputs[2], inputs[3])[0]
                 graph.capture_end()
                 graph_inputs = inputs
                 graph_outputs = outputs
