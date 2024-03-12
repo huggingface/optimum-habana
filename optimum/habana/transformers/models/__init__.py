@@ -128,3 +128,4 @@ from .wav2vec2 import (
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
 )
+from .llava import GaudiLlavaForConditionalGeneration
