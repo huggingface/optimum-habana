@@ -509,6 +509,22 @@ def parse_args(input_args=None):
         type=int,
         help="Print the loss for every logging_step.",
     )
+    parser.add_argument(
+        "--mediapipe",
+        default="",
+        type=str,
+        help="Use gaudi2 HW mediapipe over regular dataloader. \
+        case 1: nothing is passed to this argument -> regular torch dataloader is used\
+        case 2: an empty or non existant path is passed -> images are dumped from dataset (passed in through dataset_name) in that location before first run \
+        case 3: a non empty path is passed -> images from that location are used ",
+    )
+    parser.add_argument(
+        "--adjust_throughput",
+        default=False,
+        action="store_true",
+        help="Checkpoint saving takes a lot of time. Ignore time for checkpoint saving for throughput calculations"
+    )
+
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -773,12 +789,26 @@ def main(args):
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
     if args.dataset_name is not None:
-        # Downloading and loading a dataset from the hub.
-        dataset = load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            cache_dir=args.cache_dir,
-        )
+        if len(args.mediapipe) > 0:
+            assert args.resolution == args.crop_resolution, f'To use hardware pipe, --resolution ({args.resolution}) must equal --crop_resolution ({args.crop_resolution})'
+            if not os.path.exists(args.mediapipe):
+                os.mkdir(args.mediapipe)
+            if len(os.listdir(args.mediapipe)) == 0:
+                dataset = load_dataset(args.dataset_name, None)
+                with open(f'{args.mediapipe}/label.txt', 'w') as f:
+                    for idx, dt in enumerate(dataset['train']):
+                        dt['image'].save(f'{args.mediapipe}/{idx}.jpg')
+                        f.write(dt['text'] + '\n')
+            from media_pipe_imgdir import get_dataset_for_pipeline
+            dt = get_dataset_for_pipeline(args.mediapipe)
+            dataset = {'train': dt}
+        else:
+            # Downloading and loading a dataset from the hub.
+            dataset = load_dataset(
+                args.dataset_name,
+                args.dataset_config_name,
+                cache_dir=args.cache_dir,
+            )
     else:
         data_files = {}
         if args.train_data_dir is not None:
@@ -865,8 +895,10 @@ def main(args):
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        train_dataset = dataset["train"]
+        if len(args.mediapipe) == 0:
+            # Set the training transforms
+            train_dataset = train_dataset.with_transform(preprocess_train)
 
     compute_embeddings_fn = functools.partial(
         encode_prompt,
@@ -876,6 +908,12 @@ def main(args):
         caption_column=args.caption_column,
     )
 
+    # TODO : adding crop = (0,0) for now.
+    # If we do random crop, we have to do this in mediapipe
+    def attach_metadata(batch):
+        import imagesize
+        return {"original_sizes" : imagesize.get(batch['image']), "crop_top_lefts" : (0,0)}
+
     with accelerator.main_process_first():
         from datasets.fingerprint import Hasher
 
@@ -883,6 +921,8 @@ def main(args):
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
+        if len(args.mediapipe) > 0:
+            train_dataset = train_dataset.map(attach_metadata, load_from_cache_file=False)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"].clone().detach() for example in examples])
@@ -975,6 +1015,12 @@ def main(args):
         unet, optimizer, train_dataloader, lr_scheduler
     )
 
+    if len(args.mediapipe) > 0:
+        from torch.utils.data.sampler import BatchSampler, RandomSampler
+        dataloader_params = {"batch_size": args.train_batch_size, 'resolution': args.resolution}
+        from media_pipe_imgdir import MediaApiDataLoader
+        train_dataloader = MediaApiDataLoader(train_dataset, **dataloader_params)
+
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -1053,6 +1099,7 @@ def main(args):
     t0 = None
     t_start = time.perf_counter()
     train_loss = torch.tensor(0, dtype=torch.float, device="hpu")
+    checkpoint_time = 0
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss.zero_()
         if hb_profiler:
@@ -1097,8 +1144,11 @@ def main(args):
                 def compute_time_ids(original_size, crops_coords_top_left):
                     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
                     target_size = (args.resolution, args.resolution)
-                    add_time_ids = list(original_size + crops_coords_top_left + target_size)
-                    add_time_ids = torch.tensor([add_time_ids])
+                    if 'torch.Tensor' in str(type(original_size)):
+                        add_time_ids = torch.cat([original_size, crops_coords_top_left, torch.tensor(target_size, device=crops_coords_top_left.device)])
+                    else:
+                        add_time_ids = list(original_size + crops_coords_top_left + target_size)
+                        add_time_ids = torch.tensor([add_time_ids])
                     add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
                     return add_time_ids
 
@@ -1183,6 +1233,7 @@ def main(args):
 
                 if accelerator.is_main_process:
                     if args.checkpointing_steps is not None and global_step % args.checkpointing_steps == 0:
+                        t_chkpt_start = time.perf_counter()
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
@@ -1206,6 +1257,8 @@ def main(args):
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+                        t_chkpt_end = time.perf_counter()
+                        checkpoint_time += (t_chkpt_end - t_chkpt_start)
 
                 if (global_step - 1) % args.logging_step == 0 or global_step == args.max_train_steps:
                     train_loss_scalar = train_loss.item()
@@ -1291,7 +1344,7 @@ def main(args):
 
                 del pipeline
 
-    duration = time.perf_counter() - t0
+    duration = time.perf_counter() - t0 - (checkpoint_time if args.adjust_throughput else 0)
     ttt = time.perf_counter() - t_start
     throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 

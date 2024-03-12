@@ -92,7 +92,7 @@ python train_controlnet.py \
  --train_batch_size=4 \
  --throughput_warmup_steps=3 \
  --use_hpu_graphs \
- --bf16
+ --bf16 \
 ```
 
 ### Multi-card Run
@@ -185,7 +185,8 @@ python train_text_to_image_sdxl.py \
   --validation_prompt="a robotic cat with wings" \
   --validation_epochs 48 \
   --checkpointing_steps 2500 \
-  --logging_step 10
+  --logging_step 10 \
+  --adjust_throughput
 ```
 
 
@@ -215,7 +216,10 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py
   --use_hpu_graphs_for_training \
   --use_hpu_graphs_for_inference \
   --validation_prompt="a robotic cat with wings" \
-  --validation_epochs 48
+  --validation_epochs 48 \
+  --checkpointing_steps 336 \
+  --mediapipe dataset_sdxl_pokemon \
+  --adjust_throughput
 ```
 
 ### Single-card Training on Gaudi1
