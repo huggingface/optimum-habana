@@ -208,6 +208,7 @@ class GaudiLlamaAttention(LlamaAttention):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
+        use_fused_rope: Optional[bool] = True,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
@@ -263,7 +264,10 @@ class GaudiLlamaAttention(LlamaAttention):
                     "with a layer index."
                 )
             if token_idx is None:
-                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                if hasattr(past_key_value, "get_usable_length"):
+                    kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+                else:
+                    kv_seq_len += past_key_value[0].shape[-2]
             else:
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][-2]
@@ -271,7 +275,9 @@ class GaudiLlamaAttention(LlamaAttention):
                     kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, use_fused_rope=use_fused_rope
+        )
 
         if past_key_value is not None or reuse_cache:
             # reuse k, v, self_attention
@@ -285,7 +291,8 @@ class GaudiLlamaAttention(LlamaAttention):
             if cache_idx is not None and q_len == 1:
                 key_states = key_states[:, :, :cache_idx, :]
                 value_states = value_states[:, :, :cache_idx, :]
-                attention_mask = attention_mask[:, :, :, :cache_idx]
+                if attention_mask is not None:
+                    attention_mask = attention_mask[:, :, :, :cache_idx]
                 kv_seq_len = key_states.shape[-2]
 
         if use_cache:
@@ -453,6 +460,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
+        use_fused_rope: Optional[bool] = True,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -483,6 +491,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             cache_idx=cache_idx,
+            use_fused_rope=use_fused_rope,
             **kwargs,
         )
         self.self_attn.attention_all_reduce(output_pre_attn)
@@ -513,6 +522,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
+        use_fused_rope: Optional[bool] = True,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         output_attn, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
@@ -528,6 +538,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             use_flash_attention,
             flash_attention_recompute,
             cache_idx=cache_idx,
+            use_fused_rope=use_fused_rope,
         )
         return output_attn, attn_weights, present_key_value
 
@@ -577,6 +588,7 @@ class GaudiLlamaModel(LlamaModel):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
+        use_fused_rope: Optional[bool] = True,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -679,6 +691,7 @@ class GaudiLlamaModel(LlamaModel):
                     False,
                     use_flash_attention,
                     flash_attention_recompute,
+                    use_fused_rope,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -694,6 +707,7 @@ class GaudiLlamaModel(LlamaModel):
                     use_flash_attention=use_flash_attention,
                     flash_attention_recompute=flash_attention_recompute,
                     cache_idx=cache_idx,
+                    use_fused_rope=use_fused_rope,
                 )
 
             hidden_states = layer_outputs[0]
@@ -768,6 +782,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
+        use_fused_rope: Optional[bool] = True,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -791,6 +806,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             cache_idx=cache_idx,
+            use_fused_rope=use_fused_rope,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -908,9 +924,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         return model_inputs
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids):
-    if q.device.type == "hpu" and FusedRoPE:
-        # TODO: remove `.clone()` when SynapseAI v1.15 is released
+def apply_customized_rope(q, k, cos, sin, position_ids, use_fused_rope=True):
+    if q.device.type == "hpu" and FusedRoPE and use_fused_rope:
+        # TODO: remove `.clone()` when it is fixed in SynapseAI
         return FusedRoPE.apply(
             q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
         ), FusedRoPE.apply(

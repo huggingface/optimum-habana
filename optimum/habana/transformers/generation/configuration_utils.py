@@ -51,3 +51,4 @@ class GaudiGenerationConfig(GenerationConfig):
         self.kv_cache_fp8 = kwargs.get("kv_cache_fp8", None)
         self.use_flash_attention = kwargs.get("use_flash_attention", None)
         self.flash_attention_recompute = kwargs.get("flash_attention_recompute", None)
+        self.use_fused_rope = kwargs.get("use_fused_rope", None)
