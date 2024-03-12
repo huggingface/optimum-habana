@@ -92,7 +92,7 @@ python train_controlnet.py \
  --train_batch_size=4 \
  --throughput_warmup_steps=3 \
  --use_hpu_graphs \
- --bf16 \
+ --bf16
 ```
 
 ### Multi-card Run
