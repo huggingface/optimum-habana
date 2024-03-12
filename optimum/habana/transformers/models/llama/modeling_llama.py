@@ -10,13 +10,10 @@ from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     LlamaDecoderLayer,
-    LlamaDynamicNTKScalingRotaryEmbedding,
     LlamaForCausalLM,
-    LlamaLinearScalingRotaryEmbedding,
     LlamaMLP,
     LlamaModel,
     LlamaRMSNorm,
-    LlamaRotaryEmbedding,
     apply_rotary_pos_emb,
     logger,
 )
@@ -191,7 +188,22 @@ class KVCache(torch.nn.Module):
         return update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
-class GaudiLlamaRotaryEmbedding(LlamaRotaryEmbedding):
+class GaudiLlamaRotaryEmbedding(torch.nn.Module):
+    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
+        super().__init__()
+
+        self.scaling_factor = scaling_factor
+        self.dim = dim
+        self.max_position_embeddings = max_position_embeddings
+        self.base = base
+        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+        # Build here to make `torch.jit.trace` work.
+        self._set_cos_sin_cache(
+            seq_len=max_position_embeddings, device=self.inv_freq.device, dtype=torch.get_default_dtype()
+        )
+
     def _set_cos_sin_cache(self, seq_len, device, dtype):
         self.max_seq_len_cached = seq_len
         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
@@ -199,8 +211,8 @@ class GaudiLlamaRotaryEmbedding(LlamaRotaryEmbedding):
         freqs = torch.outer(t, self.inv_freq)
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
         emb = torch.cat((freqs, freqs), dim=-1)
-        self._cos_cached = emb.cos().to(dtype)
-        self._sin_cached = emb.sin().to(dtype)
+        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
 
     def forward(self, x, seq_len=None):
         # x: [bs, num_attention_heads, seq_len, head_size]
@@ -213,7 +225,7 @@ class GaudiLlamaRotaryEmbedding(LlamaRotaryEmbedding):
         )
 
 
-class GaudiLlamaLinearScalingRotaryEmbedding(LlamaLinearScalingRotaryEmbedding, GaudiLlamaRotaryEmbedding):
+class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
     def _set_cos_sin_cache(self, seq_len, device, dtype):
         self.max_seq_len_cached = seq_len
         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
@@ -222,31 +234,28 @@ class GaudiLlamaLinearScalingRotaryEmbedding(LlamaLinearScalingRotaryEmbedding, 
         freqs = torch.outer(t, self.inv_freq)
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
         emb = torch.cat((freqs, freqs), dim=-1)
-        self._cos_cached = emb.cos().to(dtype)
-        self._sin_cached = emb.sin().to(dtype)
-
-    def forward(self, x, seq_len=None):
-        return GaudiLlamaRotaryEmbedding.forward(self, x, seq_len)
+        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
 
 
-class GaudiLlamaDynamicNTKScalingRotaryEmbedding(LlamaDynamicNTKScalingRotaryEmbedding, GaudiLlamaRotaryEmbedding):
+class GaudiLlamaDynamicNTKScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
     def _set_cos_sin_cache(self, seq_len, device, dtype):
         self.max_seq_len_cached = seq_len
+
         if seq_len > self.max_position_embeddings:
             base = self.base * (
                 (self.scaling_factor * seq_len / self.max_position_embeddings) - (self.scaling_factor - 1)
             ) ** (self.dim / (self.dim - 2))
-            self.inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+            inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+            self.register_buffer("inv_freq", inv_freq, persistent=False)
 
         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+
         freqs = torch.outer(t, self.inv_freq)
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
         emb = torch.cat((freqs, freqs), dim=-1)
-        self._cos_cached = emb.cos().to(dtype)
-        self._sin_cached = emb.sin().to(dtype)
-
-    def forward(self, x, seq_len=None):
-        return GaudiLlamaRotaryEmbedding.forward(self, x, seq_len)
+        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
 
 
 class GaudiLlamaAttention(LlamaAttention):
