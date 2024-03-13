@@ -1017,7 +1017,6 @@ def main(args):
     )
 
     if len(args.mediapipe) > 0:
-        from torch.utils.data.sampler import BatchSampler, RandomSampler
         dataloader_params = {"batch_size": args.train_batch_size, 'resolution': args.resolution}
         from media_pipe_imgdir import MediaApiDataLoader
         train_dataloader = MediaApiDataLoader(train_dataset, **dataloader_params)

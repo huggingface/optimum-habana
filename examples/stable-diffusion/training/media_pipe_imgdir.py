@@ -14,18 +14,17 @@
 # limitations under the License.
 
 
-import numpy as np
-import time
 import os
-from torch.utils.data.sampler import BatchSampler, RandomSampler
-from torch.utils.data import Dataset
-from datasets import Dataset as DatasetHF
 
-from transformers.trainer_pt_utils import DistributedSampler, DistributedSamplerWithLoop
-
+import numpy as np
 import torch
-from optimum.utils import logging
+from datasets import Dataset as DatasetHF
 from torch.distributed import get_rank, get_world_size
+from torch.utils.data.sampler import BatchSampler
+from transformers.trainer_pt_utils import DistributedSamplerWithLoop
+
+from optimum.utils import logging
+
 
 logger = logging.get_logger(__name__)
 
@@ -36,10 +35,10 @@ try:
     from habana_frameworks.mediapipe.backend.operator_specs import schema
     from habana_frameworks.mediapipe.media_types import dtype, ftype, imgtype, randomCropType, readerOutType
     from habana_frameworks.mediapipe.mediapipe import MediaPipe
+    from habana_frameworks.mediapipe.operators.cpu_nodes.cpu_nodes import media_function
     from habana_frameworks.mediapipe.operators.media_nodes import MediaReaderNode
     from habana_frameworks.mediapipe.operators.reader_nodes.read_image_from_dir import get_max_file
     from habana_frameworks.torch.hpu import get_device_name
-    from habana_frameworks.mediapipe.operators.cpu_nodes.cpu_nodes import media_function
 except ImportError:
     pass
 
@@ -221,7 +220,7 @@ class SDXLMediaPipe(MediaPipe):
         self.device = get_device_name()
         self.dataset = dataset
         self.batch_size = batch_size
-  
+
         self.drop_last = drop_last
         self.sampler = sampler
         self.batch_sampler = BatchSampler(self.sampler, batch_size, drop_last)
