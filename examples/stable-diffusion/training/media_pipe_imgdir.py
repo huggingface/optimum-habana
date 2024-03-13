@@ -33,7 +33,7 @@ try:
     from habana_frameworks.mediapipe import fn
     from habana_frameworks.mediapipe.backend.nodes import opnode_tensor_info
     from habana_frameworks.mediapipe.backend.operator_specs import schema
-    from habana_frameworks.mediapipe.media_types import dtype, ftype, imgtype, readerOutType #, randomCropType
+    from habana_frameworks.mediapipe.media_types import dtype, ftype, imgtype, readerOutType  #, randomCropType
     from habana_frameworks.mediapipe.mediapipe import MediaPipe
     from habana_frameworks.mediapipe.operators.cpu_nodes.cpu_nodes import media_function
     from habana_frameworks.mediapipe.operators.media_nodes import MediaReaderNode
@@ -286,7 +286,7 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
 
         try:
             world_size = get_world_size()
-        except:
+        except Exception:
             world_size = 1
 
         if world_size > 1:
