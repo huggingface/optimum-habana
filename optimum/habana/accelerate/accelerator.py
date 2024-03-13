@@ -87,6 +87,22 @@ if is_fp8_available():
 
 logger = get_logger(__name__)
 
+class SwitchableForwardMaker:
+    def __init__(self, module, fp8_recipe_handler):
+        self.original_forward = module.forward
+        self.fp8_forward = te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe_handler)(module.forward)
+        self.module = module
+        module.forward = self.forward
+
+    def forward(self, *args, **kwargs):
+        if self.module.training:
+            return self.fp8_forward(*args, **kwargs)
+        else:
+            return self.original_forward(*args, **kwargs)
+
+    @staticmethod
+    def convert(module, fp8_recipe_handler):
+        SwitchableForwardMaker(module, fp8_recipe_handler)
 
 class GaudiAccelerator(Accelerator):
     """
@@ -312,10 +328,6 @@ class GaudiAccelerator(Accelerator):
             with torch.no_grad():
                 convert_model(model)
             model._converted_to_transformer_engine = True
-        model._original_forward = model.forward
-        model.forward = te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe_handler)(model.forward)
-        print(f'fp8 model {model}')
-        print(f'fp8 config {self.fp8_recipe_handler}')
         return model
 
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
@@ -371,8 +383,10 @@ class GaudiAccelerator(Accelerator):
                 model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
-        if self.state.is_fp8_enabled:
+        elif self.state.is_fp8_enabled:
             model = self.wrap_fp8(model)
+            SwitchableForwardMaker.convert(model, self.fp8_recipe_handler)
+
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
             model, "hf_device_map", False
         ):
@@ -679,6 +693,10 @@ class GaudiAccelerator(Accelerator):
                     result[i] = scheduler
             # pointing for deepspeed_engine_wrapped.backward()
             self.deepspeed_engine_wrapped = DeepSpeedEngineWrapper(engine)
+
+            if self.state.is_fp8_enabled:
+                SwitchableForwardMaker.convert(engine, self.fp8_recipe_handler)
+
             self._models.append(engine)
             if optimizer is not None:
                 self._optimizers.append(optimizer)
