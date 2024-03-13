@@ -76,7 +76,6 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "t5",
     "mistral",
     "mixtral",
-    "swin",
 ]
 
 

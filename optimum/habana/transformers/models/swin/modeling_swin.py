@@ -1,6 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
-# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+# Copyright 2022 Microsoft Research and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+""" PyTorch Swin Transformer model."""
 
 import math
 from typing import Optional, Tuple, Union
@@ -21,6 +21,10 @@ import torch
 from transformers.models.swin.modeling_swin import window_partition
 
 def gaudi_swin_get_attn_mask(self, height, width, dtype):
+    '''
+    Copied from SwinLayer.get_attn_mask : https://github.com/huggingface/transformers/blob/main/src/transformers/models/swin/modeling_swin.py
+    The only difference is moving img_mask to hpu for performance
+    '''
     if self.shift_size > 0:
         # calculate attention mask for SW-MSA
         img_mask = torch.zeros((1, height, width, 1), dtype=dtype, device='hpu')
