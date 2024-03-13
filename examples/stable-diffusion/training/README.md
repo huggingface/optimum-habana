@@ -146,7 +146,7 @@ image.save("cat-backpack.png")
 ```
 
 
-## Fine-Tuning for SDXL
+## Fine-Tuning for Stable Diffusion XL
 
 The `train_text_to_image_sdxl.py` script shows how to implement the fine-tuning of Stable Diffusion models on Habana Gaudi.
 
@@ -245,4 +245,4 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
   --bf16
 ```
 
-**Note:** There is a known issue that first 2 steps graph compilation takes long.
+**Note:** There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.

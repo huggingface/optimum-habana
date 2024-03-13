@@ -791,14 +791,15 @@ def main(args):
     if args.dataset_name is not None:
         if len(args.mediapipe) > 0:
             assert args.resolution == args.crop_resolution, f'To use hardware pipe, --resolution ({args.resolution}) must equal --crop_resolution ({args.crop_resolution})'
-            if not os.path.exists(args.mediapipe):
-                os.mkdir(args.mediapipe)
-            if len(os.listdir(args.mediapipe)) == 0:
-                dataset = load_dataset(args.dataset_name, None)
-                with open(f'{args.mediapipe}/label.txt', 'w') as f:
-                    for idx, dt in enumerate(dataset['train']):
-                        dt['image'].save(f'{args.mediapipe}/{idx}.jpg')
-                        f.write(dt['text'] + '\n')
+            if args.local_rank == 0:
+                if not os.path.exists(args.mediapipe):
+                    os.mkdir(args.mediapipe)
+                if len(os.listdir(args.mediapipe)) == 0:
+                    dataset = load_dataset(args.dataset_name, None)
+                    with open(f'{args.mediapipe}/label.txt', 'w') as f:
+                        for idx, dt in enumerate(dataset['train']):
+                            dt['image'].save(f'{args.mediapipe}/{idx}.jpg')
+                            f.write(dt['text'] + '\n')
             from media_pipe_imgdir import get_dataset_for_pipeline
             dt = get_dataset_for_pipeline(args.mediapipe)
             dataset = {'train': dt}
