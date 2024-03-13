@@ -33,7 +33,12 @@ try:
     from habana_frameworks.mediapipe import fn
     from habana_frameworks.mediapipe.backend.nodes import opnode_tensor_info
     from habana_frameworks.mediapipe.backend.operator_specs import schema
-    from habana_frameworks.mediapipe.media_types import dtype, ftype, imgtype, readerOutType  #, randomCropType
+    from habana_frameworks.mediapipe.media_types import (
+        dtype,
+        ftype,
+        imgtype,
+        readerOutType,
+    )  # , randomCropType
     from habana_frameworks.mediapipe.mediapipe import MediaPipe
     from habana_frameworks.mediapipe.operators.cpu_nodes.cpu_nodes import media_function
     from habana_frameworks.mediapipe.operators.media_nodes import MediaReaderNode
@@ -42,18 +47,20 @@ except ImportError:
     pass
 
 
-
 def get_dataset_for_pipeline(img_dir):
-    labels = open(f'{img_dir}/label.txt').readlines()
-    dct = {'image': [], 'text': []}
-    for item in sorted([i for i in os.listdir(img_dir) if 'txt' not in i], key=lambda x : int(x.split('.')[0])):
-        key = int(item.split('.')[0])
-        dct['image'] += [f'{img_dir}/{item}']
-        dct['text'] += [labels[key]]
+    labels = open(f"{img_dir}/label.txt").readlines()
+    dct = {"image": [], "text": []}
+    for item in sorted(
+        [i for i in os.listdir(img_dir) if "txt" not in i],
+        key=lambda x: int(x.split(".")[0]),
+    ):
+        key = int(item.split(".")[0])
+        dct["image"] += [f"{img_dir}/{item}"]
+        dct["text"] += [labels[key]]
 
     def gen():
-        for idx in range(len(dct['image'])):
-            yield {'image': dct['image'][idx], 'text': dct['text'][idx]}
+        for idx in range(len(dct["image"])):
+            yield {"image": dct["image"][idx], "text": dct["text"][idx]}
 
     return DatasetHF.from_generator(gen)
 
@@ -73,17 +80,25 @@ class ReadImageTextFromDataset(MediaReaderNode):
         self.dataset_original_sizes = []
         self.dataset_crop_top_lefts = []
         for k in self.dataset:
-            self.dataset_image += [k['image']]
-            self.dataset_prompt_embeds += [k['prompt_embeds']]
-            self.dataset_pooled_prompt_embeds += [k['pooled_prompt_embeds']]
-            self.dataset_original_sizes += [k['original_sizes']]
-            self.dataset_crop_top_lefts += [k['crop_top_lefts']]
+            self.dataset_image += [k["image"]]
+            self.dataset_prompt_embeds += [k["prompt_embeds"]]
+            self.dataset_pooled_prompt_embeds += [k["pooled_prompt_embeds"]]
+            self.dataset_original_sizes += [k["original_sizes"]]
+            self.dataset_crop_top_lefts += [k["crop_top_lefts"]]
 
         self.dataset_image = np.array(self.dataset_image)
-        self.dataset_prompt_embeds = np.array(self.dataset_prompt_embeds, dtype=np.float32)
-        self.dataset_pooled_prompt_embeds = np.array(self.dataset_pooled_prompt_embeds, dtype=np.float32)
-        self.dataset_original_sizes = np.array(self.dataset_original_sizes, dtype=np.uint32)
-        self.dataset_crop_top_lefts = np.array(self.dataset_crop_top_lefts, dtype=np.uint32)
+        self.dataset_prompt_embeds = np.array(
+            self.dataset_prompt_embeds, dtype=np.float32
+        )
+        self.dataset_pooled_prompt_embeds = np.array(
+            self.dataset_pooled_prompt_embeds, dtype=np.float32
+        )
+        self.dataset_original_sizes = np.array(
+            self.dataset_original_sizes, dtype=np.uint32
+        )
+        self.dataset_crop_top_lefts = np.array(
+            self.dataset_crop_top_lefts, dtype=np.uint32
+        )
         self.epoch = 0
         self.batch_sampler = params["batch_sampler"]
 
@@ -91,20 +106,22 @@ class ReadImageTextFromDataset(MediaReaderNode):
         self.num_batches_slice = len(self.batch_sampler)
 
         logger.info("Finding largest file ...")
-        self.max_file = max(self.dataset['image'], key= lambda x : len(x))
+        self.max_file = max(self.dataset["image"], key=lambda x: len(x))
 
     def set_params(self, params):
         self.batch_size = params.batch_size
 
     def gen_output_info(self):
         out_info = []
-        o = opnode_tensor_info(dtype.NDT, np.array([self.batch_size], dtype=np.uint32), "")
+        o = opnode_tensor_info(
+            dtype.NDT, np.array([self.batch_size], dtype=np.uint32), ""
+        )
         out_info.append(o)
         sample = self.dataset[0]
-        sample['pooled_prompt_embeds']
-        d0 = len(sample['pooled_prompt_embeds'])
-        d1 = len(sample['prompt_embeds'])
-        d2 = len(sample['prompt_embeds'][0])
+        sample["pooled_prompt_embeds"]
+        d0 = len(sample["pooled_prompt_embeds"])
+        d1 = len(sample["prompt_embeds"])
+        d2 = len(sample["prompt_embeds"][0])
         o = opnode_tensor_info(
             dtype.FLOAT32, np.array([d2, d1, self.batch_size], dtype=np.uint32), ""
         )
@@ -114,11 +131,11 @@ class ReadImageTextFromDataset(MediaReaderNode):
         )
         out_info.append(o)
         o = opnode_tensor_info(
-            'uint32', np.array([2, self.batch_size], dtype=np.uint32), ""
+            "uint32", np.array([2, self.batch_size], dtype=np.uint32), ""
         )
         out_info.append(o)
         o = opnode_tensor_info(
-            'uint32', np.array([2, self.batch_size], dtype=np.uint32), ""
+            "uint32", np.array([2, self.batch_size], dtype=np.uint32), ""
         )
         out_info.append(o)
         return out_info
@@ -135,7 +152,9 @@ class ReadImageTextFromDataset(MediaReaderNode):
     def __iter__(self):
         self.iter_loc = 0
         self.epoch += 1
-        self.batch_sampler.sampler.set_epoch(self.epoch) # Without this dist sampler will create same batches every epoch
+        self.batch_sampler.sampler.set_epoch(
+            self.epoch
+        )  # Without this dist sampler will create same batches every epoch
         self.batch_sampler_iter = iter(self.batch_sampler)
         return self
 
@@ -151,13 +170,16 @@ class ReadImageTextFromDataset(MediaReaderNode):
         crop_top_lefts = self.dataset_crop_top_lefts[data_idx]
 
         self.iter_loc = self.iter_loc + self.batch_size
-        return img_list, prompt_embeds_np, pooled_prompt_embeds_np, original_sizes, crop_top_lefts
+        return (
+            img_list,
+            prompt_embeds_np,
+            pooled_prompt_embeds_np,
+            original_sizes,
+            crop_top_lefts,
+        )
 
 
-read_image_text_from_dataset_params = {
-    "dataset": None,
-    'batch_sampler': []
-}
+read_image_text_from_dataset_params = {"dataset": None, "batch_sampler": []}
 
 schema.add_operator(
     "SDXLDataReader",
@@ -175,6 +197,7 @@ op_class = fn.operator_add("SDXLDataReader", False)
 op_class.__module__ = fn.__name__
 setattr(fn, "SDXLDataReader", op_class)
 
+
 class RandomFlipFunction(media_function):
     """
     Class to randomly generate input for RandomFlip media node.
@@ -188,10 +211,11 @@ class RandomFlipFunction(media_function):
                         dtype: output data type
                         seed: seed to be used
         """
-        self.np_shape = params['shape'][::-1]
-        self.np_dtype = params['dtype']
-        self.seed = params['seed']
+        self.np_shape = params["shape"][::-1]
+        self.np_dtype = params["dtype"]
+        self.seed = params["seed"]
         self.rng = np.random.default_rng(self.seed)
+
     def __call__(self):
         """
         :returns : randomly generated binary output per image.
@@ -200,6 +224,7 @@ class RandomFlipFunction(media_function):
         random_flips = self.rng.choice([0, 1], p=probabilities, size=self.np_shape)
         random_flips = np.array(random_flips, dtype=self.np_dtype)
         return random_flips
+
 
 class SDXLMediaPipe(MediaPipe):
     """
@@ -212,7 +237,15 @@ class SDXLMediaPipe(MediaPipe):
 
     instance_count = 0
 
-    def __init__(self, dataset=None, image_size=512, sampler=None, batch_size=512, drop_last=True, queue_depth=5):
+    def __init__(
+        self,
+        dataset=None,
+        image_size=512,
+        sampler=None,
+        batch_size=512,
+        drop_last=True,
+        queue_depth=5,
+    ):
         self.device = get_device_name()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -223,27 +256,38 @@ class SDXLMediaPipe(MediaPipe):
 
         self.image_size = image_size
 
-        pipe_name = "{}:{}".format(self.__class__.__name__, SDXLMediaPipe.instance_count)
+        pipe_name = "{}:{}".format(
+            self.__class__.__name__, SDXLMediaPipe.instance_count
+        )
         pipe_name = str(pipe_name)
 
         super(SDXLMediaPipe, self).__init__(
-            device=self.device, batch_size=batch_size, prefetch_depth=queue_depth, pipe_name=pipe_name
+            device=self.device,
+            batch_size=batch_size,
+            prefetch_depth=queue_depth,
+            pipe_name=pipe_name,
         )
 
-        self.input = fn.SDXLDataReader(dataset=self.dataset, batch_sampler=self.batch_sampler)
+        self.input = fn.SDXLDataReader(
+            dataset=self.dataset, batch_sampler=self.batch_sampler
+        )
         def_output_image_size = [self.image_size, self.image_size]
         res_pp_filter = ftype.BI_LINEAR
         self.decode = fn.ImageDecoder(
             device=self.device,
             output_format=imgtype.RGB_P,
-            #random_crop_type=randomCropType.CENTER_CROP,
+            # random_crop_type=randomCropType.CENTER_CROP,
             resize=def_output_image_size,
             resampling_mode=res_pp_filter,
         )
-        normalize_mean = np.array([255/2, 255/2, 255/2]).astype(np.float32)
-        normalize_std = 1 / (np.array([255/2, 255/2, 255/2]).astype(np.float32))
-        norm_mean = fn.MediaConst(data=normalize_mean, shape=[1, 1, 3], dtype=dtype.FLOAT32)
-        norm_std = fn.MediaConst(data=normalize_std, shape=[1, 1, 3], dtype=dtype.FLOAT32)
+        normalize_mean = np.array([255 / 2, 255 / 2, 255 / 2]).astype(np.float32)
+        normalize_std = 1 / (np.array([255 / 2, 255 / 2, 255 / 2]).astype(np.float32))
+        norm_mean = fn.MediaConst(
+            data=normalize_mean, shape=[1, 1, 3], dtype=dtype.FLOAT32
+        )
+        norm_std = fn.MediaConst(
+            data=normalize_std, shape=[1, 1, 3], dtype=dtype.FLOAT32
+        )
         self.cmn = fn.CropMirrorNorm(
             crop_w=self.image_size,
             crop_h=self.image_size,
@@ -255,22 +299,31 @@ class SDXLMediaPipe(MediaPipe):
         self.mean = norm_mean()
         self.std = norm_std()
 
-        self.random_flip_input = fn.MediaFunc(func=RandomFlipFunction,
-                                                  shape=[self.batch_size],
-                                                  dtype=dtype.UINT8,
-                                                  seed=100)
-        self.random_flip = fn.RandomFlip(horizontal=1,
-                                        device=self.device)
+        self.random_flip_input = fn.MediaFunc(
+            func=RandomFlipFunction,
+            shape=[self.batch_size],
+            dtype=dtype.UINT8,
+            seed=100,
+        )
+        self.random_flip = fn.RandomFlip(horizontal=1, device=self.device)
 
         SDXLMediaPipe.instance_count += 1
 
     def definegraph(self):
-        jpegs, prompt_embeds, pooled_prompt_embeds, original_sizes, crop_top_lefts = self.input()
+        jpegs, prompt_embeds, pooled_prompt_embeds, original_sizes, crop_top_lefts = (
+            self.input()
+        )
         images = self.decode(jpegs)
         flip = self.random_flip_input()
         images = self.random_flip(images, flip)
         images = self.cmn(images, self.mean, self.std)
-        return images, prompt_embeds, pooled_prompt_embeds, original_sizes, crop_top_lefts
+        return (
+            images,
+            prompt_embeds,
+            pooled_prompt_embeds,
+            original_sizes,
+            crop_top_lefts,
+        )
 
 
 class MediaApiDataLoader(torch.utils.data.DataLoader):
@@ -282,7 +335,9 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
     ):
         self.dataset = dataset
 
-        from habana_frameworks.mediapipe.plugins.iterator_pytorch import HPUGenericPytorchIterator
+        from habana_frameworks.mediapipe.plugins.iterator_pytorch import (
+            HPUGenericPytorchIterator,
+        )
 
         try:
             world_size = get_world_size()
@@ -292,12 +347,12 @@ class MediaApiDataLoader(torch.utils.data.DataLoader):
         if world_size > 1:
             process_index = get_rank()
             self.sampler = DistributedSamplerWithLoop(
-                            self.dataset,
-                            num_replicas=world_size,
-                            rank=process_index,
-                            seed=1,
-                            batch_size=batch_size,
-                        )
+                self.dataset,
+                num_replicas=world_size,
+                rank=process_index,
+                seed=1,
+                batch_size=batch_size,
+            )
         else:
             self.sampler = torch.utils.data.sampler.RandomSampler(self.dataset)
 
