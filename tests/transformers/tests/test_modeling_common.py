@@ -64,7 +64,6 @@ from transformers.testing_utils import (
     require_torch,
     require_torch_gpu,
     require_torch_multi_gpu,
-    slow,
 )
 from transformers.utils import (
     CONFIG_NAME,
