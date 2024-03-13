@@ -33,11 +33,10 @@ try:
     from habana_frameworks.mediapipe import fn
     from habana_frameworks.mediapipe.backend.nodes import opnode_tensor_info
     from habana_frameworks.mediapipe.backend.operator_specs import schema
-    from habana_frameworks.mediapipe.media_types import dtype, ftype, imgtype, randomCropType, readerOutType
+    from habana_frameworks.mediapipe.media_types import dtype, ftype, imgtype, readerOutType #, randomCropType
     from habana_frameworks.mediapipe.mediapipe import MediaPipe
     from habana_frameworks.mediapipe.operators.cpu_nodes.cpu_nodes import media_function
     from habana_frameworks.mediapipe.operators.media_nodes import MediaReaderNode
-    from habana_frameworks.mediapipe.operators.reader_nodes.read_image_from_dir import get_max_file
     from habana_frameworks.torch.hpu import get_device_name
 except ImportError:
     pass
@@ -136,10 +135,7 @@ class ReadImageTextFromDataset(MediaReaderNode):
     def __iter__(self):
         self.iter_loc = 0
         self.epoch += 1
-        try:
-            self.batch_sampler.sampler.set_epoch(self.epoch) # Without this dist sampler will create same batches every epoch
-        except:
-            pass
+        self.batch_sampler.sampler.set_epoch(self.epoch) # Without this dist sampler will create same batches every epoch
         self.batch_sampler_iter = iter(self.batch_sampler)
         return self
 
@@ -148,7 +144,7 @@ class ReadImageTextFromDataset(MediaReaderNode):
             raise StopIteration
 
         data_idx = next(self.batch_sampler_iter)
-        img_list = [i for i in self.dataset_image[data_idx]]
+        img_list = list(self.dataset_image[data_idx])
         prompt_embeds_np = self.dataset_prompt_embeds[data_idx]
         pooled_prompt_embeds_np = self.dataset_pooled_prompt_embeds[data_idx]
         original_sizes = self.dataset_original_sizes[data_idx]
