@@ -20,7 +20,6 @@ from .generation import (
     GaudiGenerationMixin,
     gaudi_MaxLengthCriteria_call,
     gaudi_MaxNewTokensCriteria_call,
-    gaudi_StoppingCriteriaList_call,
 )
 from .models import (
     GaudiBloomForCausalLM,
@@ -37,9 +36,12 @@ from .models import (
     GaudiGPTNeoXForCausalLM,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
+    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
+    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
+    GaudiLlamaRotaryEmbedding,
     GaudiMistralForCausalLM,
     GaudiMixtralForCausalLM,
     GaudiMptForCausalLM,
@@ -182,7 +184,6 @@ def adapt_transformers_to_gaudi():
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
     transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
-    transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
 
     # Optimization for BLOOM generation on Gaudi
     transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
@@ -278,7 +279,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaAttention = GaudiLlamaAttention
     transformers.models.llama.modeling_llama.LlamaMLP = GaudiLlamaMLP
     transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
-
+    transformers.models.llama.modeling_llama.LlamaRotaryEmbedding = GaudiLlamaRotaryEmbedding
+    transformers.models.llama.modeling_llama.LlamaLinearScalingRotaryEmbedding = GaudiLlamaLinearScalingRotaryEmbedding
+    transformers.models.llama.modeling_llama.LlamaDynamicNTKScalingRotaryEmbedding = (
+        GaudiLlamaDynamicNTKScalingRotaryEmbedding
+    )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
     # Optimization for falcon generation on Gaudi
