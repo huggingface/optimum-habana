@@ -118,6 +118,7 @@ from .models import (
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_SpeechT5SpeechDecoderPrenet_forward,
+    gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
     gaudi_T5Block_forward,
@@ -126,7 +127,6 @@ from .models import (
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
     gaudi_vit_self_attention_forward,
-    gaudi_swin_get_attn_mask,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
 )

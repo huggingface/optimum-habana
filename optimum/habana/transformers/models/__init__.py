@@ -121,6 +121,7 @@ from .speecht5 import (
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_SpeechT5SpeechDecoderPrenet_forward,
 )
+from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -131,7 +132,6 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .vit import gaudi_vit_self_attention_forward
-from .swin import gaudi_swin_get_attn_mask
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
