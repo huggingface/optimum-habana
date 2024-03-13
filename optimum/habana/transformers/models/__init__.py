@@ -111,6 +111,13 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .speecht5 import (
+    gaudi_generate_speech,
+    gaudi_SpeechT5Attention_forward,
+    gaudi_SpeechT5Decoder_forward,
+    gaudi_SpeechT5DecoderLayer_forward,
+    gaudi_SpeechT5SpeechDecoderPrenet_forward,
+)
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
