@@ -20,7 +20,6 @@ from .generation import (
     GaudiGenerationMixin,
     gaudi_MaxLengthCriteria_call,
     gaudi_MaxNewTokensCriteria_call,
-    gaudi_StoppingCriteriaList_call,
 )
 from .models import (
     GaudiBloomForCausalLM,
@@ -37,16 +36,19 @@ from .models import (
     GaudiGPTNeoXForCausalLM,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
+    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
+    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
-    GaudiPhiForCausalLM,
     GaudiLlamaRotaryEmbedding,
     GaudiMistralForCausalLM,
+    GaudiMixtralForCausalLM,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiPhiForCausalLM,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     gaudi_albert_forward,
@@ -73,6 +75,7 @@ from .models import (
     gaudi_bloom_convert_to_bloom_cache,
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
+    gaudi_check_and_enable_sdpa,
     gaudi_codegen_block_forward,
     gaudi_codegen_model_forward,
     gaudi_conv1d_forward,
@@ -81,6 +84,7 @@ from .models import (
     gaudi_falcon_attention_forward,
     gaudi_falcon_attention_split_heads,
     gaudi_falcon_decoder_layer_forward,
+    gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
@@ -90,6 +94,7 @@ from .models import (
     gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
+    gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
     gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
@@ -97,9 +102,6 @@ from .models import (
     gaudi_mistral_attention_forward,
     gaudi_mistral_decoder_layer_forward,
     gaudi_mistral_model_forward,
-    gaudi_phi_attention_forward,
-    gaudi_phi_decoder_layer_forward,
-    gaudi_phi_model_forward,
     gaudi_mixtral_attention_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_decoder_layer_forward,
@@ -111,8 +113,16 @@ from .models import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
+    gaudi_SpeechT5Attention_forward,
+    gaudi_SpeechT5Decoder_forward,
+    gaudi_SpeechT5DecoderLayer_forward,
+    gaudi_SpeechT5SpeechDecoderPrenet_forward,
+    gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
     gaudi_T5Block_forward,
@@ -137,6 +147,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization tweak for ViT
     transformers.models.vit.modeling_vit.ViTSelfAttention.forward = gaudi_vit_self_attention_forward
+
+    # Optimization tweak for Swin
+    transformers.models.swin.modeling_swin.SwinLayer.get_attn_mask = gaudi_swin_get_attn_mask
 
     # Optimization tweak for Wav2Vec2
     transformers.models.wav2vec2.modeling_wav2vec2._compute_mask_indices = _gaudi_wav2vec2_compute_mask_indices
@@ -179,7 +192,6 @@ def adapt_transformers_to_gaudi():
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
     transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
-    transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
 
     # Optimization for BLOOM generation on Gaudi
     transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
@@ -219,6 +231,10 @@ def adapt_transformers_to_gaudi():
     # so that Torch Autocast is disabled for specific parts of the code
     transformers.modeling_utils.ModuleUtilsMixin.invert_attention_mask = gaudi_invert_attention_mask
     transformers.modeling_utils.ModuleUtilsMixin.get_extended_attention_mask = gaudi_get_extended_attention_mask
+
+    # Override sdpa check on Gaudi
+    transformers.modeling_utils.PreTrainedModel._check_and_enable_sdpa = gaudi_check_and_enable_sdpa
+
     # AlbertModel.forward does not rely on get_extended_attention_mask so it also needs to be replaced
     transformers.models.albert.modeling_albert.AlbertModel.forward = gaudi_albert_forward
 
@@ -261,6 +277,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXModel.forward = gaudi_gpt_neox_model_forward
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer.forward = gaudi_gpt_neox_layer_forward
     transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXAttention.forward = gaudi_gpt_neox_attention_forward
+    transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXRotaryEmbedding._set_cos_sin_cache = (
+        gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache
+    )
 
     # Optimization for llama generation on Gaudi
     transformers.models.llama.modeling_llama.LlamaForCausalLM = GaudiLlamaForCausalLM
@@ -268,7 +287,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.llama.modeling_llama.LlamaAttention = GaudiLlamaAttention
     transformers.models.llama.modeling_llama.LlamaMLP = GaudiLlamaMLP
     transformers.models.llama.modeling_llama.LlamaDecoderLayer = GaudiLlamaDecoderLayer
-
+    transformers.models.llama.modeling_llama.LlamaRotaryEmbedding = GaudiLlamaRotaryEmbedding
+    transformers.models.llama.modeling_llama.LlamaLinearScalingRotaryEmbedding = GaudiLlamaLinearScalingRotaryEmbedding
+    transformers.models.llama.modeling_llama.LlamaDynamicNTKScalingRotaryEmbedding = (
+        GaudiLlamaDynamicNTKScalingRotaryEmbedding
+    )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
     # Optimization for falcon generation on Gaudi
@@ -319,3 +342,20 @@ def adapt_transformers_to_gaudi():
     transformers.models.blip.modeling_blip_text.BlipTextSelfAttention.forward = gaudi_BlipTextSelfAttention_forward
     transformers.models.blip.BlipForQuestionAnswering.generate = gaudi_BlipForQuestionAnswering_generate
     transformers.models.blip.BlipForConditionalGeneration.generate = gaudi_BlipForConditionalGeneration_generate
+
+    # Optimization for mixtral on Gaudi
+    transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM = GaudiMixtralForCausalLM
+    transformers.models.mixtral.modeling_mixtral.MixtralModel.forward = gaudi_mixtral_model_forward
+    transformers.models.mixtral.modeling_mixtral.MixtralAttention.forward = gaudi_mixtral_attention_forward
+    transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = gaudi_mixtral_block_sparse_moe_forward
+    transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer.forward = gaudi_mixtral_decoder_layer_forward
+    transformers.models.mixtral.modeling_mixtral.MixtralRMSNorm.forward = gaudi_mixtral_rmsnorm_forward
+
+    # Optimization for speecht5 on Gaudi
+    transformers.models.speecht5.modeling_speecht5.SpeechT5Decoder.forward = gaudi_SpeechT5Decoder_forward
+    transformers.models.speecht5.modeling_speecht5.SpeechT5DecoderLayer.forward = gaudi_SpeechT5DecoderLayer_forward
+    transformers.models.speecht5.modeling_speecht5.SpeechT5Attention.forward = gaudi_SpeechT5Attention_forward
+    transformers.models.speecht5.modeling_speecht5._generate_speech = gaudi_generate_speech
+    transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
+        gaudi_SpeechT5SpeechDecoderPrenet_forward
+    )

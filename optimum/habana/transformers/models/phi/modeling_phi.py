@@ -17,7 +17,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" PyTorch Phi model."""
+"""PyTorch Phi model."""
 
 import math
 from typing import List, Optional, Tuple, Union
@@ -25,7 +25,6 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.phi.modeling_phi import PhiForCausalLM, apply_rotary_pos_emb, repeat_kv
