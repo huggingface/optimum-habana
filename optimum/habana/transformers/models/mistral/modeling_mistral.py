@@ -101,6 +101,13 @@ def gaudi_mistral_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
+def update_sincos_cache(self, seq_len):
+        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
+        # This helps in avoiding creation of these caches during actual model forward pass and
+        # reduce memory consumption and improve performance.
+        if seq_len > self.max_position_embeddings:
+            self.max_position_embeddings = seq_len
+            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
 
 
 def gaudi_mistral_rmsnorm_forward(self, hidden_states):
@@ -169,12 +176,15 @@ class GaudiMistralAttention(MistralAttention):
         use_cache: bool = False,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Copied from MistralAttention.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
         The only differences are:
         - add new args token_idx
+        - add new args reuse_cache
+       - add new args cache_idx
         """
         if "padding_mask" in kwargs:
             warnings.warn(
@@ -219,15 +229,6 @@ class GaudiMistralAttention(MistralAttention):
                 past_value = past_key_value[1]
             key_states = update(past_key, key_states, 2, token_idx)
             value_states = update(past_value, value_states, 2, token_idx)
-            #if token_idx is not None:
-            #    past_key_value[0].index_copy_(2, token_idx - 1, key_states)
-            #    past_key_value[1].index_copy_(2, token_idx - 1, value_states)
-            #    key_states = past_key_value[0]
-            #    value_states = past_key_value[1]
-            #else:
-            #    cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            #    key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-
         if use_cache:
             if reuse_cache:
                 past_key_value = (key_states.contiguous().shape, value_states.contiguous().shape)
@@ -235,6 +236,11 @@ class GaudiMistralAttention(MistralAttention):
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
             past_key_value = None
+        if cache_idx is not None and q_len == 1:
+                key_states = key_states[:, :, :cache_idx, :]
+                value_states = value_states[:, :, :cache_idx, :]
+                attention_mask = attention_mask[:, :, :, :cache_idx]
+                kv_seq_len = key_states.shape[-2]
 
         # repeat k/v heads if n_kv_heads < n_heads
         query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
@@ -304,6 +310,9 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.self_attn.reorder_kv_cache(beam_idx)
 
+    def update_sincos_cache(self, seq_len):
+        self.self_attn.update_sincos_cache(seq_len)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -314,6 +323,7 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
         use_cache: Optional[bool] = False,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -339,7 +349,8 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             token_idx=token_idx,
-            reuse_cache=reuse_cache
+            reuse_cache=reuse_cache,
+            cache_idx=cache_idx
         )
         #import pdb; pdb.set_trace()
         hidden_states = residual + hidden_states
@@ -381,6 +392,7 @@ class GaudiMistralModel(MistralModel):
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from MistralModel.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
@@ -487,7 +499,8 @@ class GaudiMistralModel(MistralModel):
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     token_idx=token_idx,
-                    reuse_cache=reuse_cache
+                    reuse_cache=reuse_cache,
+                    cache_idx=cache_idx,
                 )
 
             hidden_states = layer_outputs[0]
@@ -527,7 +540,9 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
     def allocate_kv_cache(self, batch_size, seq_len, _, __):
         self.model.allocate_kv_cache(batch_size, seq_len)
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
-        return self.model.reorder_kv_cache(beam_idx)    
+        return self.model.reorder_kv_cache(beam_idx)
+    def update_sincos_cache(self, seq_len):
+        self.model.update_sincos_cache(seq_len)   
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -543,6 +558,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from MistralForCausalLM: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
@@ -569,9 +585,8 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             return_dict=return_dict,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
+            cache_idx=cache_idx,
         )
-        #import pdb; pdb.set_trace()
-
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
@@ -679,6 +694,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
                 "token_idx": token_idx,
                 "reuse_cache": kwargs.get("reuse_cache"),
                 "trim_logits": kwargs.get("trim_logits"),
+                "cache_idx": kwargs.get("cache_idx"),
             }
         )
         return model_inputs
