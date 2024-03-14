@@ -863,6 +863,7 @@ def main(args):
                             f.write(dt["text"] + "\n")
             torch.distributed.barrier()
             from media_pipe_imgdir import get_dataset_for_pipeline
+
             dt = get_dataset_for_pipeline(args.mediapipe)
             dataset = {"train": dt}
         else:
