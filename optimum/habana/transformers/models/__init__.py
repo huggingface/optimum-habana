@@ -122,6 +122,12 @@ from .speecht5 import (
     gaudi_SpeechT5SpeechDecoderPrenet_forward,
 )
 from .swin import gaudi_swin_get_attn_mask
+from .stablelm import (
+    GaudiStableLmForCausalLM,
+    gaudi_stablelm_model_forward,
+    gaudi_stablelm_attention_forward,
+    gaudi_stablelm_decoder_layer_forward,
+)
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
