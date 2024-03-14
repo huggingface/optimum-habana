@@ -115,7 +115,7 @@ image.save("cat-backpack.png")
 ```
 
 
-## Fine-Tuning for SDXL
+## Fine-Tuning for Stable Diffusion XL
 
 The `train_text_to_image_sdxl.py` script shows how to implement the fine-tuning of Stable Diffusion models on Habana Gaudi.
 
@@ -154,7 +154,8 @@ python train_text_to_image_sdxl.py \
   --validation_prompt="a robotic cat with wings" \
   --validation_epochs 48 \
   --checkpointing_steps 2500 \
-  --logging_step 10
+  --logging_step 10 \
+  --adjust_throughput
 ```
 
 
@@ -184,7 +185,10 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py \
   --use_hpu_graphs_for_training \
   --use_hpu_graphs_for_inference \
   --validation_prompt="a robotic cat with wings" \
-  --validation_epochs 48
+  --validation_epochs 48 \
+  --checkpointing_steps 336 \
+  --mediapipe dataset_sdxl_pokemon \
+  --adjust_throughput
 ```
 
 ### Single-card Training on Gaudi1
@@ -209,4 +213,6 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
   --throughput_warmup_steps 3 \
   --bf16
 ```
+
+**Note:** There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.
 

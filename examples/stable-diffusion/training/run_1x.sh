@@ -23,4 +23,4 @@ python train_text_to_image_sdxl.py \
   --validation_prompt="a robotic cat with wings" \
   --validation_epochs 48 \
   --checkpointing_steps 2500 \
-  --logging_step 10 2>&1 | tee log_1x_r512.txt
+  --logging_step 10 --discount_chkpoint_saving_in_throughput 2>&1 | tee log_1x_r512.txt
