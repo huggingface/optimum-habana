@@ -54,6 +54,7 @@ else:
             ("Salesforce/codegen2-1B", 153.79670508220687),
             ("mosaicml/mpt-7b", 44.80241777760578),
             ("mistralai/Mistral-7B-v0.1", 40.00435417311187),
+            ("microsoft/phi-2", 90.10751623430603),
         ],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 31.044523676681507),
