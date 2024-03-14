@@ -248,6 +248,7 @@ def gaudi_phi_model_forward(
             )
             use_cache = False
 
+    past_key_values_length = 0
     if use_cache:
         use_legacy_cache = not isinstance(past_key_values, Cache)
         if use_legacy_cache:
@@ -266,15 +267,10 @@ def gaudi_phi_model_forward(
 
     inputs_embeds = self.embed_dropout(inputs_embeds)
 
-    # Attention mask.
-    if self._use_flash_attention_2:
-        # 2d mask is passed through the layers
-        attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-    else:
-        # 4d mask is passed through the layers
-        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
-            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
-        )
+    # 4d mask is passed through the layers
+    attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+        attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+    )
 
     hidden_states = inputs_embeds
 
