@@ -525,10 +525,10 @@ def parse_args(input_args=None):
         case 3: a non empty path is passed -> images from that location are used ",
     )
     parser.add_argument(
-        "--discount_chkpoint_saving_in_throughput",
+        "--adjust_throughput",
         default=False,
         action="store_true",
-        help="Checkpoitn saving takes a lot of time. Ignore time for checkpoint saving for throughput calculations"
+        help="Checkpoint saving takes a lot of time. Ignore time for checkpoint saving for throughput calculations"
     )
 
 
@@ -1340,7 +1340,7 @@ def main(args):
 
                 del pipeline
 
-    duration = time.perf_counter() - t0 - (checkpoint_time if args.discount_chkpoint_saving_in_throughput else 0)
+    duration = time.perf_counter() - t0 - (checkpoint_time if args.adjust_throughput else 0)
     ttt = time.perf_counter() - t_start
     throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 
