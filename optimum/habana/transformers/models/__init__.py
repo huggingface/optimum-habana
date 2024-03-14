@@ -61,6 +61,7 @@ from .gpt_neox import (
     gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
+    gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
 )
 from .gptj import (
     GaudiGPTJAttention,
@@ -71,9 +72,12 @@ from .gptj import (
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
+    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
+    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
+    GaudiLlamaRotaryEmbedding,
     gaudi_llama_rmsnorm_forward,
 )
 from .mistral import (
@@ -110,6 +114,14 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .speecht5 import (
+    gaudi_generate_speech,
+    gaudi_SpeechT5Attention_forward,
+    gaudi_SpeechT5Decoder_forward,
+    gaudi_SpeechT5DecoderLayer_forward,
+    gaudi_SpeechT5SpeechDecoderPrenet_forward,
+)
+from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,

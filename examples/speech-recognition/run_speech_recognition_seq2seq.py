@@ -56,7 +56,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.37.0")
+check_min_version("4.38.0")
 check_optimum_habana_min_version("1.10.0")
 
 require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
@@ -469,6 +469,9 @@ def main():
     if data_args.language is not None:
         # We only need to set the task id when the language is specified (i.e. in a multilingual setting)
         tokenizer.set_prefix_tokens(language=data_args.language, task=data_args.task)
+        model.generation_config.task = data_args.task
+        model.generation_config.language = data_args.language
+        model.generation_config.forced_decoder_ids = None
 
     # 6. Resample speech dataset if necessary
     dataset_sampling_rate = next(iter(raw_datasets.values())).features[data_args.audio_column_name].sampling_rate
