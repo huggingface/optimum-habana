@@ -710,7 +710,6 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
 
         # determine whether limit_hpu_graphs needs to be used
-        model_kwargs["use_hpu_graphs"] = hpu_graphs
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
         # prepare for allocate kv cache
@@ -1392,10 +1391,9 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
         bucket_size = model_kwargs.get("bucket_size", -1)
-        bucket_internal = model_kwargs["bucket_internal"]
-        reduce_recompile = model_kwargs.get("reduce_recompile", False)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
         bucket_internal = model_kwargs.get("bucket_internal", None)
+        reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
         prompt_len = input_ids.shape[-1]
         if not bucket_internal:
