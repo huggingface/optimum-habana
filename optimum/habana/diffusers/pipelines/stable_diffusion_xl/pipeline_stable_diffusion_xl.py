@@ -678,10 +678,11 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             self._num_timesteps = len(timesteps)
 
             # 8.3 Denoising loop
+            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
-                if j == kwargs.get("throughput_warmup_steps", 3):
+                if j == throughput_warmup_steps:
                     t1 = time.time()
 
                 latents_batch = latents_batches[0]
@@ -765,7 +766,12 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
                 if not output_type == "latent":
                     # Post-processing
-                    image = self.vae.decode(latents_batch / self.vae.config.scaling_factor, return_dict=False)[0]
+                    # To resolve the dtype mismatch issue
+                    image = self.vae.decode(
+                        (latents_batch / self.vae.config.scaling_factor).to(self.vae.encoder.conv_in.weight.dtype),
+                        return_dict=False,
+                    )[0]
+
                 else:
                     image = latents_batch
 
@@ -778,7 +784,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
-                num_samples=num_batches * batch_size if t1 == t0 else (num_batches - 2) * batch_size,
+                num_samples=num_batches * batch_size
+                if t1 == t0
+                else (num_batches - throughput_warmup_steps) * batch_size,
                 num_steps=num_batches,
                 start_time_after_warmup=t1,
             )

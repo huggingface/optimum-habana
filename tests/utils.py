@@ -53,6 +53,7 @@ MODELS_TO_TEST_MAPPING = {
     "llama": [("huggyllama/llama-7b", "Habana/gpt2")],
     "falcon": [("tiiuae/falcon-40b", "Habana/gpt2")],
     "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
+    "whisper": [("openai/whisper-small", "Habana/whisper")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -86,6 +87,6 @@ MODELS_TO_TEST_FOR_MASKED_LANGUAGE_MODELING = [
 
 MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION = ["wav2vec2"]
 
-MODELS_TO_TEST_FOR_SPEECH_RECOGNITION = ["wav2vec2"]
+MODELS_TO_TEST_FOR_SPEECH_RECOGNITION = ["wav2vec2", "whisper"]
 
 MODELS_TO_TEST_FOR_IMAGE_TEXT = ["clip"]

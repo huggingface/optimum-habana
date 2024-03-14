@@ -33,6 +33,7 @@ from transformers import (
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
+    MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING,
     MODEL_MAPPING,
 )
 from transformers.testing_utils import slow
@@ -146,6 +147,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
         ["llama", "falcon"],
+    ),
+    "run_speech_recognition_seq2seq": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING,
+        MODELS_TO_TEST_FOR_SPEECH_RECOGNITION,
     ),
 }
 
@@ -263,9 +269,9 @@ class ExampleTestMeta(type):
                 self.assertEqual(return_code, 0)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
-                from .clip_coco_utils import create_clip_roberta_model, download_coco
+                from .clip_coco_utils import COCO_URLS, create_clip_roberta_model, download_files
 
-                download_coco()
+                download_files(COCO_URLS)
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
@@ -592,3 +598,9 @@ class MultiCardBridgetowerExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_bridgetower", multi_card=True
 ):
     TASK_NAME = "jmhessel/newyorker_caption_contest"
+
+
+class MultiCardSeq2SeqSpeechRecognitionExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_seq2seq", multi_card=True
+):
+    TASK_NAME = "mozilla-foundation/common_voice_11_0"

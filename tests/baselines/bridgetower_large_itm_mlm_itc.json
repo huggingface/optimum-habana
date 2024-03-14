@@ -18,7 +18,8 @@
                         "--mediapipe_dataloader",
                         "--dataloader_num_workers 2",
                         "--logging_steps 10",
-                        "--use_hpu_graphs_for_inference"
+                        "--use_hpu_graphs_for_inference",
+                        "--distribution_strategy fast_ddp"
                     ]
                 }
             }

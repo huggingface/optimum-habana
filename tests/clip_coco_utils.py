@@ -5,25 +5,24 @@ from urllib.request import urlretrieve
 from transformers import AutoImageProcessor, AutoTokenizer, VisionTextDualEncoderModel, VisionTextDualEncoderProcessor
 
 
-def download_coco(path=None):
-    urls = [
-        "http://images.cocodataset.org/zips/train2017.zip",
-        "http://images.cocodataset.org/zips/val2017.zip",
-        "http://images.cocodataset.org/zips/test2017.zip",
-        "http://images.cocodataset.org/annotations/annotations_trainval2017.zip",
-        "http://images.cocodataset.org/annotations/image_info_test2017.zip",
-    ]
+COCO_URLS = [
+    "http://images.cocodataset.org/zips/train2017.zip",
+    "http://images.cocodataset.org/zips/val2017.zip",
+    "http://images.cocodataset.org/zips/test2017.zip",
+    "http://images.cocodataset.org/annotations/annotations_trainval2017.zip",
+    "http://images.cocodataset.org/annotations/image_info_test2017.zip",
+]
 
+
+def download_files(list_of_urls, path=None):
     if path is None:
         path = os.getcwd()
 
-    print("Downloading COCO...")
-
-    for url in urls:
+    for url in list_of_urls:
+        print(f"Downloading {url}")
         filename = url.split("/")[-1]
         urlretrieve(url, Path(path, filename))
-
-    print("COCO downloaded.")
+        print(f"{url} downloaded.")
 
 
 def create_clip_roberta_model():

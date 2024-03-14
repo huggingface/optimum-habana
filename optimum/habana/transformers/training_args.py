@@ -25,6 +25,7 @@ from typing import Optional, Union
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
+from transformers.trainer_pt_utils import AcceleratorConfig
 from transformers.trainer_utils import EvaluationStrategy, FSDPOption, HubStrategy, IntervalStrategy, SchedulerType
 from transformers.training_args import (
     OptimizerNames,
@@ -563,11 +564,13 @@ class GaudiTrainingArguments(TrainingArguments):
         ):
             raise ValueError("`min_num_params` and `transformer_layer_cls_to_wrap` are mutually exclusive.")
         self.fsdp_config["xla"] = self.fsdp_config.get("xla", False)
+        self.fsdp_config["xla_fsdp_v2"] = self.fsdp_config.get("xla_fsdp_v2", False)
         self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
 
         # accelerate integration for FSDP
         if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
             os.environ["ACCELERATE_USE_FSDP"] = "true"
+            os.environ["FSDP_CPU_RAM_EFFICIENT_LOADING"] = "true"
             from accelerate.utils.constants import (
                 FSDP_AUTO_WRAP_POLICY,
                 FSDP_SHARDING_STRATEGY,
@@ -599,6 +602,33 @@ class GaudiTrainingArguments(TrainingArguments):
             os.environ[f"{prefix}ACTIVATION_CHECKPOINTING"] = str(
                 self.fsdp_config.get("activation_checkpointing", "false")
             )
+
+        if is_accelerate_available():
+            if not isinstance(self.accelerator_config, (AcceleratorConfig)):
+                if self.accelerator_config is None:
+                    self.accelerator_config = AcceleratorConfig()
+                elif isinstance(self.accelerator_config, dict):
+                    self.accelerator_config = AcceleratorConfig(**self.accelerator_config)
+                else:
+                    self.accelerator_config = AcceleratorConfig.from_json_file(self.accelerator_config)
+            if self.dispatch_batches is not None:
+                warnings.warn(
+                    "Using `--dispatch_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
+                    " `--accelerator_config {'dispatch_batches':VALUE} instead",
+                    FutureWarning,
+                )
+                self.accelerator_config.dispatch_batches = self.dispatch_batches
+
+            if self.split_batches is not None:
+                warnings.warn(
+                    "Using `--split_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
+                    " `--accelerator_config {'split_batches':VALUE} instead",
+                    FutureWarning,
+                )
+                self.accelerator_config.split_batches = self.split_batches
+
+            if self.dataloader_drop_last:
+                self.accelerator_config.even_batches = False
 
         if isinstance(self.debug, str):
             self.debug = [DebugOption(s) for s in self.debug.split()]
@@ -640,6 +670,12 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if self.use_cpu:
             self.dataloader_pin_memory = False
+
+        if self.dataloader_num_workers == 0 and self.dataloader_prefetch_factor is not None:
+            raise ValueError(
+                "--dataloader_prefetch_factor can only be set when data is loaded in a different process, i.e."
+                " when --dataloader_num_workers > 1."
+            )
 
         if self.push_to_hub_token is not None:
             warnings.warn(

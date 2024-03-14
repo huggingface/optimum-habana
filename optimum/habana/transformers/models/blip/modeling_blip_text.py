@@ -470,7 +470,7 @@ def gaudi_BlipTextLMHead_forward(
         # we are doing next-token prediction; shift prediction scores and input ids by one
         shifted_prediction_scores = prediction_scores[:, :-1, :].contiguous()
         labels = labels[:, 1:].contiguous().to(shifted_prediction_scores.device)
-        loss_fct = CrossEntropyLoss(reduction=reduction, label_smoothing=0.1)
+        loss_fct = CrossEntropyLoss(reduction=reduction, label_smoothing=self.label_smoothing)
         lm_loss = loss_fct(shifted_prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
         if reduction == "none":
             lm_loss = lm_loss.view(prediction_scores.size(0), -1).sum(1)
@@ -493,7 +493,7 @@ def gaudi_BlipTextLMHead_prepare_inputs_for_generation(
     self, input_ids, past_key_values=None, attention_mask=None, token_idx=None, **model_kwargs
 ):
     """
-    Copied from BlipTextLMHeadModel.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L910
+    Copied from BlipTextLMHeadModel.prepare_inputs_for_generation: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/blip/modeling_blip_text.py#L910
     The only differences are:
         - add token_idx support, add position_ids
     """

@@ -187,6 +187,11 @@ def setup_parser(parser):
             we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
     )
     parser.add_argument(
+        "--bucket_internal",
+        action="store_true",
+        help="Split kv sequence into buckets in decode phase. It improves throughput when max_new_tokens is large.",
+    )
+    parser.add_argument(
         "--dataset_max_samples",
         default=-1,
         type=int,

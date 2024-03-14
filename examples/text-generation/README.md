@@ -236,9 +236,12 @@ python run_generation.py \
 `--bucket_size` option is especially useful when processing an input stream with varying lengths, that is when you have something like `--dataset_name squad --column_name context --max_input_tokens -1`. `--max_input_tokens -1` specifies no truncation of input prompt in the dataset.
 
 Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For example `--simulate_dyn_prompt 25,35,45` will extend or crop the default prompt (or the prompt passed in using `--prompt`) to sizes 25, 35, and 45, and throughput will be measured for these 3 lengths. If `--simulate_dyn_prompt` is used, the min and max input lengths from it are computed to perform warmup as well. One final optimization that can be used in case of dynamic inputs is `--reduce_recompile`. Thus the suggested configuration to simulate dynamicity after warmup is to use all three arguments: `--simulate_dyn_prompt 25 35 45 --reduce_recompile --bucket_size 30`
+
+While `--bucket_size` works for any model without model file changes, an even more optimized version of bucketing is supported for certain models like Llama. This can be enabled by setting `--bucket_internal` flag (along with `--bucket_size` to specify the bucket size)
+
 ### Running with FP8
 
-Llama2-70b and Llama2-7b in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llama2-70b, Llama2-7b and Mixtral-8x7B in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -289,6 +292,33 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --max_new_tokens 2048 \
 --max_input_tokens 2048 \
 --limit_hpu_graphs \
+--fp8
+```
+
+Here is an example to measure the tensor quantization statistics on Mixtral-8x7B with 1 card:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py \
+--model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+--use_hpu_graphs \
+--use_kv_cache \
+--limit_hpu_graphs \
+--bucket_size 128 \
+--max_new_tokens 128 \
+--batch_size 1 \
+--bf16
+```
+
+Here is an example to quantize the model based on previous measurements for Mixtral-8x7B with 1 card:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generation.py \
+--model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+--use_hpu_graphs \
+--use_kv_cache \
+--limit_hpu_graphs \
+--bucket_size 128 \
+--max_new_tokens 2048 \
+--batch_size 16 \
+--bf16 \
 --fp8
 ```
 `--fp8` is required to enable quantization in fp8.

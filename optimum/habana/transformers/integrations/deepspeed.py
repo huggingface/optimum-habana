@@ -62,14 +62,25 @@ class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
             "per_device_train_batch_size",
             not auto_find_batch_size,
         )
-        self.fill_match("gradient_accumulation_steps", args.gradient_accumulation_steps, "gradient_accumulation_steps")
         self.fill_match(
-            "train_batch_size", train_batch_size, "train_batch_size (calculated)", not auto_find_batch_size
+            "gradient_accumulation_steps",
+            args.gradient_accumulation_steps,
+            "gradient_accumulation_steps",
+        )
+        self.fill_match(
+            "train_batch_size",
+            train_batch_size,
+            "train_batch_size (calculated)",
+            not auto_find_batch_size,
         )
         self.fill_match("gradient_clipping", args.max_grad_norm, "max_grad_norm")
 
         self.fill_match("optimizer.params.lr", args.learning_rate, "learning_rate")
-        self.fill_match("optimizer.params.betas", [args.adam_beta1, args.adam_beta2], "adam_beta1+adam_beta2")
+        self.fill_match(
+            "optimizer.params.betas",
+            [args.adam_beta1, args.adam_beta2],
+            "adam_beta1+adam_beta2",
+        )
         self.fill_match("optimizer.params.eps", args.adam_epsilon, "adam_epsilon")
         self.fill_match("optimizer.params.weight_decay", args.weight_decay, "weight_decay")
 
