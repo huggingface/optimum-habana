@@ -23,6 +23,7 @@ import habana_frameworks.torch as ht
 import habana_frameworks.torch.core as htcore
 import time
 import argparse
+from torchvision.utils import save_image
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -99,9 +100,14 @@ if __name__ == "__main__":
             total_model_time = total_model_time + (model_end_time - model_start_time)
 
             if args.print_result:
-                logits = outputs.logits
-                print(logits.shape)
-                print("Logits: " + str(logits))
+                if (i == 0): # generate/output once only
+                    logits = outputs.logits
+                    for j in range(logits.shape[0]):
+                        threshold = 0.5
+                        segmented_image = ((torch.sigmoid(logits[j])  > threshold)*255).unsqueeze(0)
+                        segmented_image = segmented_image.to(torch.float32)
+                        save_image(segmented_image, 'segmented' + texts[j] + '.png')
+                    print('Segmented images are generated.')
 
     print("n_iterations: " + str(args.n_iterations))
     print("Total latency (ms): " + str(total_model_time*1000))
