@@ -106,6 +106,7 @@ from .models import (
     gaudi_mixtral_decoder_layer_forward,
     gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
+    gaudi_mistral_rmsnorm_forward,
     gaudi_mpt_attention_forward,
     gaudi_mpt_block_forward,
     gaudi_opt_attention_forward,
@@ -316,6 +317,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.mistral.modeling_mistral.MistralAttention = GaudiMistralAttention
     transformers.models.mistral.modeling_mistral.MistralDecoderLayer = GaudiMistralDecoderLayer
     transformers.models.mistral.modeling_mistral.MistralModel = GaudiMistralModel
+    transformers.models.mistral.modeling_mistral.MistralRMSNorm.forward = gaudi_mistral_rmsnorm_forward
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward

@@ -49,6 +49,12 @@ from transformers.models.mistral.modeling_mistral import (
     logger,
 )
 
+try:
+    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
+except ImportError:
+    print("Not using HPU fused kernel for RMSNorm")
+    FusedRMSNorm = None
+
 logger = logging.get_logger(__name__)
 
 def update(prev, cur, dim, idx):
@@ -96,6 +102,28 @@ def gaudi_mistral_repeat_kv(
 
     return query_states, key_states, value_states, attention_mask
 
+
+def gaudi_mistral_rmsnorm_forward(self, hidden_states):
+    """
+    Copied from MistralRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py
+    The only differences are:
+        - override RMSNorm with Habana fused RMSNorm
+    """
+    if hidden_states.device.type == "hpu" and FusedRMSNorm:
+        # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
+        if hidden_states.dtype != self.weight.dtype:
+            orig_dtype = hidden_states.dtype
+            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
+            return hidden_states.to(orig_dtype)
+        else:
+            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+            return hidden_states
+    else:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * hidden_states.to(input_dtype)
 
 class GaudiMistralAttention(MistralAttention):
     def __init__(self, config: MistralConfig, layer_idx: int):

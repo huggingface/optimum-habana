@@ -84,7 +84,8 @@ from .mistral import (
     GaudiMistralForCausalLM,
     GaudiMistralDecoderLayer,
     GaudiMistralAttention,
-    GaudiMistralModel
+    GaudiMistralModel,
+    gaudi_mistral_rmsnorm_forward,
 )
 from .mixtral import (
     GaudiMixtralForCausalLM,
