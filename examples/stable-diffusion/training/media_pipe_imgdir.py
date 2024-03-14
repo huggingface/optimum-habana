@@ -87,18 +87,10 @@ class ReadImageTextFromDataset(MediaReaderNode):
             self.dataset_crop_top_lefts += [k["crop_top_lefts"]]
 
         self.dataset_image = np.array(self.dataset_image)
-        self.dataset_prompt_embeds = np.array(
-            self.dataset_prompt_embeds, dtype=np.float32
-        )
-        self.dataset_pooled_prompt_embeds = np.array(
-            self.dataset_pooled_prompt_embeds, dtype=np.float32
-        )
-        self.dataset_original_sizes = np.array(
-            self.dataset_original_sizes, dtype=np.uint32
-        )
-        self.dataset_crop_top_lefts = np.array(
-            self.dataset_crop_top_lefts, dtype=np.uint32
-        )
+        self.dataset_prompt_embeds = np.array(self.dataset_prompt_embeds, dtype=np.float32)
+        self.dataset_pooled_prompt_embeds = np.array(self.dataset_pooled_prompt_embeds, dtype=np.float32)
+        self.dataset_original_sizes = np.array(self.dataset_original_sizes, dtype=np.uint32)
+        self.dataset_crop_top_lefts = np.array(self.dataset_crop_top_lefts, dtype=np.uint32)
         self.epoch = 0
         self.batch_sampler = params["batch_sampler"]
 
@@ -113,30 +105,20 @@ class ReadImageTextFromDataset(MediaReaderNode):
 
     def gen_output_info(self):
         out_info = []
-        o = opnode_tensor_info(
-            dtype.NDT, np.array([self.batch_size], dtype=np.uint32), ""
-        )
+        o = opnode_tensor_info(dtype.NDT, np.array([self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
         sample = self.dataset[0]
         sample["pooled_prompt_embeds"]
         d0 = len(sample["pooled_prompt_embeds"])
         d1 = len(sample["prompt_embeds"])
         d2 = len(sample["prompt_embeds"][0])
-        o = opnode_tensor_info(
-            dtype.FLOAT32, np.array([d2, d1, self.batch_size], dtype=np.uint32), ""
-        )
+        o = opnode_tensor_info(dtype.FLOAT32, np.array([d2, d1, self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
-        o = opnode_tensor_info(
-            dtype.FLOAT32, np.array([d0, self.batch_size], dtype=np.uint32), ""
-        )
+        o = opnode_tensor_info(dtype.FLOAT32, np.array([d0, self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
-        o = opnode_tensor_info(
-            "uint32", np.array([2, self.batch_size], dtype=np.uint32), ""
-        )
+        o = opnode_tensor_info("uint32", np.array([2, self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
-        o = opnode_tensor_info(
-            "uint32", np.array([2, self.batch_size], dtype=np.uint32), ""
-        )
+        o = opnode_tensor_info("uint32", np.array([2, self.batch_size], dtype=np.uint32), "")
         out_info.append(o)
         return out_info
 
@@ -256,9 +238,7 @@ class SDXLMediaPipe(MediaPipe):
 
         self.image_size = image_size
 
-        pipe_name = "{}:{}".format(
-            self.__class__.__name__, SDXLMediaPipe.instance_count
-        )
+        pipe_name = "{}:{}".format(self.__class__.__name__, SDXLMediaPipe.instance_count)
         pipe_name = str(pipe_name)
 
         super(SDXLMediaPipe, self).__init__(
@@ -268,9 +248,7 @@ class SDXLMediaPipe(MediaPipe):
             pipe_name=pipe_name,
         )
 
-        self.input = fn.SDXLDataReader(
-            dataset=self.dataset, batch_sampler=self.batch_sampler
-        )
+        self.input = fn.SDXLDataReader(dataset=self.dataset, batch_sampler=self.batch_sampler)
         def_output_image_size = [self.image_size, self.image_size]
         res_pp_filter = ftype.BI_LINEAR
         self.decode = fn.ImageDecoder(
@@ -282,12 +260,8 @@ class SDXLMediaPipe(MediaPipe):
         )
         normalize_mean = np.array([255 / 2, 255 / 2, 255 / 2]).astype(np.float32)
         normalize_std = 1 / (np.array([255 / 2, 255 / 2, 255 / 2]).astype(np.float32))
-        norm_mean = fn.MediaConst(
-            data=normalize_mean, shape=[1, 1, 3], dtype=dtype.FLOAT32
-        )
-        norm_std = fn.MediaConst(
-            data=normalize_std, shape=[1, 1, 3], dtype=dtype.FLOAT32
-        )
+        norm_mean = fn.MediaConst(data=normalize_mean, shape=[1, 1, 3], dtype=dtype.FLOAT32)
+        norm_std = fn.MediaConst(data=normalize_std, shape=[1, 1, 3], dtype=dtype.FLOAT32)
         self.cmn = fn.CropMirrorNorm(
             crop_w=self.image_size,
             crop_h=self.image_size,
@@ -310,9 +284,7 @@ class SDXLMediaPipe(MediaPipe):
         SDXLMediaPipe.instance_count += 1
 
     def definegraph(self):
-        jpegs, prompt_embeds, pooled_prompt_embeds, original_sizes, crop_top_lefts = (
-            self.input()
-        )
+        jpegs, prompt_embeds, pooled_prompt_embeds, original_sizes, crop_top_lefts = self.input()
         images = self.decode(jpegs)
         flip = self.random_flip_input()
         images = self.random_flip(images, flip)
