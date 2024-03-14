@@ -345,11 +345,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
                 new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
                 if self.config.model_type == "gpt_bigcode" and model_kwargs["past_key_values"][0][0].dim() == 2:
-                    #GPT_BIGCODE's kv cache is list of tensors.
+                    # GPT_BIGCODE's kv cache is list of tensors.
                     new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
                     for i in range(len(model_kwargs["past_key_values"])):
                         pad = (0, 0, 0, pad_amount)
-                        new_kv[i]  = torch.nn.functional.pad(
+                        new_kv[i] = torch.nn.functional.pad(
                             model_kwargs["past_key_values"][i], pad, value=pad_token_id
                         )
                     model_kwargs["past_key_values"] = list(new_kv)
@@ -362,7 +362,9 @@ class GaudiGenerationMixin(GenerationMixin):
                             # create_pad_arg handles them on a per-model basis
                             # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
                             # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
-                            assert model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
+                            assert (
+                                model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
+                            )
                             tmp_lst[j] = torch.nn.functional.pad(
                                 model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
                             )
