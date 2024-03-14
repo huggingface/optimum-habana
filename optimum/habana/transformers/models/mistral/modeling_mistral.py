@@ -513,7 +513,8 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
-        reuse_cache: Optional[bool] = False
+        reuse_cache: Optional[bool] = False,
+        trim_logits: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from MistralForCausalLM: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
@@ -544,6 +545,12 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         #import pdb; pdb.set_trace()
 
         hidden_states = outputs[0]
+        _, seq_len, _ = hidden_states.shape
+        if seq_len > 1 and trim_logits and not self.training:
+            if token_idx is not None:
+                hidden_states = hidden_states.index_select(1, token_idx - 1)
+            else:
+                hidden_states = hidden_states[:, -1, :]
         logits = self.lm_head(hidden_states)
         logits = logits.float()
 
@@ -643,6 +650,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
                 "reuse_cache": kwargs.get("reuse_cache"),
+                "trim_logits": kwargs.get("trim_logits"),
             }
         )
         return model_inputs
