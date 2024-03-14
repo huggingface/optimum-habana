@@ -21,7 +21,7 @@ This directory contains an example script that demonstrates using ClipSeg with g
 python3 run_example.py \
     --model_name_or_path "CIDAS/clipseg-rd64-refined" \
     --image_path "http://images.cocodataset.org/val2017/000000039769.jpg" \
-    --prompt "a cat, a remote, a blanket" \
+    --prompt "cat, remote, blanket" \
     --warmup 3 \
     --n_iterations 20 \
     --use_hpu_graphs \
