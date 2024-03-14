@@ -758,7 +758,8 @@ class GaudiLlamaModel(LlamaModel):
         next_decoder_cache = () if not use_new_cache else None
 
         for layer_idx, decoder_layer in enumerate(self.layers):
-            if lazy_mode and torch.distributed.is_initialized() == False:
+            if lazy_mode and use_flash_attention and \
+                (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1):
                 htcore.mark_step()
 
             if output_hidden_states:
