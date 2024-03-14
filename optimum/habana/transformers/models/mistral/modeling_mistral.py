@@ -177,6 +177,7 @@ class GaudiMistralAttention(MistralAttention):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        attn_softmax_bf16: Optional[bool] = False,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
@@ -267,8 +268,11 @@ class GaudiMistralAttention(MistralAttention):
 
             attn_weights = attn_weights + attention_mask
 
-        # upcast attention to fp32
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        if attn_softmax_bf16:
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
+        else:
+            # upcast attention to fp32
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         attn_output = torch.matmul(attn_weights, value_states)
         attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
@@ -324,6 +328,7 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        attn_softmax_bf16: Optional[bool] = False,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -350,7 +355,8 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
             use_cache=use_cache,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
-            cache_idx=cache_idx
+            cache_idx=cache_idx,
+            attn_softmax_bf16=attn_softmax_bf16
         )
         #import pdb; pdb.set_trace()
         hidden_states = residual + hidden_states
@@ -393,6 +399,7 @@ class GaudiMistralModel(MistralModel):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        attn_softmax_bf16: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from MistralModel.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
@@ -501,6 +508,7 @@ class GaudiMistralModel(MistralModel):
                     token_idx=token_idx,
                     reuse_cache=reuse_cache,
                     cache_idx=cache_idx,
+                    attn_softmax_bf16=attn_softmax_bf16,
                 )
 
             hidden_states = layer_outputs[0]
@@ -559,6 +567,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
         cache_idx: Optional[int] = None,
+        attn_softmax_bf16: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from MistralForCausalLM: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
@@ -586,6 +595,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
+            attn_softmax_bf16=attn_softmax_bf16,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -695,6 +705,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
                 "reuse_cache": kwargs.get("reuse_cache"),
                 "trim_logits": kwargs.get("trim_logits"),
                 "cache_idx": kwargs.get("cache_idx"),
+                "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
             }
         )
         return model_inputs
