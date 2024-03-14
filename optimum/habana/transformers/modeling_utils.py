@@ -104,6 +104,7 @@ from .models import (
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
     gaudi_vit_self_attention_forward,
+    gaudi_swin_get_attn_mask,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2forctc_forward,
@@ -121,6 +122,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization tweak for ViT
     transformers.models.vit.modeling_vit.ViTSelfAttention.forward = gaudi_vit_self_attention_forward
+
+    # Optimization tweak for Swin
+    transformers.models.swin.modeling_swin.SwinLayer.get_attn_mask = gaudi_swin_get_attn_mask
 
     # Optimization tweak for Wav2Vec2
     transformers.models.wav2vec2.modeling_wav2vec2._compute_mask_indices = _gaudi_wav2vec2_compute_mask_indices
