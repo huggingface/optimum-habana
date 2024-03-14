@@ -38,7 +38,7 @@ try:
         ftype,
         imgtype,
         readerOutType,
-    )  # , randomCropType
+    )
     from habana_frameworks.mediapipe.mediapipe import MediaPipe
     from habana_frameworks.mediapipe.operators.cpu_nodes.cpu_nodes import media_function
     from habana_frameworks.mediapipe.operators.media_nodes import MediaReaderNode
