@@ -26,10 +26,10 @@ MODELS_TO_TEST = {
             "full_shard",
         ),
         (
-            "huggyllama/llama-7b",
+            "meta-llama/Llama-2-7b-hf",
             "",
-            80,
-            0.94,
+            54,
+            0.92,
             "language-modeling",
             8,
             8,
@@ -50,6 +50,7 @@ def _test_fsdp(
     batch_size_eval: int,
     script: str,
     policy: str,
+    token: str,
     world_size: int = 8,
 ):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
@@ -121,6 +122,7 @@ def _test_fsdp(
             "--low_cpu_mem_usage True",
             "--attn_softmax_bf16 True",
             "--num_train_epochs 3",
+            f"--token {token.value}"
         ]
 
     with TemporaryDirectory() as tmp_dir:
@@ -165,5 +167,6 @@ def test_fsdp_bf16(
     bs_eval: int,
     script: str,
     policy: str,
+    token: str,
 ):
-    _test_fsdp(model_name, gaudi_config, baseline, baseline_acc, task, bs_train, bs_eval, script, policy)
+    _test_fsdp(model_name, gaudi_config, baseline, baseline_acc, task, bs_train, bs_eval, script, policy, token)
