@@ -122,7 +122,7 @@ def _test_fsdp(
             "--low_cpu_mem_usage True",
             "--attn_softmax_bf16 True",
             "--num_train_epochs 3",
-            f"--token {token.value}"
+            f"--token {token.value}",
         ]
 
     with TemporaryDirectory() as tmp_dir:

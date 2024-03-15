@@ -83,7 +83,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest \
-            make slow_tests_fsdp
+            make slow_tests_fsdp TOKEN=${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
   multi-card:
     name: Test multi-card models
     if: ${{ !cancelled() && (success() || failure()) }}
