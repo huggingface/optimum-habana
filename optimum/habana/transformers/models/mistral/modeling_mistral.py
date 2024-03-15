@@ -134,7 +134,6 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
 
 class GaudiMistralAttention(MistralAttention):
     def __init__(self, config: MistralConfig, layer_idx: int):
-        #import pdb; pdb.set_trace()
         super().__init__(config)
         self.past_key = None
         self.past_value = None
@@ -290,7 +289,6 @@ class GaudiMistralAttention(MistralAttention):
 
         if not output_attentions:
             attn_weights = None
-        #import pdb; pdb.set_trace()
 
         return attn_output, attn_weights, past_key_value
 
@@ -299,7 +297,6 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
     def __init__(self, config: MistralConfig, layer_idx: int):
         super().__init__(config, layer_idx)
         self.hidden_size = config.hidden_size
-        #import pdb; pdb.set_trace()
 
         self.self_attn = GaudiMistralAttention(config, layer_idx)
 
@@ -358,7 +355,6 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
             cache_idx=cache_idx,
             attn_softmax_bf16=attn_softmax_bf16
         )
-        #import pdb; pdb.set_trace()
         hidden_states = residual + hidden_states
 
         # Fully Connected
@@ -514,7 +510,6 @@ class GaudiMistralModel(MistralModel):
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                #import pdb; pdb.set_trace()
                 next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
             if output_attentions:
@@ -533,7 +528,6 @@ class GaudiMistralModel(MistralModel):
                 if not use_new_cache
                 else (next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache)
             )
-        #import pdb; pdb.set_trace()
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         return BaseModelOutputWithPast(

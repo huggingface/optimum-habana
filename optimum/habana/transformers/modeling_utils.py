@@ -313,7 +313,6 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for mistral on Gaudi
     transformers.models.mistral.modeling_mistral.MistralForCausalLM = GaudiMistralForCausalLM
-    #import pdb; pdb.set_trace()
     transformers.models.mistral.modeling_mistral.MistralAttention = GaudiMistralAttention
     transformers.models.mistral.modeling_mistral.MistralDecoderLayer = GaudiMistralDecoderLayer
     transformers.models.mistral.modeling_mistral.MistralModel = GaudiMistralModel
