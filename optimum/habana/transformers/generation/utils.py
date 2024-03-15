@@ -75,6 +75,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "t5",
     "mistral",
     "mixtral",
+    "gemma",
     "blip_text_model",
 ]
 
