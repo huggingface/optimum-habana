@@ -48,6 +48,7 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiPhiForCausalLM,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     gaudi_albert_forward,
@@ -112,6 +113,9 @@ from .models import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_SpeechT5Attention_forward,
@@ -319,6 +323,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.mistral.modeling_mistral.MistralAttention.forward = gaudi_mistral_attention_forward
     transformers.models.mistral.modeling_mistral.MistralDecoderLayer.forward = gaudi_mistral_decoder_layer_forward
     transformers.models.mistral.modeling_mistral.MistralModel.forward = gaudi_mistral_model_forward
+
+    # Optimization for phi on Gaudi
+    transformers.models.phi.modeling_phi.PhiForCausalLM = GaudiPhiForCausalLM
+    transformers.models.phi.modeling_phi.PhiAttention.forward = gaudi_phi_attention_forward
+    transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
+    transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
