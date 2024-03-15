@@ -925,8 +925,6 @@ class GaudiTrainer(Trainer):
                             inputs["use_flash_attention"] = True
                         if self.model.generation_config.flash_attention_recompute:
                             inputs["flash_attention_recompute"] = True
-                        if self.model.generation_config.use_fused_rope is False:
-                            inputs["use_fused_rope"] = False
 
                 # TODO: keep syncs for fast DDP?
                 with self.accelerator.accumulate(model):
@@ -1731,8 +1729,6 @@ class GaudiTrainer(Trainer):
                         inputs["use_flash_attention"] = True
                     if self.model.generation_config.flash_attention_recompute:
                         inputs["flash_attention_recompute"] = True
-                    if self.model.generation_config.use_fused_rope is False:
-                        inputs["use_fused_rope"] = False
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
