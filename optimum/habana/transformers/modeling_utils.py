@@ -41,6 +41,10 @@ from .models import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiMistralForCausalLM,
+    GaudiMistralModel,
+    GaudiMistralAttention,
+    GaudiMistralMLP,
+    GaudiMistralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMptForCausalLM,
     GaudiMptModel,
@@ -94,9 +98,7 @@ from .models import (
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
-    gaudi_mistral_attention_forward,
-    gaudi_mistral_decoder_layer_forward,
-    gaudi_mistral_model_forward,
+    gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_attention_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_decoder_layer_forward,
@@ -298,9 +300,11 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for mistral on Gaudi
     transformers.models.mistral.modeling_mistral.MistralForCausalLM = GaudiMistralForCausalLM
-    transformers.models.mistral.modeling_mistral.MistralAttention.forward = gaudi_mistral_attention_forward
-    transformers.models.mistral.modeling_mistral.MistralDecoderLayer.forward = gaudi_mistral_decoder_layer_forward
-    transformers.models.mistral.modeling_mistral.MistralModel.forward = gaudi_mistral_model_forward
+    transformers.models.mistral.modeling_mistral.MistralModel = GaudiMistralModel
+    transformers.models.mistral.modeling_mistral.MistralAttention = GaudiMistralAttention
+    transformers.models.mistral.modeling_mistral.MistralMLP = GaudiMistralMLP
+    transformers.models.mistral.modeling_mistral.MistralDecoderLayer = GaudiMistralDecoderLayer
+    transformers.models.mistral.modeling_mistral.MistralRMSNorm.forward = gaudi_mistral_rmsnorm_forward
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
