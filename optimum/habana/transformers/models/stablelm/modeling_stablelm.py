@@ -18,12 +18,10 @@
 
 import math
 import torch
-import warnings
 
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.stablelm.modeling_stablelm import StableLmForCausalLM, apply_rotary_pos_emb, repeat_kv
 from transformers.utils import logging
