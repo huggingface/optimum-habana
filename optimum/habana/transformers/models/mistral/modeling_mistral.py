@@ -29,25 +29,22 @@ from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.mistral.modeling_mistral import MistralForCausalLM, apply_rotary_pos_emb, repeat_kv
+from transformers.models.mistral.configuration_mistral import MistralConfig
+from transformers.models.mistral.modeling_mistral import (
+    MistralAttention,
+    MistralDecoderLayer,
+    MistralForCausalLM,
+    MistralMLP,
+    MistralModel,
+    MistralRMSNorm,
+    apply_rotary_pos_emb,
+)
 from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 
-
-from transformers.models.mistral.configuration_mistral import MistralConfig
-from transformers.models.mistral.modeling_mistral import (
-    MistralAttention,
-    MistralDecoderLayer,
-    MistralForCausalLM,
-    MistralModel,
-    MistralMLP,
-    MistralRMSNorm,
-    apply_rotary_pos_emb,
-    logger,
-)
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
@@ -56,6 +53,7 @@ except ImportError:
     FusedRMSNorm = None
 
 logger = logging.get_logger(__name__)
+
 
 def update(prev, cur, dim, idx):
     orig_cur = cur
@@ -68,6 +66,8 @@ def update(prev, cur, dim, idx):
         return prev.index_copy_(dim, idx - 1, cur)
     else:
         return torch.cat((prev, cur), dim=dim)
+
+
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def gaudi_mistral_repeat_kv(
     query_states: torch.Tensor,
@@ -101,13 +101,15 @@ def gaudi_mistral_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
+
+
 def update_sincos_cache(self, seq_len):
-        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
-        # This helps in avoiding creation of these caches during actual model forward pass and
-        # reduce memory consumption and improve performance.
-        if seq_len > self.max_position_embeddings:
-            self.max_position_embeddings = seq_len
-            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
+    # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
+    # This helps in avoiding creation of these caches during actual model forward pass and
+    # reduce memory consumption and improve performance.
+    if seq_len > self.max_position_embeddings:
+        self.max_position_embeddings = seq_len
+        _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
 
 
 def gaudi_mistral_rmsnorm_forward(self, hidden_states):
@@ -132,6 +134,7 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
 
+
 class GaudiMistralAttention(MistralAttention):
     def __init__(self, config: MistralConfig, layer_idx: int):
         super().__init__(config)
@@ -143,7 +146,7 @@ class GaudiMistralAttention(MistralAttention):
         key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
         value_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
         if self.past_key is None or self.past_key.shape != key_shape:
-            #if not hasattr(self, 'past_key') or self.past_key.shape != key_shape:
+            # if not hasattr(self, 'past_key') or self.past_key.shape != key_shape:
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
             self.past_key = torch.empty(key_shape, dtype=dtype, device=device)
@@ -155,7 +158,7 @@ class GaudiMistralAttention(MistralAttention):
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         if self.past_key is None:
-            #if not hasattr(self, 'past_key'):
+            # if not hasattr(self, 'past_key'):
             return (None, None)
 
         head_dim = self.past_key.size(-1)
@@ -163,7 +166,6 @@ class GaudiMistralAttention(MistralAttention):
         self.reorder(self.past_key, beam_idx, seq_length, head_dim)
         self.reorder(self.past_value, beam_idx, seq_length, head_dim)
         return (self.past_key.shape, self.past_value.shape)
-
 
     def forward(
         self,
@@ -180,11 +182,11 @@ class GaudiMistralAttention(MistralAttention):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
-        Copied from MistralAttention.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
-        The only differences are:
-        - add new args token_idx
-        - add new args reuse_cache
-       - add new args cache_idx
+         Copied from MistralAttention.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
+         The only differences are:
+         - add new args token_idx
+         - add new args reuse_cache
+        - add new args cache_idx
         """
         if "padding_mask" in kwargs:
             warnings.warn(
@@ -237,33 +239,33 @@ class GaudiMistralAttention(MistralAttention):
         else:
             past_key_value = None
         if cache_idx is not None and q_len == 1:
-                key_states = key_states[:, :, :cache_idx, :]
-                value_states = value_states[:, :, :cache_idx, :]
-                attention_mask = attention_mask[:, :, :, :cache_idx]
-                kv_seq_len = key_states.shape[-2]
+            key_states = key_states[:, :, :cache_idx, :]
+            value_states = value_states[:, :, :cache_idx, :]
+            attention_mask = attention_mask[:, :, :, :cache_idx]
+            kv_seq_len = key_states.shape[-2]
 
         # repeat k/v heads if n_kv_heads < n_heads
         query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
-                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-            )
+            query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+        )
         attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) / math.sqrt(self.head_dim)
 
         if attn_weights.size() not in [
-                (bsz, self.num_heads, q_len, kv_seq_len),
-                (bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len),
-            ]:
-                raise ValueError(
-                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)} or"
-                    f" {(bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len)}, but is"
-                    f" {attn_weights.size()}"
-                )
+            (bsz, self.num_heads, q_len, kv_seq_len),
+            (bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len),
+        ]:
+            raise ValueError(
+                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)} or"
+                f" {(bsz, self.num_key_value_heads, self.num_key_value_groups, q_len, kv_seq_len)}, but is"
+                f" {attn_weights.size()}"
+            )
 
         if attention_mask is not None:
             if attention_mask.size() not in [(bsz, 1, q_len, kv_seq_len), (bsz, 1, 1, q_len, kv_seq_len)]:
-                    raise ValueError(
-                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)} or {(bsz, 1, 1, q_len, kv_seq_len)},"
-                        f" but is {attention_mask.size()}"
-                    )
+                raise ValueError(
+                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)} or {(bsz, 1, 1, q_len, kv_seq_len)},"
+                    f" but is {attention_mask.size()}"
+                )
 
             attn_weights = attn_weights + attention_mask
 
@@ -303,7 +305,6 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
         self.mlp = MistralMLP(config)
         self.input_layernorm = MistralRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = MistralRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-
 
     def allocate_kv_cache(self, batch_size, seq_len):
         self.self_attn.allocate_kv_cache(batch_size, seq_len)
@@ -353,7 +354,7 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
-            attn_softmax_bf16=attn_softmax_bf16
+            attn_softmax_bf16=attn_softmax_bf16,
         )
         hidden_states = residual + hidden_states
 
@@ -378,6 +379,7 @@ class GaudiMistralModel(MistralModel):
     def allocate_kv_cache(self, batch_size, seq_len):
         for layer in self.layers:
             layer.allocate_kv_cache(batch_size, seq_len)
+
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.layers)
 
@@ -432,7 +434,8 @@ class GaudiMistralModel(MistralModel):
         use_new_cache = False
         if past_key_values is not None and use_cache:
             if reuse_cache:
-                past_seen_tokens = past_key_values[0][0][2]
+                # past_seen_tokens = past_key_values[0][0][2]
+                pass
             else:
                 if use_new_cache:
                     use_legacy_cache = not isinstance(past_key_values, Cache)
@@ -541,10 +544,13 @@ class GaudiMistralModel(MistralModel):
 class GaudiMistralForCausalLM(MistralForCausalLM):
     def allocate_kv_cache(self, batch_size, seq_len, _, __):
         self.model.allocate_kv_cache(batch_size, seq_len)
+
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)
+
     def update_sincos_cache(self, seq_len):
-        self.model.update_sincos_cache(seq_len)   
+        self.model.update_sincos_cache(seq_len)
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
