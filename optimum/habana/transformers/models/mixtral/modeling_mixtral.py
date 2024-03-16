@@ -30,6 +30,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
@@ -60,12 +61,6 @@ try:
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
-
-try:
-    from deepspeed import comm as dist
-except ImportError:
-    print("Not using HPU DeepSpeed.")
-    dist = None
 
 logger = logging.get_logger(__name__)
 
@@ -294,10 +289,14 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     # router_logits: (batch * sequence_length, n_experts)
     router_logits = self.gate(hidden_states)
 
-    if dist and dist.is_initialized():
+    if is_deepspeed_available():
+        from deepspeed import comm as dist
+
         output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
         dist.all_gather(output_tensors, router_logits)
         router_logits = torch.cat(output_tensors, dim=1)
+    else:
+        print("Not using HPU DeepSpeed.")
 
     routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
     routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
