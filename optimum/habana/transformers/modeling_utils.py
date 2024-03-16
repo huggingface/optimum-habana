@@ -85,6 +85,7 @@ from .models import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_attention_split_heads,
+    gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
