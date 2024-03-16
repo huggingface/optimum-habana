@@ -829,7 +829,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         if self.generation_config.use_fused_rope is False:
             global has_fused_rope
             has_fused_rope = False
-        
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
