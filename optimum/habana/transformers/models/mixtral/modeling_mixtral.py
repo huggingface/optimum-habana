@@ -296,8 +296,6 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
             output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
             dist.all_gather(output_tensors, router_logits)
             router_logits = torch.cat(output_tensors, dim=1)
-    else:
-        print("Not using HPU DeepSpeed.")
 
     routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
     routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
