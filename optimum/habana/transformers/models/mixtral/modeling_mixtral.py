@@ -292,9 +292,10 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     if is_deepspeed_available():
         from deepspeed import comm as dist
 
-        output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
-        dist.all_gather(output_tensors, router_logits)
-        router_logits = torch.cat(output_tensors, dim=1)
+        if dist.is_initialized():
+            output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
+            dist.all_gather(output_tensors, router_logits)
+            router_logits = torch.cat(output_tensors, dim=1)
     else:
         print("Not using HPU DeepSpeed.")
 
