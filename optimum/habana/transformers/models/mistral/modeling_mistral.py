@@ -482,7 +482,7 @@ class GaudiMistralModel(MistralModel):
         next_decoder_cache = () if not use_new_cache else None
 
         for layer_idx, decoder_layer in enumerate(self.layers):
-            if layer_idx % 4 == 0:
+            if layer_idx == len(self.layers)//2:
                 htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
