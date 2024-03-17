@@ -390,7 +390,7 @@ def initialize_model(args, logger):
         from habana_frameworks.torch.hpu import enable_const_section_serialization
 
         print("Serializing const params to {}".format(args.const_serialization_path))
-        enable_const_section_serialization(args.const_serialization_path, False, True)
+        enable_const_section_serialization(args.const_serialization_path, True)
     if args.fp8:
         model = setup_quantization(args, model)
     init_end = time.perf_counter()
