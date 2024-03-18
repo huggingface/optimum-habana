@@ -68,7 +68,7 @@ slow_tests_text_generation_example: test_installs
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
 slow_tests_fsdp: test_installs
-	python -m pytest tests/test_fsdp_examples.py -v -s
+	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs
