@@ -379,7 +379,7 @@ def main():
     )
     if config.model_type == "llama":
         if tokenizer.pad_token is None:
-            tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+            tokenizer.add_special_tokens({"pad_token": "[PAD]"})
         tokenizer.cls_token = tokenizer.bos_token
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
