@@ -115,6 +115,12 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .phi import (
+    GaudiPhiForCausalLM,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
+)
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,
@@ -122,6 +128,7 @@ from .speecht5 import (
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_SpeechT5SpeechDecoderPrenet_forward,
 )
+from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,

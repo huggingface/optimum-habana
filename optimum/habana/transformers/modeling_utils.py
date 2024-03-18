@@ -51,6 +51,7 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiPhiForCausalLM,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     gaudi_albert_forward,
@@ -113,12 +114,16 @@ from .models import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_SpeechT5SpeechDecoderPrenet_forward,
+    gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
     gaudi_T5Block_forward,
@@ -143,6 +148,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization tweak for ViT
     transformers.models.vit.modeling_vit.ViTSelfAttention.forward = gaudi_vit_self_attention_forward
+
+    # Optimization tweak for Swin
+    transformers.models.swin.modeling_swin.SwinLayer.get_attn_mask = gaudi_swin_get_attn_mask
 
     # Optimization tweak for Wav2Vec2
     transformers.models.wav2vec2.modeling_wav2vec2._compute_mask_indices = _gaudi_wav2vec2_compute_mask_indices
@@ -317,6 +325,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.mistral.modeling_mistral.MistralDecoderLayer = GaudiMistralDecoderLayer
     transformers.models.mistral.modeling_mistral.MistralModel = GaudiMistralModel
     transformers.models.mistral.modeling_mistral.MistralRMSNorm.forward = gaudi_mistral_rmsnorm_forward
+
+    # Optimization for phi on Gaudi
+    transformers.models.phi.modeling_phi.PhiForCausalLM = GaudiPhiForCausalLM
+    transformers.models.phi.modeling_phi.PhiAttention.forward = gaudi_phi_attention_forward
+    transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
+    transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
