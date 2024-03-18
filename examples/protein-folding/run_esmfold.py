@@ -25,8 +25,10 @@ from transformers.models.esm.openfold_utils.protein import Protein as OFProtein
 from transformers.models.esm.openfold_utils.protein import to_pdb
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-os.environ["PT_HPU_ENABLE_H2D_DYNAMIC_SLICE"]="0"
-os.environ["PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES"]="1"
+
+
+os.environ["PT_HPU_ENABLE_H2D_DYNAMIC_SLICE"] = "0"
+os.environ["PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES"] = "1"
 
 
 try:
