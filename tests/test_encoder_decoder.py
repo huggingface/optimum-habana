@@ -201,6 +201,9 @@ class TestEncoderDecoderModels:
             "--max_predict_samples 200",
         ]
 
+        if "opus-mt-zh-en" in model_name:
+            command_args.append("--max_source_length 512")
+
         command = self._build_command(
             task=task,
             deepspeed=deepspeed,

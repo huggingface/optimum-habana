@@ -25,6 +25,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mosaicml/mpt-30b", 35.64501131267502),
             ("mistralai/Mistral-7B-v0.1", 125.26115369093216),
             ("mistralai/Mixtral-8x7B-v0.1", 23.78652574031883),
+            ("microsoft/phi-2", 218.08752713569007),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 47.67900945905787),
@@ -56,6 +57,7 @@ else:
             ("Salesforce/codegen2-1B", 153.79670508220687),
             ("mosaicml/mpt-7b", 44.80241777760578),
             ("mistralai/Mistral-7B-v0.1", 40.00435417311187),
+            ("microsoft/phi-2", 90.10751623430603),
         ],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 31.044523676681507),
