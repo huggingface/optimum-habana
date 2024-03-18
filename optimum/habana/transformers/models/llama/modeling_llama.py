@@ -995,4 +995,5 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
             k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
         )
     else:
-        return apply_rotary_pos_emb(q, k, cos, sin)
+        # keep the same implementation as Transformers v4.37.2
+        return apply_rotary_pos_emb(q, k, cos[position_ids], sin[position_ids])
