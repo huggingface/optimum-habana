@@ -44,7 +44,7 @@ from transformers.utils import logging
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
-
+import habana_frameworks.torch.core as htcore
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
@@ -482,6 +482,8 @@ class GaudiMistralModel(MistralModel):
         next_decoder_cache = () if not use_new_cache else None
 
         for layer_idx, decoder_layer in enumerate(self.layers):
+            if layer_idx == len(self.layers)//2:
+                htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
