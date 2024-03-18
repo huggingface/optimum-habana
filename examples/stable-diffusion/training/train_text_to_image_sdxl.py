@@ -1187,7 +1187,7 @@ def main(args):
         if hb_profiler:
             hb_profiler.start()
         for step, batch in enumerate(train_dataloader):
-            if t0 is None or global_step == args.throughput_warmup_steps:
+            if t0 is None and global_step == args.throughput_warmup_steps:
                 t0 = time.perf_counter()
             with accelerator.accumulate(unet):
                 # Move compute_vae_encoding here to reflect the transformed image input
@@ -1440,21 +1440,22 @@ def main(args):
 
                 del pipeline
 
-    duration = time.perf_counter() - t0 - (checkpoint_time if args.adjust_throughput else 0)
-    ttt = time.perf_counter() - t_start
-    throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
+    if t0 is not None:
+        duration = time.perf_counter() - t0 - (checkpoint_time if args.adjust_throughput else 0)
+        ttt = time.perf_counter() - t_start
+        throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
 
-    accelerator.wait_for_everyone()
-    if accelerator.is_main_process:
-        logger.info(f"Throughput = {throughput} samples/s")
-        logger.info(f"Train runtime = {duration} seconds")
-        logger.info(f"Total Train runtime = {ttt} seconds")
-        metrics = {
-            "train_samples_per_second": throughput,
-            "train_runtime": duration,
-        }
-        with open(f"{args.output_dir}/speed_metrics.json", mode="w") as file:
-            json.dump(metrics, file)
+        accelerator.wait_for_everyone()
+        if accelerator.is_main_process:
+            logger.info(f"Throughput = {throughput} samples/s")
+            logger.info(f"Train runtime = {duration} seconds")
+            logger.info(f"Total Train runtime = {ttt} seconds")
+            metrics = {
+                "train_samples_per_second": throughput,
+                "train_runtime": duration,
+            }
+            with open(f"{args.output_dir}/speed_metrics.json", mode="w") as file:
+                json.dump(metrics, file)
 
         unet = accelerator.unwrap_model(unet)
         if args.use_ema:
