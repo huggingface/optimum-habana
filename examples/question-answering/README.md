@@ -133,6 +133,36 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```
 
 
+## Fine-tuning Llama on SQuAD1.1
+
+> [!NOTE]
+>   Llama/Llama2 for question answering requires Transformers v4.38.0 or newer, which supports the `LlamaForQuestionAnswering` class.
+
+Here is a command you can run to train a Llama model for question answering:
+```bash
+python ../gaudi_spawn.py \
+  --world_size 8 --use_deepspeed run_qa.py \
+  --model_name_or_path FlagAlpha/Llama2-Chinese-13b-Chat \
+  --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
+  --dataset_name squad \
+  --do_train \
+  --do_eval \
+  --per_device_train_batch_size 8 \
+  --per_device_eval_batch_size 8 \
+  --learning_rate 3e-5 \
+  --num_train_epochs 2 \
+  --max_seq_length 384 \
+  --doc_stride 128 \
+  --output_dir /tmp/squad_output/ \
+  --use_habana \
+  --use_lazy_mode \
+  --use_hpu_graphs_for_inference \
+  --throughput_warmup_steps 3 \
+  --max_train_samples 45080 \
+  --deepspeed ../../tests/configs/deepspeed_zero_2.json
+```
+
+
 ## Inference
 
 To run only inference, you can start from the commands above and you just have to remove the training-only arguments such as `--do_train`, `--per_device_train_batch_size`, `--num_train_epochs`, etc...
@@ -168,6 +198,8 @@ python run_qa.py \
 | ALBERT XXL (single-card)   | 5e-6 | 2 | 12 | 2 |
 | ALBERT XXL (multi-card)    | 5e-5 | 2 | 12 | 2 |
 | DistilBERT                 | 5e-5 | 3 | 8  | 8 |
+| meta-llama/Llama-2-13b-chat-hf (multi-card) | 3e-5 | 2 | 8 | 8 |
+| FlagAlpha/Llama2-Chinese-13b-Chat (multi-card) | 3e-5 | 2 | 8 | 8 |
 
 
 ## Fine-tuning T5 on SQuAD2.0
