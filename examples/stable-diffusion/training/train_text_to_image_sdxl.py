@@ -813,7 +813,8 @@ def main(args):
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
-
+    # Set unet as trainable.
+    unet.train()
     if args.scale_lr:
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
@@ -861,7 +862,9 @@ def main(args):
                         for idx, dt in enumerate(dataset["train"]):
                             dt["image"].save(f"{args.mediapipe}/{idx}.jpg")
                             f.write(dt["text"] + "\n")
-            torch.distributed.barrier()
+            if accelerator.distributed_type != GaudiDistributedType.NO:
+                torch.distributed.barrier()
+
             from media_pipe_imgdir import get_dataset_for_pipeline
 
             dt = get_dataset_for_pipeline(args.mediapipe)
@@ -1015,9 +1018,6 @@ def main(args):
         batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
-
-    # Set unet as trainable.
-    unet.train()
 
     del text_encoders, tokenizers
     gc.collect()
