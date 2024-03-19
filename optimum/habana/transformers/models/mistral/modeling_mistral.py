@@ -69,6 +69,30 @@ def update(prev, cur, dim, idx):
         return torch.cat((prev, cur), dim=dim)
 
 
+
+
+def gaudi_mistral_rmsnorm_forward(self, hidden_states):
+    """
+    Copied from MistralRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py
+    The only differences are:
+        - override RMSNorm with Habana fused RMSNorm
+    """
+    if hidden_states.device.type == "hpu" and FusedRMSNorm:
+        # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
+        if hidden_states.dtype != self.weight.dtype:
+            orig_dtype = hidden_states.dtype
+            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
+            return hidden_states.to(orig_dtype)
+        else:
+            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+            return hidden_states
+    else:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * hidden_states.to(input_dtype)
+
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def gaudi_mistral_repeat_kv(
     query_states: torch.Tensor,
@@ -103,55 +127,28 @@ def gaudi_mistral_repeat_kv(
 
     return query_states, key_states, value_states, attention_mask
 
-
-def update_sincos_cache(self, seq_len):
-    # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
-    # This helps in avoiding creation of these caches during actual model forward pass and
-    # reduce memory consumption and improve performance.
-    if seq_len > self.max_position_embeddings:
-        self.max_position_embeddings = seq_len
-        _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
-
-
-def gaudi_mistral_rmsnorm_forward(self, hidden_states):
-    """
-    Copied from MistralRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py
-    The only differences are:
-        - override RMSNorm with Habana fused RMSNorm
-    """
-    if hidden_states.device.type == "hpu" and FusedRMSNorm:
-        # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
-        if hidden_states.dtype != self.weight.dtype:
-            orig_dtype = hidden_states.dtype
-            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
-            return hidden_states.to(orig_dtype)
-        else:
-            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
-            return hidden_states
-    else:
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return self.weight * hidden_states.to(input_dtype)
-
-
 class GaudiMistralAttention(MistralAttention):
-    def __init__(self, config: MistralConfig, layer_idx: int):
-        super().__init__(config)
+    def __init__(self, config: MistralConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
         self.past_key = None
         self.past_value = None
-        self.layer_idx = layer_idx
 
     def allocate_kv_cache(self, batch_size, seq_len):
         key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
+        value_shape = key_shape
         if self.past_key is None or self.past_key.shape != key_shape:
-            # if not hasattr(self, 'past_key') or self.past_key.shape != key_shape:
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
             self.past_key = torch.empty(key_shape, dtype=dtype, device=device)
             self.past_value = torch.empty(value_shape, dtype=dtype, device=device)
+
+    def update_sincos_cache(self, seq_len):
+        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
+        # This helps in avoiding creation of these caches during actual model forward pass and
+        # reduce memory consumption and improve performance.
+        if seq_len > self.max_position_embeddings:
+            self.max_position_embeddings = seq_len
+            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -299,13 +296,7 @@ class GaudiMistralAttention(MistralAttention):
 class GaudiMistralDecoderLayer(MistralDecoderLayer):
     def __init__(self, config: MistralConfig, layer_idx: int):
         super().__init__(config, layer_idx)
-        self.hidden_size = config.hidden_size
-
         self.self_attn = GaudiMistralAttention(config, layer_idx)
-
-        self.mlp = MistralMLP(config)
-        self.input_layernorm = MistralRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = MistralRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def allocate_kv_cache(self, batch_size, seq_len):
         self.self_attn.allocate_kv_cache(batch_size, seq_len)
@@ -335,10 +326,6 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
         The only differences are:
         - add new args token_idx
         """
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
 
         residual = hidden_states
 
@@ -433,16 +420,12 @@ class GaudiMistralModel(MistralModel):
         past_key_values_length = 0
         use_legacy_cache = True
         use_new_cache = False
-        if past_key_values is not None and use_cache:
-            if reuse_cache:
-                # past_seen_tokens = past_key_values[0][0][2]
-                pass
-            else:
-                if use_new_cache:
-                    use_legacy_cache = not isinstance(past_key_values, Cache)
-                    if use_legacy_cache:
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_key_values_length = past_key_values.get_usable_length(seq_length)
+        if past_key_values is not None and use_cache and not reuse_cache:
+            if use_new_cache:
+                use_legacy_cache = not isinstance(past_key_values, Cache)
+                if use_legacy_cache:
+                    past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                past_key_values_length = past_key_values.get_usable_length(seq_length)
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
