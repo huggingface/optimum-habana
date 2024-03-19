@@ -20,7 +20,6 @@
 """PyTorch Mistral model."""
 
 import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
@@ -35,9 +34,7 @@ from transformers.models.mistral.modeling_mistral import (
     MistralAttention,
     MistralDecoderLayer,
     MistralForCausalLM,
-    MistralMLP,
     MistralModel,
-    MistralRMSNorm,
     apply_rotary_pos_emb,
 )
 from transformers.utils import logging
@@ -69,8 +66,6 @@ def update(prev, cur, dim, idx):
         return torch.cat((prev, cur), dim=dim)
 
 
-
-
 def gaudi_mistral_rmsnorm_forward(self, hidden_states):
     """
     Copied from MistralRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py
@@ -92,6 +87,7 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
+
 
 def gaudi_mistral_repeat_kv(
     query_states: torch.Tensor,
@@ -125,6 +121,7 @@ def gaudi_mistral_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
+
 
 class GaudiMistralAttention(MistralAttention):
     def __init__(self, config: MistralConfig, layer_idx: Optional[int] = None):
