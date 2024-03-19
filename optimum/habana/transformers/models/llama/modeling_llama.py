@@ -4,10 +4,8 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from torch import nn
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.modeling_utils import PreTrainedModel
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
@@ -609,12 +607,12 @@ class GaudiLlamaModel(LlamaModel):
         1. set fill_value to 1 instead of True
         2. add device=self.device
         """
-        PreTrainedModel.__init__(self, config)
+        super(LlamaModel, self).__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList(
+        self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
+        self.layers = torch.nn.ModuleList(
             [GaudiLlamaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
