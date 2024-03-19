@@ -26,6 +26,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mistral-7B-v0.1", 125.26115369093216),
             ("mistralai/Mixtral-8x7B-v0.1", 23.78652574031883),
         ],
+        "fp8": [
+            ("tiiuae/falcon-180B", 47.67900945905787),
+        ],
         "deepspeed": [
             ("bigscience/bloomz", 36.34664210641816),
             ("meta-llama/Llama-2-70b-hf", 61.973950428647164),
@@ -69,6 +72,7 @@ def _test_text_generation(
     deepspeed: bool = False,
     world_size: int = 8,
     torch_compile: bool = False,
+    fp8: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -103,6 +107,13 @@ def _test_text_generation(
     if not deepspeed:
         command.append("--bf16")
 
+    if fp8:
+        command += [
+            "--fp8",
+            "--reuse_cache",
+            "--trim_logits",
+        ]
+
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
         print(f"\n\nCommand to test: {' '.join(command)}\n")
@@ -111,6 +122,15 @@ def _test_text_generation(
 
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
         command = [x for y in command for x in re.split(pattern, y) if x]
+
+        if fp8:
+            os.environ["QUANT_CONFIG"] = os.path.join(
+                path_to_example_dir, "text-generation/quantization_config/maxabs_measure_include_outputs.json"
+            )
+            subprocess.run(command)
+            os.environ["QUANT_CONFIG"] = os.path.join(
+                path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
+            )
 
         proc = subprocess.run(command)
 
@@ -133,6 +153,13 @@ def _test_text_generation(
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["bf16"])
 def test_text_generation_bf16(model_name: str, baseline: float, token: str):
     _test_text_generation(model_name, baseline, token)
+
+
+@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["fp8"])
+def test_text_generation_fp8(model_name: str, baseline: float, token: str):
+    deepspeed = True if "falcon-180B" in model_name else False
+    world_size = 8 if "falcon-180B" in model_name else None
+    _test_text_generation(model_name, baseline, token, deepspeed=deepspeed, world_size=world_size, fp8=True)
 
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["deepspeed"])
