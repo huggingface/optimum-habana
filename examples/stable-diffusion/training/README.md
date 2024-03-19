@@ -70,7 +70,7 @@ python textual_inversion.py \
 
 You can run this fine-tuning script in a distributed fashion as follows:
 ```bash
-python ../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
+python ../../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
   --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
   --train_data_dir ./cat \
   --learnable_property object \
@@ -162,7 +162,7 @@ python train_text_to_image_sdxl.py \
 ### Multi-card Training
 ```bash
 PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024  \
-python ../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py \
+python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
   --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
   --dataset_name lambdalabs/pokemon-blip-captions \
