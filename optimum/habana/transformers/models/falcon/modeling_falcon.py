@@ -228,6 +228,15 @@ class KVCache(torch.nn.Module):
 
 
 class GaudiFalconAttention(FalconAttention):
+    """
+    Inherits from FalconAttention: https://github.com/huggingface/transformers/blob/838b87abe231fd70be5132088d0dee72a7bb8d62/src/transformers/models/falcon/modeling_falcon.py#L267
+    The only differences are:
+    - add new args token_idx and position_ids
+    - replace F.scaled_dot_product_attention with Habana torch's version for BF16
+    - use ScaledDotProductAttention for FP8 quantization
+    - add new arg reuse_cache
+    """
+
     def __init__(self, config: FalconConfig):
         super().__init__(config)
 
@@ -274,13 +283,6 @@ class GaudiFalconAttention(FalconAttention):
         cache_idx: int = None,
         **kwargs,
     ):
-        """
-        Copied from FalconAttention: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
-        The only differences are:
-        - add new args token_idx and position_ids
-        - replace F.scaled_dot_product_attention with Habana torch's version
-        - add new arg reuse_cache
-        """
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
@@ -483,6 +485,10 @@ class GaudiFalconAttention(FalconAttention):
 
 
 class GaudiFalconMLP(FalconMLP):
+    """
+    Inherits from FalconMLP: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
+    """
+
     def pre_mlp_forward(self, x):
         x = self.act(self.dense_h_to_4h(x))
         x = self.dense_4h_to_h(x)
@@ -499,6 +505,14 @@ class GaudiFalconMLP(FalconMLP):
 
 
 class GaudiFalconDecoderLayer(FalconDecoderLayer):
+    """
+    Inherits from FalconDecoderLayer: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
+    The only differences are:
+    - add new args token_idx and position_ids
+    - add token_idx and position_ids into attention inputs
+    - add new args reuse_cache
+    """
+
     def __init__(self, config: FalconConfig):
         super().__init__(config)
         self.self_attention = GaudiFalconAttention(config)
@@ -524,33 +538,30 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         cache_idx: int = None,
         **kwargs,
     ):
-        """
-        Copied from FalconDecoderLayer: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
-        The only differences are:
-        - add new args token_idx and position_ids
-        - add token_idx and position_ids into attention inputs
-        - add new args reuse_cache
-        """
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
         residual = hidden_states
-        hidden_states, present, attn_scores, attention_layernorm_out, mlp_layernorm_out = (
-            self.pre_attn(  # layernorm + attention before AllReduce
-                hidden_states,
-                layer_past=layer_past,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                alibi=alibi,
-                head_mask=head_mask,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                token_idx=token_idx,
-                reuse_cache=reuse_cache,
-                cache_idx=cache_idx,
-                **kwargs,
-            )
+        (
+            hidden_states,
+            present,
+            attn_scores,
+            attention_layernorm_out,
+            mlp_layernorm_out,
+        ) = self.pre_attn(  # layernorm + attention before AllReduce
+            hidden_states,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            alibi=alibi,
+            head_mask=head_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            token_idx=token_idx,
+            reuse_cache=reuse_cache,
+            cache_idx=cache_idx,
+            **kwargs,
         )
 
         self.self_attention.attention_all_reduce(hidden_states)
@@ -646,9 +657,6 @@ class GaudiFalconModel(FalconModel):
     The only differences are:
     - add new args token_idx and position_ids
     - add token_idx and position_ids into decoder inputs
-    - set past_key_values_length=0 when token_idx is used (with static input shape)
-    - add new arg tgt_len to _expand_mask because past_key_values_length is no longer valid with token_idx
-    - use old version of _make_causal_mask to workaround toch.triu that is not supported in Synapse
     - add new arg reuse_cache
     """
 
