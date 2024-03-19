@@ -387,7 +387,9 @@ def initialize_model(args, logger):
         import habana_frameworks.torch.core as htcore
 
         print("Initializing inference mode")
-        htcore.hpu_initialize(model)
+        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
+        if const_marking == "True":
+            htcore.hpu_initialize(model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
