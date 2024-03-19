@@ -718,6 +718,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
+
+        # split the model in half with a mark step. this might increase max batchsize supported
+        model_kwargs["split_model_markstep"] = generation_config.split_model_markstep
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
 
         if not self.config.is_encoder_decoder:

@@ -347,6 +347,7 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
     generation_config.reuse_cache = args.reuse_cache
     generation_config.reduce_recompile = args.reduce_recompile
+    generation_config.split_model_markstep = args.split_model_markstep
     if generation_config.reduce_recompile:
         assert generation_config.bucket_size > 0
     generation_config.kv_cache_fp8 = args.kv_cache_fp8

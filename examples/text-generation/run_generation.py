@@ -239,6 +239,11 @@ def setup_parser(parser):
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
+    parser.add_argument(
+        "--split_model_markstep",
+        action="store_true",
+        help="Split model in the middle with a mark_step. This could help support higher batchsizes",
+    )
 
     args = parser.parse_args()
 

@@ -1,5 +1,6 @@
 from typing import Optional, Tuple, Union
 
+import habana_frameworks.torch.core as htcore
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
@@ -164,6 +165,7 @@ def gaudi_gpt_neox_model_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
+    split_model_markstep: bool = False
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from GPTNeoxModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/modeling_gpt_neox.py
@@ -242,6 +244,8 @@ def gaudi_gpt_neox_model_forward(
     all_attentions = () if output_attentions else None
     all_hidden_states = () if output_hidden_states else None
     for i, (layer, layer_past) in enumerate(zip(self.layers, past_key_values)):
+        if split_model_markstep and i == len(self.layers)//2:
+            htcore.mark_step()
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -314,6 +318,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        split_model_markstep: bool = False
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -329,6 +334,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             token_idx=token_idx,
+            split_model_markstep=split_model_markstep
         )
 
         hidden_states = outputs[0]
@@ -403,6 +409,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
                 "past_key_values": past_key_values,
                 "position_ids": position_ids,
                 "token_idx": token_idx,
+                "split_model_markstep": kwargs.get('split_model_markstep', False)
             }
         )
 
