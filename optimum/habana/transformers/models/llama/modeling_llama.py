@@ -624,7 +624,6 @@ class GaudiLlamaModel(LlamaModel):
             (config.max_position_embeddings, config.max_position_embeddings),
             fill_value=1,
             dtype=torch.bool,
-            # device=self.device,
         )
         self.register_buffer("causal_mask", torch.triu(causal_mask, diagonal=1), persistent=False)
         # Initialize weights and apply final processing
