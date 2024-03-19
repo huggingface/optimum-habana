@@ -388,6 +388,7 @@ class GaudiFalconModel(FalconModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        split_model_markstep: bool = False
     ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -502,6 +503,8 @@ class GaudiFalconModel(FalconModel):
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
+            if split_model_markstep and (i == len(self.h)//2) and not self.training:
+                htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -612,6 +615,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             "use_cache": kwargs.get("use_cache"),
             "attention_mask": attention_mask,
             "token_idx": token_idx,
+            "split_model_markstep": kwargs.get('split_model_markstep', False)
         }
 
     def forward(
@@ -628,6 +632,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        split_model_markstep: bool = False
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -649,6 +654,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             token_idx=token_idx,
+            split_model_markstep=split_model_markstep
         )
         hidden_states = transformer_outputs[0]
 

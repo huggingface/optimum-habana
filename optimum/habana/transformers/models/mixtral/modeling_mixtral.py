@@ -401,6 +401,7 @@ def gaudi_mixtral_model_forward(
     output_router_logits: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
+    split_model_markstep: bool = False
 ) -> Union[Tuple, MoeModelOutputWithPast]:
     """
     Copied from MixtralModel.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py#L1069
@@ -494,7 +495,9 @@ def gaudi_mixtral_model_forward(
     all_router_logits = () if output_router_logits else None
     next_decoder_cache = None
 
-    for decoder_layer in self.layers:
+    for layer_idx, decoder_layer in enumerate(self.layers):
+        if split_model_markstep and (layer_idx == len(self.layers)//2) and not self.training:
+            htcore.mark_step()
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
@@ -581,6 +584,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        split_model_markstep: bool = False
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
@@ -605,6 +609,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             output_router_logits=output_router_logits,
             return_dict=return_dict,
             token_idx=token_idx,
+            split_model_markstep=split_model_markstep
         )
 
         hidden_states = outputs[0]
@@ -713,6 +718,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                 "use_cache": kwargs.get("use_cache"),
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
+                "split_model_markstep": kwargs.get('split_model_markstep', False)
             }
         )
         return model_inputs

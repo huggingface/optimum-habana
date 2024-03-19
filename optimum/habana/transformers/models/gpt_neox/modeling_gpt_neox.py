@@ -244,7 +244,7 @@ def gaudi_gpt_neox_model_forward(
     all_attentions = () if output_attentions else None
     all_hidden_states = () if output_hidden_states else None
     for i, (layer, layer_past) in enumerate(zip(self.layers, past_key_values)):
-        if split_model_markstep and i == len(self.layers)//2:
+        if split_model_markstep and i == len(self.layers)//2 and not self.training:
             htcore.mark_step()
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
