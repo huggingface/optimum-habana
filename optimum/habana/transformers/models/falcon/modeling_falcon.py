@@ -65,9 +65,10 @@ def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: 
     out = F.dropout(x, p=prob, training=training)
     if training:
         out = residual + out
+        return out
     else:
-        out.add_(residual)
-    return out
+        residual.add_(out)
+        return residual
 
 
 def apply_customized_rope(q, k, cos, sin, position_ids):

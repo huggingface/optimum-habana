@@ -30,9 +30,6 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "fp8": [
             ("tiiuae/falcon-180B", 47.67900945905787),
         ],
-        "fp8": [
-            ("tiiuae/falcon-180B", 47.67900945905787),
-        ],
         "deepspeed": [
             ("bigscience/bloomz", 36.34664210641816),
             ("meta-llama/Llama-2-70b-hf", 61.973950428647164),
