@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+###############################################################################
+# Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
+###############################################################################
 
 import os
 from collections import defaultdict
@@ -69,8 +72,6 @@ class GaudiDDPOTrainer(DDPOTrainer):
         **image_samples_hook** (Optional[Callable[[Any, Any, Any], Any]]) -- Hook to be called to log images
     """
 
-    _tag_names = ["trl", "ddpo"]
-
     def __init__(
         self,
         config: DDPOConfig,
@@ -79,7 +80,7 @@ class GaudiDDPOTrainer(DDPOTrainer):
         sd_pipeline: DDPOStableDiffusionPipeline,
         image_samples_hook: Optional[Callable[[Any, Any, Any], Any]] = None,
         gaudi_config: GaudiConfig = None,
-        use_habana: bool = True,  # TODO: Delete once pipeline supported on HPU
+        use_habana: bool = True,
         use_hpu_graphs: bool = False,
     ):
         """
@@ -136,7 +137,7 @@ class GaudiDDPOTrainer(DDPOTrainer):
         kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
         self.accelerator = GaudiAccelerator(
             log_with=self.config.log_with,
-            mixed_precision=self.config.mixed_precision,
+            mixed_precision="bf16" if config.mixed_precision == "bf16" else "no",
             project_config=accelerator_project_config,
             cpu=(not use_habana),
             kwargs_handlers=[kwargs],

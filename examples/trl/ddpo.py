@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+###############################################################################
+# Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
+###############################################################################
 
 # Adapted from: https://github.com/huggingface/trl/blob/v0.7.8/examples/scripts/ddpo.py
 # The only differences are:
@@ -214,7 +217,6 @@ if __name__ == "__main__":
 
     # 1. initialize Gaudi config:
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name) if args.use_habana else None
-    gaudi_config.use_torch_autocast = gaudi_config.use_torch_autocast if args.bf16 else False
 
     pipeline = GaudiDefaultDDPOStableDiffusionPipeline(
         args.pretrained_model,

@@ -11,10 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+###############################################################################
+# Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
+###############################################################################
+
 import gc
 import unittest
 
 import torch
+from transformers.testing_utils import slow
 from trl import DDPOConfig
 
 from optimum.habana import GaudiConfig
@@ -59,7 +64,7 @@ class GaudiDDPOTrainerTester(unittest.TestCase):
             pretrained_model_revision=pretrained_revision,
             use_lora=True,
             gaudi_config=gaudi_config,
-            use_habana=False,
+            use_habana=True,
             use_hpu_graphs=False,
         )
 
@@ -85,12 +90,14 @@ class GaudiDDPOTrainerTester(unittest.TestCase):
         loss = self.trainer.loss(advantage, clip_range, ratio)
         assert loss.item() == 1.0
 
+    @slow
     def test_generate_samples(self):
         samples, output_pairs = self.trainer._generate_samples(1, 2)
         assert len(samples) == 1
         assert len(output_pairs) == 1
         assert len(output_pairs[0][0]) == 2
 
+    @slow
     def test_calculate_loss(self):
         samples, _ = self.trainer._generate_samples(1, 2)
         sample = samples[0]
@@ -132,10 +139,24 @@ class GaudiDDPOTrainerWithLoRATester(GaudiDDPOTrainerTester):
         pretrained_model = "hf-internal-testing/tiny-stable-diffusion-torch"
         pretrained_revision = "main"
 
+        gaudi_config = GaudiConfig()
         pipeline = GaudiDefaultDDPOStableDiffusionPipeline(
-            pretrained_model, pretrained_model_revision=pretrained_revision, use_lora=True
+            pretrained_model,
+            pretrained_model_revision=pretrained_revision,
+            use_lora=True,
+            gaudi_config=gaudi_config,
+            use_habana=True,
+            use_hpu_graphs=False,
         )
 
-        self.trainer = GaudiDDPOTrainer(self.ddpo_config, scorer_function, prompt_function, pipeline)
+        self.trainer = GaudiDDPOTrainer(
+            self.ddpo_config,
+            scorer_function,
+            prompt_function,
+            pipeline,
+            gaudi_config=gaudi_config,
+            use_habana=True,
+            use_hpu_graphs=False,
+        )
 
         return super().setUp()

@@ -11,13 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+###############################################################################
+# Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
+###############################################################################
 
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from diffusers.image_processor import PipelineImageInput
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
 from trl.models import DDPOPipelineOutput, DDPOSchedulerOutput, DefaultDDPOStableDiffusionPipeline
 from trl.models.modeling_sd_base import (
@@ -188,7 +190,6 @@ def pipeline_step(
     latents: Optional[torch.FloatTensor] = None,
     prompt_embeds: Optional[torch.FloatTensor] = None,
     negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-    ip_adapter_image: Optional[PipelineImageInput] = None,
     output_type: Optional[str] = "pil",
     return_dict: bool = True,
     callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -237,7 +238,6 @@ def pipeline_step(
             Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
             weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
             argument.
-        ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
         output_type (`str`, *optional*, defaults to `"pil"`):
             The output format of the generate image. Choose between
             [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -306,10 +306,6 @@ def pipeline_step(
         negative_prompt_embeds=negative_prompt_embeds,
         lora_scale=text_encoder_lora_scale,
     )
-    if ip_adapter_image is not None:
-        image_embeds = self.prepare_ip_adapter_image_embeds(
-            ip_adapter_image, device, batch_size * num_images_per_prompt
-        )
 
     # 4. Prepare timesteps
     self.scheduler.set_timesteps(num_inference_steps, device="cpu")
@@ -333,14 +329,6 @@ def pipeline_step(
     num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
     all_latents = [latents]
     all_log_probs = []
-    # Optionally get Guidance Scale Embedding
-    added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
-    timestep_cond = None
-    if self.unet.config.time_cond_proj_dim is not None:
-        guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
-        timestep_cond = self.get_guidance_scale_embedding(
-            guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
-        ).to(device=device, dtype=latents.dtype)
 
     with self.progress_bar(total=num_inference_steps) as progress_bar:
         for i in range(num_inference_steps):
@@ -353,7 +341,12 @@ def pipeline_step(
 
             # predict the noise residual
             noise_pred = self.unet_hpu(
-                latent_model_input, t, prompt_embeds, timestep_cond, cross_attention_kwargs, added_cond_kwargs
+                latent_model_input,
+                t,
+                encoder_hidden_states=prompt_embeds,
+                cross_attention_kwargs=cross_attention_kwargs,
+                timestep_cond=None,
+                added_cond_kwargs=None,
             )
 
             # perform guidance
@@ -479,10 +472,7 @@ class GaudiDefaultDDPOStableDiffusionPipeline(DefaultDDPOStableDiffusionPipeline
         self.sd_pipeline.unet.requires_grad_(not self.use_lora)
 
     def __call__(self, *args, **kwargs) -> DDPOPipelineOutput:
-        # Adapted from: https://github.com/huggingface/trl/blob/v0.7.8/trl/models/modeling_sd_base.py#L563
-        autocast = self.gaudi_config.use_torch_autocast if self.gaudi_config else True
-        with torch.autocast(device_type=self.sd_pipeline._device.type, dtype=torch.bfloat16, enabled=autocast):
-            return pipeline_step(self.sd_pipeline, *args, **kwargs)
+        return pipeline_step(self.sd_pipeline, *args, **kwargs)
 
     @property
     def unet_hpu(self):
