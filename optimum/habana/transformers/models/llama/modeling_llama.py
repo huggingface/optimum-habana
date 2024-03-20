@@ -652,7 +652,6 @@ class GaudiLlamaModel(LlamaModel):
 
         for layer_idx, decoder_layer in enumerate(self.layers):
             if (layer_idx == len(self.layers)//2) and not self.training:
-                assert False, "JUST CHECKIN!!"
                 htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
