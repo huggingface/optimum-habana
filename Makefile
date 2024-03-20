@@ -69,6 +69,12 @@ slow_tests_text_generation_example: test_installs
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
+slow_tests_trl: test_installs
+	python -m pip install trl==0.7.8
+	python -m pip install peft==0.7.0
+	python -m pytest tests/test_trl.py -v -s -k "test_generate_samples"
+	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
+
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs
 	python -m pytest tests/test_examples_match_transformers.py
