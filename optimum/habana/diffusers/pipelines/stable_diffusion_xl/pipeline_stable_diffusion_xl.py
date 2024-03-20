@@ -37,7 +37,7 @@ from transformers import (
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
+from ....utils import HabanaProfile, speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
@@ -330,6 +330,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             "negative_pooled_prompt_embeds",
             "negative_add_time_ids",
         ],
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **kwargs,
     ):
         r"""
@@ -462,6 +464,10 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            profiling_warmup_steps (`int`, *optional*):
+                Number of steps to ignore for profling.
+            profiling_steps (`int`, *optional*):
+                Number of steps to be captured when enabling profiling.
 
         Examples:
 
@@ -646,6 +652,13 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
             self._num_timesteps = len(timesteps)
 
+            hb_profiler = HabanaProfile(
+                warmup=profiling_warmup_steps,
+                active=profiling_steps,
+                record_shapes=False,
+            )
+            hb_profiler.start()
+
             # 8. Denoising
             num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
@@ -764,6 +777,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, timestep, latents)
 
+                    hb_profiler.step()
+
                 if not output_type == "latent":
                     # Post-processing
                     # To resolve the dtype mismatch issue
@@ -779,6 +794,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
+
+            hb_profiler.stop()
 
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
