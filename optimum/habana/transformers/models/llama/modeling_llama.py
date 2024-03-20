@@ -651,7 +651,7 @@ class GaudiLlamaModel(LlamaModel):
         next_decoder_cache = () if not use_new_cache else None
 
         for layer_idx, decoder_layer in enumerate(self.layers):
-            if (layer_idx == len(self.layers)//2) and not self.training:
+            if (layer_idx % 2 == 1):
                 htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
