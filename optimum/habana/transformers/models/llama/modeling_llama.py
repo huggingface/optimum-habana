@@ -18,6 +18,7 @@ from transformers.models.llama.modeling_llama import (
     apply_rotary_pos_emb,
     logger,
 )
+import habana_frameworks.torch.core as htcore
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -650,6 +651,9 @@ class GaudiLlamaModel(LlamaModel):
         next_decoder_cache = () if not use_new_cache else None
 
         for layer_idx, decoder_layer in enumerate(self.layers):
+            if (layer_idx == len(self.layers)//2) and not self.training:
+                assert False, "JUST CHECKIN!!"
+                htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
