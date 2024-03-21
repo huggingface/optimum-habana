@@ -118,6 +118,16 @@ from .models import (
     gaudi_phi_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
+    gaudi_SeamlessM4TAttention_forward,
+    gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths,
+    gaudi_SeamlessM4TDecoder_forward,
+    gaudi_SeamlessM4TDecoderLayer_forward,
+    gaudi_SeamlessM4TForTextToSpeech_forward,
+    gaudi_SeamlessM4TForTextToSpeech_generate,
+    gaudi_SeamlessM4TForTextToSpeech_prepare_inputs_for_generation,
+    gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward,
+    gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_SeamlessM4TTextToUnitModel_forward,
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
@@ -358,4 +368,37 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5._generate_speech = gaudi_generate_speech
     transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
         gaudi_SpeechT5SpeechDecoderPrenet_forward
+    )
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TAttention.forward = (
+        gaudi_SeamlessM4TAttention_forward
+    )
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TDecoderLayer.forward = (
+        gaudi_SeamlessM4TDecoderLayer_forward
+    )
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TDecoder.forward = (
+        gaudi_SeamlessM4TDecoder_forward
+    )
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TTextToUnitModel.forward = (
+        gaudi_SeamlessM4TTextToUnitModel_forward
+    )
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TTextToUnitForConditionalGeneration.forward = (
+        gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward
+    )
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TTextToUnitForConditionalGeneration.prepare_inputs_for_generation = gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TCodeHifiGan._get_output_hifigan_lengths = (
+        gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths
+    )
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TForTextToSpeech.forward = (
+        gaudi_SeamlessM4TForTextToSpeech_forward
+    )
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TForTextToSpeech.generate = (
+        gaudi_SeamlessM4TForTextToSpeech_generate
+    )
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TForTextToSpeech.prepare_inputs_for_generation = (
+        gaudi_SeamlessM4TForTextToSpeech_prepare_inputs_for_generation
     )

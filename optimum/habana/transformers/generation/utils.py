@@ -77,6 +77,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "phi",
     "mixtral",
     "blip_text_model",
+    "seamless_m4t",
 ]
 
 
@@ -182,6 +183,7 @@ class GaudiGenerationMixin(GenerationMixin):
         bos_token_id: int = None,
         device: torch.device = None,
         max_new_tokens: int = None,
+        pad_token_id: int = None,
     ) -> Tuple[torch.LongTensor, Dict[str, torch.Tensor]]:
         """Prepares `decoder_input_ids` for generation with encoder-decoder models"""
         # 1. Check whether the user has defined `decoder_input_ids` manually. To facilitate in terms of input naming,
@@ -216,7 +218,10 @@ class GaudiGenerationMixin(GenerationMixin):
             # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
             max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
             decoder_input_ids_start = (
-                torch.ones((batch_size, max_length), dtype=torch.long, device=device) * decoder_start_token_id
+                torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+            )
+            decoder_input_ids_start = torch.nn.functional.pad(
+                decoder_input_ids_start, (0, max_length - 1), value=pad_token_id
             )
 
         # no user input -> use decoder_start_token_id as decoder_input_ids
@@ -236,7 +241,18 @@ class GaudiGenerationMixin(GenerationMixin):
             isinstance(decoder_start_token_id, torch.Tensor)
             and (decoder_input_ids[:, 0] != decoder_start_token_id[:, 0]).all().item()
         ):
-            decoder_input_ids = torch.cat([decoder_input_ids_start, decoder_input_ids], dim=-1)
+            if token_idx is None:
+                decoder_input_ids = torch.cat([decoder_input_ids_start, decoder_input_ids], dim=-1)
+            else:
+                max_length = max_new_tokens + 2 if max_new_tokens is not None else self.generation_config.max_length
+                if max_length != decoder_input_ids_start.shape[-1]:
+                    decoder_input_ids_start = torch.nn.functional.pad(
+                        decoder_input_ids_start,
+                        (0, max_length - decoder_input_ids_start.shape[-1]),
+                        value=pad_token_id,
+                    )
+                decoder_input_ids = decoder_input_ids_start.index_copy(1, token_idx, decoder_input_ids)
+                token_idx.add_(1)
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
                 decoder_attention_mask = torch.cat(
@@ -244,6 +260,27 @@ class GaudiGenerationMixin(GenerationMixin):
                     dim=-1,
                 )
                 model_kwargs["decoder_attention_mask"] = decoder_attention_mask
+        else:
+            if token_idx is not None:
+                decoder_input_ids_len = decoder_input_ids.shape[-1]
+                max_length = (
+                    max_new_tokens + decoder_input_ids_len
+                    if max_new_tokens is not None
+                    else self.generation_config.max_length
+                )
+                decoder_input_ids = torch.nn.functional.pad(
+                    decoder_input_ids, (0, max_length - decoder_input_ids_len), value=pad_token_id
+                )
+                token_idx.copy_(decoder_input_ids_len)
+                if "decoder_attention_mask" in model_kwargs:
+                    decoder_attention_mask = model_kwargs["decoder_attention_mask"]
+                    pad_len = max_length - decoder_attention_mask.shape[-1]
+                    decoder_attention_mask = torch.cat(
+                        (torch.ones_like(decoder_attention_mask)[:, :pad_len], decoder_attention_mask),
+                        dim=-1,
+                    )
+                    model_kwargs["decoder_attention_mask"] = decoder_attention_mask
+
         return decoder_input_ids, model_kwargs
 
     def _update_model_kwargs_for_generation(
@@ -656,6 +693,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 bos_token_id=generation_config.bos_token_id,
                 device=inputs_tensor.device,
                 max_new_tokens=generation_config.max_new_tokens,
+                pad_token_id=generation_config.pad_token_id,
             )
         else:
             input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop("input_ids")

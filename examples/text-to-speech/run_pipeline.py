@@ -83,22 +83,25 @@ def main():
         device="hpu",
     )
 
-    embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
-    speaker_embedding = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0).to("hpu")
+    forward_params = None
+    if generator.model.config.model_type == "speecht5":
+        embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+        speaker_embedding = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0).to("hpu")
+        forward_params = {"speaker_embeddings": speaker_embedding}
+    if generator.model.config.model_type == "seamless_m4t":
+        forward_params = {"tgt_lang": "eng"}
 
     with torch.autocast("hpu", torch.bfloat16, enabled=args.bf16), torch.no_grad(), torch.inference_mode():
         # warm up
         for i in range(args.warmup):
-            generator(text, batch_size=args.batch_size, forward_params={"speaker_embeddings": speaker_embedding})
+            generator(text, batch_size=args.batch_size, forward_params=forward_params)
 
         start = time.time()
         for i in range(args.n_iterations):
-            speech = generator(
-                text, batch_size=args.batch_size, forward_params={"speaker_embeddings": speaker_embedding}
-            )
+            speech = generator(text, batch_size=args.batch_size, forward_params=forward_params)
         end = time.time()
         logger.info(f"speech = {speech} time = {(end-start) * 1000 / args.n_iterations }ms")
-        sf.write("speech.wav", speech[0]["audio"], samplerate=speech[0]["sampling_rate"])
+        sf.write("speech.wav", speech[0]["audio"].squeeze(), samplerate=speech[0]["sampling_rate"])
 
 
 if __name__ == "__main__":
