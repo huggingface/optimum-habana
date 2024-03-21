@@ -111,6 +111,16 @@ def gaudi_llama_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
+#  FusedScaledDotProductAttention
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
+
+    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
+        return  self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
+
+
 class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -154,6 +164,7 @@ class GaudiLlamaAttention(LlamaAttention):
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
+        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
@@ -274,15 +285,22 @@ class GaudiLlamaAttention(LlamaAttention):
             if q_len == 1:
                 # next token
                 with ht.sdp_kernel(enable_recompute=False):
-                    attn_output = FusedSDPA.apply(
+                    attn_output = self.fused_scaled_dot_product_attention(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
             else:
                 # first token
-                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
+                if flash_attention_causal_mask:
+                    # causal masking on first token requires inputs to be of the same lenght
+                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states, key_states, value_states, None, 0.0, True, None
+                        )
+                else:
+                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states, key_states, value_states, attention_mask, 0.0, False, None
+                        )
 
         else:
             query_states, key_states, value_states, attention_mask = gaudi_llama_repeat_kv(

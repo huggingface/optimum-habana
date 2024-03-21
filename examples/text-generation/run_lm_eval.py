@@ -80,6 +80,8 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
                 {
                     "reuse_cache": self.options.reuse_cache,
                     "attn_softmax_bf16": self.options.attn_softmax_bf16,
+                    "use_flash_attention": self.options.use_flash_attention,
+                    "flash_attention_recompute": self.options.flash_attention_recompute,
                 }
             )
         if args.warmup:
