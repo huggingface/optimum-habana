@@ -356,10 +356,8 @@ def gaudi_wav2vec2_forward(
         attentions=encoder_outputs.attentions,
     )
 
-def gaudi_wav2vec2_tdnnlayer_forward(
-    self,
-    hidden_states: torch.Tensor
-    ) -> torch.Tensor:
+
+def gaudi_wav2vec2_tdnnlayer_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     """
     Copied from Transformers: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L2290
     v4.38.2 implementation caused accuracy issue to run pytest Wav2Vec2RobustModelTest.
