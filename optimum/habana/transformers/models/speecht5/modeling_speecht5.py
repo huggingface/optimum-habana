@@ -31,8 +31,7 @@ def gaudi_SpeechT5SpeechDecoderPrenet_forward(
     inputs_embeds = input_values
     for layer in self.layers:
         inputs_embeds = nn.functional.relu(layer(inputs_embeds))
-        if self.training:
-            inputs_embeds = self._consistent_dropout(inputs_embeds, self.config.speech_decoder_prenet_dropout)
+        inputs_embeds = self._consistent_dropout(inputs_embeds, self.config.speech_decoder_prenet_dropout)
 
     inputs_embeds = self.final_layer(inputs_embeds)
     inputs_embeds = self.encode_positions(inputs_embeds)
