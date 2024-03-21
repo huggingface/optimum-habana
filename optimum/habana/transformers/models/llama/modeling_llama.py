@@ -696,7 +696,7 @@ class GaudiLlamaModel(LlamaModel):
             htcore.mark_step()
 
         for layer_idx, decoder_layer in enumerate(self.layers):
-            if lazy_mode and use_flash_attention and \
+            if lazy_mode and not self.training and \
                 (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1):
                 htcore.mark_step()
 
