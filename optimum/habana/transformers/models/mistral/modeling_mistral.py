@@ -130,13 +130,12 @@ class GaudiMistralAttention(MistralAttention):
         self.past_value = None
 
     def allocate_kv_cache(self, batch_size, seq_len):
-        key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
-        value_shape = key_shape
-        if self.past_key is None or self.past_key.shape != key_shape:
+        kv_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
+        if self.past_key is None or self.past_key.shape != kv_shape:
             device = self.k_proj.weight.device
             dtype = self.k_proj.weight.dtype
-            self.past_key = torch.empty(key_shape, dtype=dtype, device=device)
-            self.past_value = torch.empty(value_shape, dtype=dtype, device=device)
+            self.past_key = torch.empty(kv_shape, dtype=dtype, device=device)
+            self.past_value = torch.empty(kv_shape, dtype=dtype, device=device)
 
     def update_sincos_cache(self, seq_len):
         # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
@@ -152,7 +151,6 @@ class GaudiMistralAttention(MistralAttention):
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         if self.past_key is None:
-            # if not hasattr(self, 'past_key'):
             return (None, None)
 
         head_dim = self.past_key.size(-1)
@@ -591,11 +589,11 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
             shift_logits = shift_logits.view(-1, self.config.vocab_size)
             shift_labels = shift_labels.view(-1)
             # Ensure tensors are on the same device
             shift_labels = shift_labels.to(shift_logits.device)
+            loss_fct = CrossEntropyLoss()
             loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
