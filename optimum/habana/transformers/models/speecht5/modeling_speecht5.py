@@ -8,6 +8,7 @@ from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.models.speecht5.modeling_speecht5 import SpeechT5EncoderWithSpeechPrenet, SpeechT5PreTrainedModel
 from transformers.utils import logging
+from transformers import set_seed
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -15,34 +16,6 @@ from ...modeling_attn_mask_utils import (
 
 
 logger = logging.get_logger(__name__)
-
-
-def gaudi_SpeechT5SpeechDecoderPrenet_forward(
-    self,
-    input_values: torch.Tensor,
-    speaker_embeddings: Optional[torch.Tensor] = None,
-):
-    """
-    Copied from SpeechT5SpeechDecoderPrenet.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/speecht5/modeling_speecht5.py
-    The only differences are:
-    - disable dropout in inference, or else hpu graph could not be used
-    """
-
-    inputs_embeds = input_values
-    for layer in self.layers:
-        inputs_embeds = nn.functional.relu(layer(inputs_embeds))
-        inputs_embeds = self._consistent_dropout(inputs_embeds, self.config.speech_decoder_prenet_dropout)
-
-    inputs_embeds = self.final_layer(inputs_embeds)
-    inputs_embeds = self.encode_positions(inputs_embeds)
-
-    if speaker_embeddings is not None:
-        speaker_embeddings = nn.functional.normalize(speaker_embeddings)
-        speaker_embeddings = speaker_embeddings.unsqueeze(1).expand(-1, inputs_embeds.size(1), -1)
-        inputs_embeds = torch.cat([inputs_embeds, speaker_embeddings], dim=-1)
-        inputs_embeds = nn.functional.relu(self.speaker_embeds_layer(inputs_embeds))
-
-    return inputs_embeds
 
 
 def gaudi_SpeechT5Attention_forward(
@@ -410,7 +383,9 @@ def gaudi_generate_speech(
     - add hpu graph wrap
     - add static shape support in kv-cache in _generate_speech
     - disable speech_decoder_prenet_dropout to avoid variable output length
+    - add fixed seed for static consistent dropout
     """
+    set_seed(555)
     if speaker_embeddings is None:
         raise ValueError(
             """`speaker_embeddings` must be specified. For example, you can use a speaker embeddings by following

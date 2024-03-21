@@ -21,7 +21,6 @@ import soundfile as sf
 import torch
 from datasets import load_dataset
 from transformers import pipeline
-from transformers import set_seed
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -90,12 +89,10 @@ def main():
     with torch.autocast("hpu", torch.bfloat16, enabled=args.bf16), torch.no_grad(), torch.inference_mode():
         # warm up
         for i in range(args.warmup):
-            set_seed(555)
             generator(text, batch_size=args.batch_size, forward_params={"speaker_embeddings": speaker_embedding})
 
         start = time.time()
         for i in range(args.n_iterations):
-            set_seed(555)
             speech = generator(
                 text, batch_size=args.batch_size, forward_params={"speaker_embeddings": speaker_embedding}
             )
