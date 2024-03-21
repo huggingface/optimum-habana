@@ -125,7 +125,6 @@ from .speecht5 import (
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
-    gaudi_SpeechT5SpeechDecoderPrenet_forward,
 )
 from .swin import gaudi_swin_get_attn_mask
 from .t5 import (

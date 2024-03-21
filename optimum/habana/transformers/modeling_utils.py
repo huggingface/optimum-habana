@@ -121,7 +121,6 @@ from .models import (
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
-    gaudi_SpeechT5SpeechDecoderPrenet_forward,
     gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -356,6 +355,3 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5.SpeechT5DecoderLayer.forward = gaudi_SpeechT5DecoderLayer_forward
     transformers.models.speecht5.modeling_speecht5.SpeechT5Attention.forward = gaudi_SpeechT5Attention_forward
     transformers.models.speecht5.modeling_speecht5._generate_speech = gaudi_generate_speech
-    transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
-        gaudi_SpeechT5SpeechDecoderPrenet_forward
-    )
