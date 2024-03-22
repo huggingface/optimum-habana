@@ -33,9 +33,11 @@ except ImportError:
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
+
+    has_fused_rms_norm = True
 except ImportError:
+    has_fused_rms_norm = False
     print("Not using HPU fused kernel for RMSNorm")
-    FusedRMSNorm = None
 
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
@@ -69,7 +71,7 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
     The only differences are:
         - override RMSNorm with Habana fused RMSNorm
     """
-    if hidden_states.device.type == "hpu" and FusedRMSNorm:
+    if hidden_states.device.type == "hpu" and has_fused_rms_norm:
         # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
         if hidden_states.dtype != self.weight.dtype:
             orig_dtype = hidden_states.dtype
