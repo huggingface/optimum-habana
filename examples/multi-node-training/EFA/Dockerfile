@@ -18,7 +18,7 @@ RUN sed -i 's/#Port 22/Port 3022/g' /etc/ssh/sshd_config && \
 
 # Installs Optimum Habana and Habana's fork of DeepSpeed
 RUN pip install optimum[habana] && \
-   pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
+   pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 
 CMD ssh-keygen -t rsa -b 4096 -N '' -f ~/.ssh/id_rsa && \
    chmod 600 ~/.ssh/id_rsa && \
