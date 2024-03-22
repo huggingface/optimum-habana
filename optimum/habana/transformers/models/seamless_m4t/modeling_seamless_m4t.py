@@ -735,14 +735,15 @@ def gaudi_SeamlessM4TForTextToSpeech_generate(
                 Please specify a `tgt_lang` in {','.join(lang_code_to_id.keys())}. Note that SeamlessM4T supports
                 more languages for text translation than for speech synthesis."""
                 )
-    from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+    if kwargs.get("hpu_graphs", True):
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
-    if not hasattr(self, "clear_cache"):
-        self = wrap_in_hpu_graph(self)
-    if not hasattr(self.t2u_model, "clear_cache"):
-        self.t2u_model = wrap_in_hpu_graph(self.t2u_model)
-    if not hasattr(self.vocoder, "clear_cache"):
-        self.vocoder = wrap_in_hpu_graph(self.vocoder)
+        if not hasattr(self, "clear_cache"):
+            self = wrap_in_hpu_graph(self)
+        if not hasattr(self.t2u_model, "clear_cache"):
+            self.t2u_model = wrap_in_hpu_graph(self.t2u_model)
+        if not hasattr(self.vocoder, "clear_cache"):
+            self.vocoder = wrap_in_hpu_graph(self.vocoder)
 
     kwargs_text, kwargs_speech = format_speech_generation_kwargs(kwargs)
     kwargs_text["output_hidden_states"] = True
