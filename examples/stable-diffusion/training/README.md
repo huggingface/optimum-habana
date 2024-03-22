@@ -253,5 +253,5 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
   --bf16
 ```
 
-> [!NOTE] There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.
-> [!NOTE] `--mediapipe` only works on Gaudi2.
+> **_NOTE:_** There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.
+> **_NOTE:_** `--mediapipe` only works on Gaudi2.
