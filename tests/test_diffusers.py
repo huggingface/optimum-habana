@@ -1790,6 +1790,7 @@ class TrainTextToImage(TestCase):
                  --throughput_warmup_steps 3
                  --dataloader_num_workers 8
                  --use_hpu_graphs_for_training
+                 --use_hpu_graphs_for_inference
                  --bf16
                  --max_train_steps 2
                  --output_dir {tmpdir}
