@@ -134,6 +134,7 @@ from .models import (
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
+    gaudi_owlvitclasspredictionhead_forward,
 )
 
 
@@ -361,3 +362,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
         gaudi_SpeechT5SpeechDecoderPrenet_forward
     )
+
+    # Optimization for Owl ViT model on Gaudi
+    transformers.models.owlvit.modeling_owlvit.OwlViTClassPredictionHead.forward = gaudi_owlvitclasspredictionhead_forward
