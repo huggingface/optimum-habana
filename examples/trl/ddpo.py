@@ -56,6 +56,9 @@ from optimum.habana.trl import GaudiDDPOTrainer, GaudiDefaultDDPOStableDiffusion
 
 @dataclass
 class ScriptArguments:
+    hf_user_access_token: str = field(
+        default=None, metadata={"help": "Hugging Face token. If None, token is retrieved from env or cache."}
+    )
     pretrained_model: str = field(
         default="runwayml/stable-diffusion-v1-5", metadata={"help": "the pretrained model to use"}
     )

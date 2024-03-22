@@ -157,7 +157,7 @@ class GaudiDDPOTrainer(DDPOTrainer):
         if self.accelerator.is_main_process:
             self.accelerator.init_trackers(
                 self.config.tracker_project_name,
-                config=dict(ddpo_trainer_config=config.to_dict()) if not is_using_tensorboard else config.to_dict(),
+                config={"ddpo_trainer_config": config.to_dict()} if not is_using_tensorboard else config.to_dict(),
                 init_kwargs=self.config.tracker_kwargs,
             )
 
@@ -439,6 +439,24 @@ class GaudiDDPOTrainer(DDPOTrainer):
 
         return loss, approx_kl, clipfrac
 
+    def _setup_optimizer(self, trainable_layers_parameters):
+        # Adapted from https://github.com/huggingface/trl/blob/v0.7.8/trl/trainer/ddpo_trainer.py#L422
+        # Adds support for FusedAdamW
+        if self.use_habana and self.gaudi_config.use_fused_adam:
+            from habana_frameworks.torch.hpex.optimizers import FusedAdamW
+
+            optimizer_cls = FusedAdamW
+        else:
+            optimizer_cls = torch.optim.AdamW
+
+        return optimizer_cls(
+            trainable_layers_parameters,
+            lr=self.config.train_learning_rate,
+            betas=(self.config.train_adam_beta1, self.config.train_adam_beta2),
+            weight_decay=self.config.train_adam_weight_decay,
+            eps=self.config.train_adam_epsilon,
+        )
+
     def _generate_samples(self, iterations, batch_size):
         """
         Generate samples from the model
@@ -597,21 +615,3 @@ class GaudiDDPOTrainer(DDPOTrainer):
                     info = defaultdict(list)
 
         return global_step
-
-    def _setup_optimizer(self, trainable_layers_parameters):
-        # Adapted from https://github.com/huggingface/trl/blob/v0.7.8/trl/trainer/ddpo_trainer.py#L422
-        # Adds support for FusedAdamW
-        if self.use_habana and self.gaudi_config.use_fused_adam:
-            from habana_frameworks.torch.hpex.optimizers import FusedAdamW
-
-            optimizer_cls = FusedAdamW
-        else:
-            optimizer_cls = torch.optim.AdamW
-
-        return optimizer_cls(
-            trainable_layers_parameters,
-            lr=self.config.train_learning_rate,
-            betas=(self.config.train_adam_beta1, self.config.train_adam_beta2),
-            weight_decay=self.config.train_adam_weight_decay,
-            eps=self.config.train_adam_epsilon,
-        )
