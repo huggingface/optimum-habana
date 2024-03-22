@@ -231,7 +231,7 @@ class ModelArguments:
         metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
     )
     add_pad_token: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "Will add `pad_token` to tokenizer and model's config as `eos_token` if it's not defined."},
     )
 
