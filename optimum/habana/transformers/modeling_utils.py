@@ -134,6 +134,7 @@ from .models import (
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
+    gaudi_wav2vec2_tdnnlayer_forward,
 )
 
 
@@ -160,6 +161,7 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Model.forward = gaudi_wav2vec2_forward
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Encoder.forward = gaudi_wav2vec2_encoder_forward
+    transformers.models.wav2vec2.modeling_wav2vec2.TDNNLayer.forward = gaudi_wav2vec2_tdnnlayer_forward
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
