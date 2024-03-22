@@ -248,6 +248,8 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
   --output_dir sdxl-pokemon-model \
   --gaudi_config_name Habana/stable-diffusion \
   --throughput_warmup_steps 3 \
+  --use_hpu_graphs_for_training \
+  --use_hpu_graphs_for_inference \
   --bf16
 ```
 
