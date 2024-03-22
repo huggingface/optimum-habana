@@ -77,6 +77,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "phi",
     "mixtral",
     "blip_text_model",
+    "starcoder2",
 ]
 
 
