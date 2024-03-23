@@ -382,14 +382,7 @@ def initialize_model(args, logger):
     generation_config = setup_generation_config(args, model, tokenizer)
 
     if args.const_serialization_path:
-        import uuid
-
-        args.const_serialization_path = os.path.join(args.const_serialization_path + uuid.uuid4().hex)
-        os.makedirs(args.const_serialization_path)
-        from habana_frameworks.torch.hpu import enable_const_section_serialization
-
-        print("Serializing const params to {}".format(args.const_serialization_path))
-        enable_const_section_serialization(args.const_serialization_path, True)
+        setup_const_serialization(args.const_serialization_path)
     if args.fp8:
         import habana_frameworks.torch.core as htcore
 
