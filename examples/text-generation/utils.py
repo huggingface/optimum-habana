@@ -96,15 +96,15 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
-def setup_quantization(args, model):
-    import habana_frameworks.torch.core as htcore
-    from habana_frameworks.torch.hpu import hpu
+def setup_const_serialization(const_serialization_path):
+    import uuid
 
-    print("Initializing inference with quantization")
-    if not args.quant_config:
-        hpu.enable_quantization()
-    htcore.hpu_initialize(model)
-    return model
+    const_serialization_path = os.path.join(const_serialization_path + uuid.uuid4().hex)
+    os.makedirs(const_serialization_path)
+    from habana_frameworks.torch.hpu import enable_const_section_serialization
+
+    print("Serializing const params to {}".format(const_serialization_path))
+    enable_const_section_serialization(const_serialization_path, False, True)
 
 
 def setup_env(args):
@@ -346,7 +346,6 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.reduce_recompile = args.reduce_recompile
     if generation_config.reduce_recompile:
         assert generation_config.bucket_size > 0
-    generation_config.kv_cache_fp8 = args.kv_cache_fp8
     generation_config.use_flash_attention = args.use_flash_attention
     return generation_config
 
@@ -392,7 +391,12 @@ def initialize_model(args, logger):
         print("Serializing const params to {}".format(args.const_serialization_path))
         enable_const_section_serialization(args.const_serialization_path, True)
     if args.fp8:
-        model = setup_quantization(args, model)
+        import habana_frameworks.torch.core as htcore
+
+        print("Initializing inference mode")
+        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
+        if const_marking == "True":
+            htcore.hpu_initialize(model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
