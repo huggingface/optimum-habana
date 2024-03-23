@@ -129,15 +129,15 @@ def _test_text_generation(
         command = [x for y in command for x in re.split(pattern, y) if x]
 
         if fp8:
-            os.environ["QUANT_CONFIG"] = os.path.join(
+            env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_measure_include_outputs.json"
             )
-            subprocess.run(command)
-            os.environ["QUANT_CONFIG"] = os.path.join(
+            subprocess.run(command, env=env_variables)
+            env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
             )
 
-        proc = subprocess.run(command)
+        proc = subprocess.run(command, env=env_variables)
 
         # Ensure the run finished without any issue
         # Use try-except to avoid logging the token if used
