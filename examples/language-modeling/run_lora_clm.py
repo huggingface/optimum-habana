@@ -42,7 +42,6 @@ from transformers import (
 from transformers.trainer_utils import is_main_process
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.peft.layer import GaudiLoraLayerLinearForward
 from optimum.habana.utils import set_seed
 
 
@@ -153,6 +152,14 @@ class ModelArguments:
             "help": (
                 "Whether to enable recompute in Habana flash attention for fine-tuning."
                 " It is applicable only when use_flash_attention is True.",
+            )
+        },
+    )
+    use_fused_rope: bool = field(
+        default=True,
+        metadata={
+            "help": (
+                "Whether to use Habana fused-rope for fine-tuning. The current support is limited to Llama only.",
             )
         },
     )
@@ -540,6 +547,8 @@ def main():
         if model_args.use_flash_attention:
             model.generation_config.use_flash_attention = True
             model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
+        if model_args.use_fused_rope is False:
+            model.generation_config.use_fused_rope = False
 
     if hasattr(model.generation_config, "pad_token_id") and model.generation_config.pad_token_id is not None:
         tokenizer.pad_token_id = model.generation_config.pad_token_id
@@ -675,7 +684,10 @@ def main():
         )
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
-        tuners.lora.layer.Linear.forward = GaudiLoraLayerLinearForward
+        if training_args.torch_compile:
+            from optimum.habana.peft.layer import GaudiLoraLayerLinearForward
+
+            tuners.lora.layer.Linear.forward = GaudiLoraLayerLinearForward
         lora_model = get_peft_model(model, peft_config)
         if training_args.bf16:
             lora_model = lora_model.to(torch.bfloat16)

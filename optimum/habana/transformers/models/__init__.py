@@ -61,6 +61,7 @@ from .gpt_neox import (
     gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
+    gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
 )
 from .gptj import (
     GaudiGPTJAttention,
@@ -71,16 +72,20 @@ from .gptj import (
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
+    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
+    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
+    GaudiLlamaRotaryEmbedding,
     gaudi_llama_rmsnorm_forward,
 )
 from .mistral import (
+    GaudiMistralAttention,
+    GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
-    gaudi_mistral_attention_forward,
-    gaudi_mistral_decoder_layer_forward,
-    gaudi_mistral_model_forward,
+    GaudiMistralModel,
+    gaudi_mistral_rmsnorm_forward,
 )
 from .mixtral import (
     GaudiMixtralForCausalLM,
@@ -90,7 +95,12 @@ from .mixtral import (
     gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
-from .modeling_all_models import gaudi_conv1d_forward, gaudi_get_extended_attention_mask, gaudi_invert_attention_mask
+from .modeling_all_models import (
+    gaudi_check_and_enable_sdpa,
+    gaudi_conv1d_forward,
+    gaudi_get_extended_attention_mask,
+    gaudi_invert_attention_mask,
+)
 from .mpt import (
     GaudiMptForCausalLM,
     GaudiMptModel,
@@ -105,6 +115,20 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .phi import (
+    GaudiPhiForCausalLM,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
+)
+from .speecht5 import (
+    gaudi_generate_speech,
+    gaudi_SpeechT5Attention_forward,
+    gaudi_SpeechT5Decoder_forward,
+    gaudi_SpeechT5DecoderLayer_forward,
+    gaudi_SpeechT5SpeechDecoderPrenet_forward,
+)
+from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -121,4 +145,5 @@ from .wav2vec2 import (
     _gaudi_wav2vec2_sample_negative_indices,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
+    gaudi_wav2vec2_tdnnlayer_forward,
 )

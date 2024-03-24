@@ -51,7 +51,7 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
@@ -60,14 +60,15 @@ slow_tests_diffusers: test_installs
 	python -m pytest tests/test_diffusers.py -v -s -k "test_textual_inversion"
 	python -m pip install peft==0.7.0
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_"
+	python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet"
 
 # Run text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
 slow_tests_fsdp: test_installs
-	python -m pytest tests/test_fsdp_examples.py -v -s
+	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs
@@ -103,6 +104,7 @@ doc: build_doc_docker_image
 
 clean:
 	find . -name "habana_log.livealloc.log_*" -type f -delete
+	find . -name "hl-smi_log*" -type f -delete
 	find . -name .lock -type f -delete
 	find . -name .graph_dumps -type d -exec rm -r {} +
 	find . -name save-hpu.pdb -type f -delete
