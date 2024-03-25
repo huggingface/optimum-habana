@@ -116,6 +116,7 @@ if is_safetensors_available():
 
 if is_peft_available():
     from peft import PeftModel
+    from peft.utils import PeftType
 
 
 if is_deepspeed_available():
@@ -849,6 +850,10 @@ class GaudiTrainer(Trainer):
         hb_profiler.start()
 
         total_batched_samples = 0
+        if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
+            self.model.base_model.peft_config[self.model.trainable_adapter_name].total_step = max_steps
+            if max_steps < self.model.base_model.peft_config[self.model.trainable_adapter_name].tfinal:
+                self.model.base_model.peft_config[self.model.trainable_adapter_name].tfinal = 0
         for epoch in range(epochs_trained, num_train_epochs):
             epoch_iterator = train_dataloader
             if hasattr(epoch_iterator, "set_epoch"):
@@ -988,7 +993,8 @@ class GaudiTrainer(Trainer):
                         # Delay optimizer scheduling until metrics are generated
                         if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                             self.lr_scheduler.step()
-
+                    if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
+                        self.model.base_model.update_and_allocate(self.state.global_step)
                     self._zero_model_grad(model)
 
                     self.state.global_step += 1
