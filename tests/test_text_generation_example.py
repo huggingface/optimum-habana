@@ -59,6 +59,7 @@ else:
             ("mistralai/Mistral-7B-v0.1", 40.00435417311187),
             ("microsoft/phi-2", 90.10751623430603),
         ],
+        "fp8": [],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 31.044523676681507),
         ],
