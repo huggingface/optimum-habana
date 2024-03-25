@@ -10,35 +10,37 @@ import pytest
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
-# Gaudi2 CI baselines
-# FSDP is not supported on Gaudi1
-MODELS_TO_TEST = {
-    "bf16": [
-        (
-            "bert-base-uncased",
-            "Habana/bert-base-uncased",
-            2807,
-            85.4688,
-            "question-answering",
-            24,
-            8,
-            "run_qa.py",
-            "full_shard",
-        ),
-        (
-            "meta-llama/Llama-2-7b-hf",
-            "",
-            54,
-            0.92,
-            "language-modeling",
-            8,
-            8,
-            "run_lora_clm.py",
-            "auto_wrap",
-        ),
-    ],
-}
-
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    # Gaudi2 CI baselines
+    MODELS_TO_TEST = {
+        "bf16": [
+            (
+                "bert-base-uncased",
+                "Habana/bert-base-uncased",
+                2807,
+                85.4688,
+                "question-answering",
+                24,
+                8,
+                "run_qa.py",
+                "full_shard",
+            ),
+            (
+                "meta-llama/Llama-2-7b-hf",
+                "",
+                54,
+                0.92,
+                "language-modeling",
+                8,
+                8,
+                "run_lora_clm.py",
+                "auto_wrap",
+            ),
+        ],
+    }
+else:
+    # FSDP is not supported on Gaudi1
+    MODELS_TO_TEST = {"bf16":[]}
 
 def _test_fsdp(
     model_name: str,
