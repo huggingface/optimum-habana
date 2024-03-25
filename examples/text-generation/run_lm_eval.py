@@ -131,12 +131,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         if self.options.static_shapes:
             bucket_length = self.find_bucket(seq_length)
             if self.options.use_cache and self.options.reuse_cache:
-                self.model.allocate_kv_cache(
-                    bs,
-                    bucket_length + 1,
-                    bucket_length,
-                    False,
-                )
+                self.model.allocate_kv_cache(bs, bucket_length + 1, bucket_length)
             padding_length = bucket_length - seq_length
             inps = F.pad(inps, (0, padding_length), value=self.model.config.pad_token_id)
         logits = self.model(inps.to(self._device), **self.model_inputs)["logits"].cpu()
