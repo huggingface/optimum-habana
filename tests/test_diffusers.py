@@ -1776,19 +1776,21 @@ class TrainTextToImage(TestCase):
                  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0
                  --pretrained_vae_model_name_or_path stabilityai/sdxl-vae
                  --dataset_name lambdalabs/pokemon-blip-captions
-                 --resolution 64
+                 --resolution 512
+                 --crop_resolution 512
                  --center_crop
                  --random_flip
                  --proportion_empty_prompts=0.2
-                 --train_batch_size 1
-                 --gradient_accumulation_steps 4
+                 --train_batch_size 16
                  --learning_rate 1e-05
                  --max_grad_norm 1
                  --lr_scheduler constant
                  --lr_warmup_steps 0
                  --gaudi_config_name Habana/stable-diffusion
                  --throughput_warmup_steps 3
-                 --use_hpu_graphs
+                 --dataloader_num_workers 8
+                 --use_hpu_graphs_for_training
+                 --use_hpu_graphs_for_inference
                  --bf16
                  --max_train_steps 2
                  --output_dir {tmpdir}
