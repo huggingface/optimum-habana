@@ -643,6 +643,9 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
             )
         image = outputs.images[0]
+        import matplotlib.pyplot as plt
+        plt.imsave('test_no_generation_regression_output.png', image)
+
 
         self.assertEqual(image.shape, (512, 512, 3))
         self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
