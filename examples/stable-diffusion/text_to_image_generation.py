@@ -340,6 +340,8 @@ def main():
             negative_prompt_2=args.negative_prompts_2,
             eta=args.eta,
             output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
             **res,
         )
     else:
@@ -360,6 +362,8 @@ def main():
             negative_prompt=args.negative_prompts,
             eta=args.eta,
             output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
             **res,
         )
 
