@@ -563,8 +563,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
 
 ```bash
 LOWER_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=0 \
-python3 ../gaudi_spawn.py \
-  --world_size 8 --use_mpi run_lora_clm.py \
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --dataset_name tatsu-lab/alpaca \
   --bf16 True \
