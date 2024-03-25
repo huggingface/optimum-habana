@@ -567,7 +567,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --dataset_name tatsu-lab/alpaca \
   --bf16 True \
-  --output_dir /tmp/lora_fsdp_out \
+  --output_dir ./lora_out \
   --max_seq_len 2048 \
   --gradient_checkpointing \
   --per_device_train_batch_size 5 \
