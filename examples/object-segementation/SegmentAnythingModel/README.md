@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Owl-ViT Examples
+# Segment Anything Model Examples
 
 This directory contains an example script that demonstrates using SAM with graph mode.
 
