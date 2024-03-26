@@ -119,6 +119,16 @@ from .models import (
     gaudi_phi_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
+    gaudi_SeamlessM4TAttention_forward,
+    gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths,
+    gaudi_SeamlessM4TDecoder_forward,
+    gaudi_SeamlessM4TDecoderLayer_forward,
+    gaudi_SeamlessM4TForTextToSpeech_forward,
+    gaudi_SeamlessM4TForTextToSpeech_generate,
+    gaudi_SeamlessM4TForTextToSpeech_prepare_inputs_for_generation,
+    gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward,
+    gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_SeamlessM4TTextToUnitModel_forward,
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
@@ -131,7 +141,9 @@ from .models import (
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
+    gaudi_unconstrained_rational_quadratic_spline,
     gaudi_vit_self_attention_forward,
+    gaudi_VitsResidualCouplingLayer_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
@@ -363,3 +375,42 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
         gaudi_SpeechT5SpeechDecoderPrenet_forward
     )
+    # Optimization for seamless m4t on Gaudi
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TAttention.forward = (
+        gaudi_SeamlessM4TAttention_forward
+    )
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TDecoderLayer.forward = (
+        gaudi_SeamlessM4TDecoderLayer_forward
+    )
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TDecoder.forward = (
+        gaudi_SeamlessM4TDecoder_forward
+    )
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TTextToUnitModel.forward = (
+        gaudi_SeamlessM4TTextToUnitModel_forward
+    )
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TTextToUnitForConditionalGeneration.forward = (
+        gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward
+    )
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TTextToUnitForConditionalGeneration.prepare_inputs_for_generation = gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TCodeHifiGan._get_output_hifigan_lengths = (
+        gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths
+    )
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TForTextToSpeech.forward = (
+        gaudi_SeamlessM4TForTextToSpeech_forward
+    )
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TForTextToSpeech.generate = (
+        gaudi_SeamlessM4TForTextToSpeech_generate
+    )
+
+    transformers.models.seamless_m4t.modeling_seamless_m4t.SeamlessM4TForTextToSpeech.prepare_inputs_for_generation = (
+        gaudi_SeamlessM4TForTextToSpeech_prepare_inputs_for_generation
+    )
+
+    transformers.models.vits.modeling_vits._unconstrained_rational_quadratic_spline = (
+        gaudi_unconstrained_rational_quadratic_spline
+    )
+    transformers.models.vits.modeling_vits.VitsResidualCouplingLayer.forward = gaudi_VitsResidualCouplingLayer_forward

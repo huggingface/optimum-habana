@@ -121,6 +121,18 @@ from .phi import (
     gaudi_phi_decoder_layer_forward,
     gaudi_phi_model_forward,
 )
+from .seamless_m4t import (
+    gaudi_SeamlessM4TAttention_forward,
+    gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths,
+    gaudi_SeamlessM4TDecoder_forward,
+    gaudi_SeamlessM4TDecoderLayer_forward,
+    gaudi_SeamlessM4TForTextToSpeech_forward,
+    gaudi_SeamlessM4TForTextToSpeech_generate,
+    gaudi_SeamlessM4TForTextToSpeech_prepare_inputs_for_generation,
+    gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward,
+    gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_SeamlessM4TTextToUnitModel_forward,
+)
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,
@@ -139,6 +151,10 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .vit import gaudi_vit_self_attention_forward
+from .vits import (
+    gaudi_unconstrained_rational_quadratic_spline,
+    gaudi_VitsResidualCouplingLayer_forward,
+)
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
