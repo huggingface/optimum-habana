@@ -581,6 +581,7 @@ class GaudiGenerationMixin(GenerationMixin):
             assert self.config.model_type in [
                 "llama",
                 "mistral",
+                "mixtral",
             ], "reuse_cache only supported by llama and mistral at the moment"
             if not generation_config.bucket_internal:
                 assert (
