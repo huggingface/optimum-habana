@@ -127,7 +127,7 @@ python ../gaudi_spawn.py \
 On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **0.0613** and a word error rate of **0.0458**.
 
 > If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
-> Resampling with the `datasets` library is not supported on HPUs yet. HPU graphs are supported only on Gaudi2.
+> Resampling with the `datasets` library is not supported on HPUs yet. HPU graphs are supported only on Gaudi2 and from SynapseAI v1.15.
 
 
 ## DeepSpeed
