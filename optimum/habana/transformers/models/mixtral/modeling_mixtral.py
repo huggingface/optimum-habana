@@ -38,12 +38,12 @@ from transformers.modeling_attn_mask_utils import (
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
 from transformers.models.mixtral.modeling_mixtral import (
     MixtralAttention,
+    MixtralConfig,
     MixtralDecoderLayer,
-    MixtralModel,
     MixtralForCausalLM,
+    MixtralModel,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
-    MixtralConfig,
 )
 from transformers.utils import logging
 
@@ -65,6 +65,7 @@ try:
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
+FusedSDPA = None
 
 logger = logging.get_logger(__name__)
 
@@ -146,10 +147,6 @@ def gaudi_mixtral_repeat_kv(
     batch, _, q_len, head_dim = query_states.shape
     new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
     query_states = query_states.reshape(new_q_shape)
-
-    if attention_mask is not None:
-        # Add groups dim and set to 1
-        attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
 
@@ -250,16 +247,6 @@ class GaudiMixtralAttention(MixtralAttention):
                     kv_seq_len = past_key_value[0][0][-2]
                 else:
                     kv_seq_len = past_key_value[0].shape[-2]
-            # import pdb;pdb.set_trace()
-            # kv_shape = (
-            #     (past_key_value[0][-2] if reuse_cache else past_key_value[0].shape[-2])
-            #     if isinstance(past_key_value, tuple)
-            #     else past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-            # )
-            # if token_idx is not None:
-            #     kv_seq_len = kv_shape
-            # else:
-            #     kv_seq_len += kv_shape
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
@@ -274,7 +261,9 @@ class GaudiMixtralAttention(MixtralAttention):
                     key_states = update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                     value_states = update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
             else:
-                key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
 
         if use_cache:
             if reuse_cache:
@@ -459,10 +448,10 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
 class GaudiMixtralModel(MixtralModel):
     def __init__(self, config: MixtralConfig):
         super().__init__(config)
-    
+
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         for layer in self.layers:
-            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8) 
+            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
 
     def forward(
         self,
@@ -651,7 +640,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
-    
+
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
         self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
         self.kv_cache_len = max_seq_len
