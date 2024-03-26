@@ -150,6 +150,14 @@ def gaudi_mixtral_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
+class Matmul(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, y):
+        return torch.matmul(x, y)
+
+
 class KVCache(torch.nn.Module):
     def __init__(self):
         super(KVCache, self).__init__()
@@ -181,6 +189,8 @@ class GaudiMixtralAttention(MixtralAttention):
     def __init__(self, config: MixtralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
 
+        self.matmul_qk = Matmul()
+        self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
@@ -292,7 +302,7 @@ class GaudiMixtralAttention(MixtralAttention):
                 query_states, key_states, value_states, attention_mask, self.num_key_value_groups
             )
 
-            attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * self.norm_factor
+            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
 
             if attention_mask is not None:
                 attention_mask = attention_mask.unsqueeze(2)
@@ -301,7 +311,7 @@ class GaudiMixtralAttention(MixtralAttention):
             # upcast attention to fp32
             attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
             attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = torch.matmul(attn_weights, value_states)
+            attn_output = self.matmul_av(attn_weights, value_states)
 
             attn_output = attn_output.reshape(bsz, self.num_heads, q_len, self.head_dim).contiguous()
 
