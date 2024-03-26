@@ -99,22 +99,15 @@ python train_controlnet.py \
 
 You can run these fine-tuning scripts in a distributed fashion as follows:
 ```bash
-python ../../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
+python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
   --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
-  --train_data_dir ./cat \
-  --learnable_property object \
-  --placeholder_token '"<cat-toy>"' \
-  --initializer_token toy \
-  --resolution 512 \
-  --train_batch_size 4 \
-  --max_train_steps 375 \
-  --learning_rate 5.0e-04 \
-  --scale_lr \
-  --lr_scheduler constant \
-  --lr_warmup_steps 0 \
-  --output_dir /tmp/textual_inversion_cat \
-  --save_as_full_pipeline \
-  --gaudi_config_name Habana/stable-diffusion \
+  --output_dir=/tmp/stable_diffusion1_5 \
+  --dataset_name=fusing/fill50k \
+  --resolution=512 \
+  --learning_rate=1e-5 \
+  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
+  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+  --train_batch_size=4 \
   --throughput_warmup_steps 3 \
   --use_hpu_graphs \
   --bf16
@@ -126,27 +119,40 @@ python ../../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
 Once you have trained a model as described right above, inference can be done simply using the `GaudiStableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
 
 ```python
+from diffusers import ControlNetModel, UniPCMultistepScheduler
+from diffusers.utils import load_image
 import torch
-from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
 
-model_id = "path-to-your-trained-model"
-pipe = GaudiStableDiffusionPipeline.from_pretrained(
-  model_id,
-  torch_dtype=torch.bfloat16,
-  use_habana=True,
-  use_hpu_graphs=True,
-  gaudi_config="Habana/stable-diffusion",
+base_model_path = "runwayml/stable-diffusion-v1-5"
+controlnet_path = "/tmp/stable_diffusion1_5"
+
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.bfloat16)
+pipe = GaudiStableDiffusionControlNetPipeline.from_pretrained(
+    base_model_path,
+    controlnet=controlnet,
+    torch_dtype=torch.bfloat16,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
 )
 
-prompt = "A <cat-toy> backpack"
+# speed up diffusion process with faster scheduler and memory optimization
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
-image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+control_image = load_image("./conditioning_image_1.png")
+prompt = "pale golden rod circle with old lace background"
 
-image.save("cat-backpack.png")
+# generate image
+generator = torch.manual_seed(0)
+image = pipe(
+    prompt, num_inference_steps=20, generator=generator, image=control_image
+).images[0]
+image.save("./output.png")
 ```
 
 
-## Fine-Tuning
+## Fine-Tuning for Stable Diffusion XL
 
 The `train_text_to_image_sdxl.py` script shows how to implement the fine-tuning of Stable Diffusion models on Habana Gaudi.
 
@@ -157,15 +163,78 @@ Install the requirements:
 pip install -r requirements.txt
 ```
 
-### Example for SDXL
-We can launch the fine-tuning of SDXL model using:
+### Single-card Training
 
 ```bash
 python train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
   --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
   --dataset_name lambdalabs/pokemon-blip-captions \
-  --resolution 1024 \
+  --resolution 512 \
+  --crop_resolution 512 \
+  --center_crop \
+  --random_flip \
+  --proportion_empty_prompts=0.2 \
+  --train_batch_size 16 \
+  --max_train_steps 2500 \
+  --learning_rate 1e-05 \
+  --max_grad_norm 1 \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir sdxl-pokemon-model \
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3 \
+  --dataloader_num_workers 8 \
+  --bf16 \
+  --use_hpu_graphs_for_training \
+  --use_hpu_graphs_for_inference \
+  --validation_prompt="a robotic cat with wings" \
+  --validation_epochs 48 \
+  --checkpointing_steps 2500 \
+  --logging_step 10 \
+  --adjust_throughput
+```
+
+
+### Multi-card Training
+```bash
+PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024  \
+python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py \
+  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+  --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
+  --dataset_name lambdalabs/pokemon-blip-captions \
+  --resolution 512 \
+  --crop_resolution 512 \
+  --center_crop \
+  --random_flip \
+  --proportion_empty_prompts=0.2 \
+  --train_batch_size 16 \
+  --max_train_steps 336 \
+  --learning_rate 1e-05 \
+  --max_grad_norm 1 \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir sdxl-pokemon-model \
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3 \
+  --dataloader_num_workers 8 \
+  --bf16 \
+  --use_hpu_graphs_for_training \
+  --use_hpu_graphs_for_inference \
+  --validation_prompt="a robotic cat with wings" \
+  --validation_epochs 48 \
+  --checkpointing_steps 336 \
+  --mediapipe dataset_sdxl_pokemon \
+  --adjust_throughput
+```
+
+### Single-card Training on Gaudi1
+```bash
+PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
+  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+  --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
+  --dataset_name lambdalabs/pokemon-blip-captions \
+  --resolution 512 \
   --center_crop \
   --random_flip \
   --proportion_empty_prompts=0.2 \
@@ -179,64 +248,13 @@ python train_text_to_image_sdxl.py \
   --output_dir sdxl-pokemon-model \
   --gaudi_config_name Habana/stable-diffusion \
   --throughput_warmup_steps 3 \
-  --use_hpu_graphs \
-  --bf16
-```
-
-### Example for LoRA SDXL
-
-Low-Rank Adaption (LoRA) allows adapting a pretrained model by adding pairs of rank-decomposition matrices to
-existing weights and only training those newly added weights.
-
-We can launch the LoRA based fine-tuning of SDXL model using:
-
-```bash
-python train_text_to_image_sdxl.py \
-  --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0" \
-  --pretrained_vae_model_name_or_path="madebyollin/sdxl-vae-fp16-fix" \
-  --dataset_name="lambdalabs/pokemon-blip-captions" \
-  --caption_column="text" \
-  --resolution=1024 --random_flip \
-  --train_batch_size=1 \
-  --num_train_epochs=2 --checkpointing_steps=500 \
-  --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --seed=42 \
-  --output_dir="sd-pokemon-model-lora-sdxl" \
-  --finetuning_method="lora" \
-  --gaudi_config_name="Habana/stable-diffusion" \
-  --throughput_warmup_steps=3 \
-  --use_hpu_graphs \
+  --use_hpu_graphs_for_training \
+  --use_hpu_graphs_for_inference \
   --bf16
 ```
 
 > [!NOTE]
-> SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as this one).
+> There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.
 
-#### LoRA SDXL Inference
-
-Once you have trained a LoRA weights as in the example above, inference can be done
-by using the `GaudiStableDiffusionXLPipeline`.
-
-```python
-import torch
-from optimum.habana.diffusers import (
-    GaudiStableDiffusionXLPipeline,
-    GaudiEulerDiscreteScheduler,
-)
-
-model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-lora_model_id = "sd-pokemon-model-lora-sdxl"
-pipe = GaudiStableDiffusionXLPipeline.from_pretrained(
-  model_id,
-  scheduler=GaudiEulerDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler"),
-  torch_dtype=torch.bfloat16,
-  use_habana=True,
-  use_hpu_graphs=True,
-  gaudi_config="Habana/stable-diffusion",
-)
-pipe.load_lora_weights(lora_model_id)
-
-prompt = "cute dragon creature"
-image = pipe(prompt).images[0]
-image.save("green-pokemon.png")
-```
+> [!NOTE]
+> `--mediapipe` only works on Gaudi2.

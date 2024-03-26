@@ -15,7 +15,7 @@
 > from optimum.habana.utils import set_seed
 55,56d53
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.39.0.dev0")
+< check_min_version("4.40.0.dev0")
 58c55,61
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
 ---
@@ -28,7 +28,7 @@
 > 
 61a65,70
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.37.0")
+> check_min_version("4.38.0")
 > check_optimum_habana_min_version("1.10.0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
@@ -81,13 +81,17 @@
 >         + f"mixed-precision training: {mixed_precision}"
 400a435
 >         use_cache=False if training_args.gradient_checkpointing else model_args.use_cache,
-597c632
+472c507
+<     # Check the whether the source target length fits in the model, if it has absolute positional embeddings
+---
+>     # Check whether the source target length fits in the model, if it has absolute positional embeddings
+610c645
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-598a634
+611a647
 >         gaudi_config=gaudi_config,
-691,695d726
+704,708d739
 < 
 < 
 < def _mp_fn(index):

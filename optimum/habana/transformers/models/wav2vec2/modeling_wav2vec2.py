@@ -443,3 +443,21 @@ def gaudi_wav2vec2forctc_forward(
         output = (logits,) + outputs[_HIDDEN_STATES_START_POSITION:]
         return ((loss,) + output) if loss is not None else output
     return CausalLMOutput(loss=loss, logits=logits, hidden_states=outputs.hidden_states, attentions=outputs.attentions)
+
+def gaudi_wav2vec2_tdnnlayer_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    """
+    Copied from Transformers: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L2290
+    v4.38.2 implementation caused accuracy issue to run pytest Wav2Vec2RobustModelTest.
+    """
+    hidden_states = hidden_states.unsqueeze(1)
+    hidden_states = torch.nn.functional.unfold(
+        hidden_states,
+        (self.kernel_size, self.in_conv_dim),
+        stride=(1, self.in_conv_dim),
+        dilation=(self.dilation, 1),
+    )
+    hidden_states = hidden_states.transpose(1, 2)
+    hidden_states = self.kernel(hidden_states)
+
+    hidden_states = self.activation(hidden_states)
+    return hidden_states

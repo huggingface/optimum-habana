@@ -60,7 +60,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.37.0")
+check_min_version("4.38.0")
 check_optimum_habana_min_version("1.10.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
@@ -377,6 +377,10 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
     )
+    if config.model_type == "llama":
+        if tokenizer.pad_token is None:
+            tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        tokenizer.cls_token = tokenizer.bos_token
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
