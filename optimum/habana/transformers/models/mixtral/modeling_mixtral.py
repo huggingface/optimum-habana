@@ -65,7 +65,6 @@ try:
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
-FusedSDPA = None
 
 logger = logging.get_logger(__name__)
 
