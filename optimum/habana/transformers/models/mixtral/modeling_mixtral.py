@@ -214,6 +214,7 @@ class GaudiMixtralAttention(MixtralAttention):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
+        cache_idx: int = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
@@ -269,6 +270,13 @@ class GaudiMixtralAttention(MixtralAttention):
                 else:
                     key_states = update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                     value_states = update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+
+                if cache_idx is not None and q_len == 1:
+                    key_states = key_states[:, :, :cache_idx, :]
+                    value_states = value_states[:, :, :cache_idx, :]
+                    if attention_mask is not None:
+                        attention_mask = attention_mask[:, :, :, :cache_idx]
+                    kv_seq_len = key_states.shape[-2]
             else:
                 key_states, value_states = past_key_value.update(
                     key_states, value_states, self.layer_idx, cache_kwargs
@@ -401,6 +409,8 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
         use_cache: Optional[bool] = False,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        cache_idx: int = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -429,6 +439,8 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
             use_cache=use_cache,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
+            flash_attention_recompute=flash_attention_recompute,
+            cache_idx=cache_idx,
         )
         hidden_states = residual + hidden_states
         htcore.mark_step()
@@ -476,6 +488,8 @@ class GaudiMixtralModel(MixtralModel):
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        cache_idx: int = None,
     ) -> Union[Tuple, MoeModelOutputWithPast]:
         """
         Copied from MixtralModel.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py#L1069
@@ -600,6 +614,8 @@ class GaudiMixtralModel(MixtralModel):
                     use_cache=use_cache,
                     token_idx=token_idx,
                     reuse_cache=reuse_cache,
+                    flash_attention_recompute=flash_attention_recompute,
+                    cache_idx=cache_idx,
                 )
 
             hidden_states = layer_outputs[0]
@@ -669,6 +685,8 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = None,
+        flash_attention_recompute: Optional[bool] = False,
+        cache_idx: int = None,
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
@@ -694,6 +712,8 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
             return_dict=return_dict,
             token_idx=token_idx,
             reuse_cache=reuse_cache,
+            flash_attention_recompute=flash_attention_recompute,
+            cache_idx=cache_idx,
         )
 
         hidden_states = outputs[0]
@@ -809,6 +829,8 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                 "attention_mask": attention_mask,
                 "token_idx": token_idx,
                 "reuse_cache": reuse_cache,
+                "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+                "cache_idx": kwargs.get("cache_idx"),
             }
         )
         return model_inputs
