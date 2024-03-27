@@ -177,7 +177,9 @@ class ExampleTestMeta(type):
             "bigscience/bloom-7b1",
         ]
 
-        if model_name not in models_with_specific_rules and not deepspeed:
+        if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
+            return False
+        elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
