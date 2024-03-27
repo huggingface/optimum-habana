@@ -62,11 +62,11 @@
         },
         "tatsu-lab/alpaca_fsdpcompile": {
             "num_train_epochs": 1,
-	    "eval_batch_size": 1,
+            "eval_batch_size": 1,
             "distribution": {
                 "multi_card": {
                     "learning_rate": 3e-4,
-		    "train_batch_size": 8,
+                    "train_batch_size": 8,
                     "perplexity": 2.4502,
                     "train_runtime": 210.305,
                     "train_samples_per_second": 85.0801,
@@ -90,15 +90,14 @@
                         "--ddp_bucket_cap_mb 50",
                         "--validation_split_percentage 10",
                         "--attn_softmax_bf16",
-			"--pipelining_fwd_bwd False",
-			"--fsdp auto_wrap",
-			"--torch_compile_backend hpu_backend",
-			"--torch_compile",
-			"--fsdp_config examples/language-modeling/fsdp_config.json"
+                        "--pipelining_fwd_bwd False",
+                        "--fsdp auto_wrap",
+                        "--torch_compile_backend hpu_backend",
+                        "--torch_compile",
+                        "--fsdp_config examples/language-modeling/fsdp_config.json"
                     ]
                 }
             }
         }
     }
 }
-

@@ -17,7 +17,6 @@
 from typing import Optional, Tuple, Union
 
 import torch
-from habana_frameworks.torch.hpex.kernels import CTCLoss
 from habana_frameworks.torch.hpu import get_device_name
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import (
@@ -25,6 +24,16 @@ from transformers.modeling_outputs import (
     CausalLMOutput,
     Wav2Vec2BaseModelOutput,
 )
+from transformers.models.wav2vec2.modeling_wav2vec2 import _HIDDEN_STATES_START_POSITION
+
+
+try:
+    from habana_frameworks.torch.hpex.kernels import CTCLoss
+
+    custom_ctc_loss_fwd = CTCLoss.apply
+except ImportError:
+    print("Could not import Custom CTCLoss kernel. This Kernel is available only for SynapseAI >= 1.15.0")
+    custom_ctc_loss_fwd = None
 
 
 ctc_loss_fwd = CTCLoss.apply
@@ -129,7 +138,7 @@ def _gaudi_wav2vec2_compute_mask_indices(
     spec_aug_mask_idxs = spec_aug_mask_idxs + offsets
 
     # ensure that we cannot have indices larger than sequence_length
-    if get_device_name() == "GAUDI":
+    if get_device_name() == "GAUDI" or custom_ctc_loss_fwd is None:
         if spec_aug_mask_idxs.max() > sequence_length - 1:
             spec_aug_mask_idxs[spec_aug_mask_idxs > sequence_length - 1] = sequence_length - 1
     else:
@@ -469,3 +478,74 @@ def gaudi_wav2vec2_tdnnlayer_forward(self, hidden_states: torch.Tensor) -> torch
 
     hidden_states = self.activation(hidden_states)
     return hidden_states
+
+
+def gaudi_wav2vec2forctc_forward(
+    self,
+    input_values: Optional[torch.Tensor],
+    attention_mask: Optional[torch.Tensor] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    labels: Optional[torch.Tensor] = None,
+) -> Union[Tuple, CausalLMOutput]:
+    """
+    copied from Transformers https://github.com/huggingface/transformers/blob/e770f0316d2a9b787c9d1440f204fcb65e176682/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L1950
+    only differences are (1) attention_mask tensor generation using ones_like is done on HPU, (2) masked_select is not applied on labels to compute flattened_targets to avoid
+    changing flattened_targets tensor shapes across training iterations.
+    """
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+    outputs = self.wav2vec2(
+        input_values,
+        attention_mask=attention_mask,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+    )
+    hidden_states = outputs[0]
+    hidden_states = self.dropout(hidden_states)
+    logits = self.lm_head(hidden_states)
+    loss = None
+    if labels is not None:
+        if labels.max() >= self.config.vocab_size:
+            raise ValueError(f"Label values must be <= vocab_size: {self.config.vocab_size}")
+        # retrieve loss input_lengths from attention_mask
+        attention_mask = (
+            attention_mask
+            if attention_mask is not None
+            else torch.ones_like(input_values, dtype=torch.long, device="hpu")
+        )
+        input_lengths = self._get_feat_extract_output_lengths(attention_mask.sum(-1)).to(torch.long)
+        # assuming that padded tokens are filled with -100
+        # when not being attended to
+        labels_mask = labels >= 0
+        target_lengths = labels_mask.sum(-1)
+        # ctc_loss doesn't support fp16
+        log_probs = torch.nn.functional.log_softmax(logits, dim=-1, dtype=torch.float32).transpose(0, 1)
+        if get_device_name() == "GAUDI" or custom_ctc_loss_fwd is None:
+            flattened_targets = labels.masked_select(labels_mask)
+            loss = torch.nn.functional.ctc_loss(
+                log_probs,
+                flattened_targets,
+                input_lengths,
+                target_lengths,
+                blank=self.config.pad_token_id,
+                reduction=self.config.ctc_loss_reduction,
+                zero_infinity=self.config.ctc_zero_infinity,
+            )
+        else:
+            flattened_targets = labels
+            loss = custom_ctc_loss_fwd(
+                log_probs,
+                flattened_targets,
+                input_lengths,
+                target_lengths,
+                self.config.pad_token_id,
+                self.config.ctc_loss_reduction,
+                self.config.ctc_zero_infinity,
+            )
+
+    if not return_dict:
+        output = (logits,) + outputs[_HIDDEN_STATES_START_POSITION:]
+        return ((loss,) + output) if loss is not None else output
+    return CausalLMOutput(loss=loss, logits=logits, hidden_states=outputs.hidden_states, attentions=outputs.attentions)

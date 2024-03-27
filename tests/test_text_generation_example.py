@@ -115,7 +115,6 @@ def _test_text_generation(
 
     if fp8:
         command += [
-            "--fp8",
             "--reuse_cache",
             "--trim_logits",
         ]
@@ -137,6 +136,7 @@ def _test_text_generation(
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
             )
+            command.append("--fp8")
 
         proc = subprocess.run(command, env=env_variables)
 

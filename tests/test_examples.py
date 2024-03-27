@@ -316,7 +316,8 @@ class ExampleTestMeta(type):
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SYNC"] = "1"
                 env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
             elif fsdp:
-                env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+                if "llama" in model_name:
+                    env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
 
             with TemporaryDirectory() as tmp_dir:

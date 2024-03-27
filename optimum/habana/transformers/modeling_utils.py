@@ -137,6 +137,7 @@ from .models import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2forctc_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
+    gaudi_wav2vec2forctc_forward,
 )
 
 

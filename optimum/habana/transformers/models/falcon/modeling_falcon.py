@@ -315,13 +315,7 @@ class GaudiFalconAttention(FalconAttention):
 
         if use_cache:
             if self.training:
-                if layer_past is not None:
-                    key_layer = update(layer_past[0], key_layer, -2, token_idx, self.inp_seq_len)
-                    value_layer = update(layer_past[1], value_layer, -2, token_idx, self.inp_seq_len)
-                    present = (key_layer, value_layer)
-                else:
-                    present = None
-
+                present = None
             else:
                 if reuse_cache:
                     key_layer = self.k_cache(key_layer, -2, token_idx)
@@ -411,7 +405,7 @@ class GaudiFalconAttention(FalconAttention):
             if output_attentions:
                 return attn_output, present, attention_scores
             else:
-                return attn_output, present
+                return attn_output, present, _
 
         else:
             if self._use_sdpa and not output_attentions and head_mask is None:
@@ -473,7 +467,7 @@ class GaudiFalconAttention(FalconAttention):
             if output_attentions:
                 return attn_output, present, attention_probs
             else:
-                return attn_output, present
+                return attn_output, present, _
 
     def attention_all_reduce(self, attn_output):
         if hasattr(self.dense, "all_reduce"):
@@ -619,35 +613,19 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
             mlp_layernorm_out = None
 
         # Self attention.
-        attn_scores = None
-        if output_attentions:
-            attn_outputs, present, attn_scores = self.self_attention.pre_attn_forward(
-                attention_layernorm_out,
-                layer_past=layer_past,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                alibi=alibi,
-                head_mask=head_mask,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                token_idx=token_idx,
-                reuse_cache=reuse_cache,
-                cache_idx=cache_idx,
-            )
-        else:
-            attn_outputs, present = self.self_attention.pre_attn_forward(
-                attention_layernorm_out,
-                layer_past=layer_past,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                alibi=alibi,
-                head_mask=head_mask,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                token_idx=token_idx,
-                reuse_cache=reuse_cache,
-                cache_idx=cache_idx,
-            )
+        attn_outputs, present, attn_scores = self.self_attention.pre_attn_forward(
+            attention_layernorm_out,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            alibi=alibi,
+            head_mask=head_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            token_idx=token_idx,
+            reuse_cache=reuse_cache,
+            cache_idx=cache_idx,
+        )
 
         return attn_outputs, present, attn_scores, attention_layernorm_out, mlp_layernorm_out
 
