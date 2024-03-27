@@ -28,7 +28,7 @@ import requests
 import torch
 from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel, UniPCMultistepScheduler
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
-from diffusers.utils import load_image
+from diffusers.utils import load_image, numpy_to_pil
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
@@ -643,6 +643,8 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
             )
         image = outputs.images[0]
+        pil_image = numpy_to_pil(image)[0]
+        pil_image.save("test_no_generation_regression_output.png")
 
         self.assertEqual(image.shape, (512, 512, 3))
         self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
@@ -1776,19 +1778,21 @@ class TrainTextToImage(TestCase):
                  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0
                  --pretrained_vae_model_name_or_path stabilityai/sdxl-vae
                  --dataset_name lambdalabs/pokemon-blip-captions
-                 --resolution 64
+                 --resolution 512
+                 --crop_resolution 512
                  --center_crop
                  --random_flip
                  --proportion_empty_prompts=0.2
-                 --train_batch_size 1
-                 --gradient_accumulation_steps 4
+                 --train_batch_size 16
                  --learning_rate 1e-05
                  --max_grad_norm 1
                  --lr_scheduler constant
                  --lr_warmup_steps 0
                  --gaudi_config_name Habana/stable-diffusion
                  --throughput_warmup_steps 3
-                 --use_hpu_graphs
+                 --dataloader_num_workers 8
+                 --use_hpu_graphs_for_training
+                 --use_hpu_graphs_for_inference
                  --bf16
                  --max_train_steps 2
                  --output_dir {tmpdir}
