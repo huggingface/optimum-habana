@@ -246,7 +246,7 @@ class HabanaProfile(object):
         output_dir: str = "./hpu_profile",
         wait: int = 0,
     ):
-        if active <= 0 or warmup <= 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
+        if active <= 0 or warmup < 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
 
             def noop():
                 pass

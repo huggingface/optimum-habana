@@ -20,7 +20,7 @@
 >         return ()
 > 
 52c59,60
-< check_min_version("4.39.0.dev0")
+< check_min_version("4.40.0.dev0")
 ---
 > check_min_version("4.38.0")
 > check_optimum_habana_min_version("1.10.0")

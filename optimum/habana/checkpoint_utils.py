@@ -3,8 +3,8 @@ import os
 from pathlib import Path
 
 import torch
-import transformers
 from huggingface_hub import list_repo_files, snapshot_download
+from transformers import modeling_utils
 from transformers.utils import is_offline_mode
 
 
@@ -22,12 +22,12 @@ def get_repo_root(model_name_or_path, local_rank=-1, token=None):
                 print("Offline mode: forcing local_files_only=True")
 
         # Only download PyTorch weights by default
-        if any(".bin" in filename for filename in list_repo_files(model_name_or_path, token=token)):
-            allow_patterns = ["*.bin"]
-        elif any(
+        if any(
             ".safetensors" in filename for filename in list_repo_files(model_name_or_path, token=token)
         ):  # Some models like Falcon-180b are in only safetensors format
             allow_patterns = ["*.safetensors"]
+        elif any(".bin" in filename for filename in list_repo_files(model_name_or_path, token=token)):
+            allow_patterns = ["*.bin"]
 
         # Download only on first process
         if local_rank in [-1, 0]:
@@ -63,9 +63,9 @@ def get_checkpoint_files(model_name_or_path, local_rank, token=None):
     # Creates a list of paths from all downloaded files in cache dir
 
     if any(file.suffix == ".bin" for file in Path(cached_repo_dir).rglob("*")):
-        (name, ext) = os.path.splitext(transformers.modeling_utils.WEIGHTS_NAME)
+        (name, ext) = os.path.splitext(modeling_utils.WEIGHTS_NAME)
     elif any(file.suffix == ".safetensors" for file in Path(cached_repo_dir).rglob("*")):
-        (name, ext) = os.path.splitext(transformers.modeling_utils.SAFE_WEIGHTS_NAME)
+        (name, ext) = os.path.splitext(modeling_utils.SAFE_WEIGHTS_NAME)
     else:
         (name, ext) = ("*", ".pt")
 
