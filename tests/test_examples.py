@@ -277,10 +277,10 @@ class ExampleTestMeta(type):
                 return
             elif self.EXAMPLE_NAME == "run_clip":
                 if not os.environ.get("COCO_CACHE", "0"):
-                    from .clip_coco_utils import COCO_URLS, create_clip_roberta_model, download_files
-
+                    from .clip_coco_utils import COCO_URLS, download_files
                     download_files(COCO_URLS)
-                    create_clip_roberta_model()
+                from .clip_coco_utils import create_clip_roberta_model
+                create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
 
