@@ -40,7 +40,8 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     }
 else:
     # FSDP is not supported on Gaudi1
-    MODELS_TO_TEST = {"bf16":[]}
+    MODELS_TO_TEST = {"bf16": []}
+
 
 def _test_fsdp(
     model_name: str,
