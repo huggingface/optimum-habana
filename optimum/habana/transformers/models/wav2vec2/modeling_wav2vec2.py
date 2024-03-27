@@ -36,9 +36,6 @@ except ImportError:
     custom_ctc_loss_fwd = None
 
 
-ctc_loss_fwd = CTCLoss.apply
-
-
 def _gaudi_wav2vec2_compute_mask_indices(
     shape: Tuple[int, int],
     mask_prob: float,
