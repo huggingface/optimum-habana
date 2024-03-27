@@ -325,30 +325,44 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
         masked_image_latents_batches = list(torch.split(masked_image_latents, batch_size))
 
         # If the last batch has less samples than batch_size, pad it with dummy samples
+        # Each input should be checked and padded seperately - some might already be correctly padded.
         num_dummy_samples = 0
         if latents_batches[-1].shape[0] < batch_size:
             num_dummy_samples = batch_size - latents_batches[-1].shape[0]
+
             # Pad latents_batches
             sequence_to_stack = (latents_batches[-1],) + tuple(
                 torch.zeros_like(latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
             )
             latents_batches[-1] = torch.vstack(sequence_to_stack)
+
+        if prompt_embeds_batches[-1].shape[0] < batch_size:
+            num_dummy_samples = batch_size - prompt_embeds_batches[-1].shape[0]
             # Pad prompt_embeds_batches
             sequence_to_stack = (prompt_embeds_batches[-1],) + tuple(
                 torch.zeros_like(prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
             )
             prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
-            # Pad negative_prompt_embeds_batches if necessary
-            if negative_prompt_embeds is not None:
+
+        if negative_prompt_embeds is not None:
+            if negative_prompt_embeds_batches[-1].shape[0] < batch_size:
+                num_dummy_samples = batch_size - negative_prompt_embeds_batches[-1].shape[0]
+                # Pad negative_prompt_embeds_batches if necessary
                 sequence_to_stack = (negative_prompt_embeds_batches[-1],) + tuple(
                     torch.zeros_like(negative_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
                 )
                 negative_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
+
+        if mask_batches[-1].shape[0] < batch_size:
+            num_dummy_samples = batch_size - mask_batches[-1].shape[0]
             # Pad mask_batches
             sequence_to_stack = (mask_batches[-1],) + tuple(
                 torch.zeros_like(mask_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
             )
             mask_batches[-1] = torch.vstack(sequence_to_stack)
+
+        if masked_image_latents_batches[-1].shape[0] < batch_size:
+            num_dummy_samples = batch_size - masked_image_latents_batches[-1].shape[0]
             # Pad masked_image_latents_batches
             sequence_to_stack = (masked_image_latents_batches[-1],) + tuple(
                 torch.zeros_like(masked_image_latents_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
