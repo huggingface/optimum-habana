@@ -514,6 +514,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.ignore_eos is None:
             generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode)
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
+        if self.config.model_type == "falcon" and "token_type_ids" in kwargs.keys():
+            for key in ["token_type_ids"]:
+                model_kwargs.pop(key, None)
         self._validate_model_kwargs(model_kwargs.copy())
 
         # 2. Set generation parameters if not already defined
