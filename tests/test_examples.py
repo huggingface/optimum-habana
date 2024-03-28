@@ -274,7 +274,7 @@ class ExampleTestMeta(type):
                 self.assertEqual(return_code, 0)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
-                if not os.environ.get("COCO_CACHE", "0"):
+                if not os.environ.get("DATA_CACHE", "0"):
                     from .clip_coco_utils import COCO_URLS, download_files
 
                     download_files(COCO_URLS)
@@ -325,8 +325,8 @@ class ExampleTestMeta(type):
 
             extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
 
-            if os.environ.get("COCO_CACHE", "0") and self.EXAMPLE_NAME == "run_clip":
-                extra_command_line_arguments[0] = "--data_dir {}".format(os.environ.get("COCO_CACHE", "$PWD"))
+            if os.environ.get("DATA_CACHE", "0") and self.EXAMPLE_NAME == "run_clip":
+                extra_command_line_arguments[0] = "--data_dir {}".format(os.environ.get("DATA_CACHE", "$PWD"))
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
@@ -581,6 +581,7 @@ class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
+    DATASET_NAME = os.environ.get("DATA_CACHE", 0)
 
 
 class MultiCardSummarizationExampleTester(
