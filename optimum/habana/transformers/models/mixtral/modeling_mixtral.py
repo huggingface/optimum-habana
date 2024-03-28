@@ -40,6 +40,7 @@ from transformers.models.mixtral.modeling_mixtral import (
     MixtralForCausalLM,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
+    MixtralBlockSparseTop2MLP
 )
 from transformers.utils import logging
 
@@ -278,6 +279,56 @@ def gaudi_mixtral_attention_forward(
     return attn_output, attn_weights, past_key_value
 
 
+
+def gaudi_mixtral_block_sparse_moe_forward_orig(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    """ """
+    batch_size, sequence_length, hidden_dim = hidden_states.shape
+    if self.training and self.jitter_noise > 0:
+        hidden_states *= torch.empty_like(hidden_states).uniform_(1.0 - self.jitter_noise, 1.0 + self.jitter_noise)
+    hidden_states = hidden_states.view(-1, hidden_dim)
+    # router_logits: (batch * sequence_length, n_experts)
+    router_logits = self.gate(hidden_states)
+
+    routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+    routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+    routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+    # we cast back to the input dtype
+    routing_weights = routing_weights.to(hidden_states.dtype)
+
+    final_hidden_states = torch.zeros(
+        (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+    )
+
+    # One hot encode the selected experts to create an expert mask
+    # this will be used to easily index which expert is going to be sollicitated
+    expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
+
+    # Loop over all available experts in the model and perform the computation on each expert
+    for expert_idx in range(self.num_experts):
+        expert_layer = self.experts[expert_idx]
+        idx, top_x = torch.where(expert_mask[expert_idx])
+
+        if top_x.shape[0] == 0:
+            continue
+
+        # in torch it is faster to index using lists than torch tensors
+        top_x_list = top_x.tolist()
+        idx_list = idx.tolist()
+
+        # Index the correct hidden states and compute the expert hidden state for
+        # the current expert. We need to make sure to multiply the output hidden
+        # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
+        current_state = hidden_states[None, top_x_list].reshape(-1, hidden_dim)
+        current_hidden_states = expert_layer(current_state) * routing_weights[top_x_list, idx_list, None]
+
+        # However `index_add_` only support torch tensors for indexing so we'll use
+        # the `top_x` tensor here.
+        final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
+    final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
+    return final_hidden_states, router_logits
+
+
+
 def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
@@ -303,9 +354,15 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     # we cast back to the input dtype
     routing_weights = routing_weights.to(hidden_states.dtype)
 
-    final_hidden_states = torch.zeros(
-        (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
-    )
+    #import pdb; pdb.set_trace()
+    import os
+    parallel = int(os.environ.get('PARALLEL','0'))==1
+    #print('parallel', parallel)
+
+    if not parallel:
+        final_hidden_states = torch.zeros(
+            (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+        )
 
     padded_weights = torch.zeros(
         (batch_size * sequence_length, self.num_experts), dtype=hidden_states.dtype, device=hidden_states.device
@@ -314,17 +371,156 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     padded_weights = padded_weights.reshape(-1, sequence_length, self.num_experts)
     padded_weights = padded_weights.permute(2, 0, 1).unsqueeze(-1)
 
-    # Loop over all available experts in the model and perform the computation on each expert
-    for expert_idx in range(self.num_experts):
-        expert_layer = self.experts[expert_idx]
-        padded_weight = padded_weights[expert_idx]
+    
+
+    if parallel:
         current_state_static = hidden_states.reshape(-1, hidden_dim)
-        current_hidden_states_static = (
-            expert_layer(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
+
+        current_hidden_states_static0 = (
+            self.experts[0](current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weights[0]
         )
-        final_hidden_states += current_hidden_states_static
+        current_hidden_states_static1 = (
+            self.experts[1](current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weights[1]
+        )
+        current_hidden_states_static2 = (
+            self.experts[2](current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weights[2]
+        )
+        current_hidden_states_static3 = (
+            self.experts[3](current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weights[3]
+        )
+        current_hidden_states_static4 = (
+            self.experts[4](current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weights[4]
+        )
+        current_hidden_states_static5 = (
+            self.experts[5](current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weights[5]
+        )
+        current_hidden_states_static6 = (
+            self.experts[6](current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weights[6]
+        )
+        current_hidden_states_static7 = (
+            self.experts[7](current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weights[7]
+        )
+        final_hidden_states = current_hidden_states_static0 + current_hidden_states_static1 + current_hidden_states_static2 + current_hidden_states_static3 + \
+                              current_hidden_states_static4 + current_hidden_states_static5 + current_hidden_states_static6 + current_hidden_states_static7
+    else:
+        # Loop over all available experts in the model and perform the computation on each expert
+        for expert_idx in range(self.num_experts):
+            expert_layer = self.experts[expert_idx]
+            padded_weight = padded_weights[expert_idx]
+            current_state_static = hidden_states.reshape(-1, hidden_dim)
+            current_hidden_states_static = (
+                expert_layer(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
+            )
+            final_hidden_states += current_hidden_states_static
+
 
     return final_hidden_states, router_logits
+
+
+
+
+class ParallelExperts(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.num_experts = config.num_local_experts
+        assert self.num_experts == 8
+
+        self.e0 = MixtralBlockSparseTop2MLP(config)
+        self.e1 = MixtralBlockSparseTop2MLP(config)
+        self.e2 = MixtralBlockSparseTop2MLP(config)
+        self.e3 = MixtralBlockSparseTop2MLP(config)
+        self.e4 = MixtralBlockSparseTop2MLP(config)
+        self.e5 = MixtralBlockSparseTop2MLP(config)
+        self.e6 = MixtralBlockSparseTop2MLP(config)
+        self.e7 = MixtralBlockSparseTop2MLP(config)
+
+    def forward(self, hidden_states: torch.Tensor, padded_weights: torch.Tensor):
+        batch_size, sequence_length, hidden_dim = hidden_states.shape
+
+        current_state_static = hidden_states.reshape(-1, hidden_dim)
+        current_hidden_states_static0 = (
+            self.e0(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weights[0]
+        )
+
+
+
+# TODO subclass MixtralSparseMoeBlock
+class GaudiMixtralSparseMoeBlock(nn.Module):
+    """
+    This implementation is
+    strictly equivalent to standard MoE with full capacity (no
+    dropped tokens). It's faster since it formulates MoE operations
+    in terms of block-sparse operations to accomodate imbalanced
+    assignments of tokens to experts, whereas standard MoE either
+    (1) drop tokens at the cost of reduced performance or (2) set
+    capacity factor to number of experts and thus waste computation
+    and memory on padding.
+    """
+
+    def __init__(self, config):
+        super().__init__()
+        self.hidden_dim = config.hidden_size
+        self.ffn_dim = config.intermediate_size
+        self.num_experts = config.num_local_experts
+        self.top_k = config.num_experts_per_tok
+
+        # gating
+        self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
+
+        self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
+
+        # Jitter parameters
+        self.jitter_noise = config.router_jitter_noise
+    
+    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Copied from MixtralSparseMoeBlock.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
+        The only differences are:
+        - optimize expert forward, remove dynamic control and dynamic shape
+        """
+        batch_size, sequence_length, hidden_dim = hidden_states.shape
+        hidden_states = hidden_states.view(-1, hidden_dim)
+        # router_logits: (batch * sequence_length, n_experts)
+        router_logits = self.gate(hidden_states)
+
+        if is_deepspeed_available():
+            from deepspeed import comm as dist
+
+            if dist.is_initialized():
+                output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
+                dist.all_gather(output_tensors, router_logits)
+                router_logits = torch.cat(output_tensors, dim=1)
+
+        routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        # we cast back to the input dtype
+        routing_weights = routing_weights.to(hidden_states.dtype)
+
+        final_hidden_states = torch.zeros(
+            (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+        )
+
+        padded_weights = torch.zeros(
+            (batch_size * sequence_length, self.num_experts), dtype=hidden_states.dtype, device=hidden_states.device
+        )
+        padded_weights.scatter_(-1, selected_experts, routing_weights)
+        padded_weights = padded_weights.reshape(-1, sequence_length, self.num_experts)
+        padded_weights = padded_weights.permute(2, 0, 1).unsqueeze(-1)
+        import pdb; pdb.set_trace()
+
+        # Loop over all available experts in the model and perform the computation on each expert
+        for expert_idx in range(self.num_experts):
+            expert_layer = self.experts[expert_idx]
+            padded_weight = padded_weights[expert_idx]
+            current_state_static = hidden_states.reshape(-1, hidden_dim)
+            current_hidden_states_static = (
+                expert_layer(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
+            )
+            final_hidden_states += current_hidden_states_static
+
+        return final_hidden_states, router_logits
+
 
 
 def gaudi_mixtral_decoder_layer_forward(
