@@ -159,6 +159,18 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --do_sample
 ```
 
+To run Mixtral-8x7B inference on a single Gaudi2 card, use the following command:
+```bash
+python run_generation.py \
+ --model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+ --bf16 \
+ --use_hpu_graphs \
+ --use_kv_cache \
+ --batch_size 1 \
+ --max_new_tokens 128 \
+ --do_sample
+```
+
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
 > - have a HF account
 > - agree to the terms of use of the model in its model card on the HF Hub
