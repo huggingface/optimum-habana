@@ -52,3 +52,4 @@ class GaudiGenerationConfig(GenerationConfig):
         self.use_flash_attention = kwargs.get("use_flash_attention", None)
         self.flash_attention_recompute = kwargs.get("flash_attention_recompute", None)
         self.use_fused_rope = kwargs.get("use_fused_rope", None)
+        self.split_model_markstep = kwargs.get("split_model_markstep", None)

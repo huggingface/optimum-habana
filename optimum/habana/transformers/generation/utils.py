@@ -724,6 +724,12 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
+
+        # split the model in half with a mark step. this might increase max batchsize supported
+        model_kwargs["split_model_markstep"] = generation_config.split_model_markstep
+        if model_kwargs["split_model_markstep"]:
+            assert self.config.model_type in ['mixtral', 'mistral', 'falcon', 'gpt_neox'], f'split_model_markstep is supported only for mistral, mixtral, falcon and gpt_neox, but found {self.config.model_type}'
+
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[-1]
