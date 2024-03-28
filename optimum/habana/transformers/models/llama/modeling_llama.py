@@ -1,3 +1,4 @@
+import os
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -413,7 +414,8 @@ class GaudiLlamaAttention(LlamaAttention):
 
             if q_len == 1:
                 # next token
-                with ht.sdp_kernel(enable_recompute=False):
+                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                with ht.sdp_kernel(enable_recompute=use_recompute):
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
