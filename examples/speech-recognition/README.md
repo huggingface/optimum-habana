@@ -78,13 +78,15 @@ python run_speech_recognition_ctc.py \
     --use_lazy_mode \
     --gaudi_config_name="Habana/wav2vec2" \
     --throughput_warmup_steps="3" \
-    --bf16
+    --bf16 \
+    --use_hpu_graphs_for_training \
+    --use_hpu_grpahs_for_inference
 ```
 
 On a single HPU, this script should run in *ca.* 6 hours and yield a CTC loss of **0.059** and a word error rate of **0.0423**.
 
 > If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
-> Resampling with the `datasets` library is not supported on HPUs yet.
+> Resampling with the `datasets` library is not supported on HPUs yet. HPU graphs are supported only on Gaudi2 and from SynapseAI v1.15.
 
 ### Multi-HPU CTC
 
@@ -117,20 +119,22 @@ python ../gaudi_spawn.py \
     --use_lazy_mode \
     --gaudi_config_name Habana/wav2vec2 \
     --throughput_warmup_steps 3 \
-    --bf16
+    --bf16 \
+    --use_hpu_graphs_for_training \
+    --use_hpu_graphs_for_inference
 ```
 
 On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **0.0613** and a word error rate of **0.0458**.
 
 > If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
-> Resampling with the `datasets` library is not supported on HPUs yet.
+> Resampling with the `datasets` library is not supported on HPUs yet. HPU graphs are supported only on Gaudi2 and from SynapseAI v1.15.
 
 
 ## DeepSpeed
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -196,7 +200,8 @@ python run_speech_recognition_ctc.py \
     --use_habana \
     --use_lazy_mode \
     --gaudi_config_name="Habana/wav2vec2" \
-    --bf16
+    --bf16 \
+    --use_hpu_graphs_for_inference
 ```
 ## Sequence to Sequence
 

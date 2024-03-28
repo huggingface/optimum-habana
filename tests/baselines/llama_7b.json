@@ -67,9 +67,9 @@
                 "multi_card": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 8,
-                    "perplexity": 2.4259,
-                    "train_runtime": 199.94,
-                    "train_samples_per_second": 88.664,
+                    "perplexity": 2.4502,
+                    "train_runtime": 210.305,
+                    "train_samples_per_second": 85.0801,
                     "extra_arguments": [
                         "--bf16 True",
                         "--gradient_accumulation_steps 2",
@@ -89,7 +89,7 @@
                         "--adam_epsilon 1e-08",
                         "--ddp_bucket_cap_mb 50",
                         "--validation_split_percentage 10",
-                        "--attn_softmax_bf16 True",
+                        "--attn_softmax_bf16",
                         "--pipelining_fwd_bwd False",
                         "--fsdp auto_wrap",
                         "--torch_compile_backend hpu_backend",
@@ -101,4 +101,3 @@
         }
     }
 }
-

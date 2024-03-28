@@ -221,11 +221,6 @@ def setup_parser(parser):
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
 
-    parser.add_argument(
-        "--kv_cache_fp8",
-        action="store_true",
-        help="Store kv-cache in float8 when kv-cache is used. Can't use this argument together with QUANT_CONFIG env var",
-    )
     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--use_flash_attention",
@@ -239,7 +234,17 @@ def setup_parser(parser):
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
-
+    parser.add_argument(
+        "--const_serialization_path",
+        "--csp",
+        type=str,
+        help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
+    )
+    parser.add_argument(
+        "--disk_offload",
+        action="store_true",
+        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+    )
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -249,10 +254,6 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
-    if args.quant_config and args.kv_cache_fp8:
-        # can't use both quant_config and kv_cache_fp8, since quant_config may trigger kv cache quantization
-        # with habana quantization toolkit
-        raise parser.error("Can't use QUANT_CONFIG env var with kv_cache_fp8 argument")
     return args
 
 
@@ -561,6 +562,10 @@ def main():
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.finish_measurements(model)
+    if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
+        import shutil
+
+        shutil.rmtree(args.const_serialization_path)
 
 
 if __name__ == "__main__":

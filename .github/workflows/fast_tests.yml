@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       AWS_REGION: us-east-1
-      EC2_AMI_ID: ami-0a2179742e502fdfe
+      EC2_AMI_ID: ami-04fe9856174d852b8
       EC2_INSTANCE_TYPE: dl1.24xlarge
       EC2_SUBNET_ID: subnet-b7533b96
       EC2_SECURITY_GROUP: sg-08af7938042271373
@@ -77,7 +77,7 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       - name: Run tests
         run: |
             docker run \
@@ -89,7 +89,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
     name: Run tests for optimum.habana.diffusers
@@ -113,7 +113,7 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       - name: Run tests
         run: |
             docker run \
@@ -125,7 +125,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.14.0/ubuntu22.04/habanalabs/pytorch-installer-2.1.1:latest \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
             /bin/bash tests/ci/fast_tests_diffusers.sh
   stop-runner:
     name: Stop self-hosted EC2 runner
