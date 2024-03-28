@@ -202,6 +202,32 @@ python text_to_image_generation.py \
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
 
+### Animagine XL 3.1
+Animagine XL 3.1 is an open-source text-to-image model for generating anime-style images with high quality.
+
+Here is how to generate images with Animagine XL 3.1:
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path cagliostrolab/animagine-xl-3.1 \
+    --prompts "1girl, souryuu asuka langley, neon genesis evangelion, solo, upper body, v, smile, looking at viewer, outdoors, night" \
+    --negative_prompts "nsfw, lowres, (bad), text, error, fewer, extra, missing, worst quality, jpeg artifacts, low quality, watermark, unfinished, displeasing, oldest, early, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract]" \
+    --num_inference_steps 50 \
+    --guidance_scale 7 \
+    --num_images_per_prompt 50 \
+    --batch_size 5 \
+    --height 1216 \
+    --width 832 \
+    --image_save_dir /tmp/stable_diffusion_animagine_xl \
+    --scheduler euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
 ### ControlNet
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala.

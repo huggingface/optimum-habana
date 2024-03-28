@@ -240,7 +240,7 @@ def main():
             control_image = Image.fromarray(image)
 
     # Import selected pipeline
-    sdxl_models = ["stable-diffusion-xl", "sdxl"]
+    sdxl_models = ["stable-diffusion-xl", "sdxl", "animagine-xl"]
 
     if args.control_image is not None:
         from diffusers import ControlNetModel
