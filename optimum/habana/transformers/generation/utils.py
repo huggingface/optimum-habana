@@ -584,7 +584,8 @@ class GaudiGenerationMixin(GenerationMixin):
             assert self.config.model_type in [
                 "llama",
                 "mistral",
-            ], "reuse_cache only supported by llama and mistral at the moment"
+                "falcon",
+            ], "reuse_cache only supported by llama, mistral and falcon at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -733,14 +734,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 bs, _ = input_ids.shape
                 if not is_greedy_or_beam_and_bucket:
                     unwrap_deepspeed_model(self).allocate_kv_cache(
-                        bs * generation_config.num_beams,
-                        calculated_max_length,
-                        token_idx,
-                        generation_config.kv_cache_fp8,
+                        bs * generation_config.num_beams, calculated_max_length, token_idx
                     )
                     model_kwargs["kv_cache_len"] = calculated_max_length
 
-            if self.config.model_type in ["llama"]:
+            if self.config.model_type in ["llama", "falcon"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
