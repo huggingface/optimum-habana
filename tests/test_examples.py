@@ -276,9 +276,12 @@ class ExampleTestMeta(type):
                 self.assertEqual(return_code, 0)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
-                from .clip_coco_utils import COCO_URLS, create_clip_roberta_model, download_files
+                if not os.environ.get("DATA_CACHE", "0"):
+                    from .clip_coco_utils import COCO_URLS, download_files
 
-                download_files(COCO_URLS)
+                    download_files(COCO_URLS)
+                from .clip_coco_utils import create_clip_roberta_model
+
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
@@ -322,6 +325,11 @@ class ExampleTestMeta(type):
                     env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
 
+            extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
+
+            if os.environ.get("DATA_CACHE", "0") and self.EXAMPLE_NAME == "run_clip":
+                extra_command_line_arguments[0] = "--data_dir {}".format(os.environ.get("DATA_CACHE", "$PWD"))
+
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
                     multi_card,
@@ -336,9 +344,7 @@ class ExampleTestMeta(type):
                     train_batch_size=baseline.get("distribution").get(distribution).get("train_batch_size"),
                     eval_batch_size=baseline.get("eval_batch_size"),
                     num_epochs=baseline.get("num_train_epochs"),
-                    extra_command_line_arguments=baseline.get("distribution")
-                    .get(distribution)
-                    .get("extra_arguments", []),
+                    extra_command_line_arguments=extra_command_line_arguments,
                 )
 
                 p = subprocess.Popen(cmd_line, env=env_variables)
@@ -577,6 +583,7 @@ class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
+    DATASET_NAME = os.environ.get("DATA_CACHE", 0)
 
 
 class MultiCardSummarizationExampleTester(
