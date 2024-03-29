@@ -166,6 +166,11 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     gaudi_unet_2d_condition_model_forward
                 )
 
+                from ..models import gaudi_unet_2d_model_forward
+                diffusers.models.unets.unet_2d.UNet2DModel.forward = (
+                    gaudi_unet_2d_model_forward
+                )
+
             if self.use_hpu_graphs:
                 try:
                     import habana_frameworks.torch as ht
