@@ -386,7 +386,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 else:
                     key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                     value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
-                    past_key_value = (key_states.contiguous(), value_states.contiguous())
+                    past_key_value = (key_states, value_states)
             if cache_idx is not None and q_len == 1:
                 key_states = key_states[:, :, :cache_idx, :]
                 value_states = value_states[:, :, :cache_idx, :]

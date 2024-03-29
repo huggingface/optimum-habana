@@ -343,7 +343,7 @@ class GaudiFalconAttention(FalconAttention):
                             layer_past[0], key_layer, -2, token_idx, self.inp_seq_len
                         )  # k_layer bs*1, q_len, head_dim
                         value_layer = self.v_cache.update(layer_past[1], value_layer, -2, token_idx, self.inp_seq_len)
-                        layer_past = (key_layer.contiguous(), value_layer.contiguous())
+                        layer_past = (key_layer, value_layer)
                     present = layer_past
 
                 if cache_idx is not None and query_length == 1:
