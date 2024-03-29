@@ -334,10 +334,16 @@ class GaudiFalconAttention(FalconAttention):
                             device=self.query_key_value.weight.device,
                         )
                         layer_past = (past_key, past_value)
-                    key_layer = self.k_cache.update(
-                        layer_past[0], key_layer, -2, token_idx, self.inp_seq_len
-                    )  # k_layer bs*1, q_len, head_dim
-                    value_layer = self.v_cache.update(layer_past[1], value_layer, -2, token_idx, self.inp_seq_len)
+                        key_layer = self.k_cache.update(
+                            layer_past[0], key_layer, -2, token_idx, self.inp_seq_len
+                        )  # k_layer bs*1, q_len, head_dim
+                        value_layer = self.v_cache.update(layer_past[1], value_layer, -2, token_idx, self.inp_seq_len)
+                    else:
+                        key_layer = self.k_cache.update(
+                            layer_past[0], key_layer, -2, token_idx, self.inp_seq_len
+                        )  # k_layer bs*1, q_len, head_dim
+                        value_layer = self.v_cache.update(layer_past[1], value_layer, -2, token_idx, self.inp_seq_len)
+                        layer_past = (key_layer.contiguous(), value_layer.contiguous())
                     present = layer_past
 
                 if cache_idx is not None and query_length == 1:
@@ -347,7 +353,7 @@ class GaudiFalconAttention(FalconAttention):
         else:
             present = None
 
-        if self.training and layer_past is None:
+        if self.training or present is None:
             kv_length = key_layer.shape[-2]
         else:
             kv_length = present[0][-2] if reuse_cache else present[0].shape[-2]
