@@ -47,13 +47,14 @@ def gaudi_unet_2d_model_forward(
     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
     timesteps = timesteps * torch.ones(sample.shape[0], dtype=timesteps.dtype, device=timesteps.device)
 
-    t_emb = self.time_proj(timesteps)
+    t_emb = self.time_proj(timesteps.to('cpu')) #HPU Patch
 
     # timesteps does not contain any weights and will always return f32 tensors
     # but time_embedding might actually be running in fp16. so we need to cast here.
     # there might be better ways to encapsulate this.
     t_emb = t_emb.to(dtype=self.dtype)
     emb = self.time_embedding(t_emb)
+    emb = emb.to(timesteps.device) # HPU Patch
 
     if self.class_embedding is not None:
         if class_labels is None:

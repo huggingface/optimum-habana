@@ -63,6 +63,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         GaudiDiffusionPipeline.__init__(self, use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval)
 
         unet.conv_in.float() #Patch the calculation
+        torch.manual_seed(0)
 
         DDPMPipeline.__init__(self, unet, scheduler)
 
@@ -145,19 +146,23 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
 
         if self.use_habana:
             self.unet = self.unet.to(self._device)
-        import pdb; pdb.set_trace()
         
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
-            for i in self.progress_bar(num_inference_steps):
-                timestep = timesteps[0]
-                timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-                # 1. predict noise model_output
+
+        for i in self.progress_bar(num_inference_steps):
+            timestep = timesteps[0]
+            timesteps = torch.roll(timesteps, shifts=-1, dims=0)
+            # 1. predict noise model_output
+            with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
                 model_output = self.unet(image, timestep).sample
-                # 2. compute previous image: x_t -> x_t-1
-                image = self.scheduler.step(model_output, timestep, image, generator=generator).prev_sample
-                
-                if not self.use_hpu_graphs: # for checking output resutls
-                    self.htcore.mark_step()
+            # 2. compute previous image: x_t -> x_t-1
+            image = self.scheduler.step(model_output, timestep, image, generator=generator).prev_sample
+            
+            if not self.use_hpu_graphs: # for checking output resutls
+                self.htcore.mark_step()
+
+        
+        if self.gaudi_config.use_torch_autocast:
+            image = image.float()
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
