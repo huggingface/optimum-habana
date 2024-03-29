@@ -74,6 +74,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mpt",
     "t5",
     "mistral",
+    "phi",
     "mixtral",
     "blip_text_model",
     "stablelm"
@@ -514,6 +515,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.ignore_eos is None:
             generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode)
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
+        if self.config.model_type == "falcon" and "token_type_ids" in kwargs.keys():
+            for key in ["token_type_ids"]:
+                model_kwargs.pop(key, None)
         self._validate_model_kwargs(model_kwargs.copy())
 
         # 2. Set generation parameters if not already defined
@@ -578,7 +582,10 @@ class GaudiGenerationMixin(GenerationMixin):
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
         if generation_config.reuse_cache:
-            assert self.config.model_type in ["llama"], "reuse_cache only supported by llama at the moment"
+            assert self.config.model_type in [
+                "llama",
+                "mistral",
+            ], "reuse_cache only supported by llama and mistral at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -719,8 +726,6 @@ class GaudiGenerationMixin(GenerationMixin):
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
-        model_kwargs["use_fused_rope"] = False if generation_config.use_fused_rope is False else True
-
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[-1]
             if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
