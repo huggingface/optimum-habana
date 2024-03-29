@@ -46,22 +46,22 @@ else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 41.51855420676164),
-            ("gpt2-xl", 137.159223188195),
+            ("bigscience/bloomz-7b1", 41.7555095197846),
+            ("gpt2-xl", 142.11481820425706),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 50.66146537939035),
-            ("meta-llama/Llama-2-7b-hf", 44.29688546702468),
-            ("tiiuae/falcon-7b", 44.217408724737744),
-            ("bigcode/starcoder", 15.948143541091655),
-            ("Salesforce/codegen2-1B", 153.79670508220687),
-            ("mosaicml/mpt-7b", 44.80241777760578),
-            ("mistralai/Mistral-7B-v0.1", 40.00435417311187),
-            ("microsoft/phi-2", 90.10751623430603),
+            ("EleutherAI/gpt-j-6b", 50.79545107991805),
+            ("meta-llama/Llama-2-7b-hf", 44.39616259946937),
+            ("tiiuae/falcon-7b", 44.82870145718665),
+            ("bigcode/starcoder", 15.945023767901013),
+            ("Salesforce/codegen2-1B", 155.32071248826423),
+            ("mosaicml/mpt-7b", 45.45168927038262),
+            ("mistralai/Mistral-7B-v0.1", 41.21906841459711),
+            ("microsoft/phi-2", 92.53083167241344),
         ],
         "fp8": [],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 31.044523676681507),
+            ("bigscience/bloomz-7b1", 31.994268212011505),
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
