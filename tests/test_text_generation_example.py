@@ -14,32 +14,32 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 130.10463607610703),
-            ("gpt2-xl", 293.2967921508155),
-            ("EleutherAI/gpt-j-6b", 157.39646612198123),
-            ("EleutherAI/gpt-neox-20b", 49.65827341338015),
-            ("meta-llama/Llama-2-7b-hf", 142.00624811267403),
-            ("tiiuae/falcon-40b", 25.065388035178792),
-            ("bigcode/starcoder", 65.50236665863024),
-            ("Salesforce/codegen2-1B", 456.7740998156863),
-            ("mosaicml/mpt-30b", 35.64501131267502),
-            ("mistralai/Mistral-7B-v0.1", 125.26115369093216),
-            ("mistralai/Mixtral-8x7B-v0.1", 23.78652574031883),
-            ("microsoft/phi-2", 218.08752713569007),
+            ("bigscience/bloomz-7b1", 130.0472971205316),
+            ("gpt2-xl", 281.8734689674413),
+            ("EleutherAI/gpt-j-6b", 160.5823842101192),
+            ("EleutherAI/gpt-neox-20b", 50.67672679310354),
+            ("meta-llama/Llama-2-7b-hf", 141.25776956002076),
+            ("tiiuae/falcon-40b", 25.202450111088346),
+            ("bigcode/starcoder", 65.58632640700114),
+            ("Salesforce/codegen2-1B", 446.4029486883532),
+            ("mosaicml/mpt-30b", 36.06464336116623),
+            ("mistralai/Mistral-7B-v0.1", 130.2172236767782),
+            ("mistralai/Mixtral-8x7B-v0.1", 23.7931001677926),
+            ("microsoft/phi-2", 224.72307766211117),
         ],
         "fp8": [
-            ("tiiuae/falcon-180B", 47.67900945905787),
+            ("tiiuae/falcon-180B", 52.85086442722326),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 36.34664210641816),
-            ("meta-llama/Llama-2-70b-hf", 61.973950428647164),
-            ("facebook/opt-66b", 28.16154122335556),
+            ("bigscience/bloomz", 36.77314954096159),
+            ("meta-llama/Llama-2-70b-hf", 64.10514998902435),
+            ("facebook/opt-66b", 28.48069266504111),
         ],
         "torch_compile": [
-            ("meta-llama/Llama-2-7b-hf", 12.468247401430999),
+            ("meta-llama/Llama-2-7b-hf", 102.27823420713148),
         ],
         "torch_compile_distributed": [
-            ("meta-llama/Llama-2-7b-hf", 20.178927030275947),
+            ("meta-llama/Llama-2-7b-hf", 39.72973199515235),
         ],
     }
 else:
@@ -136,7 +136,7 @@ def _test_text_generation(
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
             )
-            command.append("--fp8")
+            command.insert(-1, "--fp8")
 
         proc = subprocess.run(command, env=env_variables)
 

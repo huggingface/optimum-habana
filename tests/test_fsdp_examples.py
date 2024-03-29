@@ -17,8 +17,8 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             (
                 "bert-base-uncased",
                 "Habana/bert-base-uncased",
-                2807,
-                85.4688,
+                3516.322,
+                85.5503,
                 "question-answering",
                 24,
                 8,
@@ -28,8 +28,8 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             (
                 "meta-llama/Llama-2-7b-hf",
                 "",
-                54,
-                0.92,
+                87.016,
+                0.9093,
                 "language-modeling",
                 8,
                 8,

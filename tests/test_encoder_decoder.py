@@ -16,15 +16,15 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "summarization": {
             "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 4.691, 26.0688, 2, 1),
-                ("t5-3b", "Habana/t5", 2.88, 21.56, 2, 1),
+                ("facebook/bart-large-cnn", "Habana/bart", 5.233, 26.6928, 2, 1),
+                ("t5-3b", "Habana/t5", 2.955, 21.8877, 2, 1),
             ],
         },
         "translation": {
             "bf16": [
-                ("Babelscape/mrebel-large", "Habana/t5", 1.41, 0.162, 2, 1),
-                ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.8, 0.813, 2, 1),
-                ("facebook/nllb-200-distilled-600M", "Habana/t5", 1.496, 1.2531, 2, 1),
+                ("Babelscape/mrebel-large", "Habana/t5", 1.323, 0.1618, 2, 1),
+                ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.815, 0.8132, 2, 1),
+                ("facebook/nllb-200-distilled-600M", "Habana/t5", 1.401, 1.2599, 2, 1),
             ],
         },
     }

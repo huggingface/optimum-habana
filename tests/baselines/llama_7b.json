@@ -32,9 +32,9 @@
                 "multi_card": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 8,
-                    "perplexity": 2.3666,
-                    "train_runtime": 303.8345,
-                    "train_samples_per_second": 144.392,
+                    "perplexity": 2.3665,
+                    "train_runtime": 294.5707,
+                    "train_samples_per_second": 148.093,
                     "extra_arguments": [
                         "--bf16",
                         "--gradient_accumulation_steps 2",
@@ -67,9 +67,9 @@
                 "multi_card": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 8,
-                    "perplexity": 2.4502,
-                    "train_runtime": 210.305,
-                    "train_samples_per_second": 85.0801,
+                    "perplexity": 2.4259,
+                    "train_runtime": 186.2483,
+                    "train_samples_per_second": 93.5,
                     "extra_arguments": [
                         "--bf16 True",
                         "--gradient_accumulation_steps 2",
