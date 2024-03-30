@@ -3,6 +3,7 @@ from pipeline_ddpm import GaudiDDPMPipeline
 import logging
 import sys
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
+import time
 
 model_name = "google/ddpm-ema-celebahq-256"
 # # Setup logging
@@ -13,10 +14,10 @@ model_name = "google/ddpm-ema-celebahq-256"
 # )
 # logger.setLevel(logging.INFO)
 
-scheduler = GaudiDDIMScheduler.from_pretrained(model_name) #, subfolder="scheduler")
+scheduler = GaudiDDIMScheduler.from_pretrained(model_name)
 
 gaudi_kwargs = {
-    "use_torch_autocast": False,
+    "use_torch_autocast": True,
 }
 
 gaudi_config = GaudiConfig(**gaudi_kwargs)
@@ -24,7 +25,7 @@ gaudi_config = GaudiConfig(**gaudi_kwargs)
 kwargs = {
     "scheduler": scheduler,
     "use_habana": True,
-    "use_hpu_graphs": False,
+    "use_hpu_graphs": True,
     "gaudi_config": gaudi_config,
 }
 
@@ -32,4 +33,5 @@ pipeline = GaudiDDPMPipeline.from_pretrained(model_name, **kwargs)
 
 outputs = pipeline()
 outputs.images[0].save('testing.jpg')
+
 import pdb; pdb.set_trace()
