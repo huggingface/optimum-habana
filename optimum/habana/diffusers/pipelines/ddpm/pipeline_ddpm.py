@@ -25,6 +25,7 @@ from diffusers.schedulers import DDPMScheduler
 from diffusers.pipelines import DDPMPipeline
 from diffusers.utils import BaseOutput
 from optimum.utils import logging
+import copy
 
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import speed_metrics
@@ -62,9 +63,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
     ):
         GaudiDiffusionPipeline.__init__(self, use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval)
 
-        unet.conv_in.float() #Patch the calculation
-        torch.manual_seed(0)
-
+        #torch.manual_seed(0)
         DDPMPipeline.__init__(self, unet, scheduler)
 
     @torch.no_grad()
@@ -141,21 +140,28 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         self.scheduler.reset_timestep_dependent_params()
         num_inference_steps = [1] * len(self.scheduler.timesteps)
 
+        #Gaudi Patch
+        if not hasattr(self, 'timestep_unet'):
+            self.timestep_unet = copy.deepcopy(self.unet)
+            logger.info('Prepared a Unet for timestep calculations')
+
         if self.use_hpu_graphs:
-           self.unet = self.ht.hpu.wrap_in_hpu_graph(self.unet)
+           self.unet = self.ht.hpu.wrap_in_hpu_graph(self.unet, disable_tensor_cache=True)
+           self.timestep_unet = self.ht.hpu.wrap_in_hpu_graph(self.timestep_unet, disable_tensor_cache=True)
 
         if self.use_habana:
             self.unet = self.unet.to(self._device)
-        
+            self.timestep_unet = self.timestep_unet.to(self._device)
 
         for i in self.progress_bar(num_inference_steps):
             timestep = timesteps[0]
             timesteps = torch.roll(timesteps, shifts=-1, dims=0)
+            emb = self.timestep_unet(image, timestep, True, None)
             # 1. predict noise model_output
             with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
-                model_output = self.unet(image, timestep).sample
+                model_output = self.unet(image, timestep, False, emb).sample
             # 2. compute previous image: x_t -> x_t-1
-            image = self.scheduler.step(model_output, timestep, image, generator=generator).prev_sample
+            image = self.scheduler.step(model_output.to(torch.float32), timestep, image, generator=generator).prev_sample
             
             if not self.use_hpu_graphs: # for checking output resutls
                 self.htcore.mark_step()
@@ -169,45 +175,10 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
+        # Offload all models
+        self.maybe_free_model_hooks()
+
         if not return_dict:
             return (image,)
 
         return GaudiDDPMPipelineOutput(images=image)
-
-    # @torch.no_grad()
-    # def unet_hpu(
-    #     self,
-    #     image,
-    #     timestep,
-    # ):
-    #     if self.use_hpu_graphs:
-    #         return self.capture_replay(image, timestep)
-    #     else:
-    #         return self.unet(
-    #             image,
-    #             timestep,
-    #         )#.sample
-
-    # @torch.no_grad()
-    # def capture_replay(self, image, timestep):
-    #     inputs = [image, timestep]
-    #     h = self.ht.hpu.graphs.input_hash(inputs)
-    #     cached = self.cache.get(h)
-
-    #     if cached is None:
-    #         # Capture the graph and cache it
-    #         with self.ht.hpu.stream(self.hpu_stream):
-    #             graph = self.ht.hpu.HPUGraph()
-    #             graph.capture_begin()
-    #             outputs = self.unet(inputs[0], inputs[1])#.sample
-    #             graph.capture_end()
-    #             graph_inputs = inputs
-    #             graph_outputs = outputs
-    #             self.cache[h] = self.ht.hpu.graphs.CachedParams(graph_inputs, graph_outputs, graph)
-    #         return outputs
-
-    #     # Replay the cached graph with updated inputs
-    #     self.ht.hpu.graphs.copy_to(cached.graph_inputs, inputs)
-    #     cached.graph.replay()
-    #     self.ht.core.hpu.default_stream().synchronize()
-    #     return cached.graph_outputs
