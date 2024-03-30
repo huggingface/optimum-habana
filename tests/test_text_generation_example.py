@@ -136,7 +136,7 @@ def _test_text_generation(
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
             )
-            command.insert(-1, "--fp8")
+            command.insert(-2, "--fp8")
 
         proc = subprocess.run(command, env=env_variables)
 
