@@ -1630,7 +1630,7 @@ class GaudiTrainer(Trainer):
         """
         From https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/trainer.py#L3162 with the following modification
         1. comment out TPU related
-        2. use throughput_warmup_steps in evaulation throughput calculation
+        2. use throughput_warmup_steps in evaluation throughput calculation
         """
         # handle multipe eval datasets
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
@@ -1649,8 +1649,6 @@ class GaudiTrainer(Trainer):
         self._memory_tracker.start()
 
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
-        # if self.is_fsdp_xla_v2_enabled:
-        #    eval_dataloader = tpu_spmd_dataloader(eval_dataloader)
 
         start_time = time.time()
         self.start_time_after_warmup = None
@@ -1683,10 +1681,6 @@ class GaudiTrainer(Trainer):
         )
 
         self.log(output.metrics)
-
-        # if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
-        # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
-        # xm.master_print(met.metrics_report())
 
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
 
