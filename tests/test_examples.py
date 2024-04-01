@@ -177,7 +177,9 @@ class ExampleTestMeta(type):
             "bigscience/bloom-7b1",
         ]
 
-        if model_name not in models_with_specific_rules and not deepspeed:
+        if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
+            return False
+        elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
@@ -274,9 +276,12 @@ class ExampleTestMeta(type):
                 self.assertEqual(return_code, 0)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
-                from .clip_coco_utils import COCO_URLS, create_clip_roberta_model, download_files
+                if os.environ.get("DATA_CACHE", None) is None:
+                    from .clip_coco_utils import COCO_URLS, download_files
 
-                download_files(COCO_URLS)
+                    download_files(COCO_URLS)
+                from .clip_coco_utils import create_clip_roberta_model
+
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
@@ -320,6 +325,11 @@ class ExampleTestMeta(type):
                     env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
 
+            extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
+
+            if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
+                extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
+
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
                     multi_card,
@@ -334,9 +344,7 @@ class ExampleTestMeta(type):
                     train_batch_size=baseline.get("distribution").get(distribution).get("train_batch_size"),
                     eval_batch_size=baseline.get("eval_batch_size"),
                     num_epochs=baseline.get("num_train_epochs"),
-                    extra_command_line_arguments=baseline.get("distribution")
-                    .get(distribution)
-                    .get("extra_arguments", []),
+                    extra_command_line_arguments=extra_command_line_arguments,
                 )
 
                 p = subprocess.Popen(cmd_line, env=env_variables)
@@ -402,7 +410,7 @@ class ExampleTesterBase(TestCase):
         task: Optional[str] = None,
         extra_command_line_arguments: Optional[List[str]] = None,
     ) -> List[str]:
-        dataset_name = self.DATASET_NAME if self.DATASET_NAME else task
+        dataset_name = self.DATASET_NAME if self.DATASET_NAME is not None else task
         task_option = f"--{self.DATASET_PARAMETER_NAME} {dataset_name}" if task else " "
 
         cmd_line = ["python3"]
@@ -575,6 +583,7 @@ class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
+    DATASET_NAME = os.environ.get("DATA_CACHE", None)
 
 
 class MultiCardSummarizationExampleTester(

@@ -10,34 +10,37 @@ import pytest
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
-# Gaudi2 CI baselines
-# FSDP is not supported on Gaudi1
-MODELS_TO_TEST = {
-    "bf16": [
-        (
-            "bert-base-uncased",
-            "Habana/bert-base-uncased",
-            2807,
-            85.4688,
-            "question-answering",
-            24,
-            8,
-            "run_qa.py",
-            "full_shard",
-        ),
-        (
-            "meta-llama/Llama-2-7b-hf",
-            "",
-            54,
-            0.92,
-            "language-modeling",
-            8,
-            8,
-            "run_lora_clm.py",
-            "auto_wrap",
-        ),
-    ],
-}
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    # Gaudi2 CI baselines
+    MODELS_TO_TEST = {
+        "bf16": [
+            (
+                "bert-base-uncased",
+                "Habana/bert-base-uncased",
+                3516.322,
+                85.5503,
+                "question-answering",
+                24,
+                8,
+                "run_qa.py",
+                "full_shard",
+            ),
+            (
+                "meta-llama/Llama-2-7b-hf",
+                "",
+                87.016,
+                0.9093,
+                "language-modeling",
+                8,
+                8,
+                "run_lora_clm.py",
+                "auto_wrap",
+            ),
+        ],
+    }
+else:
+    # FSDP is not supported on Gaudi1
+    MODELS_TO_TEST = {"bf16": []}
 
 
 def _test_fsdp(
@@ -54,8 +57,6 @@ def _test_fsdp(
     world_size: int = 8,
 ):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
-    os.environ["PT_HPU_EAGER_4_STAGE_PIPELINE_ENABLE"] = "0"  # To be removed later
-    os.environ["PT_HPU_EAGER_PIPELINE_ENABLE"] = "0"  # To be removed later
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
 
     # Install question-answering example requirements
