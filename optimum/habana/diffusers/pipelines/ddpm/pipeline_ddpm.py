@@ -40,6 +40,13 @@ class GaudiDDPMPipelineOutput(BaseOutput):
 
 class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
     r"""
+    Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/ddpm/pipeline_ddpm.py
+    Changes are:
+    - Clone a new UNet for calculations of timestep embeddings
+    - Seperate autocast mechanism for scheduler and UNet
+    - Markstep for non-graph mode
+    - Support GaudiDDIMScheduler 
+
     Pipeline for image generation.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -167,7 +174,6 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
             if not self.use_hpu_graphs: # for checking output resutls
                 self.htcore.mark_step()
 
-        
         if self.gaudi_config.use_torch_autocast:
             image = image.float()
 
