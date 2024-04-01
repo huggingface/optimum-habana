@@ -1469,7 +1469,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     next_token_logits = outputs.logits[:, token_idx - 1, :]
                     next_tokens_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
                 else:
-                    next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                    # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
+                    output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                    next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
                     next_tokens_scores = logits_processor(input_ids, next_token_logits)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
@@ -1816,7 +1818,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             token_idx = model_kwargs.get("token_idx", None)
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
+                output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
 
@@ -2297,7 +2301,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             token_idx = model_kwargs.get("token_idx", None)
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
+                output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
 
@@ -2391,7 +2397,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 beam_scores = beam_outputs["next_beam_scores"]
                 beam_next_tokens = beam_outputs["next_beam_tokens"]
                 beam_idx = beam_outputs["next_beam_indices"]
-
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 0, beam_idx)
                 input_ids.index_copy_(
@@ -3041,9 +3046,10 @@ class GaudiGenerationMixin(GenerationMixin):
             if synced_gpus and this_peer_finished:
                 cur_len = cur_len + 1
                 continue  # don't waste resources running the code we don't need
-
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
+                output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
 

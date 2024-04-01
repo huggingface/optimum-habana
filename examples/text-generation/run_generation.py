@@ -247,6 +247,11 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to use torch compiled model or not.",
     )
+    parser.add_argument(
+        "--no_ignore_eos",
+        action="store_true",
+        help="Whether to ignore eos",
+    )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
     parser.add_argument(
@@ -376,6 +381,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                ignore_eos=not args.no_ignore_eos,
             ).cpu()
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
@@ -556,6 +562,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                ignore_eos=not args.no_ignore_eos,
             ).cpu()
             return prompt, outputs
 

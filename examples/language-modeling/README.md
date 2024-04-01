@@ -637,6 +637,64 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --validation_split_percentage 5 \
     --deepspeed ds_falcon_180b_z3.json
 ```
+
+To run prompt tuning finetuning, you can use `run_prompt_tuning_clm.py`.
+Here are single-/multi-device command examples for Llama2-7B
+- single-card finetuning of meta-llama/Llama-2-7b-hf in dataset "ought/raft" and config "twitter_complaints":
+```bash
+python3 run_prompt_tuning_clm.py \
+    --model_name_or_path meta-llama/Llama-2-7b-hf \
+    --output_dir prompt_tuning_out \
+    --bf16 True \
+    --report_to=none \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 1 \
+    --low_cpu_mem_usage True \
+    --logging_steps 1 \
+    --do_train \
+    --num_train_epochs 50 \
+    --do_eval  \
+    --use_habana  \
+    --use_lazy_mode
+```
+
+- multi-card finetuning of meta-llama/Llama-2-7b-hf in dataset "ought/raft" and config "twitter_complaints":
+```bash
+python3 ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_prompt_tuning_clm.py \
+    --model_name_or_path meta-llama/Llama-2-7b-hf \
+    --output_dir prompt_tuning_out \
+    --bf16 True \
+    --report_to=none \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 1 \
+    --low_cpu_mem_usage True \
+    --logging_steps 1 \
+    --do_train \
+    --num_train_epochs 50 \
+    --do_eval  \
+    --use_habana  \
+    --use_lazy_mode
+```
+Default peft_type is prompt_tuning, you could enable prefix-tuning or p-tuning using "--peft_type prefix_tuning" or "--peft_type p_tuning"
+
+use the prompt finetuned model for text-generation:
+```bash
+python3 ../text-generation/run_generation.py \
+    --model_name_or_path meta-llama/Llama-2-7b-hf  \
+    --max_new_tokens 128 \
+    --bf16 \
+    --use_kv_cache \
+    --batch_size 1 \
+    --use_hpu_graphs \
+    --no_ignore_eos \
+    --peft_model prompt_tuning_out \
+    --prompt "@SEPTA_SOCIAL Ok. Thanks. Label :"
+
+```
+
 ## Streaming
 
 To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified in the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.

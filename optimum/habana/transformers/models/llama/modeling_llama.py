@@ -173,8 +173,7 @@ class KVCache(torch.nn.Module):
             # Initialize
             prev[:, :, :inp_seq_len, :].copy_(cur)
             return orig_cur
-        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-        if idx is not None:
+        if idx is not None and prev.shape[-2] >= idx:
             prev.index_copy_(dim, idx - 1, cur)
             return prev
         else:
@@ -358,7 +357,7 @@ class GaudiLlamaAttention(LlamaAttention):
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
-            if token_idx is None:
+            if token_idx is None or past_key_value[0].shape[-2] < token_idx:
                 if hasattr(past_key_value, "get_usable_length"):
                     kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
                 else:
@@ -387,7 +386,7 @@ class GaudiLlamaAttention(LlamaAttention):
                     past_key_value = (past_key, past_value)
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                 value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
-                if token_idx is None:
+                if token_idx is None or past_key_value[0].shape[-2] < token_idx:
                     past_key_value = (key_states, value_states)
 
             if cache_idx is not None and q_len == 1:
