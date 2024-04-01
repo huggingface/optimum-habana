@@ -4,6 +4,7 @@ import logging
 import sys
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 import time
+from diffusers import DDPMScheduler
 
 model_name = "google/ddpm-ema-celebahq-256"
 # # Setup logging
@@ -15,6 +16,7 @@ model_name = "google/ddpm-ema-celebahq-256"
 # logger.setLevel(logging.INFO)
 
 scheduler = GaudiDDIMScheduler.from_pretrained(model_name)
+#scheduler = DDPMScheduler.from_pretrained(model_name)
 
 gaudi_kwargs = {
     "use_torch_autocast": True,

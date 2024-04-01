@@ -18,7 +18,7 @@ import numpy as np
 import PIL
 import torch
 from diffusers.models import UNet2DModel
-from diffusers.schedulers import DDPMScheduler
+from diffusers.schedulers import DDPMScheduler, DDIMScheduler
 
 #from ...utils.torch_utils import randn_tensor
 #from ..pipeline_utils import DiffusionPipeline #, ImagePipelineOutput
@@ -55,7 +55,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
 
     def __init__(self, 
         unet : UNet2DModel, 
-        scheduler : DDPMScheduler,
+        scheduler : Union[DDPMScheduler, DDIMScheduler],
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
@@ -137,7 +137,8 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, device="cpu") # Patch timesteps
         timesteps = self.scheduler.timesteps.to(self._device)
-        self.scheduler.reset_timestep_dependent_params()
+        if isinstance(self.scheduler, DDIMScheduler):
+            self.scheduler.reset_timestep_dependent_params()
         num_inference_steps = [1] * len(self.scheduler.timesteps)
 
         #Gaudi Patch
