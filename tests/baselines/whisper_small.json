@@ -7,10 +7,10 @@
                 "multi_card": {
                     "learning_rate": 1e-4,
                     "train_batch_size": 8,
-                    "eval_wer": 1.352786940708788,
-                    "train_runtime": 532.0875,
-                    "train_samples_per_second": 147.56,
-                    "eval_samples_per_second": 7.683,
+                    "eval_wer": 2.1133,
+                    "train_runtime": 551.3249,
+                    "train_samples_per_second": 145.59,
+                    "eval_samples_per_second": 6.851,
                     "extra_arguments": [
                         "--dataset_config_name hi",
                         "--language hindi",
@@ -41,10 +41,10 @@
                 "multi_card": {
                     "learning_rate": 8e-5,
                     "train_batch_size": 32,
-                    "eval_wer": 1.2335690515806987,
-                    "train_runtime": 298.2158,
-                    "train_samples_per_second": 284.875,
-                    "eval_samples_per_second": 15.679,
+                    "eval_wer": 0.8477,
+                    "train_runtime": 287.0947,
+                    "train_samples_per_second": 307.526,
+                    "eval_samples_per_second": 12.069,
                     "extra_arguments": [
                         "--dataset_config_name hi",
                         "--language hindi",

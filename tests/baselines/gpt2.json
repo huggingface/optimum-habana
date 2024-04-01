@@ -7,9 +7,9 @@
                 "single_card": {
                     "learning_rate": 5e-5,
                     "train_batch_size": 4,
-                    "perplexity": 22.2641,
-                    "train_runtime": 236.4595,
-                    "train_samples_per_second": 20.24,
+                    "perplexity": 22.2751,
+                    "train_runtime": 225.2898,
+                    "train_samples_per_second": 21.308,
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference",
@@ -19,9 +19,9 @@
                 "multi_card": {
                     "learning_rate": 4e-4,
                     "train_batch_size": 4,
-                    "perplexity": 22.2696,
-                    "train_runtime": 72.1582,
-                    "train_samples_per_second": 150.303,
+                    "perplexity": 22.2699,
+                    "train_runtime": 68.9627,
+                    "train_samples_per_second": 156.241,
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference",
@@ -39,9 +39,9 @@
                 "single_card": {
                     "learning_rate": 2e-4,
                     "train_batch_size": 16,
-                    "perplexity": 21.0687,
-                    "train_runtime": 45.091,
-                    "train_samples_per_second": 118.884,
+                    "perplexity": 21.0729,
+                    "train_runtime": 43.9361,
+                    "train_samples_per_second": 130.785,
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference"
@@ -50,9 +50,9 @@
                 "multi_card": {
                     "learning_rate": 8e-4,
                     "train_batch_size": 16,
-                    "perplexity": 21.7965,
-                    "train_runtime": 18.9527,
-                    "train_samples_per_second": 847.568,
+                    "perplexity": 21.7858,
+                    "train_runtime": 23.8993,
+                    "train_samples_per_second": 939.24,
                     "extra_arguments": [
                         "--dataset_config_name wikitext-2-raw-v1",
                         "--use_hpu_graphs_for_inference"

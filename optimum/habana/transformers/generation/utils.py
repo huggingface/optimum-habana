@@ -514,6 +514,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.ignore_eos is None:
             generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode)
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
+        if self.config.model_type == "falcon" and "token_type_ids" in kwargs.keys():
+            for key in ["token_type_ids"]:
+                model_kwargs.pop(key, None)
         self._validate_model_kwargs(model_kwargs.copy())
 
         # 2. Set generation parameters if not already defined
@@ -581,8 +584,8 @@ class GaudiGenerationMixin(GenerationMixin):
             assert self.config.model_type in [
                 "llama",
                 "mistral",
-                "mixtral",
-            ], "reuse_cache only supported by llama, mistral and mixtral at the moment"
+                "falcon",
+            ], "reuse_cache only supported by llama, mistral, falcon and mixtral at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -731,14 +734,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 bs, _ = input_ids.shape
                 if not is_greedy_or_beam_and_bucket:
                     unwrap_deepspeed_model(self).allocate_kv_cache(
-                        bs * generation_config.num_beams,
-                        calculated_max_length,
-                        token_idx,
-                        generation_config.kv_cache_fp8,
+                        bs * generation_config.num_beams, calculated_max_length, token_idx
                     )
                     model_kwargs["kv_cache_len"] = calculated_max_length
 
-            if self.config.model_type in ["llama"]:
+            if self.config.model_type in ["llama", "falcon"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
