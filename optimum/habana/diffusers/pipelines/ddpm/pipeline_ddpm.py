@@ -17,11 +17,10 @@ from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 import numpy as np
 import PIL
 import torch
+import time
 from diffusers.models import UNet2DModel
 from diffusers.schedulers import DDPMScheduler, DDIMScheduler
 
-#from ...utils.torch_utils import randn_tensor
-#from ..pipeline_utils import DiffusionPipeline #, ImagePipelineOutput
 from diffusers.pipelines import DDPMPipeline
 from diffusers.utils import BaseOutput
 from optimum.utils import logging
@@ -36,7 +35,7 @@ logger = logging.get_logger(__name__)
 @dataclass
 class GaudiDDPMPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
-    #throughput: float
+    throughput: float
 
 class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
     r"""
@@ -63,7 +62,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
     def __init__(self, 
         unet : UNet2DModel, 
         scheduler : Union[DDPMScheduler, DDIMScheduler],
-        use_habana: bool = False,
+        use_habana: bool = True,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
@@ -161,16 +160,18 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
             self.unet = self.unet.to(self._device)
             self.timestep_unet = self.timestep_unet.to(self._device)
 
+        start_time = time.time()
         for i in self.progress_bar(num_inference_steps):
             timestep = timesteps[0]
             timesteps = torch.roll(timesteps, shifts=-1, dims=0)
             emb = self.timestep_unet(image, timestep, True, None)
+
             # 1. predict noise model_output
             with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
                 model_output = self.unet(image, timestep, False, emb).sample
             # 2. compute previous image: x_t -> x_t-1
             image = self.scheduler.step(model_output.to(torch.float32), timestep, image, generator=generator).prev_sample
-            
+                        
             if not self.use_hpu_graphs: # for checking output resutls
                 self.htcore.mark_step()
 
@@ -181,6 +182,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
+        end_time = time.time()
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -188,4 +190,5 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         if not return_dict:
             return (image,)
 
-        return GaudiDDPMPipelineOutput(images=image)
+        throughput = (end_time - start_time)/batch_size
+        return GaudiDDPMPipelineOutput(images=image, throughput=throughput)

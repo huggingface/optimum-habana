@@ -44,6 +44,7 @@ from diffusers import (
     EulerDiscreteScheduler,
     LCMScheduler,
     PNDMScheduler,
+    UNet2DModel,
     UNet2DConditionModel,
     UNetSpatioTemporalConditionModel,
     UniPCMultistepScheduler,
@@ -78,6 +79,7 @@ from transformers.testing_utils import parse_flag_from_env, slow
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
+    GaudiDDPMPipeline,
     GaudiDiffusionPipeline,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
@@ -111,6 +113,7 @@ if IS_GAUDI2:
     INPAINT_THROUGHPUT_BASELINE_BF16 = 4.584
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 1.151
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
+    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 7.671212047338486
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -121,6 +124,8 @@ else:
     INPAINT_THROUGHPUT_BASELINE_BF16 = 1.42
     INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.271
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
+    THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16 = 3.095533166996529
+
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
 
@@ -5074,3 +5079,148 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
         self.assertGreaterEqual(outputs.throughput, 0.95 * INPAINT_XL_THROUGHPUT_BASELINE_BF16)
+class GaudiDDPMPipelineTester(TestCase):
+    """
+    Tests for unconditional image generation
+    """
+
+    def get_dummy_components(self, time_cond_proj_dim=None):
+        torch.manual_seed(0)
+        unet = UNet2DModel(
+            sample_size=256,
+            in_channels=3,
+            out_channels=3,
+            center_input_sample=False,
+            time_embedding_type="positional",
+            freq_shift=1,
+            flip_sin_to_cos=False,
+            down_block_types=(
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "AttnDownBlock2D",
+                "DownBlock2D",
+            ),
+            up_block_types=("UpBlock2D", "AttnUpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D"),
+            block_out_channels=(128, 128, 256, 256, 512, 512),
+            downsample_padding=1,
+            norm_eps=1e-6,
+        )
+        scheduler = GaudiDDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "generator": generator,
+            "num_inference_steps": 2,
+            "batch_size": 8,
+        }
+        return inputs
+
+    def test_ddpmpipline_default(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+
+        pipe = GaudiDDPMPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = pipe(**inputs)
+        image = output.images[0]
+        image = np.array(image)
+        image_slice = image[-3:, -3:, -1]
+
+        self.assertEqual(image.shape, (256, 256, 3))
+        expected_slice = np.array([255, 0, 138, 139, 255, 36, 164, 0, 255])
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1)
+
+    def test_ddpmpipline_batch_sizes(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig()
+
+        pipe = GaudiDDPMPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        batch_size = 2
+        images = pipe(
+            num_inference_steps=2,
+            batch_size=batch_size,
+        ).images
+
+        self.assertEqual(len(images), batch_size)
+        self.assertEqual(np.array(images[-1]).shape, (256, 256, 3))
+
+    def test_ddpmpipline_bf16(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=True)
+
+        pipe = GaudiDDPMPipeline(
+            use_habana=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image = pipe(generator=generator, num_inference_steps=2, batch_size=1).images[0]
+
+        self.assertEqual(np.array(image).shape, (256, 256, 3))
+
+    def test_ddpmpipline_hpu_graphs(self):
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig()
+
+        pipe = GaudiDDPMPipeline(
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=gaudi_config,
+            **components,
+        )
+        pipe.set_progress_bar_config(disable=None)
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        images = pipe(
+            generator=generator,
+            num_inference_steps=2,
+            batch_size=1,
+        ).images
+
+        self.assertEqual(len(images), 1)
+        self.assertEqual(np.array(images[-1]).shape, (256, 256, 3))
+
+    @slow
+    def test_no_throughput_regression_bf16(self):
+        batch_size = 16  # use batch size 16 as the baseline
+        model_name = "google/ddpm-ema-celebahq-256"
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name)
+        gaudi_config = GaudiConfig(use_torch_autocast=True)
+
+        pipe = GaudiDDPMPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=gaudi_config,
+        )
+        outputs = pipe(batch_size=batch_size)
+        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_UNCONDITIONAL_IMAGE_BASELINE_BF16)
