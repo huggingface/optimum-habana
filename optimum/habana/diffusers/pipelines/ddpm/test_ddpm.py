@@ -19,7 +19,7 @@ scheduler = GaudiDDIMScheduler.from_pretrained(model_name)
 #scheduler = DDPMScheduler.from_pretrained(model_name)
 
 gaudi_kwargs = {
-    "use_torch_autocast": True,
+    "use_torch_autocast": False,
 }
 
 gaudi_config = GaudiConfig(**gaudi_kwargs)
@@ -33,7 +33,7 @@ kwargs = {
 
 pipeline = GaudiDDPMPipeline.from_pretrained(model_name, **kwargs)
 
-outputs = pipeline()
+outputs = pipeline(batch_size=16)
 outputs.images[0].save('testing.jpg')
 
 import pdb; pdb.set_trace()
