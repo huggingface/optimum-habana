@@ -43,11 +43,12 @@ from .esm import (
     gaudi_rot_vec_mul,
 )
 from .falcon import (
+    GaudiFalconAttention,
+    GaudiFalconDecoderLayer,
     GaudiFalconForCausalLM,
+    GaudiFalconMLP,
     GaudiFalconModel,
-    gaudi_falcon_attention_forward,
     gaudi_falcon_attention_split_heads,
-    gaudi_falcon_decoder_layer_forward,
 )
 from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
 from .gpt_bigcode import (
@@ -81,10 +82,11 @@ from .llama import (
     gaudi_llama_rmsnorm_forward,
 )
 from .mistral import (
+    GaudiMistralAttention,
+    GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
-    gaudi_mistral_attention_forward,
-    gaudi_mistral_decoder_layer_forward,
-    gaudi_mistral_model_forward,
+    GaudiMistralModel,
+    gaudi_mistral_rmsnorm_forward,
 )
 from .mixtral import (
     GaudiMixtralForCausalLM,
@@ -120,6 +122,12 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .phi import (
+    GaudiPhiForCausalLM,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
+)
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,
@@ -144,4 +152,6 @@ from .wav2vec2 import (
     _gaudi_wav2vec2_sample_negative_indices,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
+    gaudi_wav2vec2_tdnnlayer_forward,
+    gaudi_wav2vec2forctc_forward,
 )

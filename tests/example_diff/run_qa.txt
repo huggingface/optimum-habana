@@ -19,7 +19,7 @@
 > from optimum.habana.utils import set_seed
 52,53d50
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.39.0.dev0")
+< check_min_version("4.40.0.dev0")
 55c52,58
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 ---
@@ -62,9 +62,14 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-639a658
+361a380,383
+>     if config.model_type == "llama":
+>         if tokenizer.pad_token is None:
+>             tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+>         tokenizer.cls_token = tokenizer.bos_token
+647a670
 >         gaudi_config=gaudi_config,
-708,712d726
+716,720d738
 < 
 < 
 < def _mp_fn(index):
