@@ -25,6 +25,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mosaicml/mpt-30b", 35.64501131267502),
             ("mistralai/Mistral-7B-v0.1", 125.26115369093216),
             ("mistralai/Mixtral-8x7B-v0.1", 23.78652574031883),
+            ("google/gemma-7b", 109.70751574382221),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 36.34664210641816),
