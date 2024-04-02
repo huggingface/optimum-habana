@@ -26,6 +26,7 @@ from .generation import (
     gaudi_MaxNewTokensCriteria_call,
     gaudi_MaxTimeCriteria_call,
     gaudi_StoppingCriteriaList_call,
+    gaudi_StoppingCriteriaList_call,
 )
 from .models import (
     DeciLMConfig,
@@ -270,6 +271,7 @@ def adapt_transformers_to_gaudi():
     transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
     transformers.generation.MaxTimeCriteria.__call__ = gaudi_MaxTimeCriteria_call
     transformers.generation.EosTokenCriteria.__call__ = gaudi_EosTokenCriteria_call
+    transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
     transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
 
     # Optimization for BLOOM generation on Gaudi
