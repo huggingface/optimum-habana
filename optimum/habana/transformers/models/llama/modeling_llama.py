@@ -409,7 +409,7 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 # first token
                 if flash_attention_causal_mask:
-                    # causal masking on first token requires inputs to be of the same lenght
+                    # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                         attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
                 else:

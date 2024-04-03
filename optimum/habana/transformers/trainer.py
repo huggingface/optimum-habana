@@ -1812,8 +1812,6 @@ class GaudiTrainer(Trainer):
                         inputs["flash_attention_recompute"] = True
                     if self.model.generation_config.flash_attention_causal_mask:
                         inputs["flash_attention_causal_mask"] = True
-                    if not self.model.generation_config.use_fused_rope:
-                        inputs["use_fused_rope"] = False
 
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
