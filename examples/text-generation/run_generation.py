@@ -385,9 +385,6 @@ def main():
                 1342,  # Pride and Prejudice
             ]
             input_sentences = assemble_prompt(prompt_size=args.max_input_tokens, book_path=download_book(book_ids[0]))
-        elif model_config.model_type == "cohere":
-            messages = [{"role": "user", "content": args.prompt}]
-            input_sentences = tokenizer.apply_chat_template(messages, tokenize=False, return_tensors="pt")
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",
@@ -399,6 +396,11 @@ def main():
                 "In the far far distance from our galaxy,",
                 "Peace is the only way",
             ]
+
+        if model.config.model_type == "cohere":
+            for i, sentence in enumerate(input_sentences):
+                message = [{"role": "user", "content": sentence}]
+                input_sentences[i] = tokenizer.apply_chat_template(message, tokenize=False)
 
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes
