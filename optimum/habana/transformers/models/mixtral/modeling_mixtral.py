@@ -21,8 +21,8 @@
 """PyTorch Mixtral model."""
 
 import contextlib
-import os
 import math
+import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -31,7 +31,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from transformers.cache_utils import Cache, DynamicCache
+from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
@@ -44,9 +44,9 @@ from transformers.models.mixtral.modeling_mixtral import (
     MixtralDecoderLayer,
     MixtralForCausalLM,
     MixtralModel,
-    repeat_kv,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
+    repeat_kv,
 )
 from transformers.utils import logging
 
@@ -71,6 +71,7 @@ except ImportError:
 
 try:
     from habana_frameworks.torch.hpu import sdp_kernel
+
     SDPContext = True
 except ImportError:
     SDPContext = False
@@ -192,7 +193,7 @@ class ScaledDotProductAttention(nn.Module):
         return self.bmm2(attn_weight, value)
 
     # Try broadcast matmuls but seems not supported currently
-    '''
+    """
     def forward(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
         query, key, value, attn_mask = gaudi_mixtral_repeat_kv(
             query, key, value, attn_mask, self.num_kv_groups
@@ -221,7 +222,7 @@ class ScaledDotProductAttention(nn.Module):
         attn_output = self.bmm2(attn_weight, value)
         attn_output = attn_output.reshape(bsz, self.num_heads, L, self.head_dim).contiguous()
         return attn_output
-    '''
+    """
 
 
 class KVCache(torch.nn.Module):
@@ -343,16 +344,13 @@ class GaudiMixtralAttention(MixtralAttention):
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
         if use_cache:
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             if reuse_cache:
                 key_states = self.k_cache(key_states, 2, token_idx)
                 value_states = self.v_cache(value_states, 2, token_idx)
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(
-                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
-                    )
+                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
@@ -376,16 +374,14 @@ class GaudiMixtralAttention(MixtralAttention):
                 # WA for GQA optimization is not supported currently
                 key_states = repeat_kv(key_states, self.num_key_value_groups)
                 value_states = repeat_kv(value_states, self.num_key_value_groups)
-                attn_output = self.sdpa(
-                    query_states, key_states, value_states, attention_mask, 0.0, False, None
-                )
+                attn_output = self.sdpa(query_states, key_states, value_states, attention_mask, 0.0, False, None)
             else:
                 with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
             # pervious version
-            '''
+            """
             import habana_frameworks.torch.hpu as ht
             if q_len == 1:
                 # next token
@@ -399,7 +395,7 @@ class GaudiMixtralAttention(MixtralAttention):
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
-            '''
+            """
         else:
             query_states, key_states, value_states, attention_mask = gaudi_mixtral_repeat_kv(
                 query_states, key_states, value_states, attention_mask, self.num_key_value_groups
@@ -614,7 +610,7 @@ class GaudiMixtralModel(MixtralModel):
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
         past_key_values_length = 0
-        use_new_cache = False # Ignoring new Cache path for HPU
+        use_new_cache = False  # Ignoring new Cache path for HPU
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -628,11 +624,9 @@ class GaudiMixtralModel(MixtralModel):
                 past_key_values_length = past_key_values[0][0][2]
             else:
                 if use_new_cache:
-                    if not instance(past_key_values, StaticCache):
+                    if not isinstance(past_key_values, StaticCache):
                         past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_seen_tokens = past_key_values.get_seq_length()
-                else:
-                    past_seen_tokens = past_key_values[0][0].shape[2]
+                past_key_values_length = past_key_values.get_usable_length(seq_length)
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
