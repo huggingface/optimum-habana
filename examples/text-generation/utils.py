@@ -96,16 +96,22 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
+def setup_inference(args, model):
+    import habana_frameworks.torch.core as htcore
+
+    print("Initializing inference mode")
+    const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
+    if const_marking == "True":
+        htcore.hpu_initialize(model)
+    return model
+
 def setup_const_serialization(const_serialization_path):
     import uuid
-
-    const_serialization_path = os.path.join(const_serialization_path + uuid.uuid4().hex)
+    const_serialization_path = os.path.join(const_serialization_path  + uuid.uuid4().hex)
     os.makedirs(const_serialization_path)
     from habana_frameworks.torch.hpu import enable_const_section_serialization
-
     print("Serializing const params to {}".format(const_serialization_path))
-    enable_const_section_serialization(const_serialization_path, False, True)
-
+    enable_const_section_serialization(const_serialization_path, True)
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -384,12 +390,7 @@ def initialize_model(args, logger):
     if args.const_serialization_path:
         setup_const_serialization(args.const_serialization_path)
     if args.fp8:
-        import habana_frameworks.torch.core as htcore
-
-        print("Initializing inference mode")
-        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
-        if const_marking == "True":
-            htcore.hpu_initialize(model)
+        model = setup_inference(args, model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
