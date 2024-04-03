@@ -20,6 +20,8 @@
 
 """PyTorch Mixtral model."""
 
+import contextlib
+import os
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -42,6 +44,7 @@ from transformers.models.mixtral.modeling_mixtral import (
     MixtralDecoderLayer,
     MixtralForCausalLM,
     MixtralModel,
+    repeat_kv,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
 )
@@ -66,33 +69,22 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
+try:
+    from habana_frameworks.torch.hpu import sdp_kernel
+    SDPContext = True
+except ImportError:
+    SDPContext = False
+
 logger = logging.get_logger(__name__)
-
-
-def update(prev, cur, dim, idx, inp_seq_len):
-    orig_cur = cur
-    if prev.dtype == torch.float8_e4m3fn:
-        from habana_frameworks.torch.hpex.kernels.Fp8Ops import cast_to_fp8_v2
-
-        cur = cast_to_fp8_v2(cur, None, False, False, prev.dtype)[0]
-    if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
-        # Initialize
-        prev[:, :, :inp_seq_len, :].copy_(cur)
-        return orig_cur
-    assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-    if idx is not None:
-        prev.index_copy_(dim, idx - 1, cur)
-        prev_cast = prev.to(orig_cur.dtype)
-        return prev_cast
-    else:
-        return torch.cat((prev, cur), dim=dim)
 
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
         return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids
-        ), FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+        ), FusedRoPE.apply(
+            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+        )
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
 
@@ -150,12 +142,86 @@ def gaudi_mixtral_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-class Matmul(torch.nn.Module):
+class Softmax(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, y):
-        return torch.matmul(x, y)
+    def forward(self, x, dim=None, invAttnHead=None):
+        return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
+
+
+class Matmul(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, *args, **kwargs):
+        return torch.matmul(*args, **kwargs)
+
+
+class ScaledDotProductAttention(nn.Module):
+    def __init__(self, config: MixtralConfig):
+        super().__init__()
+        # self.num_heads = config.num_attention_heads
+        # self.num_kv_groups = config.num_attention_heads // config.num_key_value_heads
+        self.head_dim = config.hidden_size // config.num_attention_heads
+        self.bmm1 = Matmul()
+        self.bmm2 = Matmul()
+        self.softmax = Softmax()
+
+    def forward(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
+        L, S = query.size(-2), key.size(-2)
+        scale_factor = 1 / math.sqrt(self.head_dim)
+        invAttnHead = torch.tensor(scale_factor, dtype=torch.float32).to("hpu")
+
+        if is_causal:
+            assert attn_mask is None
+            attn_bias = torch.zeros(L, S, dtype=query.dtype)
+            temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+            attn_bias.to(query.dtype)
+
+        if attn_mask is not None:
+            if attn_mask.dtype == torch.bool:
+                attn_mask.masked_fill_(attn_mask.logical_not(), float("-inf"))
+
+        attn_weight = self.bmm1(query, key.transpose(-2, -1))
+
+        attn_weight += attn_mask
+        attn_weight = self.softmax(attn_weight, dim=-1, invAttnHead=invAttnHead)
+        attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+        return self.bmm2(attn_weight, value)
+
+    # Try broadcast matmuls but seems not supported currently
+    '''
+    def forward(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
+        query, key, value, attn_mask = gaudi_mixtral_repeat_kv(
+            query, key, value, attn_mask, self.num_kv_groups
+        )
+        bsz = query.size(0)
+        L, S = query.size(-2), key.size(-2)
+        scale_factor = 1 / math.sqrt(self.head_dim)
+        invAttnHead = torch.tensor(scale_factor, dtype=torch.float32).to("hpu")
+
+        if is_causal:
+            assert attn_mask is None
+            attn_bias = torch.zeros(L, S, dtype=query.dtype)
+            temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+            attn_bias.to(query.dtype)
+
+        if attn_mask is not None:
+            if attn_mask.dtype == torch.bool:
+                attn_mask.masked_fill_(attn_mask.logical_not(), float("-inf"))
+
+        attn_weight = self.bmm1(query, key.transpose(-2, -1))
+
+        attn_weight += attn_mask
+        attn_weight = self.softmax(attn_weight, dim=-1, invAttnHead=invAttnHead)
+        attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+        attn_output = self.bmm2(attn_weight, value)
+        attn_output = attn_output.reshape(bsz, self.num_heads, L, self.head_dim).contiguous()
+        return attn_output
+    '''
 
 
 class KVCache(torch.nn.Module):
@@ -164,11 +230,9 @@ class KVCache(torch.nn.Module):
         self.cache = None
         self.inp_seq_len = -1
 
-    def allocate(self, inp_seq_len, kv_cache_fp8, dtype, device, shape):
+    def allocate(self, inp_seq_len, dtype, device, shape):
         if self.cache is None or self.cache.shape != shape:
             self.inp_seq_len = inp_seq_len
-            if kv_cache_fp8:
-                dtype = torch.float8_e4m3fn
             self.cache = torch.zeros(shape, dtype=dtype, device=device)
         else:
             assert (
@@ -176,32 +240,49 @@ class KVCache(torch.nn.Module):
             ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
             self.cache.fill_(0)
 
+    def update(self, prev, cur, dim, idx, inp_seq_len):
+        orig_cur = cur
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+            # Initialize
+            prev[:, :, :inp_seq_len, :].copy_(cur)
+            return orig_cur
+        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
+
     def get_shape(self):
         if self.cache is None:
             return None
         return self.cache.shape
 
     def forward(self, cur, dim, idx):
-        return update(self.cache, cur, dim, idx, self.inp_seq_len)
+        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
 class GaudiMixtralAttention(MixtralAttention):
     def __init__(self, config: MixtralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
 
-        self.matmul_qk = Matmul()
-        self.matmul_av = Matmul()
+        if os.getenv("QUANT_CONFIG", ""):
+            self.sdpa = ScaledDotProductAttention(config)
+
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
         device = self.k_proj.weight.device
         dtype = self.config.torch_dtype
-        self.k_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
-        self.v_cache.allocate(inp_seq_len, kv_cache_fp8, dtype, device, cache_shape)
+        self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
+        self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
 
     def forward(
         self,
@@ -251,48 +332,61 @@ class GaudiMixtralAttention(MixtralAttention):
                 if hasattr(past_key_value, "get_usable_length"):
                     kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
                 else:
-                    kv_seq_len += past_key_value[0].shape[-2]
+                    kv_seq_len += past_key_value[0][0].shape[-2]
             else:
                 if reuse_cache:
                     kv_seq_len = past_key_value[0][0][-2]
                 else:
-                    kv_seq_len = past_key_value[0].shape[-2]
+                    kv_seq_len = past_key_value[0][0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
-        if past_key_value is not None or reuse_cache:
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            if token_idx is not None:
-                if reuse_cache:
-                    key_states = self.k_cache(key_states, 2, token_idx)
-                    value_states = self.v_cache(value_states, 2, token_idx)
-                else:
-                    key_states = update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                    value_states = update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
-
-                if cache_idx is not None and q_len == 1:
-                    key_states = key_states[:, :, :cache_idx, :]
-                    value_states = value_states[:, :, :cache_idx, :]
-                    if attention_mask is not None:
-                        attention_mask = attention_mask[:, :, :, :cache_idx]
-                    kv_seq_len = key_states.shape[-2]
-            else:
-                key_states, value_states = past_key_value.update(
-                    key_states, value_states, self.layer_idx, cache_kwargs
-                )
-
         if use_cache:
+            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             if reuse_cache:
+                key_states = self.k_cache(key_states, 2, token_idx)
+                value_states = self.v_cache(value_states, 2, token_idx)
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
-                past_key_value = (key_states.contiguous(), value_states.contiguous())
+                if past_key_value is None:
+                    past_key = torch.zeros(
+                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
+                    )
+                    past_value = torch.zeros(
+                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
+                    )
+                    past_key_value = (past_key, past_value)
+                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                value_states = self.k_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+                if token_idx is None:
+                    past_key_value = (key_states, value_states)
+
+            if cache_idx is not None and q_len == 1:
+                key_states = key_states[:, :, :cache_idx, :]
+                value_states = value_states[:, :, :cache_idx, :]
+                if attention_mask is not None:
+                    attention_mask = attention_mask[:, :, :, :cache_idx]
+                kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
 
         if FusedSDPA:
+            if os.getenv("QUANT_CONFIG", ""):
+                # WA for GQA optimization is not supported currently
+                key_states = repeat_kv(key_states, self.num_key_value_groups)
+                value_states = repeat_kv(value_states, self.num_key_value_groups)
+                attn_output = self.sdpa(
+                    query_states, key_states, value_states, attention_mask, 0.0, False, None
+                )
+            else:
+                with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
+            # pervious version
+            '''
             import habana_frameworks.torch.hpu as ht
-
             if q_len == 1:
                 # next token
                 with ht.sdp_kernel(enable_recompute=False):
@@ -305,12 +399,13 @@ class GaudiMixtralAttention(MixtralAttention):
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
+            '''
         else:
             query_states, key_states, value_states, attention_mask = gaudi_mixtral_repeat_kv(
                 query_states, key_states, value_states, attention_mask, self.num_key_value_groups
             )
 
-            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
+            attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * self.norm_factor
 
             if attention_mask is not None:
                 attention_mask = attention_mask.unsqueeze(2)
@@ -319,7 +414,7 @@ class GaudiMixtralAttention(MixtralAttention):
             # upcast attention to fp32
             attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
             attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-            attn_output = self.matmul_av(attn_weights, value_states)
+            attn_output = torch.matmul(attn_weights, value_states)
 
             attn_output = attn_output.reshape(bsz, self.num_heads, q_len, self.head_dim).contiguous()
 
@@ -395,8 +490,8 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
 
         self.self_attn = MIXTRAL_ATTENTION_CLASSES[config._attn_implementation](config, layer_idx)
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
-        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def forward(
         self,
@@ -470,9 +565,9 @@ class GaudiMixtralModel(MixtralModel):
     def __init__(self, config: MixtralConfig):
         super().__init__(config)
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         for layer in self.layers:
-            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
+            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def forward(
         self,
@@ -519,7 +614,7 @@ class GaudiMixtralModel(MixtralModel):
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
         past_key_values_length = 0
-        use_new_cache = False
+        use_new_cache = False # Ignoring new Cache path for HPU
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -532,10 +627,12 @@ class GaudiMixtralModel(MixtralModel):
             if reuse_cache:
                 past_key_values_length = past_key_values[0][0][2]
             else:
-                use_legacy_cache = not isinstance(past_key_values, Cache)
-                if use_legacy_cache:
-                    past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                past_key_values_length = past_key_values.get_usable_length(seq_length)
+                if use_new_cache:
+                    if not instance(past_key_values, StaticCache):
+                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                    past_seen_tokens = past_key_values.get_seq_length()
+                else:
+                    past_seen_tokens = past_key_values[0][0].shape[2]
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -666,8 +763,8 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     """
 
-    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len, kv_cache_fp8):
-        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len, kv_cache_fp8)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
         self.kv_cache_len = max_seq_len
 
     def forward(
@@ -767,9 +864,10 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         reuse_cache = kwargs.get("reuse_cache")
         token_idx = kwargs.get("token_idx", None)
 
-        # Omit tokens covered by past_key_values
         if past_key_values is not None:
-            if token_idx is None:
+            if token_idx is not None:
+                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+            else:
                 if isinstance(past_key_values, Cache):
                     cache_length = past_key_values.get_seq_length()
                     past_length = past_key_values.seen_tokens
@@ -797,8 +895,6 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                     and cache_length + input_ids.shape[1] > max_cache_length
                 ):
                     attention_mask = attention_mask[:, -max_cache_length:]
-            else:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
         elif reuse_cache and token_idx is not None:
             # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
             input_ids = input_ids[:, :token_idx]
