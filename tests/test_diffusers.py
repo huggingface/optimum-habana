@@ -1340,12 +1340,22 @@ class GaudiStableDiffusionInpaintPipelineTester(GaudiStableDiffusionPipelineTest
 
     def test_stable_diffusion_inpainting_test_denoising_loop(self):
         """Test that stable diffusion inpainting denoising loop"""
-        self.assertEqual(1,1)
+        sdi_pipe = self.create_inpaint_pipe()
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
-    def test_stable_diffusion_inpainting_test_cross_attention(self):
-        """Test that stable diffusion inpainting cross attention"""
-        self.assertEqual(1,1)
+        #Create the latents.
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        latents = randn_tensor( (5, 4, 64, 64), generator=generator,)
+        prompt = "A painting of a squirrel eating a burger"
 
+        #generate outputs using sdi
+        images = sdi_pipe.__call__(prompt, image=init_image, mask_image=mask_image, num_inference_steps=2, output_type="np", latents=latents, num_images_per_prompt=5)
+
+        #Assert tests
+        self.assertEqual(len(images[0]), 5)
+        self.assertEqual(images[0][-1].shape, (512, 512, 3))
 
 class GaudiStableDiffusionXLPipelineTester(TestCase):
     """
