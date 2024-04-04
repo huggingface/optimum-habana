@@ -52,7 +52,7 @@ class GaudiDDPOTrainerTester(unittest.TestCase):
             per_prompt_stat_tracking_buffer_size=32,
             sample_num_batches_per_epoch=2,
             sample_batch_size=2,
-            mixed_precision="bf16",
+            mixed_precision=None,
             save_freq=1000000,
         )
         pretrained_model = "hf-internal-testing/tiny-stable-diffusion-torch"
@@ -133,7 +133,7 @@ class GaudiDDPOTrainerWithLoRATester(GaudiDDPOTrainerTester):
             per_prompt_stat_tracking_buffer_size=32,
             sample_num_batches_per_epoch=2,
             sample_batch_size=2,
-            mixed_precision="bf16",
+            mixed_precision=None,
             save_freq=1000000,
         )
         pretrained_model = "hf-internal-testing/tiny-stable-diffusion-torch"

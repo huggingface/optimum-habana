@@ -249,24 +249,9 @@ class GaudiDDPOTrainer(DDPOTrainer):
 
     def step(self, epoch: int, global_step: int):
         """
-        Perform a single step of training.
-
         Adapted from https://github.com/huggingface/trl/blob/v0.7.8/trl/trainer/ddpo_trainer.py#L234
         - Add progress bar to track training epochs
         - Convert bfloat to float when creating to numpy arrays
-
-        Args:
-            epoch (int): The current epoch.
-            global_step (int): The current global step.
-
-        Side Effects:
-            - Model weights are updated
-            - Logs the statistics to the accelerator trackers.
-            - If `self.image_samples_callback` is not None, it will be called with the prompt_image_pairs, global_step, and the accelerator tracker.
-
-        Returns:
-            global_step (int): The updated global step.
-
         """
         samples, prompt_image_data = self._generate_samples(
             iterations=self.config.sample_num_batches_per_epoch,
@@ -369,29 +354,9 @@ class GaudiDDPOTrainer(DDPOTrainer):
 
     def calculate_loss(self, latents, timesteps, next_latents, log_probs, advantages, embeds):
         """
-        Calculate the loss for a batch of an unpacked sample
         Adapted from https://github.com/huggingface/trl/blob/v0.7.8/trl/trainer/ddpo_trainer.py#L340
         - Use accelerator autocast (original TRL implemenation uses nullcontext for LoRA training)
         - Convert logprob to float for loss calculation
-
-        Args:
-            latents (torch.Tensor):
-                The latents sampled from the diffusion model, shape: [batch_size, num_channels_latents, height, width]
-            timesteps (torch.Tensor):
-                The timesteps sampled from the diffusion model, shape: [batch_size]
-            next_latents (torch.Tensor):
-                The next latents sampled from the diffusion model, shape: [batch_size, num_channels_latents, height, width]
-            log_probs (torch.Tensor):
-                The log probabilities of the latents, shape: [batch_size]
-            advantages (torch.Tensor):
-                The advantages of the latents, shape: [batch_size]
-            embeds (torch.Tensor):
-                The embeddings of the prompts, shape: [2*batch_size or batch_size, ...]
-                Note: the "or" is because if train_cfg is True, the expectation is that negative prompts are concatenated to the embeds
-
-        Returns:
-            loss (torch.Tensor), approx_kl (torch.Tensor), clipfrac (torch.Tensor)
-            (all of these are of shape (1,))
         """
         with self.accelerator.autocast():
             if self.config.train_cfg:
@@ -459,17 +424,8 @@ class GaudiDDPOTrainer(DDPOTrainer):
 
     def _generate_samples(self, iterations, batch_size):
         """
-        Generate samples from the model
-
         Adapted from https://github.com/huggingface/trl/blob/v0.7.8/trl/trainer/ddpo_trainer.py#L446
         - Load timesteps to HPU
-
-        Args:
-            iterations (int): Number of iterations to generate samples for
-            batch_size (int): Batch size to use for sampling
-
-        Returns:
-            samples (List[Dict[str, torch.Tensor]]), prompt_image_pairs (List[List[Any]])
         """
         samples = []
         prompt_image_pairs = []
@@ -525,24 +481,9 @@ class GaudiDDPOTrainer(DDPOTrainer):
 
     def _train_batched_samples(self, inner_epoch, epoch, global_step, batched_samples):
         """
-        Train on a batch of samples. Main training segment
-
         Adapted from https://github.com/huggingface/trl/blob/v0.7.8/trl/trainer/ddpo_trainer.py#L508
         - Reduce recompilations by avoiding constant variables in loops
         - Add `mark_step()` to support lazy mode
-
-        Args:
-            inner_epoch (int): The current inner epoch
-            epoch (int): The current epoch
-            global_step (int): The current global step
-            batched_samples (List[Dict[str, torch.Tensor]]): The batched samples to train on
-
-        Side Effects:
-            - Model weights are updated
-            - Logs the statistics to the accelerator trackers.
-
-        Returns:
-            global_step (int): The updated global step
         """
         info = defaultdict(list)
 
