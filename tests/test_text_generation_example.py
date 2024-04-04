@@ -159,9 +159,9 @@ def _test_text_generation(
             command.insert(-2, "--max_new_tokens 1")
             command = [x for y in command for x in re.split(pattern, y) if x]
             for model_config in LLAMA2_FP8_CONFIG[model_name]:
-                command[command.index("--batch_size")+1] = model_config[0]
-                command[command.index("--max_input_tokens")+1] = model_config[1]
-                command[command.index("--max_new_tokens")+1] = model_config[2]
+                command[command.index("--batch_size") + 1] = model_config[0]
+                command[command.index("--max_input_tokens") + 1] = model_config[1]
+                command[command.index("--max_new_tokens") + 1] = model_config[2]
                 baseline = model_config[3]
                 proc = subprocess.run(command, env=env_variables)
 
