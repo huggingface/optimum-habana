@@ -45,6 +45,7 @@ except ImportError:
 
 import habana_frameworks.torch.core as htcore
 
+
 def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
     if prev.dtype == torch.float8_e4m3fn:
