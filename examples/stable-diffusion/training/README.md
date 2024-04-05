@@ -31,7 +31,7 @@ Let's get our dataset. For this example, we will use some cat images: https://hu
 
 Let's first download it locally:
 
-```py
+```python
 from huggingface_hub import snapshot_download
 
 local_dir = "./cat"
@@ -61,9 +61,94 @@ python textual_inversion.py \
   --throughput_warmup_steps 3
 ```
 
+The following example shows how to run inference using the fine-tuned model:
+
+```python
+from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+import torch
+
+model_id = "/tmp/textual_inversion_cat"
+pipe = GaudiStableDiffusionPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+)
+
+prompt = "A <cat-toy> backpack"
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image.save(f"cat-backpack.png")
+```
+
 > Change `--resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.
 
-> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`. However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters. This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one, *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
+> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
+> However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters.
+> This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one,
+> *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
+
+
+## Textual Inversion XL
+
+The `textual_inversion_sdxl.py` script shows how to implement textual inversion fine-tuning on Gaudi for XL diffusion models
+such as `stabilityai/stable-diffusion-xl-base-1.0` or `cagliostrolab/animagine-xl-3.1` for example.
+
+Assuming the afforemenioned cat toy dataset has been obtained, we can launch textual inversion XL training using:
+
+```bash
+python textual_inversion_sdxl.py \
+  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+  --train_data_dir ./cat \
+  --learnable_property object \
+  --placeholder_token "<cat-toy>" \
+  --initializer_token toy \
+  --resolution 768 \
+  --train_batch_size 1 \
+  --gradient_accumulation_steps 4 \
+  --max_train_steps 500 \
+  --learning_rate 5.0e-04 \
+  --scale_lr \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir /tmp/textual_inversion_cat_sdxl \
+  --save_as_full_pipeline \
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3
+```
+
+> As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
+> However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters.
+> This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one,
+> *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
+
+The script also supports training of both text encoders of SDXL, so inference can be executed by inserting a placeholder token into one or both prompts.
+The following example shows how to run inference using the fine tuned-model with both text encoders, separately and in combination:
+
+```python
+from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
+import torch
+
+model_id = "/tmp/textual_inversion_cat_sdxl"
+pipe = GaudiStableDiffusionXLPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
+)
+
+prompt = "A <cat-toy> backpack"
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image.save(f"cat-backpack.png")
+
+image = pipe(prompt="", prompt_2=prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image.save(f"cat-backpack_p2.png")
+
+prompt_2 = "A <cat-toy> colored backpack"
+image = pipe(prompt=prompt, prompt_2=prompt_2, num_inference_steps=50, guidance_scale=7.5).images[0]
+image.save(f"cat-backpack_p1and2.png")
+```
 
 
 ## ControlNet Training
