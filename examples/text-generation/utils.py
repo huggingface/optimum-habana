@@ -104,7 +104,7 @@ def setup_const_serialization(const_serialization_path):
     from habana_frameworks.torch.hpu import enable_const_section_serialization
 
     print("Serializing const params to {}".format(const_serialization_path))
-    enable_const_section_serialization(const_serialization_path, False, True)
+    enable_const_section_serialization(const_serialization_path, True)
 
 
 def setup_env(args):
