@@ -726,6 +726,8 @@ class GaudiGenerationMixin(GenerationMixin):
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
+        model_kwargs["flash_attention_causal_mask"] = True if generation_config.flash_attention_causal_mask else False
+
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[-1]
             if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
