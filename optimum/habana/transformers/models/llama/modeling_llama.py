@@ -45,6 +45,8 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
+import habana_frameworks.torch.core as htcore
+
 
 def gaudi_llama_rmsnorm_forward(self, hidden_states):
     """
@@ -514,7 +516,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             )
 
         residual = hidden_states
-        output_pre_attn, self_attn_weights, present_key_value = self.pre_attn(
+        hidden_states, self_attn_weights, present_key_value = self.pre_attn(
             hidden_states,
             attention_mask,
             position_ids,
@@ -530,13 +532,12 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             cache_idx=cache_idx,
             **kwargs,
         )
+        self.self_attn.attention_all_reduce(hidden_states)
+        hidden_states, residual = self.post_attn_pre_mlp(hidden_states, residual)
+        self.mlp.mlp_all_reduce(hidden_states)
+        hidden_states = self.post_mlp(hidden_states, residual)
 
-        self.self_attn.attention_all_reduce(output_pre_attn)
-        output_post_attn_pre_mlp, residual_mlp = self.post_attn_pre_mlp(output_pre_attn, residual)
-        self.mlp.mlp_all_reduce(output_post_attn_pre_mlp)
-        output_post_mlp = self.post_mlp(output_post_attn_pre_mlp, residual_mlp)
-
-        outputs = (output_post_mlp,)
+        outputs = (hidden_states,)
 
         if output_attentions:
             outputs += (self_attn_weights,)
@@ -562,7 +563,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         cache_idx: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
-        output_attn, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
+        hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
             hidden_states,
             attention_mask,
             position_ids,
@@ -577,23 +578,33 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             flash_attention_recompute,
             cache_idx=cache_idx,
         )
-        return output_attn, attn_weights, present_key_value
+        return hidden_states, attn_weights, present_key_value
 
-    def post_attn_pre_mlp(self, input, residual):
-        output_post_attn = self.self_attn.post_attn_forward(input)
+    def post_attn_pre_mlp(self, hidden_states, residual):
+        hidden_states = self.self_attn.post_attn_forward(hidden_states)
 
-        hidden_states = residual + output_post_attn
-        residual = hidden_states
+        if self.training:
+            hidden_states = hidden_states + residual
+            residual = hidden_states
+        else:
+            residual.add_(hidden_states)
+            hidden_states = residual
 
         hidden_states = self.post_attention_layernorm(hidden_states)
 
         hidden_states = self.mlp.pre_mlp_forward(hidden_states)
         return hidden_states, residual
 
-    def post_mlp(self, input, residual):
-        output_post_mlp = self.mlp.post_mlp_forward(input)
-        output = output_post_mlp + residual
-        return output
+    def post_mlp(self, hidden_states, residual):
+        hidden_states = self.mlp.post_mlp_forward(hidden_states)
+
+        if self.training:
+            hidden_states = hidden_states + residual
+        else:
+            residual.add_(hidden_states)
+            hidden_states = residual
+
+        return hidden_states
 
 
 class GaudiLlamaModel(LlamaModel):
@@ -658,6 +669,7 @@ class GaudiLlamaModel(LlamaModel):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
+        lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -667,6 +679,7 @@ class GaudiLlamaModel(LlamaModel):
         - add new args reuse_cache
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
+        - add new arg lazy_mode
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -742,6 +755,9 @@ class GaudiLlamaModel(LlamaModel):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if not use_new_cache else None
+
+        if lazy_mode:
+            htcore.mark_step()
 
         for layer_idx, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
@@ -849,6 +865,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         cache_idx: int = None,
+        lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -877,6 +894,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             cache_idx=cache_idx,
+            lazy_mode=lazy_mode,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -1010,6 +1028,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
                 "cache_idx": kwargs.get("cache_idx"),
+                "lazy_mode": kwargs.get("lazy_mode"),
             }
         )
         return model_inputs
