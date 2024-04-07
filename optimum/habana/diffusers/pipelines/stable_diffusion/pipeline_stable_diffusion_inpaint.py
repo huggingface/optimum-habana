@@ -29,6 +29,7 @@ from diffusers.utils import deprecate, logging
 from ..pipeline_utils import GaudiDiffusionPipeline
 from ....transformers.gaudi_configuration import GaudiConfig
 from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
+from .pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.utils import BaseOutput, deprecate
 from ....utils import speed_metrics
@@ -78,11 +79,6 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
-
-@dataclass
-class GaudiStableDiffusionPipelineOutput(BaseOutput):
-    images: Union[List[PIL.Image.Image], np.ndarray]
-    nsfw_content_detected: Optional[List[bool]]
 
 class GaudiStableDiffusionInpaintPipeline(
     GaudiDiffusionPipeline,
@@ -142,7 +138,7 @@ class GaudiStableDiffusionInpaintPipeline(
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
-        
+
         GaudiDiffusionPipeline.__init__(
             self,
             use_habana,
@@ -154,8 +150,7 @@ class GaudiStableDiffusionInpaintPipeline(
         # Workaround for Synapse 1.11 for full bf16
         if bf16_full_eval:
             unet.conv_in.float()
-            
-        
+
         StableDiffusionInpaintPipeline.__init__(
             self,
             vae,
@@ -629,8 +624,6 @@ class GaudiStableDiffusionInpaintPipeline(
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
 
-            t0 = time.time()
-            t1 = t0
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 #for i, t in enumerate(timesteps):
                 for i in range(num_inference_steps):
@@ -639,7 +632,9 @@ class GaudiStableDiffusionInpaintPipeline(
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
-
+                    if i == 2:
+                        t0 = time.time()
+                        
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
@@ -720,23 +715,20 @@ class GaudiStableDiffusionInpaintPipeline(
             else:
                 do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-            image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
-            print(f"image={image}")
-
-            if padding_mask_crop is not None:
-                image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
-
-            speed_metrics_prefix = "generation"
+            speed_metrics_prefix = "inpainting"
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
-                num_samples=batch_size
-                if t1 == t0
-                else (batch_size - num_warmup_steps),
+                num_samples=batch_size,
                 num_steps=1,
-                start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")
+
+
+            image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+
+            if padding_mask_crop is not None:
+                image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
 
 
             # Offload all models
@@ -744,9 +736,9 @@ class GaudiStableDiffusionInpaintPipeline(
 
             if not return_dict:
                 return (image, has_nsfw_concept)
-            
-            return GaudiStableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
-   
+
+            return GaudiStableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept, throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"])
+
     @torch.no_grad()
     def unet_hpu(
         self,

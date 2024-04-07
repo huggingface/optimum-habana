@@ -10,6 +10,12 @@ logger = logging.getLogger(__name__)
 
 from optimum.habana.utils import set_seed
 from optimum.habana.diffusers import GaudiStableDiffusionInpaintPipeline
+from optimum.habana.diffusers import AutoPipelineForInpainting
+from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiEulerAncestralDiscreteScheduler,
+    GaudiEulerDiscreteScheduler,
+)
 
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
@@ -21,10 +27,6 @@ except ImportError:
 
 check_optimum_habana_min_version("1.10.0")
 
-
-def list_of_strings(arg):
-    return arg.split(';')
-
 def main():
     parser = argparse.ArgumentParser()
 
@@ -35,17 +37,30 @@ def main():
         help="Path to pre-trained model",
     )
 
-
     # Pipeline arguments
     parser.add_argument(
         "--prompts",
-        type=list_of_strings,
+        type=str,
         nargs="*",
         default="Face of a yellow cat, high resolution, sitting on a park bench",
         help="The prompt or prompts to guide the image generation. The delimiter is semicolon(;)",
     )
     parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
+    )
+    parser.add_argument(
+        "--timestep_spacing",
+        default="linspace",
+        choices=["linspace", "leading", "trailing"],
+        type=str,
+        help="The way the timesteps should be scaled.",
+    )
+    parser.add_argument(
+        "--scheduler",
+        default="ddim",
+        choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
+        type=str,
+        help="Name of scheduler",
     )
     parser.add_argument(
         "--height",
@@ -78,7 +93,6 @@ def main():
             " usually at the expense of lower image quality."
         ),
     )
-    
     parser.add_argument(
         "--output_type",
         type=str,
@@ -86,7 +100,6 @@ def main():
         default="pil",
         help="Whether to return PIL images or Numpy arrays.",
     )
-
     parser.add_argument(
         "--pipeline_save_dir",
         type=str,
@@ -99,13 +112,12 @@ def main():
         default="./stable-diffusion-inpainting-images",
         help="The directory where images will be saved.",
     )
-
     parser.add_argument("--seed", type=int, default=92, help="Random seed for initialization.")
 
     # HPU-specific arguments
-    parser.add_argument("--use_habana", default=True, help="Use HPU.")
+    parser.add_argument("--use_habana", action="store_true", help="Use HPU.")
     parser.add_argument(
-        "--use_hpu_graphs", default=True, help="Use HPU graphs on HPU. This should lead to faster generations."
+        "--use_hpu_graphs", action="store_true", help="Use HPU graphs on HPU. This should lead to faster generations."
     )
     parser.add_argument(
         "--gaudi_config_name",
@@ -128,12 +140,10 @@ def main():
     )
     logger.setLevel(logging.INFO)
 
-
     # Set seed before running the model
     if args.seed:
         logger.info("Set the random seed {}!".format(args.seed))
         set_seed(args.seed)
-
 
     def download_image(url):
         response = requests.get(url)
@@ -145,14 +155,27 @@ def main():
     init_image = download_image(img_url).resize((512, 512))
     mask_image = download_image(mask_url).resize((512, 512))
 
-    init_kwargs = {
-            "use_habana": args.use_habana,
-            "use_hpu_graphs": args.use_hpu_graphs,
-            "gaudi_config": args.gaudi_config_name,
-            "torch_dtype": torch.bfloat16 if args.bf16 else None
-        }
+    kwargs = {"timestep_spacing": args.timestep_spacing}
+    if args.scheduler == "euler_discrete":
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    elif args.scheduler == "euler_ancestral_discrete":
+        scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    else:
+        scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler", **kwargs)
 
-    pipe = GaudiStableDiffusionInpaintPipeline.from_pretrained(
+    init_kwargs = {
+        #"scheduler": scheduler,
+        "use_habana": args.use_habana,
+        "use_hpu_graphs": args.use_hpu_graphs,
+        "gaudi_config": args.gaudi_config_name,
+        "torch_dtype": torch.bfloat16 if args.bf16 else None
+    }
+
+    pipe = AutoPipelineForInpainting.from_pretrained(
         args.model_name_or_path,
         **init_kwargs
     )
