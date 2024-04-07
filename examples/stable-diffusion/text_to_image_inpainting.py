@@ -1,21 +1,19 @@
 import argparse
 import logging
+import sys
+from io import BytesIO
+from pathlib import Path
+
 import PIL
 import requests
-import sys
 import torch
-from pathlib import Path
-from io import BytesIO
+
+
 logger = logging.getLogger(__name__)
 
-from optimum.habana.utils import set_seed
-from optimum.habana.diffusers import GaudiStableDiffusionInpaintPipeline
 from optimum.habana.diffusers import AutoPipelineForInpainting
-from optimum.habana.diffusers import (
-    GaudiDDIMScheduler,
-    GaudiEulerAncestralDiscreteScheduler,
-    GaudiEulerDiscreteScheduler,
-)
+from optimum.habana.utils import set_seed
+
 
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
@@ -47,20 +45,6 @@ def main():
     )
     parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
-    )
-    parser.add_argument(
-        "--timestep_spacing",
-        default="linspace",
-        choices=["linspace", "leading", "trailing"],
-        type=str,
-        help="The way the timesteps should be scaled.",
-    )
-    parser.add_argument(
-        "--scheduler",
-        default="ddim",
-        choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
-        type=str,
-        help="Name of scheduler",
     )
     parser.add_argument(
         "--height",
@@ -155,20 +139,8 @@ def main():
     init_image = download_image(img_url).resize((512, 512))
     mask_image = download_image(mask_url).resize((512, 512))
 
-    kwargs = {"timestep_spacing": args.timestep_spacing}
-    if args.scheduler == "euler_discrete":
-        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
-            args.model_name_or_path, subfolder="scheduler", **kwargs
-        )
-    elif args.scheduler == "euler_ancestral_discrete":
-        scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
-            args.model_name_or_path, subfolder="scheduler", **kwargs
-        )
-    else:
-        scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler", **kwargs)
 
     init_kwargs = {
-        #"scheduler": scheduler,
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
@@ -199,8 +171,8 @@ def main():
             image_save_dir = Path(args.image_save_dir)
             image_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
-            init_image.save(image_save_dir / f"init_image.png")
-            mask_image.save(image_save_dir / f"mask_image.png")
+            init_image.save(image_save_dir / "init_image.png")
+            mask_image.save(image_save_dir / "mask_image.png")
             for i, image in enumerate(outputs.images):
                 image.save(image_save_dir / f"image_{i+1}.png")
         else:

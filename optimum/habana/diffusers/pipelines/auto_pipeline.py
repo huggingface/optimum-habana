@@ -15,9 +15,8 @@
 
 from collections import OrderedDict
 
-from huggingface_hub.utils import validate_hf_hub_args
-
 from diffusers.configuration_utils import ConfigMixin
+from huggingface_hub.utils import validate_hf_hub_args
 
 from .stable_diffusion import (
     GaudiStableDiffusionInpaintPipeline,
@@ -28,6 +27,7 @@ from .stable_diffusion_xl import (
     GaudiStableDiffusionXLPipeline,
 )
 
+GAUDI_PREFIX_NAME = "Gaudi"
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
     [
@@ -57,11 +57,9 @@ def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool
     def get_model(pipeline_class_name):
         for task_mapping in SUPPORTED_TASKS_MAPPINGS:
             for model_name, pipeline in task_mapping.items():
-                print(f"model_name={model_name}, pipeline_name={pipeline.__name__}")
-                print(f"pipeline_class_name={pipeline_class_name}")
                 if pipeline.__name__ == pipeline_class_name:
                     return model_name
-    pipeline_class_name = "Gaudi" + pipeline_class_name
+    pipeline_class_name = GAUDI_PREFIX_NAME + pipeline_class_name
     model_name = get_model(pipeline_class_name)
 
     if model_name is not None:

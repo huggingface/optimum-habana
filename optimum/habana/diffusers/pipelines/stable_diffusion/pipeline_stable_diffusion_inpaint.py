@@ -13,26 +13,23 @@
 # limitations under the License.
 
 import inspect
+import time
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from dataclasses import dataclass
-import numpy as np
 import PIL.Image
 import torch
-import time
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
-
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline, StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import deprecate, logging
-from ..pipeline_utils import GaudiDiffusionPipeline
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+
 from ....transformers.gaudi_configuration import GaudiConfig
-from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
-from .pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.utils import BaseOutput, deprecate
 from ....utils import speed_metrics
+from ..pipeline_utils import GaudiDiffusionPipeline
+from .pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -165,7 +162,7 @@ class GaudiStableDiffusionInpaintPipeline(
         )
 
         self.to(self._device)
-    
+
     def check_inputs(
         self,
         prompt,
@@ -255,7 +252,7 @@ class GaudiStableDiffusionInpaintPipeline(
                 raise ValueError(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
-             
+
     @torch.no_grad()
     def __call__(
         self,
@@ -625,7 +622,6 @@ class GaudiStableDiffusionInpaintPipeline(
             self._num_timesteps = len(timesteps)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
-                #for i, t in enumerate(timesteps):
                 for i in range(num_inference_steps):
                     if self.interrupt:
                         continue
@@ -634,7 +630,7 @@ class GaudiStableDiffusionInpaintPipeline(
 
                     if i == 2:
                         t0 = time.time()
-                        
+
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
@@ -679,7 +675,7 @@ class GaudiStableDiffusionInpaintPipeline(
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
                             callback_kwargs[k] = locals()[k]
-                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                        callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
 
                         latents = callback_outputs.pop("latents", latents)
                         prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)

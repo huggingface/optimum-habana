@@ -13,11 +13,17 @@
 # limitations under the License.
 
 import inspect
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-import time
+
 import numpy as np
 import PIL.Image
 import torch
+from diffusers.image_processor import PipelineImageInput
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLInpaintPipeline
+from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import BaseOutput, deprecate, logging, replace_example_docstring
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -26,19 +32,8 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from diffusers.utils import deprecate, logging, replace_example_docstring
-from diffusers.image_processor import PipelineImageInput
-from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLInpaintPipeline
-from diffusers.schedulers import KarrasDiffusionSchedulers
-
-
-from ..pipeline_utils import GaudiDiffusionPipeline
 from ....transformers.gaudi_configuration import GaudiConfig
-from .pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipelineOutput
-from ....utils import speed_metrics
-
-
+from ..pipeline_utils import GaudiDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -48,16 +43,15 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionXLInpaintPipeline
+        >>> from optimum.habana.diffusers import GaudiStableDiffusionXLInpaintPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+        >>> pipe = GaudiStableDiffusionXLInpaintPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     torch_dtype=torch.float16,
         ...     variant="fp16",
         ...     use_safetensors=True,
         ... )
-        >>> pipe.to("cuda")
 
         >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
         >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
@@ -71,6 +65,11 @@ EXAMPLE_DOC_STRING = """
         ... ).images[0]
         ```
 """
+
+@dataclass
+class GaudiStableDiffusionXLInpaintPipelineOutput(BaseOutput):
+    images: Union[List[PIL.Image.Image], np.ndarray]
+
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
@@ -332,7 +331,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
             watermark output images. If not defined, it will default to True if the package is installed, otherwise no
             watermarker will be used.
     """
-    
+
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -377,8 +376,8 @@ class GaudiStableDiffusionXLInpaintPipeline(
         )
 
         self.to(self._device)
-    
-    
+
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -612,9 +611,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 "1.0.0",
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
-        
-        t0 = time.time()
-        t1 = t0
+
 
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
             # 0. Default height and width to unet
@@ -657,7 +654,6 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 batch_size = prompt_embeds.shape[0]
 
             device = self._execution_device
-
             # 3. Encode input prompt
             text_encoder_lora_scale = (
                 self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
@@ -695,6 +691,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 device,
                 denoising_start=self.denoising_start if denoising_value_valid else None,
             )
+
             # check that number of inference steps is not < 1 - as this doesn't make sense
             if num_inference_steps < 1:
                 raise ValueError(
@@ -882,7 +879,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 for i in range(num_inference_steps):
                     if self.interrupt:
                         continue
-                    
+
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
@@ -977,9 +974,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 if needs_upcasting:
                     self.vae.to(dtype=torch.float16)
             else:
-                return GaudiStableDiffusionXLPipelineOutput(
-                    images=latents,
-                    throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"])
+                return GaudiStableDiffusionXLInpaintPipelineOutput(images=latents)
 
             # apply watermark if available
             if self.watermark is not None:
@@ -993,23 +988,10 @@ class GaudiStableDiffusionXLInpaintPipeline(
             # Offload all models
             self.maybe_free_model_hooks()
 
-            speed_metrics_prefix = "generation"
-            speed_measures = speed_metrics(
-                split=speed_metrics_prefix,
-                start_time=t0,
-                num_samples=batch_size,
-                num_steps=1,
-                start_time_after_warmup=t1,
-            )
-            logger.info(f"Speed metrics: {speed_measures}")
-
-
             if not return_dict:
                 return (image,)
 
-            return GaudiStableDiffusionXLPipelineOutput(
-                images=image,
-                throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"])
+            return GaudiStableDiffusionXLInpaintPipelineOutput(images=image)
 
     @torch.no_grad()
     def unet_hpu(
