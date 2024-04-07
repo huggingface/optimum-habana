@@ -293,6 +293,7 @@ def setup_tokenizer(args, model):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
+        "trust_remote_code": args.trust_remote_code,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True
@@ -349,6 +350,7 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.use_flash_attention = args.use_flash_attention
     generation_config.flash_attention_recompute = args.flash_attention_recompute
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
+    generation_config.trust_remote_code = args.trust_remote_code
     return generation_config
 
 
@@ -370,6 +372,7 @@ def initialize_model(args, logger):
     model_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
+        "trust_remote_code": args.trust_remote_code,
     }
     if args.disk_offload:
         model_kwargs["device_map"] = "auto"

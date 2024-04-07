@@ -260,6 +260,11 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
     )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
+    )
     args = parser.parse_args()
 
     if args.torch_compile:
