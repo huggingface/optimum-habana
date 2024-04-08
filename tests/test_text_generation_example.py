@@ -26,6 +26,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mistral-7B-v0.1", 130.2172236767782),
             ("mistralai/Mixtral-8x7B-v0.1", 23.7931001677926),
             ("microsoft/phi-2", 224.72307766211117),
+            ("stabilityai/stablelm-2-12b", 81.842),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),
@@ -58,6 +59,7 @@ else:
             ("mosaicml/mpt-7b", 45.45168927038262),
             ("mistralai/Mistral-7B-v0.1", 41.21906841459711),
             ("microsoft/phi-2", 92.53083167241344),
+            ("stabilityai/stablelm-2-12b", 26.873),
         ],
         "fp8": [],
         "deepspeed": [
