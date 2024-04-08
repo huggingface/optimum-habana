@@ -40,7 +40,7 @@ from transformers.models.mistral.modeling_mistral import (
     apply_rotary_pos_emb,
 )
 from transformers.utils import logging
-
+from optimum.habana.transformers.models.modeling_all_models import KVCache
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
@@ -53,19 +53,6 @@ except ImportError:
     FusedRMSNorm = None
 
 logger = logging.get_logger(__name__)
-
-
-def update(prev, cur, dim, idx):
-    orig_cur = cur
-    if prev.shape == cur.shape:
-        # Initialize
-        prev.copy_(cur)
-        return orig_cur
-    assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-    if idx is not None:
-        return prev.index_copy_(dim, idx - 1, cur)
-    else:
-        return torch.cat((prev, cur), dim=dim)
 
 
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
@@ -138,34 +125,33 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
 class GaudiMistralAttention(MistralAttention):
     def __init__(self, config: MistralConfig, layer_idx: int):
         super().__init__(config)
-        self.past_key = None
-        self.past_value = None
+        self.k_cache = KVCache()
+        self.v_cache = KVCache()
+        # TODO: replace these two 
+        #self.past_key = None
+        #self.past_value = None
         self.layer_idx = layer_idx
 
-    def allocate_kv_cache(self, batch_size, seq_len):
-        key_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
-        value_shape = (batch_size, self.num_key_value_heads, seq_len, self.head_dim)
-        if self.past_key is None or self.past_key.shape != key_shape:
-            # if not hasattr(self, 'past_key') or self.past_key.shape != key_shape:
-            device = self.k_proj.weight.device
-            dtype = self.k_proj.weight.dtype
-            self.past_key = torch.empty(key_shape, dtype=dtype, device=device)
-            self.past_value = torch.empty(value_shape, dtype=dtype, device=device)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
+        device = self.k_proj.weight.device
+        dtype = self.config.torch_dtype
+        self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
+        self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
         tensor.copy_(updated)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
-        if self.past_key is None:
-            # if not hasattr(self, 'past_key'):
+        if self.k_cache.cache is None:
             return (None, None)
 
-        head_dim = self.past_key.size(-1)
-        seq_length = self.past_key.size(-2)
-        self.reorder(self.past_key, beam_idx, seq_length, head_dim)
-        self.reorder(self.past_value, beam_idx, seq_length, head_dim)
-        return (self.past_key.shape, self.past_value.shape)
+        head_dim = self.k_cache.cache.size(-1)
+        seq_length = self.k_cache.cache.size(-2)
+        self.reorder(self.k_cache.cache, beam_idx, seq_length, head_dim)
+        self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
+        return (self.k_cache.cache.shape, self.v_cache.cache.shape)
 
     def forward(
         self,
@@ -222,27 +208,28 @@ class GaudiMistralAttention(MistralAttention):
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
-        if past_key_value is not None or reuse_cache:
-            if reuse_cache:
-                past_key = self.past_key
-                past_value = self.past_value
-            else:
-                past_key = past_key_value[0]
-                past_value = past_key_value[1]
-            key_states = update(past_key, key_states, 2, token_idx)
-            value_states = update(past_value, value_states, 2, token_idx)
         if use_cache:
+            # reuse k, v, self_attention
             if reuse_cache:
-                past_key_value = (key_states.contiguous().shape, value_states.contiguous().shape)
+                key_states = self.k_cache(key_states, 2, token_idx)
+                value_states = self.v_cache(value_states, 2, token_idx)
+                past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
-                past_key_value = (key_states.contiguous(), value_states.contiguous())
+                if past_key_value is None:
+                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_value = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_key_value = (past_key, past_value)
+                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+
+            if cache_idx is not None and q_len == 1:
+                key_states = key_states[:, :, :cache_idx, :]
+                value_states = value_states[:, :, :cache_idx, :]
+                if attention_mask is not None:
+                    attention_mask = attention_mask[:, :, :, :cache_idx]
+                kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
-        if cache_idx is not None and q_len == 1:
-            key_states = key_states[:, :, :cache_idx, :]
-            value_states = value_states[:, :, :cache_idx, :]
-            attention_mask = attention_mask[:, :, :, :cache_idx]
-            kv_seq_len = key_states.shape[-2]
 
         # repeat k/v heads if n_kv_heads < n_heads
         query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
@@ -306,8 +293,8 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
         self.input_layernorm = MistralRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = MistralRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
-    def allocate_kv_cache(self, batch_size, seq_len):
-        self.self_attn.allocate_kv_cache(batch_size, seq_len)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.self_attn.reorder_kv_cache(beam_idx)
@@ -376,9 +363,9 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
 
 
 class GaudiMistralModel(MistralModel):
-    def allocate_kv_cache(self, batch_size, seq_len):
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         for layer in self.layers:
-            layer.allocate_kv_cache(batch_size, seq_len)
+            layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.layers)
@@ -544,8 +531,8 @@ class GaudiMistralModel(MistralModel):
 
 
 class GaudiMistralForCausalLM(MistralForCausalLM):
-    def allocate_kv_cache(self, batch_size, seq_len, _):
-        self.model.allocate_kv_cache(batch_size, seq_len)
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return self.model.reorder_kv_cache(beam_idx)
