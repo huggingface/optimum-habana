@@ -38,6 +38,13 @@ from optimum.habana.checkpoint_utils import (
 )
 from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
 
+from habana_frameworks.torch.core.quantize_pt2e import (
+    habana_quantizer,
+    habana_quant_config_symmetric,
+    export,
+    convert_pt2e,
+    prepare_pt2e,
+)
 
 def adjust_batch(batch, size):
     curr_size = batch["input_ids"].shape[1]
@@ -90,10 +97,16 @@ def override_prints(enable, logger):
     override_logger(logger, enable)
 
 
-def setup_distributed(args):
+def setup_distributed(args, logger):
     args.local_rank = int(os.getenv("LOCAL_RANK", "0"))
     args.world_size = int(os.getenv("WORLD_SIZE", "0"))
     args.global_rank = int(os.getenv("RANK", "0"))
+
+    if args.pt2e_quant:
+        logger.info("[pt2e_quant] PT2E quant flow is not yet tested with deepspeed...")
+        assert args.local_rank == 0, "Error: local_rank can't be non-zero, when pt2e_quant is used"
+        assert args.world_size == 0, "Error: world_size can't be non-zero, when pt2e_quant is used"
+        assert args.global_rank == 0, "Error: global_rank can't be non-zero, when pt2e_quant is used"
 
 
 def setup_inference(args, model):
@@ -161,6 +174,32 @@ def get_torch_compiled_model(model):
     return model
 
 
+def get_model_with_observer(args, model, logger):
+    logger.info("[pt2e_quant] Inserting observers for measurement.")
+
+    QUANTIZER_DTYPES = {'int8': torch.int8, 'fp8_143': torch.float8_e4m3fn, 'fp8_152': torch.float8_e5m2}
+    quant_dtype = QUANTIZER_DTYPES[args.quant_dtype]
+
+    quantizer = habana_quantizer()
+    quant_config = habana_quant_config_symmetric(quant_dtype)
+    quantizer.set_global(quant_config)
+
+    actual_model = model.model
+    exported_model, _ = export(actual_model)
+
+    prepared_model = prepare_pt2e(exported_model, quantizer)
+    model.model = prepared_model
+
+    return model
+
+
+def add_quant_dquant_nodes(model, logger):
+    logger.info("[pt2e_quant] Converting model after calibration.")
+
+    model.model = convert_pt2e(model.model)
+    return model
+
+
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
 
@@ -184,6 +223,10 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
+
+    if args.pt2e_quant and model.config.model_type == "llama":
+        logger.info("[pt2e_quant] Using PT2 Export like flow for measurement / quantization.")
+        model = get_model_with_observer(args, model, logger)
 
     return model
 
@@ -360,7 +403,7 @@ def setup_generation_config(args, model, tokenizer):
 
 def initialize_model(args, logger):
     init_start = time.perf_counter()
-    setup_distributed(args)
+    setup_distributed(args, logger)
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
     setup_env(args)
     setup_device(args)

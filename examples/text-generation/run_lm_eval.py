@@ -155,33 +155,49 @@ def main():
     model, tokenizer, generation_config = initialize_model(args, logger)
 
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
-    lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
-    eval_start = time.perf_counter()
-    results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
-    if args.device == "hpu":
-        import habana_frameworks.torch.hpu as torch_hpu
+    run_modes = ["pt2e_quant_not_used"]
+    if args.pt2e_quant and model.config.model_type == "llama":
+        run_modes = ["pt2e_quant_calibration", "pt2e_quant_inference"]
 
-        torch_hpu.synchronize()
-    eval_end = time.perf_counter()
+    for mode in run_modes:
+        if mode == "pt2e_quant_calibration":
+            logger.info("[pt2e_quant] Running in calibration mode...")
+        elif mode == "pt2e_quant_inference":
+            logger.info("[pt2e_quant] Running with quantized model...")
 
-    results["args"] = vars(args)
-    results["duration"] = eval_end - eval_start
+        with torch.no_grad():
+            lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
-    if args.local_rank == 0:
-        if args.device == "hpu":
-            mem = get_hpu_memory_stats()
-            for k, v in mem.items():
-                print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
-        json.dump(results, open(args.output_file, "w"), indent=2)
-        print(json.dumps(results, indent=2))
+            eval_start = time.perf_counter()
+            results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
+            if args.device == "hpu":
+                import habana_frameworks.torch.hpu as torch_hpu
+                torch_hpu.synchronize()
+            eval_end = time.perf_counter()
+
+        results["args"] = vars(args)
+        results["duration"] = eval_end - eval_start
+
+        if args.local_rank == 0:
+            if args.device == "hpu":
+                mem = get_hpu_memory_stats()
+                for k, v in mem.items():
+                    print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+            json.dump(results, open(args.output_file, "w"), indent=2)
+            print(json.dumps(results, indent=2))
+
+        if mode == "pt2e_quant_calibration":
+            # Prepare for next run with quantized model
+            from utils import add_quant_dquant_nodes
+            model = add_quant_dquant_nodes(model, logger)
+
     if args.quant_config:
         import habana_quantization_toolkit
-
         habana_quantization_toolkit.finish_measurements(model)
+
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
-
         shutil.rmtree(args.const_serialization_path)
 
 

@@ -40,6 +40,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "torch_compile_distributed": [
             ("meta-llama/Llama-2-7b-hf", 20.178927030275947),
         ],
+        "pt2e_quant": [
+            ("meta-llama/Llama-2-7b-hf", 12.468247401430999),
+        ],
     }
 else:
     # Gaudi1 CI baselines
@@ -62,6 +65,7 @@ else:
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
+        "pt2e_quant": [],
     }
 
 
@@ -73,6 +77,7 @@ def _test_text_generation(
     world_size: int = 8,
     torch_compile: bool = False,
     fp8: bool = False,
+    pt2e_quant: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -98,6 +103,13 @@ def _test_text_generation(
             "--reuse_cache",
             "--trim_logits",
             "--torch_compile",
+        ]
+    elif pt2e_quant:
+        command += [
+            "--attn_softmax_bf16",
+            "--reuse_cache",
+            "--trim_logits",
+            "--pt2e_quant",
         ]
     else:
         command += [
@@ -182,3 +194,11 @@ def test_text_generation_torch_compile_distributed(model_name: str, baseline: fl
     os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
     os.environ["PT_HPU_LAZY_MODE"] = "0"
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
+
+
+@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["pt2e_quant"])
+def test_text_generation_pt2e_quant(model_name: str, baseline: float, token: str):
+    os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
+    os.environ["PT_HPU_LAZY_MODE"] = "0"
+    os.environ["WORLD_SIZE"] = "0"
+    _test_text_generation(model_name, baseline, token, pt2e_quant=True)
