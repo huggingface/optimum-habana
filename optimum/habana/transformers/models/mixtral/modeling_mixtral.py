@@ -41,7 +41,7 @@ from transformers.models.mixtral.modeling_mixtral import (
     load_balancing_loss_func,
 )
 from transformers.utils import logging
-
+from optimum.habana.transformers.models.modeling_all_models import KVCache
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -153,33 +153,6 @@ def gaudi_mixtral_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
-
-
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, kv_cache_fp8, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            if kv_cache_fp8:
-                dtype = torch.float8_e4m3fn
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.cache.fill_(0)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
 def gaudi_mixtral_attention_forward(
