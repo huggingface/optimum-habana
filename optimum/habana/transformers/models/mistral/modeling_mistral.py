@@ -518,7 +518,7 @@ class GaudiMistralModel(MistralModel):
 
 
 class GaudiMistralForCausalLM(MistralForCausalLM):
-    def allocate_kv_cache(self, batch_size, seq_len, _, __):
+    def allocate_kv_cache(self, batch_size, seq_len, _):
         self.model.allocate_kv_cache(batch_size, seq_len)
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):

@@ -727,6 +727,8 @@ class GaudiGenerationMixin(GenerationMixin):
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
+        model_kwargs["flash_attention_causal_mask"] = True if generation_config.flash_attention_causal_mask else False
+
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[-1]
             if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
@@ -1432,6 +1434,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # prepare model inputs
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -1783,6 +1786,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
 
             # prepare model inputs
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -2229,6 +2233,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
                 )
 
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             # if sequential is True, split the input to batches of batch_size and run sequentially
@@ -3009,6 +3014,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 if this_peer_finished_flag.item() == 0.0:
                     break
 
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
