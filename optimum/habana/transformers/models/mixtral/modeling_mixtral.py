@@ -192,37 +192,33 @@ class ScaledDotProductAttention(nn.Module):
         attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
         return self.bmm2(attn_weight, value)
 
-    # Try broadcast matmuls but seems not supported currently
-    """
-    def forward(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
-        query, key, value, attn_mask = gaudi_mixtral_repeat_kv(
-            query, key, value, attn_mask, self.num_kv_groups
-        )
-        bsz = query.size(0)
-        L, S = query.size(-2), key.size(-2)
-        scale_factor = 1 / math.sqrt(self.head_dim)
-        invAttnHead = torch.tensor(scale_factor, dtype=torch.float32).to("hpu")
 
-        if is_causal:
-            assert attn_mask is None
-            attn_bias = torch.zeros(L, S, dtype=query.dtype)
-            temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
-            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
-            attn_bias.to(query.dtype)
+class NaiveFlashAttention(nn.Module):
+    @staticmethod
+    def forward(q, k, v, mask, causal, q_bucket_size, k_bucket_size, scale):
+        """
+        Support long sequence prompt
+        """
+        bsz, num_heads, head_dim = q.size(0), q.size(1), q.size(-1)
+        q_len = q.size(-2)
+        kvlen = k.size(-2)
+        query_tiles = q_len // q_bucket_size
+        query_states = query_states.reshape(bsz, num_heads, q_bucket_size, query_tiles, head_dim)
 
-        if attn_mask is not None:
-            if attn_mask.dtype == torch.bool:
-                attn_mask.masked_fill_(attn_mask.logical_not(), float("-inf"))
+        if mask is not None:
+            mask = mask.unsqueeze(2)
+            mask = mask.reshape(bsz, 1, q_bucket_size, query_tiles, kvlen)
 
-        attn_weight = self.bmm1(query, key.transpose(-2, -1))
+        attn_output = []
+        for i in range(query_tiles):
+            row_q = query_states[:,:,:,i,:]
+            row_mask = mask[:,:,:,i,:]
 
-        attn_weight += attn_mask
-        attn_weight = self.softmax(attn_weight, dim=-1, invAttnHead=invAttnHead)
-        attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
-        attn_output = self.bmm2(attn_weight, value)
-        attn_output = attn_output.reshape(bsz, self.num_heads, L, self.head_dim).contiguous()
+            row_o = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
+            attn_output.append(row_o)
+        attn_output = torch.cat(attn_output, dim=2)
+
         return attn_output
-    """
 
 
 class KVCache(torch.nn.Module):
@@ -277,6 +273,7 @@ class GaudiMixtralAttention(MixtralAttention):
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+        self.bucket_size = 1024
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -370,32 +367,24 @@ class GaudiMixtralAttention(MixtralAttention):
             past_key_value = None
 
         if FusedSDPA:
-            if os.getenv("QUANT_CONFIG", ""):
-                # WA for GQA optimization is not supported currently
+            if not self.training and q_len == key_states.size(-2) and \
+                q_len >= 8192 and q_len % self.bucket_size == 0:
                 key_states = repeat_kv(key_states, self.num_key_value_groups)
                 value_states = repeat_kv(value_states, self.num_key_value_groups)
-                attn_output = self.sdpa(query_states, key_states, value_states, attention_mask, 0.0, False, None)
+                attn_output = NaiveFlashAttention.forward(query_states, key_states, value_states,
+                    attention_mask, False, self.bucket_size, self.bucket_size, self.norm_factor
+                )
             else:
-                with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
-            # pervious version
-            """
-            import habana_frameworks.torch.hpu as ht
-            if q_len == 1:
-                # next token
-                with ht.sdp_kernel(enable_recompute=False):
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
-            else:
-                # first token
-                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
-            """
+                if os.getenv("QUANT_CONFIG", ""):
+                    # WA for GQA optimization is not supported currently
+                    key_states = repeat_kv(key_states, self.num_key_value_groups)
+                    value_states = repeat_kv(value_states, self.num_key_value_groups)
+                    attn_output = self.sdpa(query_states, key_states, value_states, attention_mask, 0.0, False, None)
+                else:
+                    with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
+                        attn_output = FusedSDPA.apply(
+                            query_states, key_states, value_states, attention_mask, 0.0, False, None
+                        )
         else:
             query_states, key_states, value_states, attention_mask = gaudi_mixtral_repeat_kv(
                 query_states, key_states, value_states, attention_mask, self.num_key_value_groups
@@ -515,7 +504,6 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
 
-        htcore.mark_step()
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -534,14 +522,12 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
             cache_idx=cache_idx,
         )
         hidden_states = residual + hidden_states
-        htcore.mark_step()
 
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states, router_logits = self.block_sparse_moe(hidden_states)
         hidden_states = residual + hidden_states
-        htcore.mark_step()
 
         outputs = (hidden_states,)
 
