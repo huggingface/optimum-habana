@@ -157,7 +157,7 @@ def patch_scoped_linear_all_reduce(model):
 
 
 def get_torch_compiled_model(model):
-    model.model = torch.compile(model.model, backend="aot_hpu_inference_backend")
+    model.model = torch.compile(model.model, backend="hpu_backend")
     return model
 
 

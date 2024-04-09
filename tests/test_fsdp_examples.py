@@ -78,7 +78,7 @@ def _test_fsdp(
         f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
         f"--fsdp '{policy}'",
         "--do_eval",
-        "--torch_compile_backend aot_hpu_training_backend",
+        "--torch_compile_backend hpu_backend",
         "--torch_compile",
     ]
 
