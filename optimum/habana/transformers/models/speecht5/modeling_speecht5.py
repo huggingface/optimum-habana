@@ -8,7 +8,6 @@ from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.models.speecht5.modeling_speecht5 import SpeechT5EncoderWithSpeechPrenet, SpeechT5PreTrainedModel
 from transformers.utils import logging
-from optimum.habana.utils import set_seed
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -383,9 +382,7 @@ def gaudi_generate_speech(
     - add hpu graph wrap
     - add static shape support in kv-cache in _generate_speech
     - disable speech_decoder_prenet_dropout to avoid variable output length
-    - add fixed seed for static consistent dropout
     """
-    set_seed(555)
     if speaker_embeddings is None:
         raise ValueError(
             """`speaker_embeddings` must be specified. For example, you can use a speaker embeddings by following
