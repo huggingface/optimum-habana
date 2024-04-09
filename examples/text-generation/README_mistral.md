@@ -29,7 +29,7 @@ python run_generation.py \
 --max_new_tokens 128 \
 --max_input_tokens 128 \
 --bf16 \
---batch_size 896 2>&1 | tee fp8_quant_mistral_bs896_outp128_in128.log
+--batch_size 896 --fp8 2>&1 | tee fp8_quant_mistral_bs896_outp128_in128.log
 ```
 
 
@@ -47,7 +47,7 @@ python run_generation.py \
 --max_new_tokens 2048 \
 --max_input_tokens 128 \
 --bf16 \
---batch_size 120 2>&1 | tee fp8_quant_mistral_bs120_outp2048_in128.log
+--batch_size 120 --fp8 2>&1 | tee fp8_quant_mistral_bs120_outp2048_in128.log
 ```
 
 
@@ -66,7 +66,7 @@ python run_generation.py \
 --max_new_tokens 128 \
 --max_input_tokens 2048 \
 --bf16 \
---batch_size 64 2>&1 | tee fp8_quant_mistral_bs64_outp128_in2048.log
+--batch_size 64 --fp8 2>&1 | tee fp8_quant_mistral_bs64_outp128_in2048.log
 ```
 
 
@@ -85,5 +85,5 @@ python run_generation.py \
 --max_new_tokens 2048 \
 --max_input_tokens 2048 \
 --bf16 \
---batch_size 56 2>&1 | tee fp8_quant_mistral_bs56_outp2048_in2048.log
+--batch_size 56 --fp8 2>&1 | tee fp8_quant_mistral_bs56_outp2048_in2048.log
 ```
