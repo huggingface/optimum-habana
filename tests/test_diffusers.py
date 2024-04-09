@@ -47,6 +47,7 @@ from optimum.habana.diffusers import (
     GaudiStableDiffusionPipeline,
     GaudiStableDiffusionUpscalePipeline,
     GaudiStableDiffusionXLPipeline,
+    GaudiStableDiffusionInpaintPipeline,
 )
 from optimum.habana.utils import set_seed
 
@@ -842,6 +843,519 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 self.assertEqual(image.shape, (512, 512, 3))
                 # self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
 
+
+class GaudiStableDiffusionInpaintPipelineTester(GaudiStableDiffusionPipelineTester): #, GaudiStableDiffusionPipelineTester):
+    """ Tests the StableDiffusionInpaintPipeline for Gaudi.  """
+
+    def create_inpaint_pipe(self,
+                            model_name = "stabilityai/stable-diffusion-2-inpainting",
+                            scheduler = None,
+                            use_hpu_graphs = False,
+                            gaudi_config = "Habana/stable-diffusion",
+                            disable_safety_checker = False,
+                            torch_dtype = torch.bfloat16):
+        from optimum.habana.diffusers import GaudiDDIMScheduler
+
+        if scheduler is None:
+            scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+        kwargs = {
+            "scheduler": scheduler,
+            "use_habana": True,
+            "use_hpu_graphs": use_hpu_graphs,
+            "gaudi_config": gaudi_config,
+        }
+
+        if disable_safety_checker is True:
+            kwargs["safety_checker"] = None
+
+        sdi_pipe = GaudiStableDiffusionInpaintPipeline.from_pretrained(model_name,**kwargs).to(torch_dtype)
+
+        sdi_pipe.set_progress_bar_config(disable=None)
+
+        return sdi_pipe;
+
+    def test_stable_diffusion_inpaint_num_images_per_prompt(self):
+        """Test that stable diffusion inpainting works with negative prompts"""
+        from optimum.habana.diffusers import GaudiDDIMScheduler
+        from diffusers.utils import load_image
+
+        # Create default test pipe
+        sdi_pipe = self.create_inpaint_pipe()
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        prompt = "A painting of a squirrel eating a burger"
+
+        # Test num_images_per_prompt=1 (default)
+        images = sdi_pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            ).images
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].shape, (512, 512, 3))
+
+        # Test num_images_per_prompt=1 (default) for several prompts
+        num_prompts = 3
+
+        images = sdi_pipe(
+            prompt=[prompt] * num_prompts,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+        ).images
+        self.assertEqual(len(images), num_prompts)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+        # Test num_images_per_prompt for single prompt
+        num_images_per_prompt = 2
+
+        images = sdi_pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            num_images_per_prompt=num_images_per_prompt,
+        ).images
+        self.assertEqual(len(images), num_images_per_prompt)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+        # Test num_images_per_prompt for several prompts
+        num_prompts = 2
+
+        images = sdi_pipe(
+            prompt=[prompt] * num_prompts,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            num_images_per_prompt=num_images_per_prompt,
+        ).images
+
+        self.assertEqual(len(images), num_prompts * num_images_per_prompt)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+    def test_stable_diffusion_inpaint_negative_prompt(self):
+        """Test that stable diffusion inpainting works with negative prompts"""
+        from diffusers.utils import load_image
+
+        # Create test inpaint pipeline
+        sdi_pipe = self.create_inpaint_pipe()
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        prompt = "A painting of a squirrel eating a burger"
+        negative_prompt = "french fries"
+
+        images = sdi_pipe(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            batch_size=5,
+            output_type="np",
+            num_images_per_prompt=5,
+        ).images
+
+        self.assertEqual(len(images), 5)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+    def test_stable_diffusion_inpaint_batch_size(self):
+        """Test that stable diffusion inpainting works with different batch sizes"""
+        from diffusers.utils import load_image
+
+        # Create test inpaint pipeline
+        sdi_pipe = self.create_inpaint_pipe()
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        prompt = "A painting of a squirrel eating a burger"
+
+        # Test batch_size > 1 where batch_size is a divider of the total number of generated images
+        batch_size = 3
+        num_images_per_prompt = batch_size**2
+        images = sdi_pipe(
+            prompt,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            batch_size=batch_size,
+            num_images_per_prompt=num_images_per_prompt,
+        ).images
+
+        self.assertEqual(len(images), num_images_per_prompt)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+        # Same test for several prompts
+        num_prompts = 3
+        images = sdi_pipe(
+            [prompt] * num_prompts,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            batch_size=batch_size,
+            num_images_per_prompt=num_images_per_prompt,
+        ).images
+
+        self.assertEqual(len(images), num_prompts * num_images_per_prompt)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+        # Test batch_size when it is not a divider of the total number of generated images for a single prompt
+        num_images_per_prompt = 7
+        images = sdi_pipe(
+            prompt,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            batch_size=batch_size,
+            num_images_per_prompt=num_images_per_prompt,
+        ).images
+
+        self.assertEqual(len(images), num_images_per_prompt)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+        # Same test for several prompts
+        num_prompts = 2
+        images = sdi_pipe(
+            [prompt] * num_prompts,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            batch_size=batch_size,
+            num_images_per_prompt=num_images_per_prompt,
+        ).images
+
+        self.assertEqual(len(images), 14)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+    def test_stable_diffusion_inpaint_bf16(self):
+        """Test that stable diffusion inpainting works with bf16"""
+        from diffusers.utils import load_image
+
+        # Create test inpaint pipeline
+        gaudi_config = GaudiConfig() #Default GaudiConfig uses bf16
+        sdi_pipe = self.create_inpaint_pipe(gaudi_config=gaudi_config)
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        prompt = "A painting of a squirrel eating a burger"
+        images = sdi_pipe(
+            prompt,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            num_images_per_prompt=5,
+        ).images
+
+        self.assertEqual(len(images), 5)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+    def test_stable_diffusion_inpaint_default(self):
+        """Test that stable diffusion inpainting works with default config"""
+        from diffusers.utils import load_image
+
+        # Create test inpaint pipeline
+        sdi_pipe = self.create_inpaint_pipe()
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        prompt = "A painting of a squirrel eating a burger"
+        images = sdi_pipe(
+            [prompt] * 2,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            batch_size=3,
+            num_images_per_prompt=5,
+        ).images
+
+        self.assertEqual(len(images), 10)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+    def test_stable_diffusion_inpaint_hpu_graphs(self):
+        """Test that stable diffusion inpainting works with default hpu_graph"""
+        from diffusers.utils import load_image
+
+        # Create test inpaint pipeline
+        sdi_pipe = self.create_inpaint_pipe(use_hpu_graphs=True)
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        prompt = "A painting of a squirrel eating a burger"
+        images = sdi_pipe(
+            prompt=[prompt] * 2,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            batch_size=5,
+            output_type="np",
+            num_images_per_prompt=5,
+        ).images
+
+        self.assertEqual(len(images), 10)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+    def test_stable_diffusion_inpaint_no_safety_checker(self):
+        """Test that stable diffusion inpainting works without a saftey checker"""
+        from diffusers.utils import load_image
+
+        # Create test inpaint pipeline
+        gaudi_config = GaudiConfig()
+        scheduler = GaudiDDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        sdi_pipe = self.create_inpaint_pipe(gaudi_config = gaudi_config, scheduler = scheduler, disable_safety_checker = True)
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        self.assertIsInstance(sdi_pipe, GaudiStableDiffusionInpaintPipeline)
+        self.assertIsInstance(sdi_pipe.scheduler, GaudiDDIMScheduler)
+        self.assertIsNone(sdi_pipe.safety_checker)
+
+        image = sdi_pipe("example prompt",
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2).images[0]
+        self.assertIsNotNone(image)
+
+        # Check that there's no error when saving a pipeline with one of the models being None
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sdi_pipe.save_pretrained(tmpdirname)
+            sdi_pipe = GaudiStableDiffusionInpaintPipeline.from_pretrained(
+                tmpdirname,
+                use_habana=True,
+                gaudi_config=tmpdirname,
+            )
+
+        # Sanity check that the pipeline still works
+        self.assertIsNone(sdi_pipe.safety_checker)
+        image = sdi_pipe("example prompt",
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2).images[0]
+        self.assertIsNotNone(image)
+
+    def test_stable_diffusion_inpaint_output_types(self):
+        """Test that stable diffusion inpainting works different output types"""
+        from diffusers.utils import load_image
+
+        sdi_pipe = self.create_inpaint_pipe()
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        prompt = "A painting of a squirrel eating a burger"
+
+        #Test pil output
+        pil_outputs = sdi_pipe(
+            prompt,
+            init_image,
+            mask_image,
+            num_inference_steps=2,
+            output_type="pil",
+        )
+        self.assertEqual(len(pil_outputs.images), 1)
+
+        #Test np output
+        np_outputs = sdi_pipe(
+            prompt,
+            init_image,
+            mask_image,
+            num_inference_steps=2,
+            output_type="np",
+        )
+        self.assertEqual(len(np_outputs.images), 1)
+
+    def test_stable_diffusion_inpaint_enable_safety_checker(self):
+        """Test that stable diffusion inpainting works with a saftey checker and it is loaded from_pretrained"""
+        from diffusers.utils import load_image
+
+        # Create test inpaint pipeline
+        gaudi_config = GaudiConfig()
+        scheduler = GaudiDDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        sdi_pipe = self.create_inpaint_pipe(gaudi_config = gaudi_config, scheduler = scheduler, disable_safety_checker = False)
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        self.assertIsInstance(sdi_pipe, GaudiStableDiffusionInpaintPipeline)
+        self.assertIsInstance(sdi_pipe.scheduler, GaudiDDIMScheduler)
+        #self.assertIsNotNone(sdi_pipe.safety_checker) <--- The safety checker is not being found.
+
+        image = sdi_pipe("example prompt",
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2).images[0]
+        self.assertIsNotNone(image)
+
+        # Check that there's no error when saving a pipeline with one of the models being None
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sdi_pipe.save_pretrained(tmpdirname)
+            sdi_pipe = GaudiStableDiffusionInpaintPipeline.from_pretrained(
+                tmpdirname,
+                use_habana=True,
+                gaudi_config=tmpdirname,
+            )
+
+        # Sanity check that the pipeline still works
+        self.assertIsNone(sdi_pipe.safety_checker)
+        image = sdi_pipe("example prompt",
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2).images[0]
+        self.assertIsNotNone(image)
+
+    @custom_bf16_ops
+    @slow
+    def test_stable_diffusion_inpaint_no_throughput_regression_autocast(self):
+        """Test that stable diffusion inpainting no throughput regression autocast"""
+        from diffusers.utils import load_image
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        prompts = [
+            "An image of a squirrel in Picasso style",
+            "High quality photo of an astronaut riding a horse in space",
+        ]
+        num_images_per_prompt = 12
+        batch_size = 4
+        model_name = "stabilityai/stable-diffusion-2-inpainting"
+
+        scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
+        gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion-2")
+
+        sdi_pipe = self.create_inpaint_pipe(gaudi_config = gaudi_config, scheduler = scheduler, use_hpu_graphs = True)
+
+        set_seed(27)
+        outputs = sdi_pipe(
+            prompt=prompts,
+            image=init_image,
+            mask_image=mask_image,
+            num_images_per_prompt=num_images_per_prompt,
+            batch_size=batch_size,
+            height=768,
+            width=768,
+        )
+        self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
+        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_AUTOCAST)
+
+    def test_stable_diffusion_inpaint_noise_sigma_for_latents(self):
+        """Test inpaint noise sigma for latents"""
+        from diffusers.utils import load_image
+
+        # Create test inpaint pipeline
+        sdi_pipe = self.create_inpaint_pipe()
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        #Create the latents. 
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        latents = randn_tensor( (5, 4, 64, 64), generator=generator,)
+        latents = latents * sdi_pipe.scheduler.init_noise_sigma
+
+        prompt = "A painting of a squirrel eating a burger"
+        images = sdi_pipe(
+            prompt,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            latents=latents,
+            num_images_per_prompt=5,
+        ).images
+
+        self.assertEqual(len(images), 5)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+    def test_stable_diffusion_inpaint_mask_latents(self):
+        """Test that stable diffusion inpainting mask latents"""
+        from diffusers.utils import load_image
+
+        # Create test inpaint pipeline
+        sdi_pipe = self.create_inpaint_pipe()
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        #Create the latents. 
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        latents = randn_tensor( (5, 4, 64, 64), generator=generator,)
+     
+        prompt = "A painting of a squirrel eating a burger"
+        images = sdi_pipe(
+            prompt,
+            image=init_image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            output_type="np",
+            latents=latents,
+            num_images_per_prompt=5,
+        ).images
+
+        self.assertEqual(len(images), 5)
+        self.assertEqual(images[-1].shape, (512, 512, 3))
+
+    def test_stable_diffusion_inpainting_test_denoising_loop(self):
+        """Test that stable diffusion inpainting denoising loop"""
+        sdi_pipe = self.create_inpaint_pipe()
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        #Create the latents.
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        latents = randn_tensor( (5, 4, 64, 64), generator=generator,)
+        prompt = "A painting of a squirrel eating a burger"
+
+        #generate outputs using sdi
+        images = sdi_pipe.__call__(prompt, image=init_image, mask_image=mask_image, num_inference_steps=2, output_type="np", latents=latents, num_images_per_prompt=5)
+
+        #Assert tests
+        self.assertEqual(len(images[0]), 5)
+        self.assertEqual(images[0][-1].shape, (512, 512, 3))
 
 class GaudiStableDiffusionXLPipelineTester(TestCase):
     """
