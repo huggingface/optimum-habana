@@ -26,7 +26,6 @@ import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
-import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
 from torch import nn
