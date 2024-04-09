@@ -194,24 +194,24 @@ class ScaledDotProductAttention(nn.Module):
 
 class NaiveFlashAttention(nn.Module):
     @staticmethod
-    def forward(q, k, v, mask, causal, q_bucket_size, k_bucket_size, scale):
+    def forward(q, k, v, mask, causal, q_bucket_size, k_bucket_size=None, scale=None):
         """
         Support long sequence prompt
         """
         bsz, num_heads, head_dim = q.size(0), q.size(1), q.size(-1)
         q_len = q.size(-2)
         kvlen = k.size(-2)
-        query_tiles = q_len // q_bucket_size
-        query_states = query_states.reshape(bsz, num_heads, q_bucket_size, query_tiles, head_dim)
+        q_tiles = q_len // q_bucket_size
+        q = q.reshape(bsz, num_heads, q_bucket_size, q_tiles, head_dim)
 
         if mask is not None:
             mask = mask.unsqueeze(2)
-            mask = mask.reshape(bsz, 1, q_bucket_size, query_tiles, kvlen)
+            mask = mask.reshape(bsz, 1, q_bucket_size, q_tiles, kvlen)
 
         attn_output = []
-        for i in range(query_tiles):
-            row_q = query_states[:,:,:,i,:]
-            row_mask = mask[:,:,:,i,:]
+        for i in range(q_tiles):
+            row_q = q[:, :, :, i, :]
+            row_mask = mask[:, :, :, i, :]
 
             row_o = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
             attn_output.append(row_o)
@@ -366,12 +366,18 @@ class GaudiMixtralAttention(MixtralAttention):
             past_key_value = None
 
         if FusedSDPA:
-            if not self.training and q_len == key_states.size(-2) and \
-                q_len >= 8192 and q_len % self.bucket_size == 0:
+            if not self.training and q_len == key_states.size(-2) and q_len >= 8192 and q_len % self.bucket_size == 0:
                 key_states = repeat_kv(key_states, self.num_key_value_groups)
                 value_states = repeat_kv(value_states, self.num_key_value_groups)
-                attn_output = NaiveFlashAttention.forward(query_states, key_states, value_states,
-                    attention_mask, False, self.bucket_size, self.bucket_size, self.norm_factor
+                attn_output = NaiveFlashAttention.forward(
+                    query_states,
+                    key_states,
+                    value_states,
+                    attention_mask,
+                    False,
+                    self.bucket_size,
+                    self.bucket_size,
+                    self.norm_factor,
                 )
             else:
                 if os.getenv("QUANT_CONFIG", ""):
