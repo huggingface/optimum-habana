@@ -27,6 +27,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mixtral-8x7B-v0.1", 23.7931001677926),
             ("microsoft/phi-2", 224.72307766211117),
             ("stabilityai/stablelm-2-12b", 81.842),
+            ("codellama/CodeLlama-34b-hf", 32.644),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),
