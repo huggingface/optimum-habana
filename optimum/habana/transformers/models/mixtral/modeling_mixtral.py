@@ -208,9 +208,9 @@ class NaiveFlashAttention(nn.Module):
         else:
             q_tiles = math.ceil(q_len / q_bucket_size)
             q_padding = q_tiles * q_bucket_size - q_len
-            q = F.pad(q, (0,0,q_padding,0), "constant", 0)
+            q = F.pad(q, (0, 0, q_padding, 0), "constant", 0)
             if mask is not None:
-                mask = F.pad(mask, (0,0,q_padding,0), "constant", -3.3895e+38)
+                mask = F.pad(mask, (0, 0, q_padding, 0), "constant", -3.3895e38)
 
         q = q.reshape(bsz, num_heads, q_bucket_size, q_tiles, head_dim)
 
@@ -359,23 +359,13 @@ class GaudiMixtralAttention(MixtralAttention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(
-                        key_states.shape,
-                        dtype=self.k_proj.weight.dtype,
-                        device=key_states.device
-                    )
+                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
                     past_value = torch.zeros(
-                        key_states.shape,
-                        dtype=self.k_proj.weight.dtype,
-                        device=key_states.device
+                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
                     past_key_value = (past_key, past_value)
-                key_states = self.k_cache.update(
-                    past_key_value[0], key_states, 2, token_idx, self.inp_seq_len
-                )
-                value_states = self.k_cache.update(
-                    past_key_value[1], value_states, 2, token_idx, self.inp_seq_len
-                )
+                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                value_states = self.k_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
 
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
