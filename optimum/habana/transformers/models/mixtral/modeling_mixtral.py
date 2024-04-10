@@ -210,8 +210,8 @@ class NaiveFlashAttention(nn.Module):
 
         attn_output = []
         for i in range(q_tiles):
-            row_q = q[:, :, :, i, :]
-            row_mask = mask[:, :, :, i, :]
+            row_q = q[..., i, :]
+            row_mask = mask[..., i, :]
 
             row_o = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
             attn_output.append(row_o)
@@ -367,8 +367,6 @@ class GaudiMixtralAttention(MixtralAttention):
 
         if FusedSDPA:
             if not self.training and q_len == key_states.size(-2) and q_len >= 8192 and q_len % self.bucket_size == 0:
-                key_states = repeat_kv(key_states, self.num_key_value_groups)
-                value_states = repeat_kv(value_states, self.num_key_value_groups)
                 attn_output = NaiveFlashAttention.forward(
                     query_states,
                     key_states,
