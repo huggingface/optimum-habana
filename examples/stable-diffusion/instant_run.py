@@ -1,8 +1,3 @@
-# !pip install opencv-python transformers accelerate insightface
-
-# import habana_frameworks.torch.gpu_migration
-import habana_frameworks.torch.core as htcore
-
 import argparse
 from diffusers.utils import load_image
 from diffusers.models import ControlNetModel
@@ -10,11 +5,11 @@ from diffusers.models import ControlNetModel
 import cv2
 import torch
 import numpy as np
-from PIL import Image
+import gdown
+import os
 from pathlib import Path
 
 from insightface.app import FaceAnalysis
-# from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPipeline, draw_kps
 from gaudi_pipeline_stable_diffusion_xl_instantid import GaudiStableDiffusionXLControlNetPipeline, draw_kps
 
 from optimum.habana.diffusers import GaudiDDIMScheduler
@@ -50,6 +45,15 @@ def download_instantID_model():
         filename="pytorch_lora_weights.safetensors",
         local_dir="./checkpoints",
     )
+
+
+def download_antelopev2():
+    antelopev2_path = "./models/antelopev2"
+    if os.path.exists(antelopev2_path) and os.path.isdir(antelopev2_path) and os.listdir(antelopev2_path):
+        return
+    
+    gdown.download(url="https://drive.google.com/file/d/18wEUfMNohBJ4K3Ly5wpTejPfDzp-8fI8/view?usp=sharing", output="./models/", quiet=False, fuzzy=True)
+    os.system("unzip ./models/antelopev2.zip -d ./models/")
 
 
 def parse_args():
@@ -228,10 +232,10 @@ def parse_args():
 
 if __name__ == "__main__":
     download_instantID_model()
+    download_antelopev2()
 
     args = parse_args()
 
-    # prepare 'antelopev2' under ./models
     app = FaceAnalysis(name='antelopev2', root='./', providers=['CPUExecutionProvider'])
     app.prepare(ctx_id=0, det_size=(640, 640))
 
@@ -256,7 +260,6 @@ if __name__ == "__main__":
     model_dtype = torch.bfloat16 if args.bf16 else None
     controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path, torch_dtype=model_dtype)
 
-    # pipe = StableDiffusionXLInstantIDPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16)
     pipe = GaudiStableDiffusionXLControlNetPipeline.from_pretrained(args.model_name_or_path, controlnet=controlnet, **kwargs)
 
     # load adapter
