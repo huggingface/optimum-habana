@@ -104,7 +104,7 @@ def setup_const_serialization(const_serialization_path):
     from habana_frameworks.torch.hpu import enable_const_section_serialization
 
     print("Serializing const params to {}".format(const_serialization_path))
-    enable_const_section_serialization(const_serialization_path, False, True)
+    enable_const_section_serialization(const_serialization_path, True)
 
 
 def setup_env(args):
@@ -347,6 +347,8 @@ def setup_generation_config(args, model, tokenizer):
     if generation_config.reduce_recompile:
         assert generation_config.bucket_size > 0
     generation_config.use_flash_attention = args.use_flash_attention
+    generation_config.flash_attention_recompute = args.flash_attention_recompute
+    generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
     return generation_config
 
 
