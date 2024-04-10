@@ -215,7 +215,7 @@ def test_text_generation_bf16(model_name: str, baseline: float, token: str):
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["fp8"])
 def test_text_generation_fp8(model_name: str, baseline: float, token: str):
     deepspeed = True if "falcon-180B" or "Llama-2-70b" in model_name else False
-    world_size = 8 if "falcon-180B" or "Llama-2-70b"in model_name else None
+    world_size = 8 if "falcon-180B" or "Llama-2-70b" in model_name else None
     _test_text_generation(model_name, baseline, token, deepspeed=deepspeed, world_size=world_size, fp8=True)
 
 
