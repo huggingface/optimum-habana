@@ -1442,6 +1442,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
+        greedy_first = True
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1566,6 +1567,12 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hb_profer.step()
 
+            if greedy_first:
+                import habana_frameworks.torch.hpu as torch_hpu
+                torch_hpu.synchronize()
+                print(f"First Token time(greedy):{time.perf_counter()*1000}")
+                greedy_first = False
+
             if this_peer_finished and not synced_gpus:
                 break
 
@@ -1575,6 +1582,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 # before starting the decode phase.
                 self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
+            
+
 
         if os.environ.get('PT_HPUGRAPH_DISABLE_TENSOR_CACHE') == '1' and model_kwargs.get("use_hpu_graphs", False) \
             and not model_kwargs.get("reuse_cache", False) and bucket_internal \

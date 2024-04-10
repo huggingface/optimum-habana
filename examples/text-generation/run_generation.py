@@ -349,6 +349,9 @@ def main():
         def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
 
+            t0 = time.perf_counter()
+            print(f"Step4+ starting time is {t0*1000}", flush=True)
+
             # Tokenization
             if args.max_input_tokens > 0:
                 input_tokens = tokenizer.batch_encode_plus(
