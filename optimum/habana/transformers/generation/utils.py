@@ -764,7 +764,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     unwrap_deepspeed_model(self).allocate_kv_cache(
                         bs * generation_config.num_beams, calculated_max_length, token_idx
                     )
-                    import pdb; pdb.set_trace()
                     if generation_config.use_cache:
                         model_kwargs["kv_cache_len"] = calculated_max_length
                         model_kwargs["kv_cache_pad_len"] = generation_config.max_new_tokens
