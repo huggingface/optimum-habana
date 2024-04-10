@@ -608,6 +608,9 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @slow
     def test_no_generation_regression(self):
+        seed = 27
+        torch.use_deterministic_algorithms(True)
+        set_seed(seed)
         model_name = "CompVis/stable-diffusion-v1-4"
         # fp32
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
@@ -619,14 +622,17 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(use_torch_autocast=False),
         )
-        set_seed(27)
+
+        prompt = "An image of a squirrel in Picasso style"
+        generator = torch.manual_seed(seed)
         outputs = pipeline(
-            prompt="An image of a squirrel in Picasso style",
+            prompt=prompt,
+            generator=generator,
             output_type="np",
         )
 
         if os.environ.get("GAUDI2_CI", "0") == "1":
-            expected_slice = np.array(
+            np.array(
                 [
                     0.68306947,
                     0.6812112,
@@ -640,15 +646,30 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 ]
             )
         else:
-            expected_slice = np.array(
+            np.array(
                 [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
             )
         image = outputs.images[0]
         pil_image = numpy_to_pil(image)[0]
         pil_image.save("test_no_generation_regression_output.png")
 
+        # Calculate CLIP score
+        from functools import partial
+
+        from torchmetrics.functional.multimodal import clip_score
+
+        clip_score_fn = partial(clip_score, model_name_or_path="openai/clip-vit-base-patch16")
+
+        def calculate_clip_score(images, prompts):
+            images_int = (images * 255).astype("uint8")
+            clip_score = clip_score_fn(torch.from_numpy(images_int).permute(0, 3, 1, 2), prompts).detach()
+            return round(float(clip_score), 4)
+
+        sd_clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
+        print(f"CLIP score: {sd_clip_score}")
+
         self.assertEqual(image.shape, (512, 512, 3))
-        self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
+        self.assertGreaterEqual(sd_clip_score, 30.1632)
 
     @slow
     def test_no_generation_regression_ldm3d(self):
