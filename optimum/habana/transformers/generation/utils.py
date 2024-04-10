@@ -20,7 +20,7 @@ import math
 import os
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
-
+import time
 import torch
 import torch.distributed as dist
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
