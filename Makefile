@@ -72,7 +72,6 @@ slow_tests_fsdp: test_installs
 slow_tests_trl: test_installs
 	python -m pip install trl==0.7.8
 	python -m pip install peft==0.7.0
-	python -m pytest tests/test_trl.py -v -s -k "test_generate_samples"
 	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
 
 # Check if examples are up to date with the Transformers library

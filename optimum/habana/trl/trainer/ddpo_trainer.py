@@ -38,40 +38,7 @@ from optimum.habana.utils import set_seed
 logger = get_logger(__name__)
 
 
-MODEL_CARD_TEMPLATE = """---
-license: apache-2.0
-tags:
-- trl
-- ddpo
-- diffusers
-- reinforcement-learning
-- text-to-image
-- stable-diffusion
----
-
-# {model_name}
-
-This is a diffusion model that has been fine-tuned with reinforcement learning to
- guide the model outputs according to a value, function, or human feedback. The model can be used for image generation conditioned with text.
-
-"""
-
-
 class GaudiDDPOTrainer(DDPOTrainer):
-    """
-    The DDPOTrainer uses Deep Diffusion Policy Optimization to optimise diffusion models.
-    Note, this trainer is heavily inspired by the work here: https://github.com/kvablack/ddpo-pytorch
-    As of now only Stable Diffusion based pipelines are supported
-
-    Attributes:
-        **config** (`DDPOConfig`) -- Configuration object for DDPOTrainer. Check the documentation of `PPOConfig` for more
-         details.
-        **reward_function** (Callable[[torch.Tensor, Tuple[str], Tuple[Any]], torch.Tensor]) -- Reward function to be used
-        **prompt_function** (Callable[[], Tuple[str, Any]]) -- Function to generate prompts to guide model
-        **sd_pipeline** (`DDPOStableDiffusionPipeline`) -- Stable Diffusion pipeline to be used for training.
-        **image_samples_hook** (Optional[Callable[[Any, Any, Any], Any]]) -- Hook to be called to log images
-    """
-
     def __init__(
         self,
         config: DDPOConfig,

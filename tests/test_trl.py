@@ -43,6 +43,7 @@ class GaudiDDPOTrainerTester(unittest.TestCase):
      - use GaudiDefaultDDPOStableDiffusionPipeline instead of DefaultDDPOStableDiffusionPipeline
      - use GaudiDDPOTrainer instead of DDPOTrainer
      - use bf16 instead of fp32
+     - combine test_generate_samples and test_calculate_loss in single test
     """
 
     def setUp(self):
@@ -91,17 +92,13 @@ class GaudiDDPOTrainerTester(unittest.TestCase):
         assert loss.item() == 1.0
 
     @slow
-    def test_generate_samples(self):
+    def test_calculate_loss(self):
         samples, output_pairs = self.trainer._generate_samples(1, 2)
         assert len(samples) == 1
         assert len(output_pairs) == 1
         assert len(output_pairs[0][0]) == 2
 
-    @slow
-    def test_calculate_loss(self):
-        samples, _ = self.trainer._generate_samples(1, 2)
         sample = samples[0]
-
         latents = sample["latents"][0, 0].unsqueeze(0)
         next_latents = sample["next_latents"][0, 0].unsqueeze(0)
         log_probs = sample["log_probs"][0, 0].unsqueeze(0)
