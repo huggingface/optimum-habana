@@ -194,14 +194,24 @@ class ScaledDotProductAttention(nn.Module):
 
 class NaiveFlashAttention(nn.Module):
     @staticmethod
-    def forward(q, k, v, mask, causal, q_bucket_size, k_bucket_size=None, scale=None):
+    def forward(q, k, v, mask, causal, q_bucket_size):
         """
         Support long sequence prompt
         """
         bsz, num_heads, head_dim = q.size(0), q.size(1), q.size(-1)
         q_len = q.size(-2)
         kvlen = k.size(-2)
-        q_tiles = q_len // q_bucket_size
+
+        q_padding = 0
+        if q_len % q_bucket_size == 0:
+            q_tiles = q_len // q_bucket_size
+        else:
+            q_tiles = math.ceil(q_len / q_bucket_size)
+            q_padding = q_tiles * q_bucket_size - q_len
+            q = F.pad(q, (0,0,q_padding,0), "constant", 0)
+            if mask is not None:
+                mask = F.pad(mask, (0,0,q_padding,0), "constant", -3.3895e+38)
+
         q = q.reshape(bsz, num_heads, q_bucket_size, q_tiles, head_dim)
 
         if mask is not None:
@@ -216,6 +226,9 @@ class NaiveFlashAttention(nn.Module):
             row_o = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
             attn_output.append(row_o)
         attn_output = torch.cat(attn_output, dim=2)
+
+        if q_padding != 0:
+            attn_output = attn_output[..., :-q_padding, :]
 
         return attn_output
 
@@ -329,12 +342,12 @@ class GaudiMixtralAttention(MixtralAttention):
                 if hasattr(past_key_value, "get_usable_length"):
                     kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
                 else:
-                    kv_seq_len += past_key_value[0][0].shape[-2]
+                    kv_seq_len += past_key_value[0].shape[-2]
             else:
                 if reuse_cache:
-                    kv_seq_len = past_key_value[0][0][-2]
+                    kv_seq_len = past_key_value[0][-2]
                 else:
-                    kv_seq_len = past_key_value[0][0].shape[-2]
+                    kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
@@ -346,13 +359,24 @@ class GaudiMixtralAttention(MixtralAttention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_key = torch.zeros(
+                        key_states.shape,
+                        dtype=self.k_proj.weight.dtype,
+                        device=key_states.device
+                    )
                     past_value = torch.zeros(
-                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
+                        key_states.shape,
+                        dtype=self.k_proj.weight.dtype,
+                        device=key_states.device
                     )
                     past_key_value = (past_key, past_value)
-                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                value_states = self.k_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+                key_states = self.k_cache.update(
+                    past_key_value[0], key_states, 2, token_idx, self.inp_seq_len
+                )
+                value_states = self.k_cache.update(
+                    past_key_value[1], value_states, 2, token_idx, self.inp_seq_len
+                )
+
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
 
@@ -366,7 +390,7 @@ class GaudiMixtralAttention(MixtralAttention):
             past_key_value = None
 
         if FusedSDPA:
-            if not self.training and q_len == key_states.size(-2) and q_len >= 8192 and q_len % self.bucket_size == 0:
+            if not self.training and q_len == key_states.size(-2) and q_len >= 8192:
                 attn_output = NaiveFlashAttention.forward(
                     query_states,
                     key_states,
@@ -374,8 +398,6 @@ class GaudiMixtralAttention(MixtralAttention):
                     attention_mask,
                     False,
                     self.bucket_size,
-                    self.bucket_size,
-                    self.norm_factor,
                 )
             else:
                 if os.getenv("QUANT_CONFIG", ""):
@@ -615,7 +637,9 @@ class GaudiMixtralModel(MixtralModel):
                 if use_new_cache:
                     if not isinstance(past_key_values, StaticCache):
                         past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                past_key_values_length = past_key_values.get_usable_length(seq_length)
+                    past_key_values_length = past_key_values.get_usable_length()
+                else:
+                    past_key_values_length = past_key_values[0][0].shape[2]
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -668,7 +692,7 @@ class GaudiMixtralModel(MixtralModel):
         all_router_logits = () if output_router_logits else None
         next_decoder_cache = () if not use_new_cache else None
 
-        for decoder_layer in self.layers:
+        for layer_idx, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -688,7 +712,7 @@ class GaudiMixtralModel(MixtralModel):
                     hidden_states,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
-                    past_key_value=past_key_values,
+                    past_key_value=None if past_key_values is None else past_key_values[layer_idx],
                     output_attentions=output_attentions,
                     output_router_logits=output_router_logits,
                     use_cache=use_cache,
