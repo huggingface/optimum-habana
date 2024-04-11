@@ -1,4 +1,4 @@
-model=/root/sasarkar/llama3/wts/drop1_apr4/llama3_8b_hf_jwang/
+model=/path/to/model
 tag=run1
 
 
