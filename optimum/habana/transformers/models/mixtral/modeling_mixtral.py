@@ -26,6 +26,7 @@ import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
+import habana_frameworks.torch.core as htcore
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -49,7 +50,6 @@ from transformers.models.mixtral.modeling_mixtral import (
 )
 from transformers.utils import logging
 
-import habana_frameworks.torch.core as htcore
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -279,7 +279,7 @@ class GaudiMixtralAttention(MixtralAttention):
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
-        self.bucket_size = 4096 # 1024
+        self.bucket_size = 4096  # 1024
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
