@@ -1386,8 +1386,7 @@ class GaudiGenerationMixin(GenerationMixin):
         # keep track of which sequences are already finished
         if not ignore_eos:
             unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
-
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=False)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
 
