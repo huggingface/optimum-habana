@@ -40,6 +40,10 @@ else:
     from ip_adapter.attention_processor import IPAttnProcessor, AttnProcessor
 
 from optimum.habana.utils import HabanaProfile, speed_metrics
+from optimum.utils import logging
+
+
+logger = logging.get_logger(__name__)
 
 
 def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,255,0), (255,0,255)]):
@@ -92,24 +96,6 @@ class GaudiStableDiffusionXLControlNetPipeline(GaudiDiffusionPipeline, StableDif
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
-        # GaudiStableDiffusionXLPipeline.__init__(
-        #     self,
-        #     vae,
-        #     text_encoder,
-        #     text_encoder_2,
-        #     tokenizer,
-        #     tokenizer_2,
-        #     unet,
-        #     scheduler,
-        #     image_encoder,
-        #     feature_extractor,
-        #     force_zeros_for_empty_prompt,
-        #     use_habana,
-        #     use_hpu_graphs,
-        #     gaudi_config,
-        #     bf16_full_eval,
-        # )
-
         GaudiDiffusionPipeline.__init__(
             self,
             use_habana,
@@ -653,8 +639,7 @@ class GaudiStableDiffusionXLControlNetPipeline(GaudiDiffusionPipeline, StableDif
                 num_steps=num_inference_steps,
                 start_time_after_warmup=t1,
             )
-            # TODO: make logger
-            print(f"Speed metrics: {speed_measures}")
+            logger.info(f"Speed metrics: {speed_measures}")
 
             if not output_type == "latent":
                 # apply watermark if available
