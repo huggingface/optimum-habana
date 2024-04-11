@@ -117,15 +117,20 @@ def gaudi_conv1d_forward(self, x):
 # Adapted from transformers.modeling_utils.PreTrainedModel._check_and_enable_sdpa
 @classmethod
 def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> PretrainedConfig:
-    # This model doesn't support SDPA in Gaudi yet, fallback to original code.
-    MODELS_ATTN_IMPLEMENTATION_EAGER = ["bart", "gpt_bigcode", "mistral", "mixtral"]
+
+    #This model doesn't support SDPA in Gaudi yet, fallback to original code.
+    MODELS_ATTN_IMPLEMENTATION_EAGER = [
+        "gpt_bigcode",
+        "mistral",
+        "mixtral"
+    ]
 
     if config.model_type in MODELS_ATTN_IMPLEMENTATION_EAGER:
         config._attn_implementation = "eager"
         return config
 
-    # Otherwise, fallback to original implementation
-    # https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/modeling_utils.py#L1542
+    #Otherwise, fallback to original implementation
+    #https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/modeling_utils.py#L1542
     if hard_check_only:
         if not cls._supports_sdpa:
             raise ValueError(
@@ -134,7 +139,9 @@ def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> P
                 ' this error is a bug, please open an issue in Transformers GitHub repository and load your model with the argument `attn_implementation="eager"` meanwhile. Example: `model = AutoModel.from_pretrained("openai/whisper-tiny", attn_implementation="eager")`'
             )
         if not is_torch_sdpa_available():
-            raise ImportError("PyTorch SDPA requirements in Transformers are not met. Please install torch>=2.1.1.")
+            raise ImportError(
+                "PyTorch SDPA requirements in Transformers are not met. Please install torch>=2.1.1."
+            )
 
     if not is_torch_sdpa_available() or not cls._supports_sdpa:
         return config
@@ -147,7 +154,6 @@ def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> P
         config._attn_implementation = "sdpa"
 
     return config
-
 
 # Splitting DeepSpeed LinearAllReduce to three parts to avoid redundant memory consumption
 class ScopedLinearAllReduce(torch.nn.Module):
@@ -169,3 +175,44 @@ class ScopedLinearAllReduce(torch.nn.Module):
     def post_all_reduce(self, input):
         output = input + self.bias if (self.bias is not None) else input
         return output
+
+
+class KVCache(torch.nn.Module):
+    def __init__(self):
+        super(KVCache, self).__init__()
+        self.cache = None
+        self.inp_seq_len = -1
+
+    def allocate(self, inp_seq_len, dtype, device, shape):
+        if self.cache is None or self.cache.shape != shape:
+            self.inp_seq_len = inp_seq_len
+            self.cache = torch.zeros(shape, dtype=dtype, device=device)
+        else:
+            assert (
+                self.inp_seq_len == inp_seq_len
+            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            self.cache.fill_(0)
+
+    def update(self, prev, cur, dim, idx, inp_seq_len):
+        orig_cur = cur
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+            # Initialize
+            prev[:, :, :inp_seq_len, :].copy_(cur)
+            return orig_cur
+        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
+
+    def get_shape(self):
+        if self.cache is None:
+            return None
+        return self.cache.shape
+
+    def forward(self, cur, dim, idx):
+        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
