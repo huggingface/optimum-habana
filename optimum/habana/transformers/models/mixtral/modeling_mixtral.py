@@ -213,8 +213,8 @@ class NaiveFlashAttention(nn.Module):
         attn_output = []
         for i in range(q_tiles):
             s, e = i * q_bucket_size, (i + 1) * q_bucket_size
-            row_q = q[:, :, s : e, :]
-            row_mask = mask[:, :, s : e, :]
+            row_q = q[:, :, s:e, :]
+            row_mask = mask[:, :, s:e, :]
 
             row_o = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
             attn_output.append(row_o)
@@ -352,23 +352,13 @@ class GaudiMixtralAttention(MixtralAttention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(
-                        key_states.shape,
-                        dtype=self.k_proj.weight.dtype,
-                        device=key_states.device
-                    )
+                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
                     past_value = torch.zeros(
-                        key_states.shape,
-                        dtype=self.k_proj.weight.dtype,
-                        device=key_states.device
+                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
                     past_key_value = (past_key, past_value)
-                key_states = self.k_cache.update(
-                    past_key_value[0], key_states, 2, token_idx, self.inp_seq_len
-                )
-                value_states = self.k_cache.update(
-                    past_key_value[1], value_states, 2, token_idx, self.inp_seq_len
-                )
+                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                value_states = self.k_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
 
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
@@ -383,7 +373,7 @@ class GaudiMixtralAttention(MixtralAttention):
             past_key_value = None
 
         if FusedSDPA:
-            if not self.training and q_len == key_states.size(-2) and q_len >= 8192:
+            if not self.training and q_len == key_states.size(-2) and q_len > 8192:
                 attn_output = NaiveFlashAttention.forward(
                     query_states,
                     key_states,
