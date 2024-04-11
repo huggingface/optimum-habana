@@ -1,4 +1,4 @@
-
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
@@ -23,7 +23,6 @@ from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOut
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import GaudiDiffusionPipeline
 from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipelineOutput
-# from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
 
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection, CLIPTextModelWithProjection
@@ -40,7 +39,7 @@ if is_torch2_available():
 else:
     from ip_adapter.attention_processor import IPAttnProcessor, AttnProcessor
 
-from optimum.habana.utils import HabanaProfile
+from optimum.habana.utils import HabanaProfile, speed_metrics
 
 
 def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,255,0), (255,0,255)]):
@@ -499,6 +498,9 @@ class GaudiStableDiffusionXLControlNetPipeline(GaudiDiffusionPipeline, StableDif
             add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
             encoder_hidden_states = torch.cat([prompt_embeds, prompt_image_emb], dim=1)
 
+            t0 = time.time()
+            t1 = t0
+
             hb_profiler = HabanaProfile(
                 warmup=profiling_warmup_steps,
                 active=profiling_steps,
@@ -507,9 +509,14 @@ class GaudiStableDiffusionXLControlNetPipeline(GaudiDiffusionPipeline, StableDif
             hb_profiler.start()
 
             # 8. Denoising loop
+            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-                    
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for j in self.progress_bar(range(num_inference_steps)):
+                # The throughput is calculated from the 3rd iteration
+                # because compilation occurs in the first two iterations
+                if j == throughput_warmup_steps:
+                    t1 = time.time()
+
                 for i, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
@@ -594,64 +601,78 @@ class GaudiStableDiffusionXLControlNetPipeline(GaudiDiffusionPipeline, StableDif
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                        progress_bar.update()
                         if callback is not None and i % callback_steps == 0:
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, t, latents)
 
                     hb_profiler.step()
 
-                if not output_type == "latent":
-                    # make sure the VAE is in float32 mode, as it overflows in float16
-                    needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+            if not output_type == "latent":
+                # make sure the VAE is in float32 mode, as it overflows in float16
+                needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
-                    if needs_upcasting:
-                        self.upcast_vae()
-                        latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+                if needs_upcasting:
+                    self.upcast_vae()
+                    latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-                    # unscale/denormalize the latents
-                    # denormalize with the mean and std if available and not None
-                    has_latents_mean = hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
-                    has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
-                    if has_latents_mean and has_latents_std:
-                        latents_mean = (
-                            torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1).to(latents.device, latents.dtype)
-                        )
-                        latents_std = (
-                            torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
-                        )
-                        latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
-                    else:
-                        latents = latents / self.vae.config.scaling_factor
-
-                    image = self.vae.decode(latents, return_dict=False)[0]
-
-                    # cast back to fp16 if needed
-                    if needs_upcasting:
-                        self.vae.to(dtype=torch.float16)
+                # unscale/denormalize the latents
+                # denormalize with the mean and std if available and not None
+                has_latents_mean = hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
+                has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
+                if has_latents_mean and has_latents_std:
+                    latents_mean = (
+                        torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1).to(latents.device, latents.dtype)
+                    )
+                    latents_std = (
+                        torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
+                    )
+                    latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
                 else:
-                    image = latents
+                    latents = latents / self.vae.config.scaling_factor
 
-                if not self.use_hpu_graphs:
-                    self.htcore.mark_step()
+                image = self.vae.decode(latents, return_dict=False)[0]
 
-                hb_profiler.stop()
+                # cast back to fp16 if needed
+                if needs_upcasting:
+                    self.vae.to(dtype=torch.float16)
+            else:
+                image = latents
 
-                if not output_type == "latent":
-                    # apply watermark if available
-                    if self.watermark is not None:
-                        image = self.watermark.apply_watermark(image)
+            if not self.use_hpu_graphs:
+                self.htcore.mark_step()
 
-                    image = self.image_processor.postprocess(image, output_type=output_type)
+            hb_profiler.stop()
 
-                # Offload all models
-                self.maybe_free_model_hooks()
+            speed_metrics_prefix = "generation"
+            speed_measures = speed_metrics(
+                split=speed_metrics_prefix,
+                start_time=t0,
+                num_samples=num_inference_steps * batch_size
+                if t1 == t0
+                else (num_inference_steps - throughput_warmup_steps) * batch_size,
+                num_steps=num_inference_steps,
+                start_time_after_warmup=t1,
+            )
+            # TODO: make logger
+            print(f"Speed metrics: {speed_measures}")
 
-                if not return_dict:
-                    return (image,)
+            if not output_type == "latent":
+                # apply watermark if available
+                if self.watermark is not None:
+                    image = self.watermark.apply_watermark(image)
 
-                # TODO: remove hardcode
-                return GaudiStableDiffusionXLPipelineOutput(images=image, throughput=100.0)
+                image = self.image_processor.postprocess(image, output_type=output_type)
+
+            # Offload all models
+            self.maybe_free_model_hooks()
+
+            if not return_dict:
+                return (image,)
+
+            return GaudiStableDiffusionXLPipelineOutput(
+                images=image,
+                throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
+            )
 
     @torch.no_grad()
     def unet_hpu(
