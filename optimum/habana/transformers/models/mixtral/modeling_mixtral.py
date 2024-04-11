@@ -198,9 +198,7 @@ class NaiveFlashAttention(nn.Module):
         """
         Support long sequence prompt
         """
-        bsz, num_heads, head_dim = q.size(0), q.size(1), q.size(-1)
         q_len = q.size(-2)
-        kvlen = k.size(-2)
 
         q_padding = 0
         if q_len % q_bucket_size == 0:
@@ -208,27 +206,22 @@ class NaiveFlashAttention(nn.Module):
         else:
             q_tiles = math.ceil(q_len / q_bucket_size)
             q_padding = q_tiles * q_bucket_size - q_len
-            q = F.pad(q, (0, 0, q_padding, 0), "constant", 0)
+            q = F.pad(q, (0, 0, 0, q_padding), "constant", 0)
             if mask is not None:
-                mask = F.pad(mask, (0, 0, q_padding, 0), "constant", -3.3895e38)
-
-        q = q.reshape(bsz, num_heads, q_bucket_size, q_tiles, head_dim)
-
-        if mask is not None:
-            mask = mask.unsqueeze(2)
-            mask = mask.reshape(bsz, 1, q_bucket_size, q_tiles, kvlen)
+                mask = F.pad(mask, (0, 0, 0, q_padding), "constant", -10000.0)
 
         attn_output = []
         for i in range(q_tiles):
-            row_q = q[..., i, :]
-            row_mask = mask[..., i, :]
+            s, e = i * q_bucket_size, (i + 1) * q_bucket_size
+            row_q = q[:, :, s : e, :]
+            row_mask = mask[:, :, s : e, :]
 
             row_o = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
             attn_output.append(row_o)
-        attn_output = torch.cat(attn_output, dim=2)
+        attn_output = torch.cat(attn_output, dim=-2)
 
         if q_padding != 0:
-            attn_output = attn_output[..., :-q_padding, :]
+            attn_output = attn_output[:, :, :-q_padding, :]
 
         return attn_output
 
@@ -359,13 +352,23 @@ class GaudiMixtralAttention(MixtralAttention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_key = torch.zeros(
+                        key_states.shape,
+                        dtype=self.k_proj.weight.dtype,
+                        device=key_states.device
+                    )
                     past_value = torch.zeros(
-                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
+                        key_states.shape,
+                        dtype=self.k_proj.weight.dtype,
+                        device=key_states.device
                     )
                     past_key_value = (past_key, past_value)
-                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                value_states = self.k_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+                key_states = self.k_cache.update(
+                    past_key_value[0], key_states, 2, token_idx, self.inp_seq_len
+                )
+                value_states = self.k_cache.update(
+                    past_key_value[1], value_states, 2, token_idx, self.inp_seq_len
+                )
 
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
