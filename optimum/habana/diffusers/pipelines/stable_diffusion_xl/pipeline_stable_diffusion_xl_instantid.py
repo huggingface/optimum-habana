@@ -46,37 +46,7 @@ from optimum.utils import logging
 logger = logging.get_logger(__name__)
 
 
-def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,255,0), (255,0,255)]):
-    
-    stickwidth = 4
-    limbSeq = np.array([[0, 2], [1, 2], [3, 2], [4, 2]])
-    kps = np.array(kps)
-
-    w, h = image_pil.size
-    out_img = np.zeros([h, w, 3])
-
-    for i in range(len(limbSeq)):
-        index = limbSeq[i]
-        color = color_list[index[0]]
-
-        x = kps[index][:, 0]
-        y = kps[index][:, 1]
-        length = ((x[0] - x[1]) ** 2 + (y[0] - y[1]) ** 2) ** 0.5
-        angle = math.degrees(math.atan2(y[0] - y[1], x[0] - x[1]))
-        polygon = cv2.ellipse2Poly((int(np.mean(x)), int(np.mean(y))), (int(length / 2), stickwidth), int(angle), 0, 360, 1)
-        out_img = cv2.fillConvexPoly(out_img.copy(), polygon, color)
-    out_img = (out_img * 0.6).astype(np.uint8)
-
-    for idx_kp, kp in enumerate(kps):
-        color = color_list[idx_kp]
-        x, y = kp
-        out_img = cv2.circle(out_img.copy(), (int(x), int(y)), 10, color, -1)
-
-    out_img_pil = PIL.Image.fromarray(out_img.astype(np.uint8))
-    return out_img_pil
-
-
-class GaudiStableDiffusionXLControlNetPipeline(GaudiDiffusionPipeline, StableDiffusionXLControlNetPipeline):
+class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiffusionXLControlNetPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -210,6 +180,35 @@ class GaudiStableDiffusionXLControlNetPipeline(GaudiDiffusionPipeline, StableDif
         prompt_image_emb = prompt_image_emb.view(bs_embed * num_images_per_prompt, seq_len, -1)
         
         return prompt_image_emb.to(device=device, dtype=dtype)
+
+    @classmethod
+    def draw_kps(cls, image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,255,0), (255,0,255)]):    
+        stickwidth = 4
+        limbSeq = np.array([[0, 2], [1, 2], [3, 2], [4, 2]])
+        kps = np.array(kps)
+
+        w, h = image_pil.size
+        out_img = np.zeros([h, w, 3])
+
+        for i in range(len(limbSeq)):
+            index = limbSeq[i]
+            color = color_list[index[0]]
+
+            x = kps[index][:, 0]
+            y = kps[index][:, 1]
+            length = ((x[0] - x[1]) ** 2 + (y[0] - y[1]) ** 2) ** 0.5
+            angle = math.degrees(math.atan2(y[0] - y[1], x[0] - x[1]))
+            polygon = cv2.ellipse2Poly((int(np.mean(x)), int(np.mean(y))), (int(length / 2), stickwidth), int(angle), 0, 360, 1)
+            out_img = cv2.fillConvexPoly(out_img.copy(), polygon, color)
+        out_img = (out_img * 0.6).astype(np.uint8)
+
+        for idx_kp, kp in enumerate(kps):
+            color = color_list[idx_kp]
+            x, y = kp
+            out_img = cv2.circle(out_img.copy(), (int(x), int(y)), 10, color, -1)
+
+        out_img_pil = PIL.Image.fromarray(out_img.astype(np.uint8))
+        return out_img_pil
 
     @torch.no_grad()
     def __call__(
