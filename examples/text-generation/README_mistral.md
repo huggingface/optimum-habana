@@ -5,7 +5,7 @@ Here is an example to measure the tensor quantization statistics on mistralai/Mi
 
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python run_generation.py \
---model_name_or_path mistralai/Mistral-7B-Instruct-v0.2 \
+--model_name_or_path mistralai/Mistral-7B-v0.1 \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
@@ -19,7 +19,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ru
 
 ```bash
 python run_generation.py \
---model_name_or_path  mistralai/Mistral-7B-Instruct-v0.2 \
+--model_name_or_path  mistralai/Mistral-7B-v0.1 \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
@@ -37,7 +37,7 @@ python run_generation.py \
 
 ```bash
 python run_generation.py \
---model_name_or_path  mistralai/Mistral-7B-Instruct-v0.2 \
+--model_name_or_path  mistralai/Mistral-7B-v0.1 \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
@@ -56,7 +56,7 @@ python run_generation.py \
 
 ```bash
 python run_generation.py \
---model_name_or_path  mistralai/Mistral-7B-Instruct-v0.2 \
+--model_name_or_path  mistralai/Mistral-7B-v0.1 \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
@@ -75,7 +75,7 @@ python run_generation.py \
 
 ```bash
 python run_generation.py \
---model_name_or_path  mistralai/Mistral-7B-Instruct-v0.2 \
+--model_name_or_path  mistralai/Mistral-7B-v0.1 \
 --attn_softmax_bf16 \
 --use_hpu_graphs \
 --trim_logits \
