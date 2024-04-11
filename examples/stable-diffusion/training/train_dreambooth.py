@@ -52,7 +52,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 from habana_frameworks.torch.hpu import memory_stats
 from huggingface_hub import HfFolder, Repository, whoami
-from peft import LoHaConfig, LoKrConfig, LoraConfig, get_peft_model
+from peft import LoHaConfig, LoKrConfig, LoraConfig, OFTConfig, get_peft_model
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -108,7 +108,7 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
         raise ValueError(f"{model_class} is not supported.")
 
 
-def create_unet_adapter_config(args: argparse.Namespace) -> Union[LoraConfig, LoHaConfig, LoKrConfig]:
+def create_unet_adapter_config(args: argparse.Namespace) -> Union[LoraConfig, LoHaConfig, LoKrConfig, OFTConfig]:
     if args.adapter == "full":
         raise ValueError("Cannot create unet adapter config for full parameter")
 
@@ -143,13 +143,24 @@ def create_unet_adapter_config(args: argparse.Namespace) -> Union[LoraConfig, Lo
             decompose_factor=args.unet_decompose_factor,
             init_weights=True,
         )
+    elif args.adapter == "oft":
+        config = OFTConfig(
+            r=args.unet_r,
+            target_modules=UNET_TARGET_MODULES,
+            module_dropout=args.unet_dropout,
+            init_weights=True,
+            coft=args.unet_use_coft,
+            eps=args.unet_eps,
+        )
     else:
         raise ValueError(f"Unknown adapter type {args.adapter}")
 
     return config
 
 
-def create_text_encoder_adapter_config(args: argparse.Namespace) -> Union[LoraConfig, LoHaConfig, LoKrConfig]:
+def create_text_encoder_adapter_config(
+    args: argparse.Namespace,
+) -> Union[LoraConfig, LoHaConfig, LoKrConfig, OFTConfig]:
     if args.adapter == "full":
         raise ValueError("Cannot create text_encoder adapter config for full parameter")
 
@@ -181,6 +192,15 @@ def create_text_encoder_adapter_config(args: argparse.Namespace) -> Union[LoraCo
             decompose_both=args.te_decompose_both,
             decompose_factor=args.te_decompose_factor,
             init_weights=True,
+        )
+    elif args.adapter == "oft":
+        config = OFTConfig(
+            r=args.te_r,
+            target_modules=TEXT_ENCODER_TARGET_MODULES,
+            module_dropout=args.te_dropout,
+            init_weights=True,
+            coft=args.te_use_coft,
+            eps=args.te_eps,
         )
     else:
         raise ValueError(f"Unknown adapter type {args.adapter}")
@@ -588,6 +608,32 @@ def parse_args(input_args=None):
         type=int,
         default=-1,
         help="Decompose factor in kronecker product for text_encoder, only used if `train_text_encoder` is True",
+    )
+    # oft adapter
+    oft = subparsers.add_parser("oft", help="Use Oft adapter")
+    oft.add_argument("--unet_r", type=int, default=8, help="Oft rank for unet")
+    oft.add_argument("--unet_dropout", type=float, default=0.0, help="Oft dropout probability for unet")
+    oft.add_argument("--unet_use_coft", action="store_true", help="Using constrained OFT in unet")
+    oft.add_argument("--unet_eps", type=float, default=0.0, help="The control strength of COFT for unet")
+    oft.add_argument(
+        "--te_r", type=int, default=8, help="Oft rank for text_encoder, only used if `train_text_encoder` is True"
+    )
+    oft.add_argument(
+        "--te_dropout",
+        type=float,
+        default=0.0,
+        help="Oft dropout probability for text_encoder, only used if `train_text_encoder` is True",
+    )
+    oft.add_argument(
+        "--te_use_coft",
+        action="store_true",
+        help="Using constrained OFT in text_encoder, only used if `train_text_encoder` is True",
+    )
+    oft.add_argument(
+        "--te_eps",
+        type=float,
+        default=0.0,
+        help="The control strength of COFT for text_encoder, only used if `train_text_encoder` is True",
     )
 
     if input_args is not None:
@@ -1106,6 +1152,7 @@ def main(args):
         unet.train()
         if args.train_text_encoder:
             text_encoder.train()
+            unwrap_model(model=text_encoder, training=True)
         with TorchTracemalloc() as tracemalloc:
             for step, batch in enumerate(train_dataloader):
                 # Skip steps until we reach the resumed step
@@ -1175,7 +1222,7 @@ def main(args):
                         accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                     optimizer.step()
                     lr_scheduler.step()
-                    optimizer.zero_grad()
+                    optimizer.zero_grad(set_to_none=True)
                     htcore.mark_step()
 
                 # Checks if the accelerator has performed an optimization step behind the scenes
@@ -1235,7 +1282,12 @@ def main(args):
                         generator = None
                     images = []
                     for _ in range(args.num_validation_images):
-                        image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                        with torch.autocast(
+                            device_type="hpu", dtype=weight_dtype, enabled=gaudi_config.use_torch_autocast
+                        ):
+                            image = pipeline(
+                                args.validation_prompt, num_inference_steps=25, generator=generator
+                            ).images[0]
                         images.append(image)
 
                     for tracker in accelerator.trackers:
@@ -1256,7 +1308,8 @@ def main(args):
 
                     # Set evaliation mode
                     pipeline.unet.train()
-                    pipeline.text_encoder.train()
+                    if args.train_text_encoder:
+                        pipeline.text_encoder.train()
 
                     del pipeline
 
