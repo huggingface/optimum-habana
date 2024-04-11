@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from insightface.app import FaceAnalysis
-from gaudi_pipeline_stable_diffusion_xl_instantid import GaudiStableDiffusionXLControlNetPipeline, draw_kps
+from optimum.habana.diffusers import GaudiStableDiffusionXLInstantIDPipeline
 
 from optimum.habana.diffusers import GaudiDDIMScheduler
 
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     model_dtype = torch.bfloat16 if args.bf16 else None
     controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path, torch_dtype=model_dtype)
 
-    pipe = GaudiStableDiffusionXLControlNetPipeline.from_pretrained(args.model_name_or_path, controlnet=controlnet, **kwargs)
+    pipe = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(args.model_name_or_path, controlnet=controlnet, **kwargs)
 
     # load adapter
     pipe.load_ip_adapter_instantid(face_adapter)
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     face_info = app.get(cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR))
     face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]  # only use the maximum face
     face_emb = face_info['embedding']
-    face_kps = draw_kps(face_image, face_info['kps'])
+    face_kps = GaudiStableDiffusionXLInstantIDPipeline.draw_kps(face_image, face_info['kps'])
 
     # generate image
     image = pipe(
