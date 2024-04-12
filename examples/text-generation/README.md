@@ -238,6 +238,10 @@ Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For exa
 
 While `--bucket_size` works for any model without model file changes, an even more optimized version of bucketing is supported for certain models like Llama. This can be enabled by setting `--bucket_internal` flag (along with `--bucket_size` to specify the bucket size)
 
+### Running with torch.compile
+torch.compile is an experimental feature. Not every model has tested with it. To enable torch.compile, please
+set enviorment varibles PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 before the run command. Also add --torch_compile in the command.
+
 ### Running with FP8
 
 Llama2-70b, Llama2-7b,  Mixtral-8x7B, Falcon-7B, Falcon-40B, and Falcon-180B in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
