@@ -276,3 +276,17 @@ python text_to_image_generation.py \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2
 ```
+
+### Distributed inference with multiple HPUs
+
+Here is how to generate two images with two prompts on two HPUs :
+```python
+python ../gaudi_spawn.py \
+    --world_size 2 run_distributed.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --prompts "a cat" "a dog" \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
