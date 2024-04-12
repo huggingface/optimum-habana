@@ -1,3 +1,24 @@
+#!/usr/bin/env python
+# coding=utf-8
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+"""
+prompt/prefix/p tuning script for causal language modeling
+Adapted from the following sources:
+https://github.com/huggingface/peft/blob/main/examples/causal_language_modeling/peft_prompt_tuning_clm.ipynb
+https://github.com/huggingface/peft/blob/main/examples/causal_language_modeling/peft_prefix_tuning_clm.ipynb
+"""
+
 import logging
 import math
 import sys
@@ -226,8 +247,6 @@ def main():
             num_virtual_tokens=model_args.num_virtual_tokens,
         )
 
-    text_column = "Tweet text"
-    label_column = "text_label"
     max_length = data_args.max_seq_length
     dataset = load_dataset(
         data_args.dataset_name,
@@ -236,7 +255,11 @@ def main():
         token=model_args.token,
         streaming=data_args.streaming,
     )
-
+    if data_args.dataset_name == "ought/raft" and data_args.dataset_config_name == "twitter_complaints":
+        text_column = "Tweet text"
+        label_column = "text_label"
+    else:
+        raise ValueError("preprocess is only for ought/raft twitter_complaints now")
     classes = [k.replace("_", " ") for k in dataset["train"].features["Label"].names]
     dataset = dataset.map(
         lambda x: {"text_label": [classes[label] for label in x["Label"]]},
