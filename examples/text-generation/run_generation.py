@@ -386,9 +386,9 @@ def main():
             t1 = time.perf_counter()
             duration = t1 - t0
             print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
-            print(f"Average latency {(duration/generation_config.max_new_tokens):.3f}s", flush=True)
+            print(f"Average latency {((duration/generation_config.max_new_tokens)*1000):.3f}ms", flush=True)
             print(f"Total E2E time just for generation (without token/decode) {(t_gen_stop - t_gen_start):.3f}s", flush=True)
-            print(f"Average latency just for generation (without token/decode) {((t_gen_stop - t_gen_start) / generation_config.max_new_tokens) :.3f}s", flush=True)
+            print(f"Average latency just for generation (without token/decode) {(((t_gen_stop - t_gen_start) / generation_config.max_new_tokens)*1000) :.3f}ms", flush=True)
             
             #import pdb; pdb.set_trace()
             return outputs
