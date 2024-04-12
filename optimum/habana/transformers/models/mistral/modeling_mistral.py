@@ -131,6 +131,7 @@ class GaudiMistralAttention(MistralAttention):
         #self.past_key = None
         #self.past_value = None
         self.layer_idx = layer_idx
+        self.inp_seq_len = -1
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
