@@ -60,8 +60,14 @@ except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
 
-logger = logging.get_logger(__name__)
+class Matmul(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
 
+    def forward(self, x, y):
+        return torch.matmul(x, y)
+
+logger = logging.get_logger(__name__)
 
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def gaudi_mistral_repeat_kv(
@@ -135,6 +141,8 @@ class GaudiMistralAttention(MistralAttention):
         super().__init__(config)
         self.k_cache = KVCache()
         self.v_cache = KVCache()
+        self.matmul_qk = Matmul()
+        self.matmul_av = Matmul()
         # TODO: replace these two 
         #self.past_key = None
         #self.past_value = None
@@ -247,7 +255,7 @@ class GaudiMistralAttention(MistralAttention):
         query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
             query_states, key_states, value_states, attention_mask, self.num_key_value_groups
         )
-        attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) / math.sqrt(self.head_dim)
 
         if attn_weights.size() not in [
             (bsz, self.num_heads, q_len, kv_seq_len),
@@ -274,7 +282,7 @@ class GaudiMistralAttention(MistralAttention):
             # upcast attention to fp32
             attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-        attn_output = torch.matmul(attn_weights, value_states)
+        attn_output = self.matmul_av(attn_weights, value_states)
         attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
