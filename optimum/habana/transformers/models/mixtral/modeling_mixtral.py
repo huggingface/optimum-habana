@@ -50,6 +50,7 @@ from transformers.models.mixtral.modeling_mixtral import (
 )
 from transformers.utils import logging
 
+
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 except ImportError:
@@ -200,7 +201,7 @@ class NaiveFlashAttention(nn.Module):
         """
         q_len = q.size(-2)
         q_tiles = (q_len // q_bucket_size) if (q_len % q_bucket_size == 0) else math.ceil(q_len / q_bucket_size)
-        q_padding = (q_tiles * q_bucket_size - q_len)
+        q_padding = q_tiles * q_bucket_size - q_len
         q = F.pad(q, (0, 0, 0, q_padding), "constant", 0)
         if mask is not None:
             mask = F.pad(mask, (0, 0, 0, q_padding), "constant", -10000.0)
