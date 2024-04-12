@@ -50,7 +50,6 @@ from transformers.models.mixtral.modeling_mixtral import (
 )
 from transformers.utils import logging
 
-
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
 except ImportError:
@@ -200,26 +199,21 @@ class NaiveFlashAttention(nn.Module):
         Support long sequence prompt
         """
         q_len = q.size(-2)
+        q_tiles = (q_len // q_bucket_size) if (q_len % q_bucket_size == 0) else math.ceil(q_len / q_bucket_size)
+        q_padding = (q_tiles * q_bucket_size - q_len)
+        q = F.pad(q, (0, 0, 0, q_padding), "constant", 0)
+        if mask is not None:
+            mask = F.pad(mask, (0, 0, 0, q_padding), "constant", -10000.0)
+        attn_output = torch.zeros_like(q)
 
-        q_padding = 0
-        if q_len % q_bucket_size == 0:
-            q_tiles = q_len // q_bucket_size
-        else:
-            q_tiles = math.ceil(q_len / q_bucket_size)
-            q_padding = q_tiles * q_bucket_size - q_len
-            q = F.pad(q, (0, 0, 0, q_padding), "constant", 0)
-            if mask is not None:
-                mask = F.pad(mask, (0, 0, 0, q_padding), "constant", -10000.0)
+        row_tiles = zip(
+            q.split(q_bucket_size, dim=-2),
+            attn_output.split(q_bucket_size, dim=-2),
+            mask.split(q_bucket_size, dim=-2),
+        )
 
-        attn_output = []
-        for i in range(q_tiles):
-            s, e = i * q_bucket_size, (i + 1) * q_bucket_size
-            row_q = q[:, :, s:e, :]
-            row_mask = mask[:, :, s:e, :]
-
-            row_o = FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None)
-            attn_output.append(row_o)
-        attn_output = torch.cat(attn_output, dim=-2)
+        for row_q, row_o, row_mask in row_tiles:
+            row_o.fill_(FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None))
 
         if q_padding != 0:
             attn_output = attn_output[:, :, :-q_padding, :]
