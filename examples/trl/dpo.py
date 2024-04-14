@@ -6,6 +6,9 @@ import torch
 from datasets import Dataset, load_dataset
 from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
+from transformers.integrations.deepspeed import (
+    is_deepspeed_available,
+)
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiDPOTrainer
@@ -84,6 +87,8 @@ class ScriptArguments:
     seed: Optional[int] = field(
         default=0, metadata={"help": "Random seed that will be set at the beginning of training."}
     )
+    deepspeed: Optional[str] = field(default=None, metadata={"help": "the deepspeed json config file"})
+    num_workers: Optional[int] = field(default=None, metadata={"help": "the number of workers to map the data"})
 
 
 def get_stack_exchange_paired(
@@ -156,18 +161,27 @@ if __name__ == "__main__":
         run_name="dpo_llama2",
         use_habana=True,
         use_lazy_mode=True,
-        use_hpu_graphs_for_training=not script_args.gradient_checkpointing,
-        use_hpu_graphs_for_inference=True,
+        use_hpu_graphs_for_training=not script_args.gradient_checkpointing and (not script_args.deepspeed),
+        use_hpu_graphs_for_inference=not script_args.deepspeed,
         seed=script_args.seed,
+        deepspeed=script_args.deepspeed,
+        overwrite_output_dir=True,
     )
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
+    low_cpu_mem_usage = True
+    if is_deepspeed_available():
+        from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
+
+        if is_deepspeed_zero3_enabled():
+            low_cpu_mem_usage = False
+
     # 2. load a pretrained model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
-        low_cpu_mem_usage=True,
+        low_cpu_mem_usage=low_cpu_mem_usage,
         torch_dtype=torch.bfloat16,
     )
     model.config.use_cache = False
@@ -180,7 +194,7 @@ if __name__ == "__main__":
 
     model_ref = AutoModelForCausalLM.from_pretrained(
         script_args.model_name_or_path,
-        low_cpu_mem_usage=True,
+        low_cpu_mem_usage=low_cpu_mem_usage,
         torch_dtype=torch.bfloat16,
     )
     model_ref.config.use_cache = False
@@ -188,14 +202,18 @@ if __name__ == "__main__":
     tokenizer.pad_token = tokenizer.eos_token
 
     # 3. Load the Stack-exchange paired dataset
-    train_dataset = get_stack_exchange_paired(data_dir="data/rl", sanity_check=script_args.sanity_check)
+    train_dataset = get_stack_exchange_paired(
+        data_dir="data/rl", sanity_check=script_args.sanity_check, num_proc=script_args.num_workers
+    )
     train_dataset = train_dataset.filter(
         lambda x: len(x["prompt"]) + len(x["chosen"]) <= script_args.max_length
         and len(x["prompt"]) + len(x["rejected"]) <= script_args.max_length
     )
 
     # 4. Load evaluation dataset
-    eval_dataset = get_stack_exchange_paired(data_dir="data/evaluation", sanity_check=True)
+    eval_dataset = get_stack_exchange_paired(
+        data_dir="data/evaluation", sanity_check=True, num_proc=script_args.num_workers
+    )
     eval_dataset = eval_dataset.filter(
         lambda x: len(x["prompt"]) + len(x["chosen"]) <= script_args.max_length
         and len(x["prompt"]) + len(x["rejected"]) <= script_args.max_length
@@ -230,7 +248,12 @@ if __name__ == "__main__":
     )
 
     # 6. train
-    dpo_trainer.train()
+    train_result = dpo_trainer.train()
 
     # 7. save
     dpo_trainer.save_model(script_args.output_dir)
+
+    # 8. save metric
+    metrics = train_result.metrics
+    dpo_trainer.log_metrics("train", metrics)
+    dpo_trainer.save_metrics("train", metrics)
