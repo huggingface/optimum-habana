@@ -51,6 +51,7 @@ from .models import (
     GaudiMistralModel,
     GaudiMixtralForCausalLM,
     GaudiGemmaForCausalLM,
+    GaudiGemmaDecoderLayer,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
@@ -111,7 +112,6 @@ from .models import (
     gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
     gaudi_gemma_attention_forward,
-    gaudi_gemma_decoder_layer_forward,
     gaudi_gemma_model_forward,
     gaudi_mpt_attention_forward,
     gaudi_mpt_block_forward,
@@ -345,7 +345,7 @@ def adapt_transformers_to_gaudi():
     # Optimization for gemma on Gaudi
     transformers.models.gemma.modeling_gemma.GemmaForCausalLM = GaudiGemmaForCausalLM
     transformers.models.gemma.modeling_gemma.GemmaAttention.forward = gaudi_gemma_attention_forward
-    transformers.models.gemma.modeling_gemma.GemmaDecoderLayer.forward = gaudi_gemma_decoder_layer_forward
+    transformers.models.gemma.modeling_gemma.GemmaDecoderLayer = GaudiGemmaDecoderLayer
     transformers.models.gemma.modeling_gemma.GemmaModel.forward = gaudi_gemma_model_forward
 
     # Optimization for blip Text model on Gaudi

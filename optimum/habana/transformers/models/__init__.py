@@ -104,8 +104,8 @@ from .modeling_all_models import (
 )
 from .gemma import (
     GaudiGemmaForCausalLM,
+    GaudiGemmaDecoderLayer,
     gaudi_gemma_attention_forward,
-    gaudi_gemma_decoder_layer_forward,
     gaudi_gemma_model_forward,
 )
 from .mpt import (
