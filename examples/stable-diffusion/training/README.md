@@ -258,3 +258,118 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
 
 > [!NOTE]
 > `--mediapipe` only works on Gaudi2.
+
+
+## DreamBooth
+DreamBooth is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject. The train_dreambooth.py script shows how to implement the training procedure and adapt it for stable diffusion.
+
+### Dog toy example
+
+Now let's get our dataset. For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example.
+
+Let's first download it locally:
+
+```python
+from huggingface_hub import snapshot_download
+
+local_dir = "./dog"
+snapshot_download(
+    "diffusers/dog-example",
+    local_dir=local_dir, repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
+
+### Full model finetune
+And launch the multi-card training using:
+```bash
+
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export INSTANCE_DIR="dog"
+export CLASS_DIR="path-to-class-images"
+export OUTPUT_DIR="out"
+
+python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --num_class_images=200 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=5e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=800 \
+  --mixed_precision=bf16 \
+  --use_hpu_graphs_for_training \
+  --use_hpu_graphs_for_inference \
+  --gaudi_config_name Habana/stable-diffusion \
+  full
+
+```
+Prior-preservation is used to avoid overfitting and language-drift. Refer to the paper to learn more about it. For prior-preservation we first generate images using the model with a class prompt and then use those during training along with our data.
+According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases. The `num_class_images` flag sets the number of images to generate with the class prompt. You can place existing images in `class_data_dir`, and the training script will generate any additional images so that `num_class_images` are present in `class_data_dir` during training time.
+
+### PEFT model finetune
+we provide example for dreambooth to use lora/lokr/loha/oft to finetune unet or text encoder.
+
+**___Note: When using peft method we can use a much higher learning rate compared to vanilla dreambooth. Here we
+use *1e-4* instead of the usual *5e-6*.___**
+
+launch the multi-card training using:
+```bash
+
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export INSTANCE_DIR="dog"
+export CLASS_DIR="path-to-class-images"
+export OUTPUT_DIR="out"
+
+python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --num_class_images=200 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=1e-4 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=800 \
+  --mixed_precision=bf16 \
+  --use_hpu_graphs_for_training \
+  --use_hpu_graphs_for_inference \
+  --gaudi_config_name Habana/stable-diffusion \
+  lora --unet_r 8 --unet_alpha 8
+
+```
+similar command could be applied to loha, lokr, oft.
+
+**___Note: oft could not work with hpu graphs mode. since "torch.inverse" need to fallback to cpu.
+there's error like "cpu fallback is not supported during hpu graph capturing"___**
+
+
+you could use text_to_image_generation.py to generate pic using the peft adapter like
+
+```bash
+python ../text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5  \
+    --prompts "a sks dog" \
+    --num_images_per_prompt 5 \
+    --batch_size 1 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --unet_adapter_name_or_path out/unet \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
