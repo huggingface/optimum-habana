@@ -292,8 +292,9 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
     if hasattr(model, "merge_and_unload"):
         return model.merge_and_unload()
     else:
-        from optimum.habana.peft.peft_model import gaudi_prepare_inputs_for_generation
+        from optimum.habana.peft.peft_model import gaudi_generate, gaudi_prepare_inputs_for_generation
 
+        model.__class__.generate = gaudi_generate
         model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
         return model
 

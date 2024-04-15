@@ -357,23 +357,34 @@ class GaudiLlamaAttention(LlamaAttention):
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
-            if token_idx is None or past_key_value[0].shape[-2] < token_idx:
+            if token_idx is None:
                 if hasattr(past_key_value, "get_usable_length"):
                     kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
                 else:
                     kv_seq_len += past_key_value[0].shape[-2]
             else:
-                if reuse_cache:
-                    kv_seq_len = past_key_value[0][-2]
+                if reuse_cache and not isinstance(past_key_value[0], torch.Tensor):
+                    kv_seq_len = (
+                        past_key_value[0][-2] + kv_seq_len
+                        if past_key_value[0][-2] < token_idx
+                        else past_key_value[0][-2]
+                    )
                 else:
-                    kv_seq_len = past_key_value[0].shape[-2]
+                    kv_seq_len = (
+                        past_key_value[0].shape[-2] + kv_seq_len
+                        if past_key_value[0].shape[-2] < token_idx
+                        else past_key_value[0].shape[-2]
+                    )
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
-
         if use_cache:
             # reuse k, v, self_attention
             if reuse_cache:
+                if past_key_value is not None and isinstance(past_key_value[0], torch.Tensor):
+                    # prefix tunining case. attach past_key_value to generate first token.
+                    key_states = torch.cat((past_key_value[0], key_states), -2)
+                    value_states = torch.cat((past_key_value[1], value_states), -2)
                 key_states = self.k_cache(key_states, 2, token_idx)
                 value_states = self.v_cache(value_states, 2, token_idx)
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
@@ -726,7 +737,10 @@ class GaudiLlamaModel(LlamaModel):
 
         if past_key_values is not None and use_cache:  # kept for BC (cache positions)
             if reuse_cache:
-                past_seen_tokens = past_key_values[0][0][2]
+                if isinstance(past_key_values[0][0], torch.Tensor):
+                    past_seen_tokens = past_key_values[0][0].shape[2]
+                else:
+                    past_seen_tokens = past_key_values[0][0][2]
             else:
                 if use_new_cache:
                     if not isinstance(past_key_values, StaticCache):
