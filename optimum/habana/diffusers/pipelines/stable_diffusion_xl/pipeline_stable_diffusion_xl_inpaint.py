@@ -22,6 +22,7 @@ import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLInpaintPipeline
+from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import retrieve_timesteps, rescale_noise_cfg
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate, logging, replace_example_docstring
 from transformers import (
@@ -70,221 +71,15 @@ EXAMPLE_DOC_STRING = """
 class GaudiStableDiffusionXLInpaintPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
-def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
-    """
-    Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
-    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
-    """
-    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
-    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
-    # rescale the results from guidance (fixes overexposure)
-    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
-    # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
-    return noise_cfg
-
-
-def mask_pil_to_torch(mask, height, width):
-    # preprocess mask
-    if isinstance(mask, (PIL.Image.Image, np.ndarray)):
-        mask = [mask]
-
-    if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
-        mask = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in mask]
-        mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
-        mask = mask.astype(np.float32) / 255.0
-    elif isinstance(mask, list) and isinstance(mask[0], np.ndarray):
-        mask = np.concatenate([m[None, None, :] for m in mask], axis=0)
-
-    mask = torch.from_numpy(mask)
-    return mask
-
-
-def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool = False):
-    """
-    Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline. This means that those inputs will be
-    converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
-    ``image`` and ``1`` for the ``mask``.
-
-    The ``image`` will be converted to ``torch.float32`` and normalized to be in ``[-1, 1]``. The ``mask`` will be
-    binarized (``mask > 0.5``) and cast to ``torch.float32`` too.
-
-    Args:
-        image (Union[np.array, PIL.Image, torch.Tensor]): The image to inpaint.
-            It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array`` or a ``channels x height x width``
-            ``torch.Tensor`` or a ``batch x channels x height x width`` ``torch.Tensor``.
-        mask (_type_): The mask to apply to the image, i.e. regions to inpaint.
-            It can be a ``PIL.Image``, or a ``height x width`` ``np.array`` or a ``1 x height x width``
-            ``torch.Tensor`` or a ``batch x 1 x height x width`` ``torch.Tensor``.
-
-
-    Raises:
-        ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range. ValueError: ``torch.Tensor`` mask
-        should be in the ``[0, 1]`` range. ValueError: ``mask`` and ``image`` should have the same spatial dimensions.
-        TypeError: ``mask`` is a ``torch.Tensor`` but ``image`` is not
-            (ot the other way around).
-
-    Returns:
-        tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
-            dimensions: ``batch x channels x height x width``.
-    """
-
-    # checkpoint. TOD(Yiyi) - need to clean this up later
-    deprecation_message = "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please use VaeImageProcessor.preprocess instead"
-    deprecate(
-        "prepare_mask_and_masked_image",
-        "0.30.0",
-        deprecation_message,
-    )
-    if image is None:
-        raise ValueError("`image` input cannot be undefined.")
-
-    if mask is None:
-        raise ValueError("`mask_image` input cannot be undefined.")
-
-    if isinstance(image, torch.Tensor):
-        if not isinstance(mask, torch.Tensor):
-            mask = mask_pil_to_torch(mask, height, width)
-
-        if image.ndim == 3:
-            image = image.unsqueeze(0)
-
-        # Batch and add channel dim for single mask
-        if mask.ndim == 2:
-            mask = mask.unsqueeze(0).unsqueeze(0)
-
-        # Batch single mask or add channel dim
-        if mask.ndim == 3:
-            # Single batched mask, no channel dim or single mask not batched but channel dim
-            if mask.shape[0] == 1:
-                mask = mask.unsqueeze(0)
-
-            # Batched masks no channel dim
-            else:
-                mask = mask.unsqueeze(1)
-
-        assert image.ndim == 4 and mask.ndim == 4, "Image and Mask must have 4 dimensions"
-        # assert image.shape[-2:] == mask.shape[-2:], "Image and Mask must have the same spatial dimensions"
-        assert image.shape[0] == mask.shape[0], "Image and Mask must have the same batch size"
-
-        # Check image is in [-1, 1]
-        # if image.min() < -1 or image.max() > 1:
-        #    raise ValueError("Image should be in [-1, 1] range")
-
-        # Check mask is in [0, 1]
-        if mask.min() < 0 or mask.max() > 1:
-            raise ValueError("Mask should be in [0, 1] range")
-
-        # Binarize mask
-        mask[mask < 0.5] = 0
-        mask[mask >= 0.5] = 1
-
-        # Image as float32
-        image = image.to(dtype=torch.float32)
-    elif isinstance(mask, torch.Tensor):
-        raise TypeError(f"`mask` is a torch.Tensor but `image` (type: {type(image)} is not")
-    else:
-        # preprocess image
-        if isinstance(image, (PIL.Image.Image, np.ndarray)):
-            image = [image]
-        if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
-            # resize all images w.r.t passed height an width
-            image = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in image]
-            image = [np.array(i.convert("RGB"))[None, :] for i in image]
-            image = np.concatenate(image, axis=0)
-        elif isinstance(image, list) and isinstance(image[0], np.ndarray):
-            image = np.concatenate([i[None, :] for i in image], axis=0)
-
-        image = image.transpose(0, 3, 1, 2)
-        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
-
-        mask = mask_pil_to_torch(mask, height, width)
-        mask[mask < 0.5] = 0
-        mask[mask >= 0.5] = 1
-
-    if image.shape[1] == 4:
-        # images are in latent space and thus can't
-        # be masked set masked_image to None
-        # we assume that the checkpoint is not an inpainting
-        # checkpoint. TOD(Yiyi) - need to clean this up later
-        masked_image = None
-    else:
-        masked_image = image * (mask < 0.5)
-
-    # n.b. ensure backwards compatibility as old function does not return image
-    if return_image:
-        return mask, masked_image, image
-
-    return mask, masked_image
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
-def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    **kwargs,
-):
-    """
-    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
-    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
-
-    Args:
-        scheduler (`SchedulerMixin`):
-            The scheduler to get timesteps from.
-        num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used,
-            `timesteps` must be `None`.
-        device (`str` or `torch.device`, *optional*):
-            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
-                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
-                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
-                must be `None`.
-
-    Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
-        second element is the number of inference steps.
-    """
-    if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accepts_timesteps:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
-
-
 class GaudiStableDiffusionXLInpaintPipeline(
     GaudiDiffusionPipeline,
     StableDiffusionXLInpaintPipeline
 ):
     r"""
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py#L149
+    - Two `mark_step()` were added to add support for lazy mode
+    - Added support for HPU graphs
+
     Pipeline for text-to-image generation using Stable Diffusion XL.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the

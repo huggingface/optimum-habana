@@ -21,6 +21,7 @@ import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline, StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import retrieve_timesteps
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import deprecate, logging
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -30,58 +31,18 @@ from ....utils import speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 from .pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
 
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
-def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    **kwargs,
-):
-    """
-    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
-    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
-
-    Args:
-        scheduler (`SchedulerMixin`):
-            The scheduler to get timesteps from.
-        num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used,
-            `timesteps` must be `None`.
-        device (`str` or `torch.device`, *optional*):
-            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
-                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
-                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
-                must be `None`.
-
-    Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
-        second element is the number of inference steps.
-    """
-    if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accepts_timesteps:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
 
 class GaudiStableDiffusionInpaintPipeline(
     GaudiDiffusionPipeline,
     StableDiffusionInpaintPipeline
 ):
     r"""
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py#L172
+    - Two `mark_step()` were added to add support for lazy mode
+    - Added support for HPU graphs
+
+
     Pipeline for text-guided image inpainting using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -144,10 +105,6 @@ class GaudiStableDiffusionInpaintPipeline(
             bf16_full_eval,
         )
 
-        # Workaround for Synapse 1.11 for full bf16
-        if bf16_full_eval:
-            unet.conv_in.float()
-
         StableDiffusionInpaintPipeline.__init__(
             self,
             vae,
@@ -162,96 +119,6 @@ class GaudiStableDiffusionInpaintPipeline(
         )
 
         self.to(self._device)
-
-    def check_inputs(
-        self,
-        prompt,
-        image,
-        mask_image,
-        height,
-        width,
-        strength,
-        callback_steps,
-        output_type,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-        ip_adapter_image=None,
-        ip_adapter_image_embeds=None,
-        callback_on_step_end_tensor_inputs=None,
-        padding_mask_crop=None,
-    ):
-        if strength < 0 or strength > 1:
-            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
-
-        if height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
-
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-            )
-
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
-        if padding_mask_crop is not None:
-            if not isinstance(image, PIL.Image.Image):
-                raise ValueError(
-                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
-                )
-            if not isinstance(mask_image, PIL.Image.Image):
-                raise ValueError(
-                    f"The mask image should be a PIL image when inpainting mask crop, but is of type"
-                    f" {type(mask_image)}."
-                )
-            if output_type != "pil":
-                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
-
-        if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
-            raise ValueError(
-                "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
-            )
-
-        if ip_adapter_image_embeds is not None:
-            if not isinstance(ip_adapter_image_embeds, list):
-                raise ValueError(
-                    f"`ip_adapter_image_embeds` has to be of type `list` but is {type(ip_adapter_image_embeds)}"
-                )
-            elif ip_adapter_image_embeds[0].ndim not in [3, 4]:
-                raise ValueError(
-                    f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
-                )
 
     @torch.no_grad()
     def __call__(
@@ -268,14 +135,13 @@ class GaudiStableDiffusionInpaintPipeline(
         timesteps: List[int] = None,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 3,
+        num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[List[torch.FloatTensor]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -352,11 +218,6 @@ class GaudiStableDiffusionInpaintPipeline(
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
-            ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
-                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
-                if `do_classifier_free_guidance` is set to `True`.
-                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -450,8 +311,6 @@ class GaudiStableDiffusionInpaintPipeline(
                 negative_prompt,
                 prompt_embeds,
                 negative_prompt_embeds,
-                ip_adapter_image,
-                ip_adapter_image_embeds,
                 callback_on_step_end_tensor_inputs,
                 padding_mask_crop,
             )
@@ -493,10 +352,9 @@ class GaudiStableDiffusionInpaintPipeline(
             if self.do_classifier_free_guidance:
                 prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-            if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+            if ip_adapter_image is not None:
                 image_embeds = self.prepare_ip_adapter_image_embeds(
                     ip_adapter_image,
-                    ip_adapter_image_embeds,
                     device,
                     batch_size * num_images_per_prompt,
                     self.do_classifier_free_guidance,
@@ -605,7 +463,7 @@ class GaudiStableDiffusionInpaintPipeline(
             # 9.1 Add image embeds for IP-Adapter
             added_cond_kwargs = (
                 {"image_embeds": image_embeds}
-                if ip_adapter_image is not None or ip_adapter_image_embeds is not None
+                if ip_adapter_image is not None
                 else None
             )
 
@@ -621,6 +479,9 @@ class GaudiStableDiffusionInpaintPipeline(
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
 
+            t0 = time.time()
+            t1 = t0
+
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i in range(num_inference_steps):
                     if self.interrupt:
@@ -628,8 +489,9 @@ class GaudiStableDiffusionInpaintPipeline(
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
-                    if i == 2:
-                        t0 = time.time()
+                    if i == num_warmup_steps:
+                        t1 = time.time()
+
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
@@ -715,8 +577,9 @@ class GaudiStableDiffusionInpaintPipeline(
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
-                num_samples=batch_size,
+                num_samples=batch_size * num_images_per_prompt,
                 num_steps=1,
+                start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")
 

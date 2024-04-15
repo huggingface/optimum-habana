@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+# coding=utf-8
+# Copyright 2021 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+
 import argparse
 import logging
 import sys
@@ -7,6 +22,12 @@ from pathlib import Path
 import PIL
 import requests
 import torch
+
+"""
+Adapted from: https://github.com/huggingface/optimum-habana/blob/main/examples/stable-diffusion/text_to_image_generation.py
+- Use the AutoPipelineForInpainting to load the Gaudi inpaint pipeline.
+- Add the inpaint examples from https://huggingface.co/docs/diffusers/en/using-diffusers/inpaint
+"""
 
 
 logger = logging.getLogger(__name__)
@@ -40,8 +61,20 @@ def main():
         "--prompts",
         type=str,
         nargs="*",
-        default="Face of a yellow cat, high resolution, sitting on a park bench",
+        default="concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k",
         help="The prompt or prompts to guide the image generation. The delimiter is semicolon(;)",
+    )
+    parser.add_argument(
+        "--base_image",
+        type=str,
+        default="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png",
+        help=("Path to inpaint base image"),
+    )
+    parser.add_argument(
+        "--mask_image",
+        type=str,
+        default="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png",
+        help=("Path to inpaint mask image"),
     )
     parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
@@ -133,8 +166,8 @@ def main():
         response = requests.get(url)
         return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
-    img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png"
-    mask_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png"
+    img_url = args.base_image
+    mask_url = args.mask_image
 
     init_image = download_image(img_url).resize((512, 512))
     mask_image = download_image(mask_url).resize((512, 512))
@@ -162,8 +195,9 @@ def main():
     }
 
     #prompt = ["Face of a yellow cat, high resolution, sitting on a park bench"]
-    prompt = ["concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"]
-    outputs = pipe(prompt=prompt, image=init_image, mask_image=mask_image, **kwargs)
+    prompts = args.prompts
+    logger.info(f"prompts={prompts}")
+    outputs = pipe(prompt=prompts, image=init_image, mask_image=mask_image, **kwargs)
 
         # Save images in the specified directory if not None and if they are in PIL format
     if args.image_save_dir is not None:

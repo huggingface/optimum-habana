@@ -13,6 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/auto_pipeline.py
+- Added GAUDI_PREFIX_NAME to support Gaudi pipeline.
+- Only AutoPipelineForText2Image and AutoPipelineForInpainting are retained. No modifications were made to them.
+"""
+
 from collections import OrderedDict
 
 from diffusers.configuration_utils import ConfigMixin
