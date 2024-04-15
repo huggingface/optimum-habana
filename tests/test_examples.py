@@ -182,7 +182,7 @@ class ExampleTestMeta(type):
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
-        elif model_name == "gpt2-xl" or model_name == "codellama/CodeLlama-13b-Instruct-hf" and deepspeed:
+        elif model_name in ["gpt2-xl", "codellama/CodeLlama-13b-Instruct-hf"] and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
             return True
         elif "gpt-neox" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
