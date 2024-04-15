@@ -13,7 +13,7 @@ $ pip install -U -r requirements.txt
 
 ### Training
 
-The following example is for the creation of StackLlaMa 2: a Stack exchange llama-v2-7b model.
+##### The following example is for the creation of StackLlaMa 2: a Stack exchange llama-v2-7b model.
 There are two main steps to the DPO training process:
 1. Supervised fine-tuning of the base llama-v2-7b model to create llama-v2-7b-se:
 
@@ -54,7 +54,50 @@ There are two main steps to the DPO training process:
         --output_dir="dpo" \
         --report_to=none
     ```
-For large model like Llama2-70B, we could use DeepSpeed Zero-3 to enable DPO training in multi-card.
+
+##### for mistralai/Mistral-7B-v0.1.
+1. Supervised fine-tuning of the base Mistral-7B-v0.1 model to create Mistral-7B-v0.1-se:
+
+    ```
+    python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
+        --model_name_or_path mistralai/Mistral-7B-v0.1 \
+        --output_dir="./sft" \
+        --max_steps=500 \
+        --logging_steps=10 \
+        --save_steps=100 \
+        --per_device_train_batch_size=4 \
+        --per_device_eval_batch_size=1 \
+        --gradient_accumulation_steps=2 \
+        --learning_rate=1e-4 \
+        --lr_scheduler_type="cosine" \
+        --warmup_steps=100 \
+        --weight_decay=0.05 \
+        --optim="paged_adamw_32bit" \
+        --lora_target_modules "q_proj" "v_proj" \
+        --bf16 \
+        --remove_unused_columns=False \
+        --run_name="sft_mistral" \
+        --report_to=none \
+        --use_habana \
+        --use_lazy_mode
+    ```
+    To merge the adaptors to get the final sft merged checkpoint, we can use the `merge_peft_adapter.py` helper script that comes with TRL:
+    ```
+    python merge_peft_adapter.py --base_model_name="mistralai/Mistral-7B-v0.1" --adapter_model_name="sft" --output_name="sft/final_merged_checkpoint"
+    ```
+
+2. Run the DPO trainer using the model saved by the previous step:
+    ```
+    python ../gaudi_spawn.py --world_size 8 --use_mpi dpo.py \
+        --model_name_or_path="sft/final_merged_checkpoint" \
+        --tokenizer_name_or_path=mistralai/Mistral-7B-v0.1 \
+        --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
+        --output_dir="dpo" \
+        --report_to=none
+    ```
+
+
+##### For large model like Llama2-70B, we could use DeepSpeed Zero-3 to enable DPO training in multi-card.
 steps like:
 1. Supervised fine-tuning of the base llama-v2-70b model to create llama-v2-70b-se:
 
@@ -94,6 +137,51 @@ steps like:
         --tokenizer_name_or_path=meta-llama/Llama-2-70b-hf \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
         --lora_target_modules "q_proj" "v_proj" "k_proj" "out_proj" "fc_in" "fc_out" "wte" \
+        --output_dir="dpo" \
+        --max_prompt_length=256 \
+        --max_length=512 \
+        --report_to=none
+    ```
+
+##### For MoE like mistralai/Mixtral-8x7B-v0.1, we could use DeepSpeed Zero-3 to enable DPO training in multi-card.
+steps like:
+1. Supervised fine-tuning of the base Mixtral-8x7B-v0.1 model to create Mixtral-8x7B-v0.1-se:
+
+    ```
+    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
+        --model_name_or_path mistralai/Mixtral-8x7B-v0.1 \
+        --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
+        --output_dir="./sft" \
+        --max_steps=500 \
+        --logging_steps=10 \
+        --save_steps=100 \
+        --per_device_train_batch_size=1 \
+        --per_device_eval_batch_size=1 \
+        --gradient_accumulation_steps=2 \
+        --learning_rate=1e-4 \
+        --lr_scheduler_type="cosine" \
+        --warmup_steps=100 \
+        --weight_decay=0.05 \
+        --optim="paged_adamw_32bit" \
+        --lora_target_modules "q_proj" "v_proj" \
+        --bf16 \
+        --remove_unused_columns=False \
+        --run_name="sft_mixtral" \
+        --report_to=none \
+        --use_habana \
+        --use_lazy_mode
+    ```
+    To merge the adaptors to get the final sft merged checkpoint, we can use the `merge_peft_adapter.py` helper script that comes with TRL:
+    ```
+    python merge_peft_adapter.py --base_model_name="mistralai/Mixtral-8x7B-v0.1" --adapter_model_name="sft" --output_name="sft/final_merged_checkpoint"
+    ```
+2. Run the DPO trainer using the model saved by the previous step:
+    ```
+    DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed dpo.py \
+        --model_name_or_path="sft/final_merged_checkpoint" \
+        --tokenizer_name_or_path=mistralai/Mixtral-8x7B-v0.1 \
+        --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
+        --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
         --output_dir="dpo" \
         --max_prompt_length=256 \
         --max_length=512 \
