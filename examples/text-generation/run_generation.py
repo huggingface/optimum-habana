@@ -281,10 +281,26 @@ def setup_parser(parser):
     return args
 
 
+def setup_profiler(args):
+    if args.profiling_steps != 0:
+        import habana_frameworks.torch.core as htcore
+        profiler = torch.profiler.profile(
+            schedule=torch.profiler.schedule(
+                wait=0, warmup=args.profiling_warmup_steps, active=args.profiling_steps, repeat=1),
+            activities=[torch.profiler.ProfilerActivity.CPU,
+                        torch.profiler.ProfilerActivity.HPU],
+            on_trace_ready=torch.profiler.tensorboard_trace_handler('hpu_profile'))
+        return profiler, profiler.step
+    else:
+        def step():
+            pass
+        return contextlib.nullcontext(), step
+
 def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
     model, tokenizer, generation_config = initialize_model(args, logger)
+    profiler, step = setup_profiler(args)
 
     # Enable hpu dynamic shape
     try:
@@ -292,6 +308,9 @@ def main():
         hthpu.enable_dynamic_shape()
     except ImportError:
         print("habana_frameworks could not be loaded")
+
+    from optimum.habana.utils import HabanaProfile
+    HabanaProfile.disable()
 
     use_lazy_mode = True
     if args.torch_compile and model.config.model_type == "llama":
@@ -403,10 +422,6 @@ def main():
             print(f"Total E2E time of this iteration is {duration:.3f}s", flush=True)
             return outputs
 
-        from optimum.habana.utils import HabanaProfile
-
-        # compilation stage disable profiling
-        HabanaProfile.disable()
         # Compilation
         logger.info("Graph compilation...")
         dyn_prompt_lens = args.simulate_dyn_prompt
@@ -437,20 +452,22 @@ def main():
                         generate(sz - 1, args.reduce_recompile)
         torch_hpu.synchronize()
         compilation_duration = time.perf_counter() - t0
-        HabanaProfile.enable()
         total_new_tokens_generated = 0
         logger.info("Running generate...")
         t0 = time.perf_counter()
         # Benchmark over n_iterations iterations
-        if dyn_prompt_lens is None:
-            for i in range(args.n_iterations):
-                generated = generate(None, args.reduce_recompile)
-        else:
-            repeated_prompt_len = cycle(dyn_prompt_lens)
-            for i in range(args.n_iterations):
-                prompt_len = next(repeated_prompt_len)
-                print("Generating for shape,", prompt_len)
-                generated = generate(prompt_len, args.reduce_recompile)
+        with profiler:
+            if dyn_prompt_lens is None:
+                for i in range(args.n_iterations):
+                    generated = generate(None, args.reduce_recompile)
+                    step()
+            else:
+                repeated_prompt_len = cycle(dyn_prompt_lens)
+                for i in range(args.n_iterations):
+                    prompt_len = next(repeated_prompt_len)
+                    print("Generating for shape,", prompt_len)
+                    generated = generate(prompt_len, args.reduce_recompile)
+                    step()
         duration = time.perf_counter() - t0
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
@@ -585,10 +602,6 @@ def main():
 
         # warmup
         if prompt_length > 0:
-            from optimum.habana.utils import HabanaProfile
-
-            # compilation stage disable profiling
-            HabanaProfile.disable()
             # Compilation
             logger.info("Graph compilation...")
             t0 = time.perf_counter()
@@ -599,25 +612,26 @@ def main():
                     break
             torch_hpu.synchronize()
             compilation_duration = time.perf_counter() - t0
-            HabanaProfile.enable()
 
         total_new_tokens_generated = 0
         duration = 0
         separator = "-" * 50
         logger.info("Running generate dataset...")
         t_start = time.time()
-        for i, batch in enumerate(dataloader):
-            t0 = time.perf_counter()
-            prompt, outputs = generate_dataset(batch)
-            duration += time.perf_counter() - t0
-            total_new_tokens_generated += args.batch_size * args.max_new_tokens
-            print(separator)
-            print(f"Batch n°{i+1}")
-            print(f"Input: {prompt[:args.batch_size]}")
-            print(
-                f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
-            )
-            print(separator)
+        with profiler:
+            for i, batch in enumerate(dataloader):
+                t0 = time.perf_counter()
+                prompt, outputs = generate_dataset(batch)
+                duration += time.perf_counter() - t0
+                total_new_tokens_generated += args.batch_size * args.max_new_tokens
+                print(separator)
+                print(f"Batch n°{i+1}")
+                print(f"Input: {prompt[:args.batch_size]}")
+                print(
+                    f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+                )
+                print(separator)
+                step()
         t_end = time.time()
 
         throughput = total_new_tokens_generated / duration
