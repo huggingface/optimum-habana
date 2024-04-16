@@ -192,6 +192,9 @@ class GaudiMixtralAttention(MixtralAttention):
         self._init_rope()
 
     def _init_rope(self):
+        """
+        Copied from: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L294
+        """
         if self.config.rope_scaling is None:
             self.rotary_emb = GaudiLlamaRotaryEmbedding(
                 self.head_dim,
