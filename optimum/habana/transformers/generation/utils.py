@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import torch
 import torch.distributed as dist
+from torch import nn
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.candidate_generator import (
@@ -50,11 +51,13 @@ from transformers.generation.utils import (
     GenerateOutput,
     GenerationMixin,
     GenerationMode,
+    _ranking_fast,
     _split_model_inputs,
     _split_model_outputs,
     stack_model_outputs,
 )
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
+from transformers.modeling_outputs import CausalLMOutputWithPast, Seq2SeqLMOutput
 from transformers.utils import ModelOutput, is_torchdynamo_compiling
 
 from optimum.utils import logging
@@ -1480,6 +1483,8 @@ class GaudiGenerationMixin(GenerationMixin):
             streamer (`BaseStreamer`, *optional*):
                 Streamer object that will be used to stream the generated sequences. Generated tokens are passed
                 through `streamer.put(token_ids)` and the streamer is responsible for any further processing.
+            sequential (`bool`, *optional*):
+                Switches topk hidden state computation from parallel to sequential to reduce memory if True.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
             profiling_warmup_steps (`int`, *optional*, defaults to 0):
@@ -1522,8 +1527,426 @@ class GaudiGenerationMixin(GenerationMixin):
         >>> tokenizer.batch_decode(outputs, skip_special_tokens=True)
         ['DeepMind Company is a company that focuses on the development and commercialization of artificial intelligence (AI). DeepMind’s mission is to help people understand and solve problems that are difficult to solve in the world today.\n\nIn this post, we talk about the benefits of deep learning in business and how it']
         ```"""
+        # init values
+        logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
+        logits_warper = logits_warper if logits_warper is not None else LogitsProcessorList()
+        stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
+        pad_token_id = pad_token_id if pad_token_id is not None else self.generation_config.pad_token_id
+        eos_token_id = eos_token_id if eos_token_id is not None else self.generation_config.eos_token_id
+        sequential = sequential if sequential is not None else self.generation_config.low_memory
+        if isinstance(eos_token_id, int):
+            eos_token_id = [eos_token_id]
+        eos_token_id_tensor = torch.tensor(eos_token_id).to(input_ids.device) if eos_token_id is not None else None
+        output_scores = output_scores if output_scores is not None else self.generation_config.output_scores
+        output_logits = output_logits if output_logits is not None else self.generation_config.output_logits
+        output_attentions = (
+            output_attentions if output_attentions is not None else self.generation_config.output_attentions
+        )
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.generation_config.output_hidden_states
+        )
+        return_dict_in_generate = (
+            return_dict_in_generate
+            if return_dict_in_generate is not None
+            else self.generation_config.return_dict_in_generate
+        )
 
-        raise NotImplementedError("Contrastive search is not supported by optimum-habana yet.")
+        # init attention / hidden states / scores tuples
+        raw_logits = () if (return_dict_in_generate and output_logits) else None
+        scores = () if (return_dict_in_generate and output_scores) else None
+        decoder_attentions = () if (return_dict_in_generate and output_attentions) else None
+        cross_attentions = () if (return_dict_in_generate and output_attentions) else None
+        decoder_hidden_states = () if (return_dict_in_generate and output_hidden_states) else None
+
+        # if model is an encoder-decoder, retrieve encoder attention weights and hidden states
+        if return_dict_in_generate and self.config.is_encoder_decoder:
+            encoder_attentions = model_kwargs["encoder_outputs"].get("attentions") if output_attentions else None
+            encoder_hidden_states = (
+                model_kwargs["encoder_outputs"].get("hidden_states") if output_hidden_states else None
+            )
+
+        # keep track of which sequences are already finished
+        unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
+
+        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer.start()
+        this_peer_finished = False  # used by synced_gpus only
+        batch_size, cur_len = input_ids.shape
+        bucket_size = model_kwargs.get("bucket_size", -1)
+        bucket_internal = model_kwargs.get("bucket_internal", None)
+        reduce_recompile = model_kwargs.get("reduce_recompile", False)
+
+        prompt_len = cur_len
+        if not bucket_internal:
+            if bucket_size >= 0:
+                inc = iter(incrementor(bucket_size, prompt_len))
+            if bucket_size > 0:  # TODO: Why is this needed given above statement?
+                assert "position_ids" not in model_kwargs, "Untested path"
+
+        token_idx = model_kwargs.get("token_idx", None)
+        if token_idx is not None:
+            # Update cur_len in case of static shapes
+            cur_len = token_idx.item()
+
+        while True:
+            if lazy_mode:
+                self.htcore_generation.mark_step()
+
+            if synced_gpus:
+                # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
+                # The following logic allows an early break if all peers finished generating their sequence
+                this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(input_ids.device)
+                # send 0.0 if we finished, 1.0 otherwise
+                dist.all_reduce(this_peer_finished_flag, op=dist.ReduceOp.SUM)
+                # did all peers finish? the reduced sum will be 0.0 then
+                if this_peer_finished_flag.item() == 0.0:
+                    break
+
+            if bucket_size > 0 and not bucket_internal:
+                # it will not have been padded if bucket_size > 0
+                params = next(inc)
+                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
+                )
+
+            model_kwargs["lazy_mode"] = lazy_mode
+
+            # if the first step in the loop, encode all the prefix and obtain: (1) past_key_values;
+            # (2) last_hidden_states; (3) logit_for_next_step; (4) update model kwargs for the next step
+            if model_kwargs.get("past_key_values") is None:
+                # prepare inputs
+                model_kwargs["use_cache"] = True
+                model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+
+                hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
+
+                # encode the given prefix and prepare model inputs; encoder-decoder model process the prefix and save
+                # the `encoder_outputs`
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_hidden_states=True,
+                    output_attentions=output_attentions,
+                    **hpu_graphs_kwargs,
+                )
+
+                # last decoder hidden states will be used to compute the degeneration penalty (cosine similarity with
+                # previous tokens)
+                if self.config.is_encoder_decoder:
+                    last_hidden_states = outputs.decoder_hidden_states[-1]
+                else:
+                    last_hidden_states = outputs.hidden_states[-1]
+
+                # next logit for contrastive search to select top-k candidate tokens
+                token_idx = model_kwargs.get("token_idx", None)
+                if token_idx is not None and outputs.logits.shape[-2] > 1:
+                    last_hidden_states = last_hidden_states[:, :token_idx, :]
+                    # case1 (w/o KV caching): outputs.logits.shape: [batch_size, max_length, vocab_size]
+                    if self.config.is_encoder_decoder:
+                        logit_for_next_step = outputs.logits[:, token_idx - 1, :]
+                    else:
+                        logit_for_next_step = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                else:
+                    logit_for_next_step = outputs.logits[:, -1, :]
+
+                model_kwargs = self._update_model_kwargs_for_generation(
+                    outputs,
+                    model_kwargs,
+                    is_encoder_decoder=self.config.is_encoder_decoder,
+                    standardize_cache_format=True,
+                )
+                if not sequential:
+                    # Expands model inputs top_k times, for batched forward passes (akin to beam search).
+                    _, model_kwargs = self._expand_inputs_for_generation(
+                        expand_size=top_k, is_encoder_decoder=self.config.is_encoder_decoder, **model_kwargs
+                    )
+
+                past_key_values = model_kwargs.get("past_key_values")
+                if past_key_values is None:
+                    raise ValueError(
+                        f"{self.__class__.__name__} does not support caching and therefore **can't** be used "
+                        "for contrastive search."
+                    )
+                elif (
+                    not isinstance(past_key_values[0], (tuple, torch.Tensor))
+                    or past_key_values[0][0].shape[0] != batch_size
+                ):
+                    raise ValueError(
+                        f"{self.__class__.__name__} does not have a standard cache format and therefore **can't** be "
+                        "used for contrastive search without further modifications."
+                    )
+
+            # contrastive_search main logic start:
+            # contrastive search decoding consists of two steps: (1) candidate tokens recall; (2) candidate re-rank by
+            # degeneration penalty
+            if token_idx is not None and self.config.is_encoder_decoder:
+                processed_logit_for_next_step = logits_processor(input_ids[:, :token_idx], logit_for_next_step)
+                processed_logit_for_next_step = logits_warper(
+                    input_ids[:, :token_idx], processed_logit_for_next_step
+                )
+            else:
+                processed_logit_for_next_step = logits_processor(input_ids, logit_for_next_step)
+                processed_logit_for_next_step = logits_warper(input_ids, processed_logit_for_next_step)
+
+            next_probs = nn.functional.softmax(processed_logit_for_next_step, dim=-1)
+            top_k_probs, top_k_ids = torch.topk(next_probs, dim=-1, k=top_k)
+
+            # Store scores, attentions and hidden_states when required
+            if return_dict_in_generate:
+                if output_logits:
+                    raw_logits += (logit_for_next_step,)
+                if output_scores:
+                    scores += (processed_logit_for_next_step,)
+                if output_attentions:
+                    decoder_attentions += (
+                        (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (outputs.attentions,)
+                    )
+                    if self.config.is_encoder_decoder:
+                        cross_attentions += (outputs.cross_attentions,)
+
+                if output_hidden_states:
+                    decoder_hidden_states += (
+                        (outputs.decoder_hidden_states,)
+                        if self.config.is_encoder_decoder
+                        else (outputs.hidden_states,)
+                    )
+
+            # Replicates the new past_key_values to match the `top_k` candidates
+            new_key_values = []
+            for layer in model_kwargs["past_key_values"]:
+                items = []
+                # item is either the key or the value matrix
+                for item in layer:
+                    if sequential:
+                        items.append(item.repeat_interleave(1, dim=0))
+                    else:
+                        items.append(item.repeat_interleave(top_k, dim=0))
+                new_key_values.append(tuple(items))
+            model_kwargs["past_key_values"] = tuple(new_key_values)
+
+            if sequential:
+                all_outputs = []
+                for i in range(top_k):
+                    # compute the candidate tokens by the language model and collect their hidden_states
+                    next_model_inputs = self.prepare_inputs_for_generation(top_k_ids[:, i].view(-1, 1), **model_kwargs)
+                    if token_idx is not None:
+                        # Reset inputs to top_k_ids for static shapes to override selection by token_idx
+                        if self.config.is_encoder_decoder:
+                            next_model_inputs["decoder_input_ids"] = top_k_ids[:, i].view(-1, 1)
+                        else:
+                            next_model_inputs["input_ids"] = top_k_ids[:, i].view(-1, 1)
+
+                    outputs = self(
+                        **next_model_inputs,
+                        return_dict=True,
+                        output_hidden_states=True,
+                        output_attentions=output_attentions,
+                    )
+                    all_outputs.append(outputs)
+                outputs = stack_model_outputs(all_outputs)
+
+            else:
+                # compute the candidate tokens by the language model and collect their hidden_states
+                # assembles top_k_ids into batch of size k
+                next_model_inputs = self.prepare_inputs_for_generation(top_k_ids.view(-1, 1), **model_kwargs)
+                if token_idx is not None:
+                    # Reset inputs to top_k_ids for static shapes to override selection by token_idx
+                    if self.config.is_encoder_decoder:
+                        next_model_inputs["decoder_input_ids"] = top_k_ids.view(-1, 1)
+                    else:
+                        next_model_inputs["input_ids"] = top_k_ids.view(-1, 1)
+
+                outputs = self(
+                    **next_model_inputs,
+                    return_dict=True,
+                    output_hidden_states=True,
+                    output_attentions=output_attentions,
+                )
+
+            # name is different for encoder-decoder and decoder-only models
+            if self.config.is_encoder_decoder:
+                next_hidden = outputs.decoder_hidden_states[-1]
+                full_hidden_states = outputs.decoder_hidden_states
+            else:
+                next_hidden = outputs.hidden_states[-1]
+                full_hidden_states = outputs.hidden_states
+
+            logits = outputs.logits[:, -1, :]
+
+            context_hidden = last_hidden_states.repeat_interleave(top_k, dim=0)
+
+            # compute the degeneration penalty and re-rank the candidates based on the degeneration penalty and the
+            # model confidence. Keeping `selected_idx` on CPU enables multi-device contrastive search and doesn't
+            # introduce (noticeable) slowdowns on single-device runs.
+            selected_idx = _ranking_fast(context_hidden, next_hidden, top_k_probs, penalty_alpha, top_k)
+            selected_idx = selected_idx.to("cpu")
+
+            # prepare for the next step: (1) next token_id; (2) past_key_values; (3) last_hidden_states for computing
+            # the degeneration penalty; (4) logits for selecting next top-k candidates; (5) selected tokens scores
+            # (model confidence minus degeneration penalty); (6) decoder hidden_states
+            next_tokens = top_k_ids[range(len(top_k_ids)), selected_idx]
+            next_hidden = torch.stack(torch.split(next_hidden.squeeze(dim=1), top_k))
+            next_hidden = next_hidden[range(batch_size), selected_idx, :]
+            last_hidden_states = torch.cat([last_hidden_states, next_hidden.unsqueeze(1)], dim=1)
+
+            next_decoder_hidden_states = ()
+            for layer in full_hidden_states:
+                layer = torch.stack(torch.split(layer, top_k))[range(batch_size), selected_idx, :]
+                next_decoder_hidden_states += (layer,)
+
+            # generate past_key_values cache of only the selected token
+            if sequential:
+                next_model_input = self.prepare_inputs_for_generation(
+                    top_k_ids[:, selected_idx].view(-1, 1), **model_kwargs
+                )
+                if token_idx is not None:
+                    # Reset inputs to top_k_ids for static shapes to override selection by token_idx
+                    if self.config.is_encoder_decoder:
+                        next_model_inputs["decoder_input_ids"] =top_k_ids[:, selected_idx].view(-1, 1)
+                    else:
+                        next_model_inputs["input_ids"] = top_k_ids[:, selected_idx].view(-1, 1)
+
+                selected_outputs = self(
+                    **next_model_input,
+                    return_dict=True,
+                    output_hidden_states=False,
+                    output_attentions=False,
+                )
+                next_past_key_values = selected_outputs["past_key_values"]
+
+            else:
+                next_past_key_values = self._extract_past_from_model_output(outputs, standardize_cache_format=True)
+                new_key_values = ()
+                for layer in next_past_key_values:
+                    items = ()
+                    # item is either the key or the value matrix
+                    for item in layer:
+                        item = torch.stack(torch.split(item, top_k, dim=0))  # [B, K, num_head, seq_len, esz]
+                        item = item[range(batch_size), selected_idx, ...]  # [B, num_head, seq_len, esz]
+                        items += (item,)
+                    new_key_values += (items,)
+                next_past_key_values = new_key_values
+
+            logit_for_next_step = torch.stack(torch.split(logits, top_k))[range(batch_size), selected_idx, :]
+
+            # Rebuilds the relevant parts of the model output for the selected token, for use in the next iteration
+            if self.config.is_encoder_decoder:
+                next_step_cross_attentions = ()
+                next_step_decoder_attentions = ()
+                if output_attentions:
+                    for layer in outputs.cross_attentions:
+                        layer = torch.stack(torch.split(layer, top_k, dim=0))[range(batch_size), selected_idx, ...]
+                        next_step_cross_attentions += (layer,)
+                    for layer in outputs.decoder_attentions:
+                        layer = torch.stack(torch.split(layer, top_k, dim=0))[range(batch_size), selected_idx, ...]
+                        next_step_decoder_attentions += (layer,)
+                outputs = Seq2SeqLMOutput(
+                    past_key_values=next_past_key_values,
+                    decoder_hidden_states=next_decoder_hidden_states,
+                    decoder_attentions=next_step_decoder_attentions or None,
+                    cross_attentions=next_step_cross_attentions or None,
+                )
+            else:
+                next_step_attentions = ()
+                if output_attentions:
+                    for layer in outputs.attentions:
+                        layer = torch.stack(torch.split(layer, top_k, dim=0))[range(batch_size), selected_idx, ...]
+                        next_step_attentions += (layer,)
+                outputs = CausalLMOutputWithPast(
+                    past_key_values=next_past_key_values,
+                    hidden_states=next_decoder_hidden_states,
+                    attentions=next_step_attentions or None,
+                )
+            # contrastive_search main logic end
+
+            if synced_gpus and this_peer_finished:
+                continue  # don't waste resources running the code we don't need
+
+            # finished sentences should have their next token be a padding token
+            if eos_token_id is not None:
+                if pad_token_id is None:
+                    raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
+                next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
+
+            # update generated ids, model inputs, and length for next step
+            if token_idx is not None:
+                # Use token_idx-1 since token index is incremented twice in first iteration
+                input_ids.index_copy_(
+                    1, token_idx - 1, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
+                )
+            else:
+                input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+
+            if streamer is not None:
+                streamer.put(next_tokens.cpu())
+            model_kwargs = self._update_model_kwargs_for_generation(
+                outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
+            )
+
+            # if eos_token was found in one sentence, set sentence to finished
+            if eos_token_id_tensor is not None:
+                unfinished_sequences = unfinished_sequences.mul(
+                    next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
+                )
+
+                # stop when each sentence is finished
+                if unfinished_sequences.max() == 0:
+                    this_peer_finished = True
+
+            # increase cur_len
+            cur_len = cur_len + 1
+
+            hb_profer.step()
+
+            # stop if we exceed the maximum length
+            if token_idx is not None:
+                if stopping_criteria(input_ids[:, : (token_idx - 1)], scores):
+                    this_peer_finished = True
+            elif stopping_criteria(input_ids, scores):
+                this_peer_finished = True
+
+            if this_peer_finished and not synced_gpus:
+                break
+
+        hb_profer.stop()
+        if streamer is not None:
+            streamer.end()
+
+        if return_dict_in_generate:
+            # Contrastive search works by forward looking at the next token, so we need to exclude it from
+            # `past_key_values` to be consistent with the other decoding methods
+            if model_kwargs.get("past_key_values") is not None:
+                past_key_values = []
+                for layer in model_kwargs["past_key_values"]:
+                    layer_past_key_values = []
+                    for item in layer:
+                        layer_past_key_values.append(item[..., :-1, :])
+                    past_key_values.append(tuple(layer_past_key_values))
+                model_kwargs["past_key_values"] = tuple(past_key_values)
+
+            if self.config.is_encoder_decoder:
+                return GenerateEncoderDecoderOutput(
+                    sequences=input_ids,
+                    scores=scores,
+                    logits=raw_logits,
+                    encoder_attentions=encoder_attentions,
+                    encoder_hidden_states=encoder_hidden_states,
+                    decoder_attentions=decoder_attentions,
+                    cross_attentions=cross_attentions,
+                    decoder_hidden_states=decoder_hidden_states,
+                    past_key_values=model_kwargs.get("past_key_values"),
+                )
+            else:
+                return GenerateDecoderOnlyOutput(
+                    sequences=input_ids,
+                    scores=scores,
+                    logits=raw_logits,
+                    attentions=decoder_attentions,
+                    hidden_states=decoder_hidden_states,
+                    past_key_values=model_kwargs.get("past_key_values"),
+                )
+        else:
+            return input_ids
 
     def _greedy_search(
         self,

@@ -45,6 +45,7 @@ from .models import (
     GaudiGemmaForCausalLM,
     GaudiGPT2Attention,
     GaudiGPT2Block,
+    GaudiGPT2DoubleHeadsModel,
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
     GaudiGPTJAttention,
@@ -258,6 +259,7 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._beam_sample = GaudiGenerationMixin._beam_sample
     transformers.generation.GenerationMixin._group_beam_search = GaudiGenerationMixin._group_beam_search
     transformers.generation.GenerationMixin._constrained_beam_search = GaudiGenerationMixin._constrained_beam_search
+    transformers.generation.GenerationMixin.contrastive_search = GaudiGenerationMixin._contrastive_search
     transformers.generation.GenerationMixin._assisted_decoding = GaudiGenerationMixin._assisted_decoding
     transformers.generation.GenerationMixin._get_candidate_generator = GaudiGenerationMixin._get_candidate_generator
     transformers.generation.GenerationConfig = GaudiGenerationConfig
@@ -320,6 +322,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
     transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
     transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
+    transformers.models.gpt2.modeling_gpt2.GPT2DoubleHeadsModel = GaudiGPT2DoubleHeadsModel
     transformers.models.gpt2.modeling_gpt2.GPT2Block = GaudiGPT2Block
     models_with_tracing_support.extend((GaudiGPT2Attention, GaudiGPT2LMHeadModel))
 
