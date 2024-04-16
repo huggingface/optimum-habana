@@ -357,6 +357,7 @@ def main():
             from optimum.habana.diffusers import GaudiStableDiffusionXLInstantIDPipeline
             from insightface.app import FaceAnalysis
 
+            # prepare 'antelopev2' under ./models
             app = FaceAnalysis(name='antelopev2', root='./', providers=['CPUExecutionProvider'])
             app.prepare(ctx_id=0, det_size=(640, 640))
 
@@ -380,13 +381,18 @@ def main():
             outputs = pipeline(
                 prompt=args.prompts,
                 num_inference_steps=args.num_inference_steps,
+                guidance_scale=args.guidance_scale,
                 negative_prompt=args.negative_prompts,
+                eta=args.eta,
+                output_type=args.output_type,
                 image_embeds=face_emb,
                 image=face_kps,
+                num_images_per_prompt=args.num_images_per_prompt,
                 controlnet_conditioning_scale=0.8,
                 ip_adapter_scale=0.8,
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 profiling_steps=args.profiling_steps,
+                **res,
             )
         else:
             from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
