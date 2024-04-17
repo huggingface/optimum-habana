@@ -109,7 +109,6 @@ def _test_text_generation(
 
     if fp8:
         command += [
-            "--fp8",
             "--reuse_cache",
             "--trim_logits",
         ]
