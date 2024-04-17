@@ -368,7 +368,7 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
-
+            iteration_times = []
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
@@ -376,7 +376,11 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                iteration_times=iteration_times,
             ).cpu()
+            prefill_time=iteration_times[0]
+            decode_time=sum(iteration_times) - iteration_times[0]
+            logger.info(f"total items {len(iteration_times)}, prefill = {prefill_time*1000}ms, decode = {decode_time*1000}ms")
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile
@@ -428,6 +432,7 @@ def main():
                 print("Generating for shape,", prompt_len)
                 generated = generate(prompt_len, args.reduce_recompile)
         duration = time.perf_counter() - t0
+        print("duration =", duration/5)
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
 
