@@ -549,6 +549,12 @@ class MultiCardTextClassificationExampleTester(
     TASK_NAME = "mrpc"
     DATASET_PARAMETER_NAME = "task_name"
 
+class DeepSpeedTextClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue", deepspeed=True
+):
+    TASK_NAME = "mrpc"
+    DATASET_PARAMETER_NAME = "task_name"
+
 
 class QuestionAnsweringExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa"):
     TASK_NAME = "squad"
