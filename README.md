@@ -213,10 +213,11 @@ The following model architectures, tasks and device distributions have been vali
 
 <div align="center">
 
-| Architecture     | Training | Inference            | Tasks |
-|------------------|:--------:|:--------------------:|:------|
-| Llama 2          | :heavy_check_mark: |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
-| Llama 2          | :heavy_check_mark: |           | <li>[PPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+| Architecture     | Training | Inference            | Tasks                                                                                          |
+|------------------|:--------:|:--------------------:|:-----------------------------------------------------------------------------------------------|
+| Llama 2          | :heavy_check_mark: |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li>  |
+| Llama 2          | :heavy_check_mark: |           | <li>[PPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li>  |
+| Stable Diffusion | :heavy_check_mark: |           | <li>[DDPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
 
 </div>
 
