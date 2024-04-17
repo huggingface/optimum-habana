@@ -139,6 +139,17 @@ from .t5 import (
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
 )
+
+from .mt5 import (
+    gaudi_mt5_layernorm_forward,
+    gaudi_MT5Attention_forward,
+    gaudi_MT5Block_forward,
+    gaudi_MT5ForConditionalGeneration_forward,
+    gaudi_MT5ForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_MT5LayerSelfAttention_forward,
+    gaudi_MT5Stack_forward,
+)
+
 from .vit import gaudi_vit_self_attention_forward
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
