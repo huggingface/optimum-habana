@@ -27,7 +27,7 @@ The list of officially validated models and tasks is available [here](https://gi
 ## What is a Intel(R) Gaudi(R) AI accelerator (HPU)?
 
 HPUs offer fast model training and inference as well as a great price-performance ratio.
-Check out [this blog post about BERT pre-training](https://huggingface.co/blog/pretraining-bert) and [this article benchmarking Intel(R) Gaudi(R) accelerator Gaudi2 versus Nvidia A100 GPUs](https://huggingface.co/blog/habana-gaudi-2-benchmark) for concrete examples.
+Check out [this blog post about BLOOM inference](https://huggingface.co/blog/habana-gaudi-2-bloom) and [this article benchmarking Intel(R) Gaudi(R) accelerator Gaudi2 versus Nvidia A100 GPUs for BRIDGETOWER training](https://huggingface.co/blog/bridgetower) for concrete examples.
 If you are not familiar with HPUs and would like to know more about them, we recommend you take a look at [our conceptual guide](https://huggingface.co/docs/optimum/habana/concept_guides/hpu).
 
 
