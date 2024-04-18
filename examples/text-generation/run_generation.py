@@ -348,7 +348,7 @@ def main():
 
         def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
-
+            encode_t0 = time.perf_counter()
             # Tokenization
             if args.max_input_tokens > 0:
                 input_tokens = tokenizer.batch_encode_plus(
@@ -360,6 +360,7 @@ def main():
                 )
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+            encode_duration = time.perf_counter() - encode_t0
 
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
@@ -380,7 +381,7 @@ def main():
             ).cpu()
             prefill_time=iteration_times[0]
             decode_time=sum(iteration_times) - iteration_times[0]
-            logger.info(f"total items {len(iteration_times)}, prefill = {prefill_time*1000}ms, decode = {decode_time*1000}ms")
+            logger.info(f"encode time = {encode_duration*1000}ms, prefill time = {prefill_time*1000}ms, decode time = {decode_time*1000}ms")
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile
@@ -432,7 +433,6 @@ def main():
                 print("Generating for shape,", prompt_len)
                 generated = generate(prompt_len, args.reduce_recompile)
         duration = time.perf_counter() - t0
-        print("duration =", duration/5)
         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
         throughput = total_new_tokens_generated / duration
 

@@ -1427,8 +1427,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
-        hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
-        hb_gen_time.start()
+        if iteration_times is not None:
+            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
+            hb_gen_time.start()
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1552,7 +1553,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 this_peer_finished = True
 
             hb_profer.step()
-            hb_gen_time.step()
+            if iteration_times is not None:
+                hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
                 break
 
@@ -1787,8 +1789,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
-        hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
-        hb_gen_time.start()
+        if iteration_times is not None:
+            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
+            hb_gen_time.start()
         # auto-regressive generation
         while True:
             if lazy_mode:
@@ -1891,7 +1894,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 this_peer_finished = True
 
             hb_profer.step()
-            hb_gen_time.step()
+            if iteration_times is not None:
+                hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
                 break
 
