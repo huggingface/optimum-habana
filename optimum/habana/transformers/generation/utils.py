@@ -597,7 +597,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 "llama",
                 "mistral",
                 "falcon",
-            ], "reuse_cache only supported by llama, mistral and falcon at the moment"
+                "phi",
+            ], "reuse_cache only supported by llama, mistral, falcon and phi at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0

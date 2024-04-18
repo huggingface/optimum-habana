@@ -117,10 +117,10 @@ from .opt import (
     gaudi_opt_model_forward,
 )
 from .phi import (
+    GaudiPhiAttention,
+    GaudiPhiDecoderLayer,
+    GaudiPhiModel,
     GaudiPhiForCausalLM,
-    gaudi_phi_attention_forward,
-    gaudi_phi_decoder_layer_forward,
-    gaudi_phi_model_forward,
 )
 from .speecht5 import (
     gaudi_generate_speech,
