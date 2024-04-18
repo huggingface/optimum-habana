@@ -10,7 +10,6 @@ import pytest
 from .test_examples import TIME_PERF_FACTOR
 
 
-
 if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
@@ -29,7 +28,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("microsoft/phi-2", 1, 224.72307766211117),
             ("meta-llama/Meta-Llama-3-8B", 1, True, 129),
             ("meta-llama/Llama-2-7b-hf", 512, True, 12808),
-            ("meta-llama/Llama-2-7b-hf", 512, False, 8711) # in some cases like TGI, reuse_cache isnt used
+            ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),
@@ -103,11 +102,11 @@ def _test_text_generation(
         "--max_new_tokens 100",
     ]
 
-    if 'llama' in model_name.lower():
-        command += ['--trim_logits', '--attn_softmax_bf16']
+    if "llama" in model_name.lower():
+        command += ["--trim_logits", "--attn_softmax_bf16"]
 
     if reuse_cache:
-        command += ['--reuse_cache']
+        command += ["--reuse_cache"]
 
     if torch_compile:
         command += ["--torch_compile"]
