@@ -76,7 +76,7 @@ def _test_text_generation(
     model_name: str,
     baseline: float,
     token: str,
-    bs: int = 1,
+    batch_size: int = 1,
     reuse_cache: bool = True,
     deepspeed: bool = False,
     world_size: int = 8,
@@ -97,7 +97,7 @@ def _test_text_generation(
     command += [
         f"{path_to_example_dir / 'text-generation' / 'run_generation.py'}",
         f"--model_name_or_path {model_name}",
-        f"--batch_size {bs}",
+        f"--batch_size {batch_size}",
         "--use_kv_cache",
         "--max_new_tokens 100",
     ]
