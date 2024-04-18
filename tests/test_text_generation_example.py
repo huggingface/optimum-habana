@@ -163,9 +163,9 @@ def _test_text_generation(
         assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
 
 
-@pytest.mark.parametrize("model_name, bs, reuse_cache, baseline", MODELS_TO_TEST["bf16"])
-def test_text_generation_bf16(model_name: str, baseline: float, token: str, bs: int, reuse_cache: bool):
-    _test_text_generation(model_name, baseline, token, bs, reuse_cache)
+@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16"])
+def test_text_generation_bf16(model_name: str, baseline: float, token: str, batch_size: int, reuse_cache: bool):
+    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache)
 
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["fp8"])
