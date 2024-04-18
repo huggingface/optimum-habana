@@ -32,7 +32,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 
 from optimum.utils import logging
 
-from ....transformers.gaudi_configuration import GaudiConfig
+from ....transformers.gaudi_configuration import IntelGaudiAcceleratorConfig
 from ....utils import speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 
@@ -125,7 +125,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
             Whether to use Gaudi (`True`) or CPU (`False`).
         use_hpu_graphs (bool, defaults to `False`):
             Whether to use HPU graphs or not.
-        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
+        gaudi_config (Union[str, [`IntelGaudiAcceleratorConfig`]], defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
         bf16_full_eval (bool, defaults to `False`):
@@ -146,7 +146,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
         requires_safety_checker: bool = True,
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
-        gaudi_config: Union[str, GaudiConfig] = None,
+        gaudi_config: Union[str, IntelGaudiAcceleratorConfig] = None,
         bf16_full_eval: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(

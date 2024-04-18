@@ -19,7 +19,7 @@ import torch
 from transformers.testing_utils import slow
 from trl import DDPOConfig
 
-from optimum.habana import GaudiConfig
+from optimum.habana import IntelGaudiAcceleratorConfig
 from optimum.habana.trl import GaudiDDPOTrainer, GaudiDefaultDDPOStableDiffusionPipeline
 
 
@@ -56,7 +56,7 @@ class GaudiDDPOTrainerTester(unittest.TestCase):
         pretrained_model = "hf-internal-testing/tiny-stable-diffusion-torch"
         pretrained_revision = "main"
 
-        gaudi_config = GaudiConfig()
+        gaudi_config = IntelGaudiAcceleratorConfig()
         pipeline = GaudiDefaultDDPOStableDiffusionPipeline(
             pretrained_model,
             pretrained_model_revision=pretrained_revision,
@@ -133,7 +133,7 @@ class GaudiDDPOTrainerWithLoRATester(GaudiDDPOTrainerTester):
         pretrained_model = "hf-internal-testing/tiny-stable-diffusion-torch"
         pretrained_revision = "main"
 
-        gaudi_config = GaudiConfig()
+        gaudi_config = IntelGaudiAcceleratorConfig()
         pipeline = GaudiDefaultDDPOStableDiffusionPipeline(
             pretrained_model,
             pretrained_model_revision=pretrained_revision,

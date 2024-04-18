@@ -18,20 +18,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from optimum.habana import GaudiConfig
+from optimum.habana import IntelGaudiAcceleratorConfig
 
 
 BF16_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/bf16_ops.txt")
 FP32_OPS_REFERENCE_FILE = Path(__file__).parent.resolve() / Path("configs/fp32_ops.txt")
 
 
-class GaudiConfigTester(unittest.TestCase):
+class IntelGaudiAcceleratorConfigTester(unittest.TestCase):
     """
-    Unit tests for Gaudi configuration class GaudiConfig.
+    Unit tests for Gaudi configuration class IntelGaudiAcceleratorConfig.
     """
 
     def test_default_parameter_types(self):
-        gaudi_config = GaudiConfig()
+        gaudi_config = IntelGaudiAcceleratorConfig()
 
         self.assertIsInstance(gaudi_config.use_fused_adam, bool)
         self.assertIsInstance(gaudi_config.use_fused_clip_norm, bool)
@@ -41,7 +41,7 @@ class GaudiConfigTester(unittest.TestCase):
         self.assertIsNone(gaudi_config.autocast_fp32_ops)
 
     def test_write_bf16_fp32_ops_to_text_files(self):
-        gaudi_config = GaudiConfig(
+        gaudi_config = IntelGaudiAcceleratorConfig(
             autocast_bf16_ops=[
                 "add",
                 "addmm",

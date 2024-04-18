@@ -27,7 +27,7 @@ from trl.models import DDPOStableDiffusionPipeline
 from trl.trainer import DDPOConfig
 from trl.trainer.utils import PerPromptStatTracker
 
-from optimum.habana import GaudiConfig
+from optimum.habana import IntelGaudiAcceleratorConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.utils import set_seed
 
@@ -43,7 +43,7 @@ class GaudiDDPOTrainer(DDPOTrainer):
         prompt_function: Callable[[], Tuple[str, Any]],
         sd_pipeline: DDPOStableDiffusionPipeline,
         image_samples_hook: Optional[Callable[[Any, Any, Any], Any]] = None,
-        gaudi_config: GaudiConfig = None,
+        gaudi_config: IntelGaudiAcceleratorConfig = None,
         use_habana: bool = True,
         use_hpu_graphs: bool = False,
     ):

@@ -48,7 +48,7 @@ DEFAULT_FP32_OPS = [
 GAUDI_CONFIG_NAME = "gaudi_config.json"
 
 
-class GaudiConfig(BaseConfig):
+class IntelGaudiAcceleratorConfig(BaseConfig):
     CONFIG_NAME = "gaudi_config.json"
     FULL_CONFIGURATION_FILE = "gaudi_config.json"
 

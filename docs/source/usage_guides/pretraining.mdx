@@ -31,7 +31,7 @@ with XXX the task to perform, such as `ImageClassification` for example.
 The following is a working example where BERT is pretrained for masked language modeling:
 ```python
 from datasets import load_dataset
-from optimum.habana import GaudiTrainer, GaudiTrainingArguments
+from optimum.habana import IntelGaudiAcceleratorTrainer, GaudiTrainingArguments
 from transformers import AutoConfig, AutoModelForMaskedLM, AutoTokenizer, DataCollatorForLanguageModeling
 
 # Load the training set (this one has already been preprocessed)
@@ -58,7 +58,7 @@ training_args = GaudiTrainingArguments(
 )
 
 # Initialize our Trainer
-trainer = GaudiTrainer(
+trainer = IntelGaudiAcceleratorTrainer(
     model=model,
     args=training_args,
     train_dataset=training_set,

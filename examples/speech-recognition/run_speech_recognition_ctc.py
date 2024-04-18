@@ -45,7 +45,7 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana import GaudiTrainingArguments, IntelGaudiAcceleratorConfig, IntelGaudiAcceleratorTrainer
 from optimum.habana.utils import set_seed
 
 
@@ -454,7 +454,7 @@ def main():
     )
     logger.setLevel(logging.INFO if is_main_process(training_args.local_rank) else logging.WARN)
 
-    gaudi_config = GaudiConfig.from_pretrained(
+    gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(
         training_args.gaudi_config_name,
         cache_dir=model_args.cache_dir,
         use_auth_token=True if data_args.use_auth_token else None,
@@ -775,7 +775,7 @@ def main():
     )
 
     # Initialize Trainer
-    trainer = GaudiTrainer(
+    trainer = IntelGaudiAcceleratorTrainer(
         model=model,
         gaudi_config=gaudi_config,
         data_collator=data_collator,

@@ -24,7 +24,7 @@ from trl.models.modeling_sd_base import (
     _left_broadcast,
 )
 
-from optimum.habana import GaudiConfig
+from optimum.habana import IntelGaudiAcceleratorConfig
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiStableDiffusionPipeline,
@@ -321,7 +321,7 @@ class GaudiDefaultDDPOStableDiffusionPipeline(DefaultDDPOStableDiffusionPipeline
         use_lora: bool = True,
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
-        gaudi_config: Union[str, GaudiConfig] = None,
+        gaudi_config: Union[str, IntelGaudiAcceleratorConfig] = None,
         bf16_full_eval: bool = False,
     ):
         """

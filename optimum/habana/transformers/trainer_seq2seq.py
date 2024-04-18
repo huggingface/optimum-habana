@@ -24,7 +24,7 @@ from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from optimum.utils import logging
 
 from .generation import GaudiGenerationConfig
-from .trainer import GaudiTrainer
+from .trainer import IntelGaudiAcceleratorTrainer
 
 
 if TYPE_CHECKING:
@@ -34,18 +34,18 @@ if TYPE_CHECKING:
     from transformers.trainer_callback import TrainerCallback
     from transformers.trainer_utils import EvalPrediction, PredictionOutput
 
-    from .gaudi_configuration import GaudiConfig
+    from .gaudi_configuration import IntelGaudiAcceleratorConfig
     from .training_args import GaudiTrainingArguments
 
 
 logger = logging.get_logger(__name__)
 
 
-class GaudiSeq2SeqTrainer(GaudiTrainer):
+class GaudiSeq2SeqTrainer(IntelGaudiAcceleratorTrainer):
     def __init__(
         self,
         model: Union["PreTrainedModel", torch.nn.Module] = None,
-        gaudi_config: "GaudiConfig" = None,
+        gaudi_config: "IntelGaudiAcceleratorConfig" = None,
         args: "GaudiTrainingArguments" = None,
         data_collator: Optional["DataCollator"] = None,
         train_dataset: Optional[Dataset] = None,

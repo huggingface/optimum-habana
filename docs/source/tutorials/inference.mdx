@@ -20,9 +20,9 @@ This section shows how to run inference-only workloads on Gaudi.
 For more advanced information about how to speed up inference, check out [this guide](../usage_guides/accelerate_inference).
 
 
-## With GaudiTrainer
+## With IntelGaudiAcceleratorTrainer
 
-You can find below a template to perform inference with a `GaudiTrainer` instance where we want to compute the accuracy over the given dataset:
+You can find below a template to perform inference with a `IntelGaudiAcceleratorTrainer` instance where we want to compute the accuracy over the given dataset:
 
 ```python
 import evaluate
@@ -35,7 +35,7 @@ def my_compute_metrics(p):
     return metric.compute(predictions=np.argmax(p.predictions, axis=1), references=p.label_ids)
 
 # Trainer initialization
-trainer = GaudiTrainer(
+trainer = IntelGaudiAcceleratorTrainer(
         model=my_model,
         gaudi_config=my_gaudi_config,
         args=my_args,

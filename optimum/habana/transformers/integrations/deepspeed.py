@@ -31,7 +31,7 @@ from optimum.utils import logging
 logger = logging.get_logger(__name__)
 
 
-class GaudiTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
+class IntelGaudiAcceleratorTrainerDeepSpeedConfig(HfTrainerDeepSpeedConfig):
     """
     Adapted from: https://github.com/huggingface/transformers/blob/6da93f5580e109fad5f7b523cf2b6e8a5bafb623/src/transformers/integrations/deepspeed.py#L69
 

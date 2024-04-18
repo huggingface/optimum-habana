@@ -53,7 +53,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
-from optimum.habana import GaudiConfig
+from optimum.habana import IntelGaudiAcceleratorConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionControlNetPipeline
 from optimum.habana.utils import set_seed
@@ -743,7 +743,7 @@ def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
-    gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
+    gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(args.gaudi_config_name)
 
     # Set autocast to True for --bf16
     if args.bf16:

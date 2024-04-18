@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-A subclass of `GaudiTrainer` specific to Question-Answering tasks
+A subclass of `IntelGaudiAcceleratorTrainer` specific to Question-Answering tasks
 """
 
 import math
@@ -21,10 +21,10 @@ import time
 
 from transformers.trainer_utils import PredictionOutput, speed_metrics
 
-from optimum.habana import GaudiTrainer
+from optimum.habana import IntelGaudiAcceleratorTrainer
 
 
-class QuestionAnsweringTrainer(GaudiTrainer):
+class QuestionAnsweringTrainer(IntelGaudiAcceleratorTrainer):
     def __init__(self, *args, eval_examples=None, post_process_function=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.eval_examples = eval_examples

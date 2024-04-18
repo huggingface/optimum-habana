@@ -100,7 +100,7 @@ from ..utils import (
     speed_metrics,
     to_device_dtype,
 )
-from .gaudi_configuration import GAUDI_CONFIG_NAME, GaudiConfig
+from .gaudi_configuration import GAUDI_CONFIG_NAME, IntelGaudiAcceleratorConfig
 from .integrations.deepspeed import deepspeed_init
 from .trainer_utils import convert_into_dtypes, get_dtype
 from .training_args import GaudiTrainingArguments
@@ -158,16 +158,16 @@ SCHEDULER_NAME = "scheduler.pt"
 SCALER_NAME = "scaler.pt"
 
 
-class GaudiTrainer(Trainer):
+class IntelGaudiAcceleratorTrainer(Trainer):
     """
-    GaudiTrainer is built on top of the tranformers' Trainer to enable
+    IntelGaudiAcceleratorTrainer is built on top of the tranformers' Trainer to enable
     deployment on Habana's Gaudi.
     """
 
     def __init__(
         self,
         model: Union[PreTrainedModel, torch.nn.Module] = None,
-        gaudi_config: GaudiConfig = None,
+        gaudi_config: IntelGaudiAcceleratorConfig = None,
         args: TrainingArguments = None,
         data_collator: Optional[DataCollator] = None,
         train_dataset: Optional[Dataset] = None,
@@ -211,7 +211,7 @@ class GaudiTrainer(Trainer):
         )
 
         if gaudi_config is None:
-            self.gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
+            self.gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(args.gaudi_config_name)
         else:
             self.gaudi_config = copy.deepcopy(gaudi_config)
 
@@ -2321,11 +2321,11 @@ class GaudiTrainer(Trainer):
         """
         Sets values in the deepspeed plugin based on the Trainer args
         """
-        from .integrations.deepspeed import GaudiTrainerDeepSpeedConfig
+        from .integrations.deepspeed import IntelGaudiAcceleratorTrainerDeepSpeedConfig
 
         ds_plugin = self.accelerator.state.deepspeed_plugin
 
-        ds_plugin.hf_ds_config = GaudiTrainerDeepSpeedConfig(ds_plugin.hf_ds_config.config)
+        ds_plugin.hf_ds_config = IntelGaudiAcceleratorTrainerDeepSpeedConfig(ds_plugin.hf_ds_config.config)
         ds_plugin.deepspeed_config = ds_plugin.hf_ds_config.config
         ds_plugin.hf_ds_config.trainer_config_process(self.args, auto_find_batch_size)
 

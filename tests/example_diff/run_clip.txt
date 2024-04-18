@@ -12,7 +12,7 @@
 <     TrainingArguments,
 <     set_seed,
 53a50,60
-> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+> from optimum.habana import IntelGaudiAcceleratorConfig, IntelGaudiAcceleratorTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
 > 
@@ -39,7 +39,7 @@
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
 284a296,302
->     gaudi_config = GaudiConfig.from_pretrained(
+>     gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         revision=model_args.model_revision,
@@ -96,7 +96,7 @@
 532c574,575
 <     trainer = Trainer(
 ---
->     trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
+>     trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else IntelGaudiAcceleratorTrainer
 >     trainer = trainer_cls(
 533a577
 >         gaudi_config=gaudi_config,

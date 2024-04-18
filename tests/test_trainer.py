@@ -70,7 +70,7 @@ from transformers.utils import (
 )
 from transformers.utils.hp_naming import TrialShortNamer
 
-from optimum.habana import GaudiConfig, GaudiTrainingArguments
+from optimum.habana import GaudiTrainingArguments, IntelGaudiAcceleratorConfig
 from optimum.utils import logging
 
 
@@ -82,7 +82,7 @@ if is_torch_available():
     from transformers import EarlyStoppingCallback, GPT2Config, GPT2LMHeadModel, PreTrainedModel, TrainerState
     from transformers.modeling_utils import unwrap_model
 
-    from optimum.habana import GaudiTrainer
+    from optimum.habana import IntelGaudiAcceleratorTrainer
 
     if is_safetensors_available():
         import safetensors.torch
@@ -236,7 +236,7 @@ if is_torch_available():
             for loader in self.loaders:
                 yield from loader
 
-    class CustomDataloaderTrainer(GaudiTrainer):
+    class CustomDataloaderTrainer(IntelGaudiAcceleratorTrainer):
         def get_train_dataloader(self):
             dataloaders = [super().get_train_dataloader(), super().get_train_dataloader()]
             return MultiLoader(dataloaders)
@@ -363,12 +363,12 @@ if is_torch_available():
             h = nn.functional.relu(self.linear2(x))
             return self.ln2(x + h + self.bias)
 
-    def get_gaudi_config(gaudi_config_name_or_path: Optional[Union[str, Path]] = None) -> GaudiConfig:
+    def get_gaudi_config(gaudi_config_name_or_path: Optional[Union[str, Path]] = None) -> IntelGaudiAcceleratorConfig:
         if gaudi_config_name_or_path is None:
             gaudi_config_name_or_path = Path(__file__).parent.resolve() / Path(
                 "configs/gaudi_config_trainer_test.json"
             )
-        return GaudiConfig.from_pretrained(gaudi_config_name_or_path)
+        return IntelGaudiAcceleratorConfig.from_pretrained(gaudi_config_name_or_path)
 
     def get_regression_trainer(
         a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, keep_report_to=False, **kwargs
@@ -406,7 +406,7 @@ if is_torch_available():
             output_dir, use_habana=True, use_lazy_mode=True, a=a, b=b, keep_report_to=keep_report_to, **kwargs
         )
 
-        return GaudiTrainer(
+        return IntelGaudiAcceleratorTrainer(
             model,
             gaudi_config,
             args,
@@ -420,7 +420,7 @@ if is_torch_available():
         )
 
 
-class GaudiTrainerIntegrationCommon:
+class IntelGaudiAcceleratorTrainerIntegrationCommon:
     def check_saved_checkpoints(self, output_dir, freq, total, is_pretrained=True, safe_weights=True):
         weights_file = WEIGHTS_NAME if not safe_weights else SAFE_WEIGHTS_NAME
         file_list = [weights_file, "training_args.bin", "optimizer.pt", "scheduler.pt", "trainer_state.json"]
@@ -517,7 +517,7 @@ class GaudiTrainerIntegrationCommon:
 @require_torch
 @require_sentencepiece
 @require_tokenizers
-class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCommon):
+class IntelGaudiAcceleratorTrainerIntegrationPrerunTest(TestCasePlus, IntelGaudiAcceleratorTrainerIntegrationCommon):
     """
     Only tests that want to tap into the auto-pre-run 2 trainings:
     - self.default_trained_model
@@ -572,14 +572,14 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         # Base training. Should have the same results as test_reproducible_training
         model = RegressionModel()
         args = GaudiTrainingArguments("./regression", learning_rate=0.1, use_habana=True, use_lazy_mode=True)
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(model, gaudi_config, args, train_dataset=train_dataset)
         trainer.train()
         self.check_trained_model(trainer.model)
 
         # Can return tensors.
         train_dataset.set_format(type="torch", dtype=torch.float32)
         model = RegressionModel()
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(model, gaudi_config, args, train_dataset=train_dataset)
         trainer.train()
         self.check_trained_model(trainer.model)
 
@@ -587,7 +587,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         z = np.random.normal(size=(64,)).astype(np.float32)
         train_dataset = datasets.Dataset.from_dict({"input_x": x, "label": y, "extra": z})
         model = RegressionModel()
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(model, gaudi_config, args, train_dataset=train_dataset)
         trainer.train()
         self.check_trained_model(trainer.model)
 
@@ -595,7 +595,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         train_dataset = RegressionDataset()
         gaudi_config = get_gaudi_config()
         args = GaudiTrainingArguments("./regression", learning_rate=0.1, use_habana=True, use_lazy_mode=True)
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             gaudi_config=gaudi_config, args=args, train_dataset=train_dataset, model_init=lambda: RegressionModel()
         )
         trainer.train()
@@ -669,7 +669,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         model = RegressionModel()
         optimizer = torch.optim.SGD(model.parameters(), lr=1.0)
         lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 1.0)
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             model, gaudi_config, args, train_dataset=train_dataset, optimizers=(optimizer, lr_scheduler)
         )
         trainer.train()
@@ -695,7 +695,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             use_lazy_mode=True,
         )
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(model, gaudi_config, args, train_dataset=train_dataset)
         trainer.create_optimizer_and_scheduler(num_training_steps=num_steps)
 
         # Checking that the scheduler was created
@@ -725,7 +725,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         model = RegressionModel()
         optimizer = torch.optim.SGD(model.parameters(), lr=1.0)
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=5, cooldown=2)
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             model,
             gaudi_config,
             args,
@@ -743,7 +743,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
     def test_reduce_lr_on_plateau(self):
         # test the ReduceLROnPlateau scheduler
 
-        class TrainerWithLRLogs(GaudiTrainer):
+        class TrainerWithLRLogs(IntelGaudiAcceleratorTrainer):
             def log(self, logs):
                 # the LR is computed after metrics and does not exist for the first epoch
                 if hasattr(self.lr_scheduler, "_last_lr"):
@@ -802,7 +802,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         model = RegressionModel().to("hpu")
         optimizer = Adafactor(model.parameters(), scale_parameter=True, relative_step=True, warmup_init=True, lr=None)
         lr_scheduler = AdafactorSchedule(optimizer)
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             model, gaudi_config, args, train_dataset=train_dataset, optimizers=(optimizer, lr_scheduler)
         )
         trainer.train()
@@ -823,7 +823,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
 @require_torch
 @require_sentencepiece
 @require_tokenizers
-class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
+class IntelGaudiAcceleratorTrainerIntegrationTest(TestCasePlus, IntelGaudiAcceleratorTrainerIntegrationCommon):
     def setUp(self):
         super().setUp()
         args = GaudiTrainingArguments("..", use_habana=True, use_lazy_mode=True)
@@ -837,7 +837,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         model = RegressionModel()
         gaudi_config = get_gaudi_config()
         args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=False)
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(
+            model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
+        )
         trainer.train()
         _ = trainer.evaluate()
         _ = trainer.predict(eval_dataset)
@@ -856,7 +858,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             disable_tensor_cache_hpu_graphs=True,
             max_hpu_graphs=1,
         )
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(
+            model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
+        )
         trainer.train()
         _ = trainer.evaluate()
         _ = trainer.predict(eval_dataset)
@@ -867,7 +871,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         model = RegressionDictModel()
         gaudi_config = get_gaudi_config()
         args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True)
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(
+            model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
+        )
         trainer.train()
         _ = trainer.evaluate()
         _ = trainer.predict(eval_dataset)
@@ -879,7 +885,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         eval_dataset = RepeatDataset(x)
         args = GaudiTrainingArguments("./test", use_habana=True, use_lazy_mode=True)
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, eval_dataset=eval_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(tiny_gpt2, gaudi_config, args, eval_dataset=eval_dataset)
         # By default the past_key_values are removed
         result = trainer.predict(eval_dataset)
         self.assertTrue(isinstance(result.predictions, np.ndarray))
@@ -926,7 +932,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     #         "./test", learning_rate=1e-9, logging_steps=5, logging_nan_inf_filter=False, neftune_noise_alpha=0.4, use_habana=True, use_lazy_mode=True,
     #     )
     #     gaudi_config = get_gaudi_config()
-    #     trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+    #     trainer = IntelGaudiAcceleratorTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
 
     #     trainer.model = trainer._activate_neftune(trainer.model)
 
@@ -943,7 +949,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     #     args = GaudiTrainingArguments(
     #         "./test", learning_rate=1e-9, logging_steps=5, logging_nan_inf_filter=False, neftune_noise_alpha=0.4, use_habana=True, use_lazy_mode=True,
     #     )
-    #     trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+    #     trainer = IntelGaudiAcceleratorTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
 
     #     # Check that it trains without errors
     #     trainer.train()
@@ -966,7 +972,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         x = torch.randint(0, 100, (128,))
         train_dataset = RepeatDataset(x)
 
-        # GaudiTrainer without inf/nan filter
+        # IntelGaudiAcceleratorTrainer without inf/nan filter
         gaudi_config = get_gaudi_config()
         args = GaudiTrainingArguments(
             "./test",
@@ -976,11 +982,11 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             use_habana=True,
             use_lazy_mode=True,
         )
-        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
         trainer.train()
         log_history_no_filter = trainer.state.log_history
 
-        # GaudiTrainer with inf/nan filter
+        # IntelGaudiAcceleratorTrainer with inf/nan filter
         args = GaudiTrainingArguments(
             "./test",
             learning_rate=1e9,
@@ -989,7 +995,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             use_habana=True,
             use_lazy_mode=True,
         )
-        trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
         trainer.train()
         log_history_filter = trainer.state.log_history
 
@@ -1055,7 +1061,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             use_lazy_mode=True,
         )
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             model, gaudi_config, args, train_dataset=RegressionDataset(), eval_dataset=RegressionDataset()
         )
         # Check the Trainer was fooled
@@ -1144,7 +1150,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True)
         gaudi_config = get_gaudi_config()
         gaudi_config.use_dynamic_shapes = True
-        trainer = GaudiTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
 
         # Check evaluation can run to completion
         _ = trainer.evaluate()
@@ -1161,7 +1167,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         # Same tests with eval accumulation
         args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True, eval_accumulation_steps=2)
-        trainer = GaudiTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
 
         # Check evaluation can run to completion
         _ = trainer.evaluate()
@@ -1185,7 +1191,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
         )
         model = RegressionModel()
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             model,
             gaudi_config,
             args,
@@ -1201,7 +1207,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
         )
         model = RegressionModel()
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             model,
             gaudi_config,
             args,
@@ -1410,13 +1416,17 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         gaudi_config = get_gaudi_config()
         # Disable FusedClipNorm because it makes the test fail
         gaudi_config.use_fused_clip_norm = False
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(
+            model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
+        )
 
         trainer.train()
         (a, b) = trainer.model.a.item(), trainer.model.b.item()
 
         model = RegressionRandomPreTrainedModel(config)
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(
+            model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
+        )
         trainer.train(resume_from_checkpoint=os.path.join(tmp_dir, "checkpoint-15"))
         (a1, b1) = trainer.model.a.item(), trainer.model.b.item()
 
@@ -1448,7 +1458,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             use_lazy_mode=True,
         )
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockCudaOOMCallback()]
         )
         trainer.train()
@@ -1456,7 +1466,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertEqual(trainer._train_batch_size, 8)
 
         # We can then make a new Trainer
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(model, gaudi_config, args, train_dataset=train_dataset)
         # Check we are at 16 to start
         self.assertEqual(trainer._train_batch_size, 16 * max(trainer.args.n_gpu, 1))
         trainer.train(resume_from_checkpoint=True)
@@ -1476,7 +1486,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             tmp_dir, save_steps=5, learning_rate=0.1, use_habana=True, use_lazy_mode=True
         )
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(
+            model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset
+        )
 
         trainer.train(resume_from_checkpoint=False)
 
@@ -1709,7 +1721,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             output_dir="./examples", max_steps=4, use_habana=True, use_lazy_mode=True
         )
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, train_dataset=train_dataset)
+        trainer = IntelGaudiAcceleratorTrainer(
+            model=model, gaudi_config=gaudi_config, args=args, train_dataset=train_dataset
+        )
         trainer.train()
         self.assertEqual(trainer.state.global_step, 4)
 
@@ -1725,7 +1739,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         args = RegressionGaudiTrainingArguments(output_dir="./examples", use_habana=True, use_lazy_mode=True)
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             model=model,
             gaudi_config=gaudi_config,
             args=args,
@@ -1759,7 +1773,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         args = RegressionGaudiTrainingArguments(output_dir="./examples", use_habana=True, use_lazy_mode=True)
         gaudi_config = get_gaudi_config()
-        trainer = GaudiTrainer(
+        trainer = IntelGaudiAcceleratorTrainer(
             model=model,
             gaudi_config=gaudi_config,
             args=args,
@@ -1909,7 +1923,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         model = nn.Sequential(TstLayer(128), nn.ModuleList([TstLayer(128), TstLayer(128)]))
         gaudi_config = get_gaudi_config()
         args = GaudiTrainingArguments(output_dir="./test", use_habana=True, use_lazy_mode=True)
-        trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args)
+        trainer = IntelGaudiAcceleratorTrainer(model=model, gaudi_config=gaudi_config, args=args)
         trainer.create_optimizer_and_scheduler(10)
         wd_names = ['0.linear1.weight', '0.linear2.weight', '1.0.linear1.weight', '1.0.linear2.weight', '1.1.linear1.weight', '1.1.linear2.weight']  # fmt: skip
         wd_params = [p for n, p in model.named_parameters() if n in wd_names]
@@ -1927,7 +1941,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             # Leaves one option as something *not* basic
             gaudi_config = get_gaudi_config()
             args = RegressionGaudiTrainingArguments(output_dir=tmp_dir, use_habana=True)
-            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            trainer = IntelGaudiAcceleratorTrainer(
+                model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset
+            )
             self.assertEqual(trainer.accelerator.split_batches, False)
             self.assertEqual(trainer.accelerator.dispatch_batches, None)
             self.assertEqual(trainer.accelerator.even_batches, True)
@@ -1953,7 +1969,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 },
                 use_habana=True,
             )
-            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            trainer = IntelGaudiAcceleratorTrainer(
+                model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset
+            )
             self.assertEqual(trainer.accelerator.split_batches, True)
             self.assertEqual(trainer.accelerator.dispatch_batches, True)
             self.assertEqual(trainer.accelerator.even_batches, False)
@@ -1979,7 +1997,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             # Leaves all options as something *not* basic
             gaudi_config = get_gaudi_config()
             args = RegressionGaudiTrainingArguments(output_dir=tmp_dir, accelerator_config=path_file, use_habana=True)
-            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            trainer = IntelGaudiAcceleratorTrainer(
+                model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset
+            )
             self.assertEqual(trainer.accelerator.split_batches, True)
             self.assertEqual(trainer.accelerator.dispatch_batches, True)
             self.assertEqual(trainer.accelerator.even_batches, False)
@@ -1999,7 +2019,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             args = RegressionGaudiTrainingArguments(
                 output_dir=tmp_dir, accelerator_config=accelerator_config, use_habana=True
             )
-            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            trainer = IntelGaudiAcceleratorTrainer(
+                model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset
+            )
             self.assertEqual(trainer.accelerator.split_batches, True)
             self.assertEqual(trainer.accelerator.dispatch_batches, True)
             self.assertEqual(trainer.accelerator.even_batches, False)
@@ -2022,7 +2044,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 },
                 use_habana=True,
             )
-            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            trainer = IntelGaudiAcceleratorTrainer(
+                model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset
+            )
             self.assertEqual(trainer.accelerator.split_batches, True)
             self.assertEqual(trainer.accelerator.dispatch_batches, None)
             self.assertEqual(trainer.accelerator.even_batches, True)
@@ -2049,7 +2073,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                     use_habana=True,
                 )
                 self.assertIn("dispatch_batches", str(cm.warnings[0].message))
-            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            trainer = IntelGaudiAcceleratorTrainer(
+                model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset
+            )
             self.assertEqual(trainer.accelerator.dispatch_batches, False)
             self.assertEqual(trainer.accelerator.split_batches, True)
             with self.assertWarns(FutureWarning) as cm:
@@ -2062,7 +2088,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                     use_habana=True,
                 )
                 self.assertIn("split_batches", str(cm.warnings[0].message))
-            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            trainer = IntelGaudiAcceleratorTrainer(
+                model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset
+            )
             self.assertEqual(trainer.accelerator.split_batches, True)
             self.assertEqual(trainer.accelerator.even_batches, False)
             self.assertEqual(trainer.accelerator.dispatch_batches, None)
@@ -2080,7 +2108,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 config = RegressionModelConfig(a=1.5, b=2.5)
                 model = RegressionPreTrainedModel(config)
                 eval_dataset = SampleIterableDataset()
-                trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+                trainer = IntelGaudiAcceleratorTrainer(
+                    model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset
+                )
                 self.assertEqual(trainer.accelerator.split_batches, True)
 
     def test_profiling(self):
@@ -2091,7 +2121,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
 @require_torch
 @is_staging_test
-class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
+class IntelGaudiAcceleratorTrainerIntegrationWithHubTester(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._token = TOKEN
@@ -2264,7 +2294,7 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
 
 @require_torch
 @require_optuna
-class GaudiTrainerHyperParameterOptunaIntegrationTest(unittest.TestCase):
+class IntelGaudiAcceleratorTrainerHyperParameterOptunaIntegrationTest(unittest.TestCase):
     def setUp(self):
         args = GaudiTrainingArguments("..", use_habana=True, use_lazy_mode=True)
         self.n_epochs = args.num_train_epochs
@@ -2367,7 +2397,7 @@ class TrainerHyperParameterMultiObjectOptunaIntegrationTest(unittest.TestCase):
 # TODO: crashes because `TypeError: cannot pickle 'PyCapsule' object`
 # @require_torch
 # @require_ray
-# class GaudiTrainerHyperParameterRayIntegrationTest(unittest.TestCase):
+# class IntelGaudiAcceleratorTrainerHyperParameterRayIntegrationTest(unittest.TestCase):
 #     def setUp(self):
 #         args = GaudiTrainingArguments("..", use_habana=True, use_lazy_mode=True)
 #         self.n_epochs = args.num_train_epochs
@@ -2432,7 +2462,7 @@ class TrainerHyperParameterMultiObjectOptunaIntegrationTest(unittest.TestCase):
 # TODO: enable this test when a SIGOPT_API_TOKEN is added to Github Actions secrets
 # @require_torch
 # @require_sigopt
-# class GaudiTrainerHyperParameterSigOptIntegrationTest(unittest.TestCase):
+# class IntelGaudiAcceleratorTrainerHyperParameterSigOptIntegrationTest(unittest.TestCase):
 #     def setUp(self):
 #         args = GaudiTrainingArguments("..", use_habana=True, use_lazy_mode=True)
 #         self.n_epochs = args.num_train_epochs
@@ -2518,10 +2548,10 @@ if is_torch_available():
 
 
 @require_torch
-class GaudiTrainerOptimizerChoiceTest(unittest.TestCase):
+class IntelGaudiAcceleratorTrainerOptimizerChoiceTest(unittest.TestCase):
     def check_optim_and_kwargs(self, optim: OptimizerNames, mandatory_kwargs, expected_cls):
         args = GaudiTrainingArguments(optim=optim, output_dir="None", use_habana=True, use_lazy_mode=True)
-        actual_cls, optim_kwargs = GaudiTrainer.get_optimizer_cls_and_kwargs(args)
+        actual_cls, optim_kwargs = IntelGaudiAcceleratorTrainer.get_optimizer_cls_and_kwargs(args)
         self.assertEqual(expected_cls, actual_cls)
         self.assertIsNotNone(optim_kwargs)
 
@@ -2543,7 +2573,7 @@ class GaudiTrainerOptimizerChoiceTest(unittest.TestCase):
 # TODO: solve the Git error returned by this test
 # @require_torch
 # @require_wandb
-# class GaudiTrainerHyperParameterWandbIntegrationTest(unittest.TestCase):
+# class IntelGaudiAcceleratorTrainerHyperParameterWandbIntegrationTest(unittest.TestCase):
 #     def setUp(self):
 #         args = GaudiTrainingArguments("..", use_habana=True, use_lazy_mode=True)
 #         self.n_epochs = args.num_train_epochs
