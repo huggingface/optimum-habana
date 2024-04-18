@@ -204,15 +204,12 @@ class GaudiMixtralAttentionLongSequence:
             mask = F.pad(mask, (0, 0, 0, q_padding), "constant", -10000.0)
         attn_output = torch.zeros_like(q)
 
-        row_tiles = zip(
-            q.split(q_block_size, dim=-2),
-            attn_output.split(q_block_size, dim=-2),
-            mask.split(q_block_size, dim=-2),
-        )
-
-        for row_q, row_o, row_mask in row_tiles:
-            with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
-                row_o.fill_(FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None))
+        for i in range(q_tiles):
+            s, e = i * q_block_size, (i + 1) * q_block_size
+            row_q = q[:, :, s:e, :]
+            row_mask = mask[:, :, s:e, :]
+            row_o = attn_output[:, :, s:e, :]
+            row_o.fill_(FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None))
 
         if q_padding != 0:
             attn_output = attn_output[:, :, :-q_padding, :]
@@ -488,7 +485,6 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
 
-        htcore.mark_step()
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -507,14 +503,12 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
             cache_idx=cache_idx,
         )
         hidden_states = residual + hidden_states
-        htcore.mark_step()
 
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states, router_logits = self.block_sparse_moe(hidden_states)
         hidden_states = residual + hidden_states
-        htcore.mark_step()
 
         outputs = (hidden_states,)
 
@@ -696,6 +690,8 @@ class GaudiMixtralModel(MixtralModel):
 
             if output_router_logits:
                 all_router_logits += (layer_outputs[-1],)
+
+            htcore.mark_step()
 
         hidden_states = self.norm(hidden_states)
 
