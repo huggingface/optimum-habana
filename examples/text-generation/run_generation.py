@@ -379,9 +379,11 @@ def main():
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 iteration_times=iteration_times,
             ).cpu()
-            prefill_time=iteration_times[0]
-            decode_time=sum(iteration_times) - iteration_times[0]
-            logger.info(f"encode time = {encode_duration*1000}ms, prefill time = {prefill_time*1000}ms, decode time = {decode_time*1000}ms")
+            prefill_time = iteration_times[0]
+            decode_time = sum(iteration_times) - iteration_times[0]
+            logger.info(
+                f"encode time = {encode_duration*1000}ms, prefill time = {prefill_time*1000}ms, decode time = {decode_time*1000}ms"
+            )
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile

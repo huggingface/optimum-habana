@@ -49,7 +49,7 @@ from transformers.utils import ModelOutput
 
 from optimum.utils import logging
 
-from ...utils import HabanaProfile, HabanaGenerationtime
+from ...utils import HabanaGenerationtime, HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .configuration_utils import GaudiGenerationConfig
 
