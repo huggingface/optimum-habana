@@ -14,18 +14,18 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 1, True, 130.0472971205316),
-            ("gpt2-xl", 1, True, 281.8734689674413),
-            ("EleutherAI/gpt-j-6b", 1, True, 160.5823842101192),
-            ("EleutherAI/gpt-neox-20b", 1, True, 50.67672679310354),
+            ("bigscience/bloomz-7b1", 1, False, 130.0472971205316),
+            ("gpt2-xl", 1, False, 281.8734689674413),
+            ("EleutherAI/gpt-j-6b", 1, False, 160.5823842101192),
+            ("EleutherAI/gpt-neox-20b", 1, False, 50.67672679310354),
             ("meta-llama/Llama-2-7b-hf", 1, True, 141.25776956002076),
             ("tiiuae/falcon-40b", 1, True, 25.202450111088346),
-            ("bigcode/starcoder", 1, True, 65.58632640700114),
-            ("Salesforce/codegen2-1B", 1, True, 446.4029486883532),
-            ("mosaicml/mpt-30b", 1, True, 36.06464336116623),
+            ("bigcode/starcoder", 1, False, 65.58632640700114),
+            ("Salesforce/codegen2-1B", 1, False, 446.4029486883532),
+            ("mosaicml/mpt-30b", 1, False, 36.06464336116623),
             ("mistralai/Mistral-7B-v0.1", 1, True, 130.2172236767782),
-            ("mistralai/Mixtral-8x7B-v0.1", 1, True, 23.7931001677926),
-            ("microsoft/phi-2", 1, 224.72307766211117),
+            ("mistralai/Mixtral-8x7B-v0.1", 1, False, 23.7931001677926),
+            ("microsoft/phi-2", 1, False, 224.72307766211117),
             ("meta-llama/Meta-Llama-3-8B", 1, True, 129),
             ("meta-llama/Llama-2-7b-hf", 512, True, 12808),
             ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
@@ -50,18 +50,18 @@ else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 41.7555095197846),
-            ("gpt2-xl", 142.11481820425706),
+            ("bigscience/bloomz-7b1", 1, False, 41.7555095197846),
+            ("gpt2-xl", 1, False, 142.11481820425706),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 50.79545107991805),
-            ("meta-llama/Llama-2-7b-hf", 44.39616259946937),
-            ("tiiuae/falcon-7b", 44.82870145718665),
-            ("bigcode/starcoder", 15.945023767901013),
-            ("Salesforce/codegen2-1B", 155.32071248826423),
-            ("mosaicml/mpt-7b", 45.45168927038262),
-            ("mistralai/Mistral-7B-v0.1", 41.21906841459711),
-            ("microsoft/phi-2", 92.53083167241344),
+            ("EleutherAI/gpt-j-6b", 1, False, 50.79545107991805),
+            ("meta-llama/Llama-2-7b-hf", 1, True, 44.39616259946937),
+            ("tiiuae/falcon-7b", 1, True, 44.82870145718665),
+            ("bigcode/starcoder", 1, False, 15.945023767901013),
+            ("Salesforce/codegen2-1B", 1, False, 155.32071248826423),
+            ("mosaicml/mpt-7b", 1, False, 45.45168927038262),
+            ("mistralai/Mistral-7B-v0.1", 1, True, 41.21906841459711),
+            ("microsoft/phi-2", 1, False, 92.53083167241344),
         ],
         "fp8": [],
         "deepspeed": [
@@ -77,7 +77,7 @@ def _test_text_generation(
     baseline: float,
     token: str,
     batch_size: int = 1,
-    reuse_cache: bool = True,
+    reuse_cache: bool = False,
     deepspeed: bool = False,
     world_size: int = 8,
     torch_compile: bool = False,
@@ -105,7 +105,7 @@ def _test_text_generation(
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
-    if reuse_cache:
+    if reuse_cache or torch_compile:
         command += ["--reuse_cache"]
 
     if torch_compile:
@@ -164,7 +164,7 @@ def _test_text_generation(
 
 
 @pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16"])
-def test_text_generation_bf16(model_name: str, baseline: float, token: str, batch_size: int, reuse_cache: bool):
+def test_text_generation_bf16(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache)
 
 
