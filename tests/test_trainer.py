@@ -1678,6 +1678,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
     @require_safetensors
     def test_load_best_model_from_safetensors(self):
         total = int(self.n_epochs * 64 / self.batch_size)
+        import pdb;pdb.set_trace()
         for save_safetensors, pretrained in product([False, True], [False, True]):
             with tempfile.TemporaryDirectory() as tmpdir:
                 trainer = get_regression_trainer(

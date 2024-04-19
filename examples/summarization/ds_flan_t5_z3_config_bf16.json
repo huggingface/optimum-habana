@@ -27,6 +27,7 @@
     "contiguous_gradients": true,
     "sub_group_size": 1e9,
     "reduce_bucket_size": 1666777,
+    "reduce_scatter" : false,
     "stage3_prefetch_bucket_size": "auto",
     "stage3_param_persistence_threshold": "auto",
     "stage3_max_live_parameters": 1e9,
