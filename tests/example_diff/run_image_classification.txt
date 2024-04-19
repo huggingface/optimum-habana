@@ -57,7 +57,3 @@
 >     trainer = GaudiTrainer(
 409a427
 >         gaudi_config=gaudi_config,
-414c432
-<         image_processor=image_processor,
----
->         tokenizer=image_processor,
