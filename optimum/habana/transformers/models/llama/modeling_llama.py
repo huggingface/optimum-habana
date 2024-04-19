@@ -173,7 +173,8 @@ class KVCache(torch.nn.Module):
             # Initialize
             prev[:, :, :inp_seq_len, :].copy_(cur)
             return orig_cur
-        if idx is not None and prev.shape[-2] >= idx:
+        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
+        if idx is not None:
             prev.index_copy_(dim, idx - 1, cur)
             return prev
         else:
@@ -364,15 +365,11 @@ class GaudiLlamaAttention(LlamaAttention):
                     kv_seq_len += past_key_value[0].shape[-2]
             else:
                 if reuse_cache and not isinstance(past_key_value[0], torch.Tensor):
-                    kv_seq_len = (
-                        past_key_value[0][-2] + kv_seq_len
-                        if past_key_value[0][-2] < token_idx
-                        else past_key_value[0][-2]
-                    )
+                    kv_seq_len = past_key_value[0][-2]
                 else:
                     kv_seq_len = (
                         past_key_value[0].shape[-2] + kv_seq_len
-                        if past_key_value[0].shape[-2] < token_idx
+                        if past_key_value[0].shape[-2] < token_idx.cpu()
                         else past_key_value[0].shape[-2]
                     )
 
@@ -395,9 +392,16 @@ class GaudiLlamaAttention(LlamaAttention):
                         key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
                     past_key_value = (past_key, past_value)
-                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
-                if token_idx is None or past_key_value[0].shape[-2] < token_idx:
+                if token_idx is not None and token_idx.cpu() > past_key_value[0].shape[2]:
+                    # prefix tunining case. attach past_key_value to generate first token.
+                    key_states = torch.cat((past_key_value[0], key_states), -2)
+                    value_states = torch.cat((past_key_value[1], value_states), -2)
+                    past_key_value = (key_states, value_states)
+                else:
+                    key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                    value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+
+                if token_idx is None:
                     past_key_value = (key_states, value_states)
 
             if cache_idx is not None and q_len == 1:
