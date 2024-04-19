@@ -707,12 +707,17 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             # 8. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-            for j in self.progress_bar(range(num_inference_steps)):
+            # FIXME: use progress bar
+            j = 0
+            with self.progress_bar(total=num_inference_steps) as progress_bar:
+            # for j in self.progress_bar(range(num_inference_steps)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
                 if j == throughput_warmup_steps:
                     t1 = time.time()
 
+                j += 1
+                
                 for i, t in enumerate(timesteps):
                     t = timesteps[0]  # it will help avoid graph recompilation
                     # expand the latents if we are doing classifier free guidance
@@ -798,6 +803,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
                         if callback is not None and i % callback_steps == 0:
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, t, latents)
