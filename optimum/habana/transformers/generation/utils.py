@@ -567,8 +567,8 @@ class GaudiGenerationMixin(GenerationMixin):
             not generation_config.bucket_internal
             and generation_config.bucket_size > 0
             and (
-                self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
-                or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
+                generation_config.get_generation_mode(assistant_model) == GenerationMode.GREEDY_SEARCH
+                or generation_config.get_generation_mode(assistant_model) == GenerationMode.BEAM_SEARCH
             )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
@@ -741,7 +741,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
         # 7. determine generation mode
-        generation_mode = self._get_generation_mode(generation_config, assistant_model)
+        generation_mode = generation_config.get_generation_mode(assistant_model)
         if generation_config.bucket_size > 0:
             assert generation_config.static_shapes, "bucket_size > 0 can be set only when static_shapes is set"
         # if generation_config.bucket_size <= 0, padding is handled by the generating fn (like greedy_search)
