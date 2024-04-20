@@ -194,7 +194,7 @@ class ExampleTestMeta(type):
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
-        elif model_name in ["gpt2-xl", "codellama/CodeLlama-13b-Instruct-hf"] and deepspeed:
+        elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
             return True
         elif "gpt-neox" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
@@ -202,6 +202,9 @@ class ExampleTestMeta(type):
             return True
         elif "flan-t5" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
             # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "CodeLlama" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+            # CodeLlama is tested only on Gaudi2 and with DeepSpeed
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
