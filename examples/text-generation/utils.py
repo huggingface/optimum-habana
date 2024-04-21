@@ -290,14 +290,15 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = PeftModel.from_pretrained(model, args.peft_model, torch_dtype=model_dtype, **model_kwargs)
     if hasattr(model, "merge_and_unload"):
-        return model.merge_and_unload()
+        model = model.merge_and_unload()
+        if model_dtype == torch.bfloat16:
+            model = model.to(torch.bfloat16)
+        return model
     else:
         from optimum.habana.peft.peft_model import gaudi_generate, gaudi_prepare_inputs_for_generation
-
         model.__class__.generate = gaudi_generate
         model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
         return model
-
 
 def setup_tokenizer(args, model):
     tokenizer_kwargs = {
