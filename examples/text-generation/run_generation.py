@@ -268,6 +268,9 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config == "" and args.disk_offload:
+        raise parser.error("--bf16 is not supported with --disk_offload")
+
     return args
 
 
