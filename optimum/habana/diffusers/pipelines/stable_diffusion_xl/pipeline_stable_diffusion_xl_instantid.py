@@ -1,4 +1,5 @@
 import time
+from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
@@ -17,12 +18,15 @@ from diffusers.utils import (
 )
 from diffusers.utils.torch_utils import is_compiled_module
 
-from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiDiffusionPipeline
 from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipelineOutput
 
-
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection, CLIPTextModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+    CLIPTextModelWithProjection
+)
 
 from diffusers import StableDiffusionXLControlNetPipeline
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
@@ -36,8 +40,11 @@ if is_torch2_available():
 else:
     from ip_adapter.attention_processor import IPAttnProcessor, AttnProcessor
 
-from optimum.habana.utils import HabanaProfile, speed_metrics
 from optimum.utils import logging
+from ....transformers.gaudi_configuration import GaudiConfig
+from ....utils import HabanaProfile, speed_metrics
+from ..pipeline_utils import GaudiDiffusionPipeline
+from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
 
 logger = logging.get_logger(__name__)
@@ -293,10 +300,12 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
+        timesteps: List[int] = None,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
+        batch_size: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -355,6 +364,10 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
@@ -366,6 +379,8 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                 and `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
+            batch_size (`int`, *optional*, defaults to 1):
+                The number of images in a batch.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
                 to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
@@ -522,11 +537,12 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
 
             # 2. Define call parameters
             if prompt is not None and isinstance(prompt, str):
-                batch_size = 1
+                num_prompts = 1
             elif prompt is not None and isinstance(prompt, list):
-                batch_size = len(prompt)
+                num_prompts = len(prompt)
             else:
-                batch_size = prompt_embeds.shape[0]
+                num_prompts = prompt_embeds.shape[0]
+            num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
 
             device = self._execution_device
 
@@ -568,7 +584,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             # 3.2 Encode image prompt
             prompt_image_emb = self._encode_prompt_image_emb(image_embeds, 
                                                             device,
-                                                            num_images_per_prompt,
+                                                            batch_size * num_images_per_prompt,
                                                             self.unet.dtype,
                                                             self.do_classifier_free_guidance)
             
@@ -578,7 +594,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                     image=image,
                     width=width,
                     height=height,
-                    batch_size=batch_size * num_images_per_prompt,
+                    batch_size=batch_size,
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
@@ -589,19 +605,23 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             elif isinstance(controlnet, MultiControlNetModel):
                 images = []
 
+                # Nested lists as ControlNet condition
+                if isinstance(image[0], list):
+                    # Transpose the nested image list
+                    image = [list(t) for t in zip(*image)]
+
                 for image_ in image:
                     image_ = self.prepare_image(
                         image=image_,
                         width=width,
                         height=height,
-                        batch_size=batch_size * num_images_per_prompt,
+                        batch_size=batch_size,
                         num_images_per_prompt=num_images_per_prompt,
                         device=device,
                         dtype=controlnet.dtype,
                         do_classifier_free_guidance=self.do_classifier_free_guidance,
                         guess_mode=guess_mode,
                     )
-
                     images.append(image_)
 
                 image = images
@@ -610,14 +630,13 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                 assert False
 
             # 5. Prepare timesteps
-            self.scheduler.set_timesteps(num_inference_steps, device=device)
-            timesteps = self.scheduler.timesteps
+            timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
             self._num_timesteps = len(timesteps)
 
             # 6. Prepare latent variables
             num_channels_latents = self.unet.config.in_channels
             latents = self.prepare_latents(
-                batch_size * num_images_per_prompt,
+                num_prompts * num_images_per_prompt,
                 num_channels_latents,
                 height,
                 width,
@@ -697,6 +716,8 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             t0 = time.time()
             t1 = t0
 
+            self._num_timesteps = len(timesteps)
+
             hb_profiler = HabanaProfile(
                 warmup=profiling_warmup_steps,
                 active=profiling_steps,
@@ -706,22 +727,22 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
 
             # 8. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
-            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-            # FIXME: use progress bar
-            j = 0
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
-            # for j in self.progress_bar(range(num_inference_steps)):
+            for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
                 if j == throughput_warmup_steps:
                     t1 = time.time()
 
-                j += 1
-                
-                for i, t in enumerate(timesteps):
+                num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+
+                for i in range(num_inference_steps):
                     t = timesteps[0]  # it will help avoid graph recompilation
+                    timesteps = torch.roll(timesteps, shifts=-1, dims=0)
+
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                    latent_model_input = (
+                        torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                    )
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
@@ -781,7 +802,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                     # perform guidance
                     if self.do_classifier_free_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                        noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                     # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(
@@ -803,7 +824,6 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                        progress_bar.update()
                         if callback is not None and i % callback_steps == 0:
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, t, latents)
@@ -855,10 +875,10 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
-                num_samples=num_inference_steps * batch_size
+                num_samples=num_batches * batch_size
                 if t1 == t0
-                else (num_inference_steps - throughput_warmup_steps) * batch_size,
-                num_steps=num_inference_steps,
+                else (num_batches - throughput_warmup_steps) * batch_size,
+                num_steps=num_batches,
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")
