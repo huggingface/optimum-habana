@@ -42,12 +42,16 @@ from .models import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    GaudiMistralAttention,
+    GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
+    GaudiMistralModel,
     GaudiMixtralForCausalLM,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiPhiForCausalLM,
     GaudiQwen2ForCausalLM,
     GaudiQwen2DecoderLayer,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -100,9 +104,7 @@ from .models import (
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
-    gaudi_mistral_attention_forward,
-    gaudi_mistral_decoder_layer_forward,
-    gaudi_mistral_model_forward,
+    gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_attention_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_decoder_layer_forward,
@@ -114,6 +116,9 @@ from .models import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
     gaudi_qwen2_model_forward,
     gaudi_qwen2_attention_forward,
     gaudi_rot_matmul,
@@ -320,9 +325,16 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for mistral on Gaudi
     transformers.models.mistral.modeling_mistral.MistralForCausalLM = GaudiMistralForCausalLM
-    transformers.models.mistral.modeling_mistral.MistralAttention.forward = gaudi_mistral_attention_forward
-    transformers.models.mistral.modeling_mistral.MistralDecoderLayer.forward = gaudi_mistral_decoder_layer_forward
-    transformers.models.mistral.modeling_mistral.MistralModel.forward = gaudi_mistral_model_forward
+    transformers.models.mistral.modeling_mistral.MistralAttention = GaudiMistralAttention
+    transformers.models.mistral.modeling_mistral.MistralDecoderLayer = GaudiMistralDecoderLayer
+    transformers.models.mistral.modeling_mistral.MistralModel = GaudiMistralModel
+    transformers.models.mistral.modeling_mistral.MistralRMSNorm.forward = gaudi_mistral_rmsnorm_forward
+
+    # Optimization for phi on Gaudi
+    transformers.models.phi.modeling_phi.PhiForCausalLM = GaudiPhiForCausalLM
+    transformers.models.phi.modeling_phi.PhiAttention.forward = gaudi_phi_attention_forward
+    transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
+    transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward

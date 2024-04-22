@@ -81,10 +81,11 @@ from .llama import (
     gaudi_llama_rmsnorm_forward,
 )
 from .mistral import (
+    GaudiMistralAttention,
+    GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
-    gaudi_mistral_attention_forward,
-    gaudi_mistral_decoder_layer_forward,
-    gaudi_mistral_model_forward,
+    GaudiMistralModel,
+    gaudi_mistral_rmsnorm_forward,
 )
 from .mixtral import (
     GaudiMixtralForCausalLM,
@@ -113,6 +114,12 @@ from .opt import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+)
+from .phi import (
+    GaudiPhiForCausalLM,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
 )
 from .qwen2 import (
     GaudiQwen2ForCausalLM,
