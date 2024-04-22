@@ -353,7 +353,7 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
             outputs = model(**inputs)
 
             # If "past_key_values" is not returned, pass the test (e.g. RWKV uses a different cache name and format)
-            if "past_key_values" not in outputs:
+            if "past_key_values" not in outputs or all(ele is None for ele in outputs["past_key_values"]):
                 return
 
             num_hidden_layers = (

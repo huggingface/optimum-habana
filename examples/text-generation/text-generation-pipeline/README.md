@@ -28,7 +28,7 @@ export PYTHONPATH=${PYTHONPATH}:${OPTIMUM_HABANA_PATH}/examples/text-generation
 
 If you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 ```
 
 If you would like to use the pipeline with LangChain classes, you can install LangChain as follows:

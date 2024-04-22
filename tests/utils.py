@@ -54,6 +54,7 @@ MODELS_TO_TEST_MAPPING = {
     "falcon": [("tiiuae/falcon-40b", "Habana/gpt2")],
     "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
     "whisper": [("openai/whisper-small", "Habana/whisper")],
+    "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -71,7 +72,7 @@ MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     # "distilbert",
 ]
 
-MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom"]
+MODELS_TO_TEST_FOR_CAUSAL_LANGUAGE_MODELING = ["gpt2", "gpt_neox", "bloom", "code_llama"]
 
 MODELS_TO_TEST_FOR_SEQ2SEQ = ["t5"]
 

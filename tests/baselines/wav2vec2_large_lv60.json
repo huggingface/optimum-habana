@@ -7,10 +7,10 @@
                 "multi_card": {
                     "learning_rate": 6e-4,
                     "train_batch_size": 8,
-                    "eval_wer": 0.0555,
-                    "train_runtime": 889.0079,
-                    "train_samples_per_second": 70.036,
-                    "eval_samples_per_second": 57.302,
+                    "eval_wer": 0.0496,
+                    "train_runtime": 984.3022,
+                    "train_samples_per_second": 63.043,
+                    "eval_samples_per_second": 54.189,
                     "extra_arguments": [
                         "--dataset_config_name clean",
                         "--train_split_name train.100",
@@ -33,12 +33,12 @@
             "eval_batch_size": 8,
             "distribution": {
                 "multi_card": {
-                    "learning_rate": 3e-4,
+                    "learning_rate": 4e-4,
                     "train_batch_size": 8,
-                    "eval_wer": 0.0531535105117017,
-                    "train_runtime": 356.4723,
-                    "train_samples_per_second": 183.245,
-                    "eval_samples_per_second": 158.985,
+                    "eval_wer": 0.06120587068623562,
+                    "train_runtime": 308.8036,
+                    "train_samples_per_second": 225.572,
+                    "eval_samples_per_second": 196.665,
                     "extra_arguments": [
                         "--dataset_config_name clean",
                         "--train_split_name train.100",
@@ -49,7 +49,9 @@
                         "--layerdrop 0.0",
                         "--freeze_feature_encoder",
                         "--dataloader_num_workers 8",
-                        "--chars_to_ignore ',?.!-;:\"“%‘”'"
+                        "--chars_to_ignore ',?.!-;:\"“%‘”'",
+                        "--use_hpu_graphs_for_training",
+                        "--use_hpu_graphs_for_inference"
                     ]
                 }
             }
