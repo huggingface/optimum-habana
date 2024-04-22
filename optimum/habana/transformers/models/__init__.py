@@ -67,9 +67,9 @@ from .gpt_neox import (
 )
 from .gptj import (
     GaudiGPTJAttention,
+    GaudiGPTJBlock,
+    GaudiGPTJModel,
     GaudiGPTJForCausalLM,
-    gaudi_gptj_block_forward,
-    gaudi_gptj_model_forward,
 )
 from .llama import (
     GaudiLlamaAttention,
