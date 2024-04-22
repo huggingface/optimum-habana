@@ -36,7 +36,7 @@ from transformers import (
 
 from optimum.utils import logging
 
-from ....transformers.gaudi_configuration import IntelGaudiAcceleratorConfig
+from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
@@ -91,7 +91,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             Whether to use Gaudi (`True`) or CPU (`False`).
         use_hpu_graphs (bool, defaults to `False`):
             Whether to use HPU graphs or not.
-        gaudi_config (Union[str, [`IntelGaudiAcceleratorConfig`]], defaults to `None`):
+        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
            Or a previously initialized config can be passed.
         bf16_full_eval (bool, defaults to `False`):
@@ -113,7 +113,7 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
         force_zeros_for_empty_prompt: bool = True,
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
-        gaudi_config: Union[str, IntelGaudiAcceleratorConfig] = None,
+        gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
         GaudiDiffusionPipeline.__init__(

@@ -17,10 +17,10 @@
 #  limitations under the License.
 
 from .transformers import (
-    IntelGaudiAcceleratorConfig,
+    GaudiConfig,
     GaudiSeq2SeqTrainer,
     GaudiSeq2SeqTrainingArguments,
-    IntelGaudiAcceleratorTrainer,
+    GaudiTrainer,
     GaudiTrainingArguments,
 )
 from .utils import check_synapse_version

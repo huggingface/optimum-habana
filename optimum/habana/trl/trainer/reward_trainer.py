@@ -20,10 +20,10 @@ from transformers import (
 )
 from transformers.utils import PaddingStrategy
 
-from optimum.habana import IntelGaudiAcceleratorTrainer
+from optimum.habana import GaudiTrainer
 
 
-class GaudiRewardTrainer(IntelGaudiAcceleratorTrainer):
+class GaudiRewardTrainer(GaudiTrainer):
     """
     Copied from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama/scripts/reward_modeling.py#L266
     """

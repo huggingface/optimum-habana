@@ -39,15 +39,15 @@ from trl.trainer.utils import (
 if is_peft_available():
     from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 
-from ... import GaudiTrainingArguments, IntelGaudiAcceleratorConfig, IntelGaudiAcceleratorTrainer
+from ... import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
-class GaudiSFTTrainer(SFTTrainer, IntelGaudiAcceleratorTrainer):
+class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
     def __init__(
         self,
         model: Union[PreTrainedModel, nn.Module, str] = None,
         args: GaudiTrainingArguments = None,
-        gaudi_config: IntelGaudiAcceleratorConfig = None,
+        gaudi_config: GaudiConfig = None,
         data_collator: Optional[DataCollator] = None,
         train_dataset: Optional[Dataset] = None,
         eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
@@ -75,7 +75,7 @@ class GaudiSFTTrainer(SFTTrainer, IntelGaudiAcceleratorTrainer):
         Copied from SFTTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/sft_trainer.py#L120
         The only differences are:
         - add new args gaudi_config
-        - use IntelGaudiAcceleratorTrainer instead of Trainer
+        - use GaudiTrainer instead of Trainer
         - cast peft model to bf16.
         """
         if model_init_kwargs is None:
@@ -218,7 +218,7 @@ class GaudiSFTTrainer(SFTTrainer, IntelGaudiAcceleratorTrainer):
                 "overflow issues when training a model in half-precision. You might consider adding `tokenizer.padding_side = 'right'` to your code."
             )
 
-        IntelGaudiAcceleratorTrainer.__init__(
+        GaudiTrainer.__init__(
             self,
             model=model,
             args=args,

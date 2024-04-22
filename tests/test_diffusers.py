@@ -37,7 +37,7 @@ from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.testing_utils import parse_flag_from_env, slow
 
-from optimum.habana import IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiDiffusionPipeline,
@@ -100,13 +100,13 @@ class GaudiPipelineUtilsTester(TestCase):
         with self.assertRaises(ValueError):
             _ = GaudiDiffusionPipeline(
                 use_habana=False,
-                gaudi_config=IntelGaudiAcceleratorConfig(),
+                gaudi_config=GaudiConfig(),
             )
 
     def test_device(self):
         pipeline_1 = GaudiDiffusionPipeline(
             use_habana=True,
-            gaudi_config=IntelGaudiAcceleratorConfig(),
+            gaudi_config=GaudiConfig(),
         )
         self.assertEqual(pipeline_1._device.type, "hpu")
 
@@ -123,7 +123,7 @@ class GaudiPipelineUtilsTester(TestCase):
         )
 
         # gaudi_config is instantiated beforehand
-        gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained("Habana/stable-diffusion")
+        gaudi_config = GaudiConfig.from_pretrained("Habana/stable-diffusion")
         _ = GaudiDiffusionPipeline(
             use_habana=True,
             gaudi_config=gaudi_config,
@@ -132,7 +132,7 @@ class GaudiPipelineUtilsTester(TestCase):
     def test_default(self):
         pipeline = GaudiDiffusionPipeline(
             use_habana=True,
-            gaudi_config=IntelGaudiAcceleratorConfig(),
+            gaudi_config=GaudiConfig(),
         )
 
         self.assertTrue(hasattr(pipeline, "htcore"))
@@ -141,7 +141,7 @@ class GaudiPipelineUtilsTester(TestCase):
         pipeline = GaudiDiffusionPipeline(
             use_habana=True,
             use_hpu_graphs=True,
-            gaudi_config=IntelGaudiAcceleratorConfig(),
+            gaudi_config=GaudiConfig(),
         )
 
         self.assertTrue(hasattr(pipeline, "ht"))
@@ -155,7 +155,7 @@ class GaudiPipelineUtilsTester(TestCase):
             model_name,
             scheduler=scheduler,
             use_habana=True,
-            gaudi_config=IntelGaudiAcceleratorConfig(),
+            gaudi_config=GaudiConfig(),
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -240,7 +240,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         device = "cpu"
 
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig(use_torch_autocast=False)
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
 
         sd_pipe = GaudiStableDiffusionPipeline(
             use_habana=True,
@@ -261,7 +261,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
     def test_stable_diffusion_no_safety_checker(self):
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
         scheduler = GaudiDDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -300,7 +300,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     @parameterized.expand(["pil", "np", "latent"])
     def test_stable_diffusion_output_types(self, output_type):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionPipeline(
             use_habana=True,
@@ -370,7 +370,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     def test_stable_diffusion_num_images_per_prompt(self):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionPipeline(
             use_habana=True,
@@ -417,7 +417,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     def test_stable_diffusion_batch_sizes(self):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionPipeline(
             use_habana=True,
@@ -484,7 +484,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     def test_stable_diffusion_bf16(self):
         """Test that stable diffusion works with bf16"""
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionPipeline(
             use_habana=True,
@@ -564,7 +564,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             scheduler=scheduler,
             use_habana=True,
             use_hpu_graphs=True,
-            gaudi_config=IntelGaudiAcceleratorConfig.from_pretrained("Habana/stable-diffusion"),
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
             torch_dtype=torch.bfloat16,
         )
         set_seed(27)
@@ -593,7 +593,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             scheduler=scheduler,
             use_habana=True,
             use_hpu_graphs=True,
-            gaudi_config=IntelGaudiAcceleratorConfig.from_pretrained("Habana/stable-diffusion-2"),
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion-2"),
         )
         set_seed(27)
         outputs = pipeline(
@@ -617,7 +617,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             use_habana=True,
             use_hpu_graphs=True,
-            gaudi_config=IntelGaudiAcceleratorConfig(use_torch_autocast=False),
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
         )
         set_seed(27)
         outputs = pipeline(
@@ -661,7 +661,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             safety_checker=None,
             use_habana=True,
             use_hpu_graphs=True,
-            gaudi_config=IntelGaudiAcceleratorConfig(),
+            gaudi_config=GaudiConfig(),
         )
         set_seed(27)
         outputs = pipeline(
@@ -729,7 +729,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             scheduler=scheduler,
             use_habana=True,
             use_hpu_graphs=True,
-            gaudi_config=IntelGaudiAcceleratorConfig(use_torch_autocast=False),
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
         )
         set_seed(27)
 
@@ -832,7 +832,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                     torch_dtype=torch.bfloat16,
                     use_habana=True,
                     use_hpu_graphs=True,
-                    gaudi_config=IntelGaudiAcceleratorConfig(use_habana_mixed_precision=False),
+                    gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
                 )
                 prompt = "A <cat-toy> backpack"
                 set_seed(27)
@@ -937,7 +937,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
     def test_stable_diffusion_xl_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig(use_torch_autocast=False)
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
         sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -956,7 +956,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
     def test_stable_diffusion_xl_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig(use_torch_autocast=False)
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
         sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
         sd_pipe.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -973,7 +973,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
     def test_stable_diffusion_xl_turbo_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components(timestep_spacing="trailing")
-        gaudi_config = IntelGaudiAcceleratorConfig(use_torch_autocast=False)
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
 
         sd_pipe = GaudiStableDiffusionXLPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
         sd_pipe.scheduler = GaudiEulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
@@ -992,7 +992,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
     @parameterized.expand(["pil", "np", "latent"])
     def test_stable_diffusion_xl_output_types(self, output_type):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionXLPipeline(
             use_habana=True,
@@ -1016,7 +1016,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
 
     def test_stable_diffusion_xl_num_images_per_prompt(self):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionXLPipeline(
             use_habana=True,
@@ -1063,7 +1063,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
 
     def test_stable_diffusion_xl_batch_sizes(self):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionXLPipeline(
             use_habana=True,
@@ -1129,7 +1129,7 @@ class GaudiStableDiffusionXLPipelineTester(TestCase):
     def test_stable_diffusion_xl_bf16(self):
         """Test that stable diffusion works with bf16"""
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionXLPipeline(
             use_habana=True,
@@ -1297,7 +1297,7 @@ class GaudiStableDiffusionControlNetPipelineTester(TestCase):
 
     def test_stable_diffusion_controlnet_num_images_per_prompt(self):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionControlNetPipeline(
             use_habana=True,
@@ -1340,7 +1340,7 @@ class GaudiStableDiffusionControlNetPipelineTester(TestCase):
 
     def test_stable_diffusion_controlnet_batch_sizes(self):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionControlNetPipeline(
             use_habana=True,
@@ -1398,7 +1398,7 @@ class GaudiStableDiffusionControlNetPipelineTester(TestCase):
     def test_stable_diffusion_controlnet_bf16(self):
         """Test that stable diffusion works with bf16"""
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionControlNetPipeline(
             use_habana=True,
@@ -1579,7 +1579,7 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
 
     def test_stable_diffusion_multicontrolnet_num_images_per_prompt(self):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionControlNetPipeline(
             use_habana=True,
@@ -1622,7 +1622,7 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
 
     def test_stable_diffusion_multicontrolnet_batch_sizes(self):
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionControlNetPipeline(
             use_habana=True,
@@ -1680,7 +1680,7 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
     def test_stable_diffusion_multicontrolnet_bf16(self):
         """Test that stable diffusion works with bf16"""
         components = self.get_dummy_components()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
 
         sd_pipe = GaudiStableDiffusionControlNetPipeline(
             use_habana=True,
@@ -1897,7 +1897,7 @@ class TrainControlNet(TestCase):
                 torch_dtype=torch.bfloat16,
                 use_habana=True,
                 use_hpu_graphs=True,
-                gaudi_config=IntelGaudiAcceleratorConfig(use_habana_mixed_precision=False),
+                gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
             )
             pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 

@@ -18,7 +18,7 @@ limitations under the License.
 This folder contains actively maintained examples of use of 🤗 Optimum Habana for various ML tasks.
 
 Other [examples](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library can be adapted the same way to enable deployment on Gaudi processors. This simply consists in:
-- replacing the `Trainer` from 🤗 Transformers with the `IntelGaudiAcceleratorTrainer` from 🤗 Optimum Habana,
+- replacing the `Trainer` from 🤗 Transformers with the `GaudiTrainer` from 🤗 Optimum Habana,
 - replacing the `TrainingArguments` from 🤗 Transformers with the `GaudiTrainingArguments` from 🤗 Optimum Habana.
 
 
@@ -106,7 +106,7 @@ You can resume training from a previous checkpoint like this:
 2. Pass `--resume_from_checkpoint path_to_a_specific_checkpoint` to resume training from that checkpoint folder.
 
 Should you want to turn an example into a notebook where you'd no longer have access to the command
-line, 🤗 IntelGaudiAcceleratorTrainer supports resuming from a checkpoint via `trainer.train(resume_from_checkpoint)`.
+line, 🤗 GaudiTrainer supports resuming from a checkpoint via `trainer.train(resume_from_checkpoint)`.
 
 1. If `resume_from_checkpoint` is `True` it will look for the last checkpoint in the value of `output_dir` passed via `TrainingArguments`.
 2. If `resume_from_checkpoint` is a path to a specific checkpoint it will use that saved checkpoint folder to resume the training.

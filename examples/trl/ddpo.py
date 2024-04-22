@@ -47,7 +47,7 @@ from huggingface_hub.utils import EntryNotFoundError
 from transformers import CLIPModel, CLIPProcessor, HfArgumentParser
 from trl import DDPOConfig
 
-from optimum.habana import IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig
 from optimum.habana.trl import GaudiDDPOTrainer, GaudiDefaultDDPOStableDiffusionPipeline
 
 
@@ -216,7 +216,7 @@ if __name__ == "__main__":
     }
 
     # 1. initialize traning config:
-    gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(args.gaudi_config_name) if args.use_habana else None
+    gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name) if args.use_habana else None
 
     pipeline = GaudiDefaultDDPOStableDiffusionPipeline(
         args.pretrained_model,

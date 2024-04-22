@@ -37,7 +37,7 @@ from trl.trainer.utils import (
     pad_to_length,
 )
 
-from ... import GaudiTrainingArguments, IntelGaudiAcceleratorConfig, IntelGaudiAcceleratorTrainer
+from ... import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
 if is_peft_available():
@@ -51,7 +51,7 @@ if is_deepspeed_available():
     pass
 
 
-class GaudiDPOTrainer(DPOTrainer, IntelGaudiAcceleratorTrainer):
+class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
     def __init__(
         self,
         model: Union[PreTrainedModel, nn.Module, str] = None,
@@ -60,7 +60,7 @@ class GaudiDPOTrainer(DPOTrainer, IntelGaudiAcceleratorTrainer):
         label_smoothing: float = 0,
         loss_type: Literal["sigmoid", "hinge", "ipo", "kto"] = "sigmoid",
         args: GaudiTrainingArguments = None,
-        gaudi_config: IntelGaudiAcceleratorConfig = None,
+        gaudi_config: GaudiConfig = None,
         data_collator: Optional[DataCollator] = None,
         label_pad_token_id: int = -100,
         padding_value: int = None,
@@ -89,7 +89,7 @@ class GaudiDPOTrainer(DPOTrainer, IntelGaudiAcceleratorTrainer):
         The only differences are:
         - add new args gaudi_config
         - use graph for ref_model
-        - use IntelGaudiAcceleratorTrainer instead of Trainer
+        - use GaudiTrainer instead of Trainer
         - cast peft model to bf16.
         """
         if model_init_kwargs is None:
@@ -276,7 +276,7 @@ class GaudiDPOTrainer(DPOTrainer, IntelGaudiAcceleratorTrainer):
         if eval_dataset is not None:
             eval_dataset = eval_dataset.map(self.tokenize_row)
 
-        IntelGaudiAcceleratorTrainer.__init__(
+        GaudiTrainer.__init__(
             self,
             model=model,
             args=args,

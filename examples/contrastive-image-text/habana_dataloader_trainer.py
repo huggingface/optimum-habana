@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-A subclass of `IntelGaudiAcceleratorTrainer` specific to habana dataloader
+A subclass of `GaudiTrainer` specific to habana dataloader
 """
 
 from typing import Optional
@@ -32,10 +32,10 @@ from transformers.trainer_pt_utils import (
 from transformers.trainer_utils import has_length, seed_worker
 from transformers.utils import is_datasets_available
 
-from optimum.habana import IntelGaudiAcceleratorTrainer
+from optimum.habana import GaudiTrainer
 
 
-class HabanaDataloaderTrainer(IntelGaudiAcceleratorTrainer):
+class HabanaDataloaderTrainer(GaudiTrainer):
     def get_train_dataloader(self) -> DataLoader:
         """
         Returns the training Habana Media Dataloader.

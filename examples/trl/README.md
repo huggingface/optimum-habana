@@ -241,10 +241,10 @@ python ddpo.py \
 ```python
 import torch
 
-from optimum.habana import IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig
 from optimum.habana.trl import GaudiDefaultDDPOStableDiffusionPipeline
 
-gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained("Habana/stable-diffusion")
+gaudi_config = GaudiConfig.from_pretrained("Habana/stable-diffusion")
 model_id = "runwayml/stable-diffusion-v1-5"
 lora_model_id = "ddpo-finetuned-stable-diffusion"
 pipeline = GaudiDefaultDDPOStableDiffusionPipeline(

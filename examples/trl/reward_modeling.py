@@ -15,7 +15,7 @@ from transformers import (
     TrainerCallback,
 )
 
-from optimum.habana import GaudiTrainingArguments, IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiRewardTrainer, RewardDataCollatorWithPadding
 from optimum.habana.utils import set_seed
 
@@ -231,7 +231,7 @@ def compute_metrics(eval_pred):
     return accuracy.compute(predictions=predictions, references=labels)
 
 
-gaudi_config = IntelGaudiAcceleratorConfig()
+gaudi_config = GaudiConfig()
 gaudi_config.use_fused_adam = True
 gaudi_config.use_fused_clip_norm = True
 

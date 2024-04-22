@@ -50,7 +50,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from optimum.habana import IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig
 from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
 from optimum.habana.utils import set_seed
@@ -581,7 +581,7 @@ def main():
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
-    gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(args.gaudi_config_name)
+    gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
 
     accelerator = GaudiAccelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,

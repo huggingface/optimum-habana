@@ -30,7 +30,7 @@ from huggingface_hub import create_repo
 
 from optimum.utils import logging
 
-from ...transformers.gaudi_configuration import IntelGaudiAcceleratorConfig
+from ...transformers.gaudi_configuration import GaudiConfig
 
 
 logger = logging.get_logger(__name__)
@@ -105,7 +105,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             Whether to use Gaudi (`True`) or CPU (`False`).
         use_hpu_graphs (bool, defaults to `False`):
             Whether to use HPU graphs or not.
-        gaudi_config (Union[str, [`IntelGaudiAcceleratorConfig`]], defaults to `None`):
+        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
             Gaudi configuration to use. Can be a string to download it from the Hub.
             Or a previously initialized config can be passed.
         bf16_full_eval (bool, defaults to `False`):
@@ -117,7 +117,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         self,
         use_habana: bool = False,
         use_hpu_graphs: bool = False,
-        gaudi_config: Union[str, IntelGaudiAcceleratorConfig] = None,
+        gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
         DiffusionPipeline.__init__(self)
@@ -134,13 +134,13 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
             if isinstance(gaudi_config, str):
                 # Config from the Hub
-                self.gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(gaudi_config)
-            elif isinstance(gaudi_config, IntelGaudiAcceleratorConfig):
+                self.gaudi_config = GaudiConfig.from_pretrained(gaudi_config)
+            elif isinstance(gaudi_config, GaudiConfig):
                 # Config already initialized
                 self.gaudi_config = copy.deepcopy(gaudi_config)
             else:
                 raise ValueError(
-                    f"`gaudi_config` must be a string or a IntelGaudiAcceleratorConfig object but is {type(gaudi_config)}."
+                    f"`gaudi_config` must be a string or a GaudiConfig object but is {type(gaudi_config)}."
                 )
 
             if self.gaudi_config.use_torch_autocast:

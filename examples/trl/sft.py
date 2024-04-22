@@ -15,7 +15,7 @@ from transformers.integrations.deepspeed import (
 )
 from trl.trainer import ConstantLengthDataset
 
-from optimum.habana import GaudiTrainingArguments, IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiSFTTrainer
 from optimum.habana.utils import set_seed
 
@@ -154,7 +154,7 @@ transformers.utils.logging.enable_explicit_format()
 
 train_dataset, eval_dataset = create_datasets(tokenizer, script_args, seed=training_args.seed)
 
-gaudi_config = IntelGaudiAcceleratorConfig()
+gaudi_config = GaudiConfig()
 gaudi_config.use_fused_adam = True
 gaudi_config.use_fused_clip_norm = True
 

@@ -46,7 +46,7 @@ from optimum.utils import logging
 from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
 from ..accelerate.utils import GaudiDistributedType
 from ..utils import get_habana_frameworks_version
-from .gaudi_configuration import IntelGaudiAcceleratorConfig
+from .gaudi_configuration import GaudiConfig
 
 
 if is_torch_available():
@@ -647,11 +647,11 @@ class GaudiTrainingArguments(TrainingArguments):
             # - must be run before the model is created.
             if not is_accelerate_available():
                 raise ValueError("--deepspeed requires Accelerate to be installed: `pip install accelerate`.")
-            from .integrations.deepspeed import IntelGaudiAcceleratorTrainerDeepSpeedConfig
+            from .integrations.deepspeed import GaudiTrainerDeepSpeedConfig
 
             # will be used later by the Trainer
             # note: leave self.deepspeed unmodified in case a user relies on it not to be modified)
-            self.hf_deepspeed_config = IntelGaudiAcceleratorTrainerDeepSpeedConfig(self.deepspeed)
+            self.hf_deepspeed_config = GaudiTrainerDeepSpeedConfig(self.deepspeed)
             self.hf_deepspeed_config.trainer_config_process(self)
 
             # Accelerate DeepSpeed Plugin
@@ -744,7 +744,7 @@ class GaudiTrainingArguments(TrainingArguments):
 
         # Hack to make sure bf16/fp32 ops are specified before calling habana_frameworks.torch.core
         if self.gaudi_config_name is not None:
-            gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(self.gaudi_config_name)
+            gaudi_config = GaudiConfig.from_pretrained(self.gaudi_config_name)
             if (
                 (self.bf16 or gaudi_config.use_torch_autocast)
                 and not self.deepspeed

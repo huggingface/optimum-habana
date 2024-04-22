@@ -42,7 +42,7 @@ from transformers.trainer_utils import EvalLoopOutput, EvalPrediction, get_last_
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
-from optimum.habana import GaudiSeq2SeqTrainingArguments, IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainingArguments
 from optimum.habana.utils import set_seed
 
 
@@ -330,7 +330,7 @@ def main():
     transformers.utils.logging.enable_default_handler()
     transformers.utils.logging.enable_explicit_format()
 
-    gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(
+    gaudi_config = GaudiConfig.from_pretrained(
         training_args.gaudi_config_name,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,

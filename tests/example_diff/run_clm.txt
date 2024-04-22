@@ -21,7 +21,7 @@
 <     is_torch_xla_available,
 <     set_seed,
 56a51,52
-> from optimum.habana import IntelGaudiAcceleratorConfig, IntelGaudiAcceleratorTrainer, GaudiTrainingArguments
+> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 58,59d53
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -76,7 +76,7 @@
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
 288a309,315
->     gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(
+>     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         revision=model_args.model_revision,
@@ -99,7 +99,7 @@
 597c628
 <     trainer = Trainer(
 ---
->     trainer = IntelGaudiAcceleratorTrainer(
+>     trainer = GaudiTrainer(
 598a630
 >         gaudi_config=gaudi_config,
 605,608c637,638

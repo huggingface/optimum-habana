@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# IntelGaudiAcceleratorConfig
+# GaudiConfig
 
 Here is a description of each configuration parameter:
 - `use_fused_adam` enables to decide whether to use the [custom fused implementation of the ADAM optimizer provided by Intel(R) Gaudi(R) accelerator](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
@@ -35,9 +35,9 @@ You can find examples of Gaudi configurations in the [Habana model repository on
 
 To instantiate yourself a Gaudi configuration in your script, you can do the following
 ```python
-from optimum.habana import IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig
 
-gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(
+gaudi_config = GaudiConfig.from_pretrained(
     gaudi_config_name,
     cache_dir=model_args.cache_dir,
     revision=model_args.model_revision,
@@ -47,7 +47,7 @@ gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(
 and pass it to the trainer with the `gaudi_config` argument.
 
 
-## IntelGaudiAcceleratorConfig
+## GaudiConfig
 
-[[autodoc]] transformers.gaudi_configuration.IntelGaudiAcceleratorConfig
+[[autodoc]] transformers.gaudi_configuration.GaudiConfig
     - all

@@ -10,7 +10,7 @@ from transformers.integrations.deepspeed import (
     is_deepspeed_available,
 )
 
-from optimum.habana import GaudiTrainingArguments, IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiDPOTrainer
 from optimum.habana.utils import set_seed
 
@@ -228,7 +228,7 @@ if __name__ == "__main__":
         task_type="CAUSAL_LM",
     )
 
-    gaudi_config = IntelGaudiAcceleratorConfig()
+    gaudi_config = GaudiConfig()
     gaudi_config.use_fused_adam = True
     gaudi_config.use_fused_clip_norm = True
 

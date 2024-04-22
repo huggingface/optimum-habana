@@ -19,7 +19,7 @@ from typing import Dict
 from transformers import EvalPrediction, HfArgumentParser, is_torch_available
 from transformers.testing_utils import TestCasePlus
 
-from optimum.habana import GaudiTrainingArguments, IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.distributed import DistributedRunner
 from optimum.utils import logging
 
@@ -32,7 +32,7 @@ if is_torch_available():
     from torch import nn
     from torch.utils.data import Dataset
 
-    from optimum.habana import IntelGaudiAcceleratorTrainer
+    from optimum.habana import GaudiTrainer
 
     class DummyDataset(Dataset):
         def __init__(self, length: int = 101):
@@ -76,7 +76,7 @@ if is_torch_available():
             return (loss, y, y) if self.double_output else (loss, y)
 
 
-class TestIntelGaudiAcceleratorTrainerDistributed(TestCasePlus):
+class TestGaudiTrainerDistributed(TestCasePlus):
     def _test_gaudi_trainer_distributed(self, kwargs={}):
         output_dir = self.get_auto_remove_tmp_dir()
 
@@ -122,7 +122,7 @@ if __name__ == "__main__":
     training_args = parser.parse_args_into_dataclasses()[0]
 
     gaudi_config_file = Path(__file__).parent.resolve() / Path("configs/gaudi_config_trainer_test.json")
-    gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(gaudi_config_file)
+    gaudi_config = GaudiConfig.from_pretrained(gaudi_config_file)
 
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_hpu: {training_args.world_size},"
@@ -144,7 +144,7 @@ if __name__ == "__main__":
                 )
             return {"success": success}
 
-        trainer = IntelGaudiAcceleratorTrainer(
+        trainer = GaudiTrainer(
             model=DummyModel(),
             gaudi_config=gaudi_config,
             args=training_args,
@@ -187,7 +187,7 @@ if __name__ == "__main__":
     training_args.max_steps = 1
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda x: 1)
-    trainer = IntelGaudiAcceleratorTrainer(
+    trainer = GaudiTrainer(
         model,
         gaudi_config=gaudi_config,
         args=training_args,

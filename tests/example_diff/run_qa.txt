@@ -15,7 +15,7 @@
 49a46
 > from utils_qa import postprocess_qa_predictions
 50a48,49
-> from optimum.habana import IntelGaudiAcceleratorConfig, GaudiTrainingArguments
+> from optimum.habana import GaudiConfig, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 52,53d50
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -46,7 +46,7 @@
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
 277a287,293
->     gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(
+>     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         revision=model_args.model_revision,

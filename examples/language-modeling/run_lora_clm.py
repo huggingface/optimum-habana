@@ -41,7 +41,7 @@ from transformers import (
 )
 from transformers.trainer_utils import is_main_process
 
-from optimum.habana import GaudiTrainingArguments, IntelGaudiAcceleratorConfig, IntelGaudiAcceleratorTrainer
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 from optimum.habana.utils import set_seed
 
 
@@ -702,12 +702,12 @@ def main():
         if training_args.bf16:
             lora_model = lora_model.to(torch.bfloat16)
         lora_model.print_trainable_parameters()
-        gaudi_config = IntelGaudiAcceleratorConfig()
+        gaudi_config = GaudiConfig()
         gaudi_config.use_fused_adam = True
         gaudi_config.use_fused_clip_norm = True
 
         # Initialize our Trainer
-        trainer = IntelGaudiAcceleratorTrainer(
+        trainer = GaudiTrainer(
             model=lora_model,
             gaudi_config=gaudi_config,
             args=training_args,

@@ -80,16 +80,16 @@ To install the requirements for every example:
 #### Transformers Interface
 
 There are two main classes one needs to know:
-- [IntelGaudiAcceleratorTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer): the trainer class that takes care of compiling and distributing the model to run on HPUs, and performing training and evaluation.
-- [IntelGaudiAcceleratorConfig](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config): the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
+- [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer): the trainer class that takes care of compiling and distributing the model to run on HPUs, and performing training and evaluation.
+- [GaudiConfig](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config): the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
 
-The [IntelGaudiAcceleratorTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer) is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Intel® Gaudi® Accelerator will mostly consist in simply swapping the `Trainer` class for the `IntelGaudiAcceleratorTrainer` one.
+The [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer) is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Intel® Gaudi® Accelerator will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
 That's how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their [original counterparts](https://github.com/huggingface/transformers/tree/main/examples/pytorch).
 
 Here is an example:
 ```diff
 - from transformers import Trainer, TrainingArguments
-+ from optimum.habana import IntelGaudiAcceleratorConfig, IntelGaudiAcceleratorTrainer, GaudiTrainingArguments
++ from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 - training_args = TrainingArguments(
 + training_args = GaudiTrainingArguments(
@@ -103,7 +103,7 @@ Here is an example:
 
 # Initialize our Trainer
 - trainer = Trainer(
-+ trainer = IntelGaudiAcceleratorTrainer(
++ trainer = GaudiTrainer(
     model=model,
     args=training_args,  # Original training arguments.
     train_dataset=train_dataset if training_args.do_train else None,

@@ -15,7 +15,7 @@
 > from datasets import DatasetDict, load_dataset
 > from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification, HfArgumentParser
 43a35,45
-> from optimum.habana import IntelGaudiAcceleratorConfig, IntelGaudiAcceleratorTrainer, GaudiTrainingArguments
+> from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
 > 
@@ -58,7 +58,7 @@
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
 246a232,238
->     gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(
+>     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         revision=model_args.model_revision,
@@ -103,6 +103,6 @@
 404c414
 <     trainer = Trainer(
 ---
->     trainer = IntelGaudiAcceleratorTrainer(
+>     trainer = GaudiTrainer(
 405a416
 >         gaudi_config=gaudi_config,

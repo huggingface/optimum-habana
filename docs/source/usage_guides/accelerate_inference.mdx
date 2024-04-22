@@ -50,10 +50,10 @@ Gaudi provides a way to run fast inference with HPU Graphs.
 It consists in capturing a series of operations (i.e. graphs) in an HPU stream and then replaying them in an optimized way (more information [here](https://docs.habana.ai/en/latest/PyTorch/Inference_on_Gaudi/Inference_using_HPU_Graphs/Inference_using_HPU_Graphs.html)).
 Thus, you can apply this to the `forward` method of your model to run it efficiently at inference.
 
-HPU Graphs are integrated into the [`IntelGaudiAcceleratorTrainer`](../package_reference/trainer) and the [`GaudiStableDiffusionPipeline`](../package_reference/stable_diffusion_pipeline) so that one can use them very easily:
-- `IntelGaudiAcceleratorTrainer` needs the training argument `use_hpu_graphs_for_inference` to be set to `True` as follows:
+HPU Graphs are integrated into the [`GaudiTrainer`](../package_reference/trainer) and the [`GaudiStableDiffusionPipeline`](../package_reference/stable_diffusion_pipeline) so that one can use them very easily:
+- `GaudiTrainer` needs the training argument `use_hpu_graphs_for_inference` to be set to `True` as follows:
 ```python
-from optimum.habana import IntelGaudiAcceleratorTrainer, GaudiTrainingArguments
+from optimum.habana import GaudiTrainer, GaudiTrainingArguments
 
 # define the training arguments
 training_args = GaudiTrainingArguments(
@@ -65,7 +65,7 @@ training_args = GaudiTrainingArguments(
 )
 
 # Initialize our Trainer
-trainer = IntelGaudiAcceleratorTrainer(
+trainer = GaudiTrainer(
     model=model,
     args=training_args,
     train_dataset=train_dataset

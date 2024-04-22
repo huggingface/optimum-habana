@@ -43,7 +43,7 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
-from optimum.habana import GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments, IntelGaudiAcceleratorConfig
+from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 from optimum.habana.utils import set_seed
 
 
@@ -340,7 +340,7 @@ def main():
 
     logger.setLevel(logging.INFO if is_main_process(training_args.local_rank) else logging.WARN)
 
-    gaudi_config = IntelGaudiAcceleratorConfig.from_pretrained(
+    gaudi_config = GaudiConfig.from_pretrained(
         training_args.gaudi_config_name,
         cache_dir=model_args.cache_dir,
         # use_auth_token=True if data_args.use_auth_token else None,
