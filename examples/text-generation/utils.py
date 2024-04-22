@@ -286,7 +286,10 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = PeftModel.from_pretrained(model, args.peft_model, torch_dtype=model_dtype, **model_kwargs)
 
-    return model.merge_and_unload()
+    model = model.merge_and_unload()
+    if model_dtype == torch.bfloat16:
+        model = model.to(torch.bfloat16)
+    return model
 
 
 def setup_tokenizer(args, model):
