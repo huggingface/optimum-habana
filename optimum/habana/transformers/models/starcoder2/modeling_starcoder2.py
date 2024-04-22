@@ -23,7 +23,14 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.starcoder2.modeling_starcoder2 import Starcoder2ForCausalLM, apply_rotary_pos_emb, repeat_kv
+from transformers.models.starcoder2.modeling_starcoder2 import (
+        Starcoder2ForCausalLM,
+        apply_rotary_pos_emb,
+        repeat_kv,
+        Starcoder2DecoderLayer,
+        Starcoder2Attention,
+        Starcoder2Config,
+        )
 from transformers.utils import logging
 from typing import List, Optional, Tuple, Union
 from ...modeling_attn_mask_utils import (
@@ -136,58 +143,64 @@ def gaudi_starcoder2_attention_forward(
 
     return attn_output, attn_weights, past_key_value
 
-def gaudi_starcoder2_decoder_layer_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
-    output_attentions: Optional[bool] = False,
-    use_cache: Optional[bool] = False,
-    token_idx: Optional[torch.Tensor] = None,
-    **kwargs,
-) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-    """
-    Copied from Starcoder2DecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
-    The only differences are:
-    - add new args token_idx
-    """
-    if "padding_mask" in kwargs:
-        warnings.warn(
-            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
+    def __init__(self, config: Starcoder2Config, layer_idx: int):
+        super().__init__(config, layer_idx)
+        self.self_attn = Starcoder2Attention(config, layer_idx)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        """
+        Copied from Starcoder2DecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
+        The only differences are:
+        - add new args token_idx
+        """
+        if "padding_mask" in kwargs:
+            warnings.warn(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            )
+
+        residual = hidden_states
+
+        hidden_states = self.input_layernorm(hidden_states)
+
+        # Self Attention
+        hidden_states, self_attn_weights, present_key_value = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            token_idx=token_idx,
         )
-    
-    residual = hidden_states
+        hidden_states = residual + hidden_states
 
-    hidden_states = self.input_layernorm(hidden_states)
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
 
-    # Self Attention
-    hidden_states, self_attn_weights, present_key_value = self.self_attn(
-        hidden_states=hidden_states,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        past_key_value=past_key_value,
-        output_attentions=output_attentions,
-        use_cache=use_cache,
-        token_idx=token_idx,
-    )
-    hidden_states = residual + hidden_states
+        outputs = (hidden_states,)
 
-    # Fully Connected
-    residual = hidden_states
-    hidden_states = self.post_attention_layernorm(hidden_states)
-    hidden_states = self.mlp(hidden_states)
-    hidden_states = residual + hidden_states
+        if output_attentions:
+            outputs += (self_attn_weights,)
 
-    outputs = (hidden_states,)
+        if use_cache:
+            outputs += (present_key_value,)
 
-    if output_attentions:
-        outputs += (self_attn_weights,)
+        return outputs
 
-    if use_cache:
-        outputs += (present_key_value,)
-
-    return outputs
 
 def gaudi_starcoder2_model_forward(
     self,
@@ -263,27 +276,14 @@ def gaudi_starcoder2_model_forward(
                 " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
             )
 
-    if self._attn_implementation == "flash_attention_2":
-        # 2d mask is passed through the layers
-        attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-    elif self._attn_implementation == "sdpa" and not output_attentions:
-        # output_attentions=True can not be supported when using SDPA, and we fall back on
-        # the manual implementation that requires a 4D causal mask in all cases.
-        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
-            attention_mask,
-            (batch_size, seq_length),
-            inputs_embeds,
-            past_key_values_length,
-        )
-    else:
-        # 4d mask is passed through the layers
-        attention_mask = _gaudi_prepare_4d_causal_attention_mask(
-            attention_mask,
-            (batch_size, seq_length),
-            inputs_embeds,
-            past_key_values_length,
-            sliding_window=self.config.sliding_window,
-        )
+    # 4d mask is passed through the layers
+    attention_mask = _gaudi_prepare_4d_causal_attention_mask(
+        attention_mask,
+        (batch_size, seq_length),
+        inputs_embeds,
+        past_key_values_length,
+        sliding_window=self.config.sliding_window,
+    )
 
     hidden_states = inputs_embeds
     hidden_states = nn.functional.dropout(hidden_states, p=self.embedding_dropout, training=self.training)

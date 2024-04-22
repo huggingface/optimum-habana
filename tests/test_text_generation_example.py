@@ -26,6 +26,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mistral-7B-v0.1", 125.26115369093216),
             ("mistralai/Mixtral-8x7B-v0.1", 23.78652574031883),
             ("microsoft/phi-2", 218.08752713569007),
+            ("bigcode/starcoder2-3b", 234.2649120507936),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 36.34664210641816),

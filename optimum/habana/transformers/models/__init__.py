@@ -131,7 +131,7 @@ from .starcoder2 import (
     GaudiStarcoder2ForCausalLM,
     gaudi_starcoder2_model_forward,
     gaudi_starcoder2_attention_forward,
-    gaudi_starcoder2_decoder_layer_forward,
+    GaudiStarcoder2DecoderLayer,
 )
 from .swin import gaudi_swin_get_attn_mask
 from .t5 import (

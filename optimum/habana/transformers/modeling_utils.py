@@ -20,6 +20,7 @@ from .generation import (
     GaudiGenerationMixin,
     gaudi_MaxLengthCriteria_call,
     gaudi_MaxNewTokensCriteria_call,
+    gaudi_StoppingCriteriaList_call,
 )
 from .models import (
     GaudiBloomForCausalLM,
@@ -50,6 +51,7 @@ from .models import (
     GaudiOPTLearnedPositionalEmbedding,
     GaudiPhiForCausalLM,
     GaudiStarcoder2ForCausalLM,
+    GaudiStarcoder2DecoderLayer,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     gaudi_albert_forward,
@@ -125,7 +127,6 @@ from .models import (
     gaudi_SpeechT5SpeechDecoderPrenet_forward,
     gaudi_starcoder2_model_forward,
     gaudi_starcoder2_attention_forward,
-    gaudi_starcoder2_decoder_layer_forward,
     gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -196,6 +197,7 @@ def adapt_transformers_to_gaudi():
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
     transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
+    transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
 
     # Optimization for BLOOM generation on Gaudi
     transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
@@ -368,4 +370,4 @@ def adapt_transformers_to_gaudi():
     transformers.models.starcoder2.modeling_starcoder2.Starcoder2ForCausalLM = GaudiStarcoder2ForCausalLM
     transformers.models.starcoder2.modeling_starcoder2.Starcoder2Model.forward = gaudi_starcoder2_model_forward
     transformers.models.starcoder2.modeling_starcoder2.Starcoder2Attention.forward = gaudi_starcoder2_attention_forward
-    transformers.models.starcoder2.modeling_starcoder2.Starcoder2DecoderLayer.forward = gaudi_starcoder2_decoder_layer_forward
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2DecoderLayer = GaudiStarcoder2DecoderLayer
