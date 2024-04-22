@@ -175,6 +175,8 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 > --bf16
 > ```
 
+Please Note: to be able to run mistralai Mixtral-8x22B models, as the current Deepspeed synapse.v1.15.0 has an issue.
+You need to modify /usr/local/lib/python3.10/dist-packages/deepspeed/module_inject/auto_tp.py [https://github.com/HabanaAI/DeepSpeed/blob/7e475fbdcf45d763f83d47dd6c9c181be731d92e/deepspeed/module_inject/auto_tp.py#L135] to add  "MixtralRMSNorm".
 
 ### Use any dataset from the Hugging Face Hub
 
