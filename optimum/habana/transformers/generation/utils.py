@@ -364,9 +364,11 @@ class GaudiGenerationMixin(GenerationMixin):
                             # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
                             # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
                             # in peft case, if there's virtual token. the model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == num_virtual_token, no need of assert, the pad length of past_key_value should be aligned with input id and attention_mask
-                            # assert (
-                            #   model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
-                            # )
+                            num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
+                            assert (
+                                model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
+                                == num_virtual_tokens
+                            )
                             tmp_lst[j] = torch.nn.functional.pad(
                                 model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
                             )
@@ -740,6 +742,7 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
         model_kwargs["flash_attention_causal_mask"] = True if generation_config.flash_attention_causal_mask else False
+        model_kwargs["num_virtual_tokens"] = num_virtual_tokens
 
         if not self.config.is_encoder_decoder:
             calculated_max_length = input_ids.shape[-1] + num_virtual_tokens
@@ -1469,12 +1472,16 @@ class GaudiGenerationMixin(GenerationMixin):
                     next_token_logits = outputs.logits[:, token_idx - 1, :]
                     next_tokens_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
                 else:
-                    # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
-                    if model_kwargs.get("reuse_cache", False):
-                        output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                    if model_kwargs.get("num_virtual_tokens", 0) > 0:
+                        # for prompt tuning, the output logit shape > model_inputs["input_ids"].shape[-1]
+                        if model_kwargs.get("reuse_cache", False):
+                            output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                        else:
+                            output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                        next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
                     else:
-                        output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
-                    next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                        next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+
                     next_tokens_scores = logits_processor(input_ids, next_token_logits)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
@@ -1821,12 +1828,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
             token_idx = model_kwargs.get("token_idx", None)
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
-                if model_kwargs.get("reuse_cache", False):
-                    output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                if model_kwargs.get("num_virtual_tokens", 0) > 0:
+                    # for prompt tuning, the output logit shape > model_inputs["input_ids"].shape[-1]
+                    if model_kwargs.get("reuse_cache", False):
+                        output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                    else:
+                        output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                    next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
                 else:
-                    output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
-                next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                    next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
 
@@ -2307,12 +2317,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
             token_idx = model_kwargs.get("token_idx", None)
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
-                if model_kwargs.get("reuse_cache", False):
-                    output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                if model_kwargs.get("num_virtual_tokens", 0) > 0:
+                    # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
+                    if model_kwargs.get("reuse_cache", False):
+                        output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                    else:
+                        output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                    next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
                 else:
-                    output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
-                next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                    next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
 
@@ -3056,12 +3069,15 @@ class GaudiGenerationMixin(GenerationMixin):
                 cur_len = cur_len + 1
                 continue  # don't waste resources running the code we don't need
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
-                if model_kwargs.get("reuse_cache", False):
-                    output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                if model_kwargs.get("num_virtual_tokens", 0) > 0:
+                    # for prompt tuning, the output logit shape > model_inputs["input_ids"].shape[-1]
+                    if model_kwargs.get("reuse_cache", False):
+                        output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                    else:
+                        output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                    next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
                 else:
-                    output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
-                next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                    next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
 
