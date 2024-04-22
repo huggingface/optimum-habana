@@ -43,11 +43,13 @@ from .esm import (
     gaudi_rot_vec_mul,
 )
 from .falcon import (
+    GaudiFalconAttention,
+    GaudiFalconDecoderLayer,
     GaudiFalconForCausalLM,
+    GaudiFalconMLP,
     GaudiFalconModel,
-    gaudi_falcon_attention_forward,
     gaudi_falcon_attention_split_heads,
-    gaudi_falcon_decoder_layer_forward,
+    gaudi_falcon_linear_forward,
 )
 from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
 from .gpt_bigcode import (
@@ -151,4 +153,6 @@ from .wav2vec2 import (
     _gaudi_wav2vec2_sample_negative_indices,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
+    gaudi_wav2vec2_tdnnlayer_forward,
+    gaudi_wav2vec2forctc_forward,
 )
