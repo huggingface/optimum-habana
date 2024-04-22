@@ -74,7 +74,7 @@ class ScriptArguments:
     use_lora: bool = field(default=True, metadata={"help": "Whether to use LoRA."})
     bf16: bool = field(default=False, metadata={"help": "Whether to use bf16 mixed precision."})
     gaudi_config_name: str = field(
-        default="Habana/stable-diffusion", metadata={"help": "Name or path of the training configuration"}
+        default="Habana/stable-diffusion", metadata={"help": "Name or path of the Gaudi configuration"}
     )
     push_to_hub: bool = field(default=False, metadata={"help": "Whether or not to push the model to the Hub."})
     use_habana: bool = field(default=True, metadata={"help": "Whether or not to use HPU."})
@@ -215,7 +215,7 @@ if __name__ == "__main__":
         "project_dir": "./save",
     }
 
-    # 1. initialize traning config:
+    # 1. initialize Gaudi config:
     gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name) if args.use_habana else None
 
     pipeline = GaudiDefaultDDPOStableDiffusionPipeline(
