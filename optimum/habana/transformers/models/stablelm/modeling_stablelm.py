@@ -1,13 +1,14 @@
 import math
-import torch
+from typing import List, Optional, Tuple, Union
 
+import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.stablelm.modeling_stablelm import StableLmForCausalLM, apply_rotary_pos_emb, repeat_kv
 from transformers.utils import logging
-from typing import List, Optional, Tuple, Union
+
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
