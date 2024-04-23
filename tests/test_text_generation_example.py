@@ -31,7 +31,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
             ("stabilityai/stablelm-2-12b", 1, False, 81.842),
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
-            ("adept/persimmon-8b-base", 1, False, 366.73968820698406),
+            ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),
