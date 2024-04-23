@@ -916,7 +916,7 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             "use_cache": kwargs.get("use_cache"),
             "attention_mask": attention_mask,
             "token_idx": token_idx,
-            "split_model_markstep": kwargs.get('split_model_markstep', False)
+            "split_model_markstep": kwargs.get('split_model_markstep', False),
             "reuse_cache": reuse_cache,
             "cache_idx": kwargs.get("cache_idx"),
         }
