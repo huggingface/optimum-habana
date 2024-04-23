@@ -49,6 +49,7 @@ from .falcon import (
     GaudiFalconMLP,
     GaudiFalconModel,
     gaudi_falcon_attention_split_heads,
+    gaudi_falcon_linear_forward,
 )
 from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
 from .gpt_bigcode import (
