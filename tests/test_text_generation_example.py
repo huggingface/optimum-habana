@@ -66,6 +66,7 @@ else:
             ("mistralai/Mistral-7B-v0.1", 1, True, 41.21906841459711),
             ("microsoft/phi-2", 1, False, 92.53083167241344),
             ("stabilityai/stablelm-2-12b", 1, False, 26.873),
+            ("google/gemma-7b", 1, False, 28.84284625836978),
         ],
         "fp8": [],
         "deepspeed": [

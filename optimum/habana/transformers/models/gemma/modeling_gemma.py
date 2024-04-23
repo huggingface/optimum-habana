@@ -17,35 +17,34 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" PyTorch Gemma model."""
+"""PyTorch Gemma model."""
 
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
-
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.models.gemma.modeling_gemma import (
+    GemmaAttention,
+    GemmaConfig,
+    GemmaDecoderLayer,
+    GemmaForCausalLM,
+    apply_rotary_pos_emb,
+    repeat_kv,
+)
+from transformers.utils import logging
+
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 
-from transformers.models.gemma.modeling_gemma import (
-        GemmaForCausalLM,
-        apply_rotary_pos_emb,
-        repeat_kv,
-        GemmaDecoderLayer,
-        GemmaAttention,
-        GemmaConfig
-        )
-from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
+
 
 def gaudi_gemma_attention_forward(
     self,
@@ -125,6 +124,7 @@ def gaudi_gemma_attention_forward(
 
     return attn_output, attn_weights, past_key_value
 
+
 class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
     def __init__(self, config: GemmaConfig, layer_idx: int):
         super().__init__(config, layer_idx)
@@ -141,7 +141,7 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
         cache_position: Optional[torch.LongTensor] = None,
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
-        ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Copied from GemmaDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
         The only differences are:
@@ -150,7 +150,7 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
 
         if "padding_mask" in kwargs:
             warnings.warn(
-            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
 
         residual = hidden_states
@@ -159,16 +159,16 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
 
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
-                hidden_states=hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                cache_position=cache_position,
-                token_idx=token_idx,
-                **kwargs,
-                )
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            token_idx=token_idx,
+            **kwargs,
+        )
 
         hidden_states = residual + hidden_states
         # Fully Connected
@@ -186,6 +186,7 @@ class GaudiGemmaDecoderLayer(GemmaDecoderLayer):
             outputs += (present_key_value,)
 
         return outputs
+
 
 def gaudi_gemma_model_forward(
     self,
@@ -227,9 +228,7 @@ def gaudi_gemma_model_forward(
         raise ValueError("You have to specify either input_ids or inputs_embeds")
 
     if self.gradient_checkpointing and self.training and use_cache:
-        logger.warning_once(
-            "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-        )
+        logger.warning_once("`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.")
         use_cache = False
 
     if inputs_embeds is None:
@@ -252,7 +251,7 @@ def gaudi_gemma_model_forward(
     # 4d mask is passed through the layers, not use self._update_causal_mask
     causal_mask = _gaudi_prepare_4d_causal_attention_mask(
         attention_mask, (batch_size, seq_length), inputs_embeds, past_seen_tokens
-        )
+    )
 
     # embed positions
     hidden_states = inputs_embeds
