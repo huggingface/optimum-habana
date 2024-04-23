@@ -432,10 +432,45 @@ def main():
         "trust_remote_code": model_args.trust_remote_code,
         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
     }
+    #import pdb; pdb.set_trace()
+    #config_kwargs = {'cache_dir': None, 'revision': 'main', 'token': None, 'trust_remote_code': False, 'use_cache': False}
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
     elif model_args.model_name_or_path:
         config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+        '''
+         config
+LlamaConfig {
+  "_name_or_path": "/mnt/weka/data/llama_inference/Llama-2-7b-chat-hf/",
+  "architectures": [
+    "LlamaForCausalLM"
+  ],
+  "attention_bias": false,
+  "attention_dropout": 0.0,
+  "bos_token_id": 1,
+  "eos_token_id": 2,
+  "hidden_act": "silu",
+  "hidden_size": 4096,
+  "initializer_range": 0.02,
+  "intermediate_size": 11008,
+  "max_position_embeddings": 4096,
+  "model_type": "llama",
+  "num_attention_heads": 32,
+  "num_hidden_layers": 32,
+  "num_key_value_heads": 32,
+  "pad_token_id": 0,
+  "pretraining_tp": 1,
+  "rms_norm_eps": 1e-06,
+  "rope_scaling": null,
+  "rope_theta": 10000.0,
+  "tie_word_embeddings": false,
+  "torch_dtype": "float16",
+  "transformers_version": "4.37.2",
+  "use_cache": false,
+  "vocab_size": 32000
+}
+
+        '''
     else:
         config = CONFIG_MAPPING[model_args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
@@ -443,6 +478,22 @@ def main():
             logger.info(f"Overriding config: {model_args.config_overrides}")
             config.update_from_string(model_args.config_overrides)
             logger.info(f"New config: {config}")
+
+    from transformers import LlamaConfig
+    config = LlamaConfig(vocab_size=32000,
+        hidden_size=4096,
+        intermediate_size=11008,
+        num_hidden_layers=8, # not 32
+        num_attention_heads=32,
+        pad_token_id=0,
+        use_cache=False,
+        transformers_version="4.37.2",
+        max_position_embeddings=4096,
+        model_type="llama",
+        torch_dtype="float16",
+        architectures=["LlamaForCausalLM"]
+        )
+
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -461,7 +512,7 @@ def main():
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    if model_args.model_name_or_path:
+    if False:#model_args.model_name_or_path:
         torch_dtype = (
             model_args.torch_dtype
             if model_args.torch_dtype in ["auto", None]
