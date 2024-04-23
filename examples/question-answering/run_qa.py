@@ -317,17 +317,6 @@ def main():
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
-    import torch
-    torch.manual_seed(training_args.seed)
-    from habana_frameworks.torch.hpu import random as hpu_random
-    hpu_random.manual_seed_all(training_args.seed)
-    torch.use_deterministic_algorithms(True)
-    import random
-    random.seed(training_args.seed)
-    import numpy as np
-    np.random.seed(training_args.seed)
-    import habana_frameworks
-    habana_frameworks.torch.hpu.setDeterministic(True)
 
     # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
     # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/

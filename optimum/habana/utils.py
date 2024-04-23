@@ -162,11 +162,11 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     if is_torch_available():
-        from habana_frameworks.torch.hpu import random as hpu_random
+        import habana_frameworks.torch.hpu as hpu_random
 
         torch.manual_seed(seed)
-        hpu_random.manual_seed_all(seed)
-
+        hpu_random.random.manual_seed_all(seed)
+        hpu_random.setDeterministic(True)
 
 def check_synapse_version():
     """
