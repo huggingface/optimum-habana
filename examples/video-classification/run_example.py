@@ -26,10 +26,10 @@ import habana_frameworks.torch as ht
 import requests
 import torch
 from tqdm import tqdm
-
-from optimum.habana.transformers.modeling_utils import \
-    adapt_transformers_to_gaudi
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 adapt_transformers_to_gaudi()
 
@@ -65,9 +65,7 @@ def get_image_buffers(video_paths: list[str]):
 
 
 def infer(model, inputs, cast_bf16: bool):
-    with torch.autocast(
-        device_type="hpu", dtype=torch.bfloat16, enabled=cast_bf16
-    ), torch.no_grad():
+    with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=cast_bf16), torch.no_grad():
         outputs = model(**inputs)
     torch.hpu.synchronize()
     predicted_class_idx = outputs.logits.argmax(-1).item()
