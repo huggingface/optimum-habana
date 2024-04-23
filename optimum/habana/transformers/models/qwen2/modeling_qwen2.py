@@ -17,24 +17,24 @@
 ###############################################################################
 
 import math
-import torch
 import warnings
+from typing import List, Optional, Tuple, Union
 
+import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.qwen2.modeling_qwen2 import (
+    Qwen2Attention,
+    Qwen2Config,
+    Qwen2DecoderLayer,
     Qwen2ForCausalLM,
     apply_rotary_pos_emb,
     repeat_kv,
-    Qwen2DecoderLayer,
-    Qwen2Attention,
-    Qwen2Config,
 )
 from transformers.utils import logging
-from typing import List, Optional, Tuple, Union
+
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
