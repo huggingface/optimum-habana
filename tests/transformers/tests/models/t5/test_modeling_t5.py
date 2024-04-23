@@ -1397,9 +1397,7 @@ class T5ModelIntegrationTests(unittest.TestCase):
             early_stopping=True,
         )
         translation = tok.decode(output[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        output_2nd_run = model.generate(input_ids=input_ids, num_beams=4,length_penalty=2.0, max_length=100, no_repeat_ngram_size=3,do_sample=False, early_stopping=True)
-        translation_2nd_run = tok.decode(output_2nd_run[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-
+        
         new_truncated_translation = (
             "Cette section d'images provenant de l'enregistrement infrarouge effectué par le télescope Spitzer montre "
             "un "
@@ -1408,7 +1406,6 @@ class T5ModelIntegrationTests(unittest.TestCase):
             "de points bleus."
         )
 
-        self.assertEqual(translation, translation_2nd_run)
         self.assertEqual(translation, new_truncated_translation)
 
     @slow

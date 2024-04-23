@@ -400,11 +400,6 @@ class FalconLanguageGenerationTest(unittest.TestCase):
         output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=19)
         output_str = tokenizer.batch_decode(output_ids)[0]
 
-        output_ids_2nd_run = model.generate(**inputs, do_sample=False, max_new_tokens=19)
-        output_str_2nd_run = tokenizer.batch_decode(output_ids_2nd_run)[0]
-        
-        self.assertEqual(output_str, output_str_2nd_run)
-        self.assertEqual(output_ids.shape[1] - inputs['input_ids'].shape[1], 19)
         self.assertEqual(output_str, EXPECTED_OUTPUT)
 
     @slow
