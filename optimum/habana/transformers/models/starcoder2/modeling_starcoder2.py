@@ -1,20 +1,21 @@
 import math
-import torch
+from typing import List, Optional, Tuple, Union
 
+import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.starcoder2.modeling_starcoder2 import (
-        Starcoder2ForCausalLM,
-        apply_rotary_pos_emb,
-        repeat_kv,
-        Starcoder2DecoderLayer,
-        Starcoder2Attention,
-        Starcoder2Config,
-        )
+    Starcoder2Attention,
+    Starcoder2Config,
+    Starcoder2DecoderLayer,
+    Starcoder2ForCausalLM,
+    apply_rotary_pos_emb,
+    repeat_kv,
+)
 from transformers.utils import logging
-from typing import List, Optional, Tuple, Union
+
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
