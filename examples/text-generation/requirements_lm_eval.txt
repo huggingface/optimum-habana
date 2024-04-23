@@ -1,1 +1,5 @@
 git+https://github.com/polisettyvarma/lm-evaluation-harness.git@lm_harness_fixes
+evaluate
+rouge_score
+accelerate
+pandas
