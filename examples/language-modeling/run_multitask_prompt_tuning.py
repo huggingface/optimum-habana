@@ -151,14 +151,6 @@ class ModelArguments:
             )
         },
     )
-    num_virtual_tokens: int = field(
-        default=8,
-        metadata={"help": ("the number of virtual tokens used in prompt/prefix/P tuning.")},
-    )
-    encoder_hidden_size: int = field(
-        default=1024,
-        metadata={"help": ("encoder_hidden_size if the encoder hidden size used in P tuning")},
-    )
 
 
 @dataclass
@@ -167,13 +159,6 @@ class DataTrainingArguments:
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
 
-    dataset_name: Optional[str] = field(
-        default="ought/raft", metadata={"help": "The name of the dataset to use (via the datasets library)."}
-    )
-    dataset_config_name: Optional[str] = field(
-        default="twitter_complaints",
-        metadata={"help": "The configuration name of the dataset to use (via the datasets library)."},
-    )
     max_eval_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -183,8 +168,6 @@ class DataTrainingArguments:
             )
         },
     )
-
-    streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
 
     max_source_length: Optional[int] = field(
         default=256,
@@ -204,13 +187,6 @@ class DataTrainingArguments:
             )
         },
     )
-
-    def __post_init__(self):
-        if self.streaming:
-            require_version("datasets>=2.0.0", "The streaming feature requires `datasets>=2.0.0`")
-
-        if self.dataset_name is None:
-            raise ValueError("Need either a dataset name or a training/validation file.")
 
 
 def main():

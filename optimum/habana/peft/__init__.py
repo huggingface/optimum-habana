@@ -1,1 +1,1 @@
-from .layer import GaudiAdaloraLayerSVDLinearForward, GaudiLoraLayerLinearForward
+from .layer import GaudiAdaloraLayerSVDLinearForward, GaudiLoraLayerLinearForward, GaudiPolyLayerLinearForward

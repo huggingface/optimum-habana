@@ -30,6 +30,7 @@ from peft import (
     PolyConfig,
     TaskType,
     get_peft_model,
+    tuners,
 )
 from transformers import (
     AutoConfig,
@@ -149,13 +150,17 @@ class ModelArguments:
             )
         },
     )
-    num_virtual_tokens: int = field(
+    r: int = field(
         default=8,
-        metadata={"help": ("the number of virtual tokens used in prompt/prefix/P tuning.")},
+        metadata={"help": ("rank of lora in poly.")},
     )
-    encoder_hidden_size: int = field(
-        default=1024,
-        metadata={"help": ("encoder_hidden_size if the encoder hidden size used in P tuning")},
+    n_skills: int = field(
+        default=2,
+        metadata={"help": ("number of skills in poly")},
+    )
+    n_splits: int = field(
+        default=4,
+        metadata={"help": ("number of skills in poly")},
     )
 
 
@@ -165,15 +170,18 @@ class DataTrainingArguments:
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
 
-    dataset_name: Optional[str] = field(
-        default="ought/raft", metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    max_train_samples: Optional[int] = field(
+        default=1000,
+        metadata={
+            "help": (
+                "For debugging purposes or quicker training, truncate the number of train examples to this "
+                "value if set."
+            )
+        },
     )
-    dataset_config_name: Optional[str] = field(
-        default="twitter_complaints",
-        metadata={"help": "The configuration name of the dataset to use (via the datasets library)."},
-    )
+
     max_eval_samples: Optional[int] = field(
-        default=None,
+        default=100,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
@@ -181,8 +189,6 @@ class DataTrainingArguments:
             )
         },
     )
-
-    streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
 
     max_source_length: Optional[int] = field(
         default=256,
@@ -194,7 +200,7 @@ class DataTrainingArguments:
         },
     )
     max_target_length: Optional[int] = field(
-        default=16,
+        default=2,
         metadata={
             "help": (
                 "The maximum total sequence length for target text after tokenization. Sequences longer "
@@ -202,13 +208,6 @@ class DataTrainingArguments:
             )
         },
     )
-
-    def __post_init__(self):
-        if self.streaming:
-            require_version("datasets>=2.0.0", "The streaming feature requires `datasets>=2.0.0`")
-
-        if self.dataset_name is None:
-            raise ValueError("Need either a dataset name or a training/validation file.")
 
 
 def main():
@@ -226,19 +225,16 @@ def main():
         transformers.utils.logging.enable_explicit_format()
 
     set_seed(training_args.seed)
+    from optimum.habana.peft.layer import GaudiPolyLayerLinearForward
 
-    r = 8  # rank of lora in poly
-    n_tasks = 4  # number of tasks
-    n_skills = 2  # number of skills (loras)
-    n_splits = 4  # number of heads
-
+    tuners.poly.layer.Linear.forward = GaudiPolyLayerLinearForward
     peft_config = PolyConfig(
         task_type=TaskType.SEQ_2_SEQ_LM,
         poly_type="poly",
-        r=r,
-        n_tasks=n_tasks,
-        n_skills=n_skills,
-        n_splits=n_splits,
+        r=model_args.r,
+        n_tasks=4,
+        n_skills=model_args.n_skills,
+        n_splits=model_args.n_splits,
     )
 
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path)
@@ -326,8 +322,12 @@ def main():
 
     def tokenize(examples):
         inputs, targets = examples["input"], examples["output"]
-        features = tokenizer(inputs, max_length=512, padding="max_length", truncation=True, return_tensors="pt")
-        labels = tokenizer(targets, max_length=2, padding="max_length", truncation=True, return_tensors="pt")
+        features = tokenizer(
+            inputs, max_length=data_args.max_source_length, padding="max_length", truncation=True, return_tensors="pt"
+        )
+        labels = tokenizer(
+            targets, max_length=data_args.max_target_length, padding="max_length", truncation=True, return_tensors="pt"
+        )
         labels = labels["input_ids"]
         labels[labels == tokenizer.pad_token_id] = -100
         features["labels"] = labels
@@ -409,11 +409,11 @@ def main():
 
     # Initialize our Trainer
     training_args.remove_unused_columns = False
-    training_args.predict_with_generate = (True,)
-    training_args.generation_max_length = (2,)
+    training_args.predict_with_generate = True
+    training_args.generation_max_length = 2
 
-    superglue_train_dataset = get_superglue_dataset(split="train", n_samples=1000)
-    superglue_eval_dataset = get_superglue_dataset(split="test", n_samples=100)
+    superglue_train_dataset = get_superglue_dataset(split="train", n_samples=data_args.max_train_samples)
+    superglue_eval_dataset = get_superglue_dataset(split="test", n_samples=data_args.max_eval_samples)
 
     trainer = GaudiSeq2SeqTrainer(
         model=peft_model,
@@ -427,23 +427,28 @@ def main():
     )
 
     if training_args.do_train:
-        logger.info("***source finetune***")
         train_result = trainer.train()
         trainer.save_model()
         metrics = train_result.metrics
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
 
-    i = 5
-    inputs = tokenizer(rte_dataset["validation"]["input"][i], return_tensors="pt")
-    inputs["task_ids"] = torch.LongTensor([TASK2ID["rte"]])
-    inputs = {k: v.to("hpu") for k, v in inputs.items()}
-    logger.info(rte_dataset["validation"]["input"][i])
-    logger.info(rte_dataset["validation"]["output"][i])
-    logger.info(inputs)
+    if training_args.do_eval:
+        metrics = trainer.evaluate()
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
 
-    with torch.no_grad():
-        outputs = peft_model.generate(**inputs, max_new_tokens=2)
+    if is_main_process(training_args.local_rank):
+        i = 5
+        inputs = tokenizer(rte_dataset["validation"]["input"][i], return_tensors="pt")
+        inputs["task_ids"] = torch.LongTensor([TASK2ID["rte"]])
+        inputs = {k: v.to("hpu") for k, v in inputs.items()}
+        logger.info(rte_dataset["validation"]["input"][i])
+        logger.info(rte_dataset["validation"]["output"][i])
+        logger.info(inputs)
+
+        with torch.no_grad():
+            outputs = peft_model.generate(**inputs, max_new_tokens=2)
         logger.info(outputs[0])
         logger.info(tokenizer.batch_decode(outputs, skip_special_tokens=True)[0])
 

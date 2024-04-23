@@ -637,6 +637,52 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --validation_split_percentage 5 \
     --deepspeed ds_falcon_180b_z3.json
 ```
+
+To run multitask prompt seq2seq finetuning, you can use `run_multitask_prompt_tuning.py`.
+Here is multi-device command examples for google/flan-t5-base
+```bash
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.py \
+    --model_name_or_path google/flan-t5-base \
+    --do_train \
+    --report_to=none \
+    --num_train_epochs 3 \
+    --output_dir out_multi_peft \
+    --use_habana \
+    --use_lazy_mode \
+    --evaluation_strategy "steps" \
+    --eval_steps 500 \
+    --save_strategy "no" \
+    --learning_rate 1e-4  \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training \
+    --bf16
+```
+
+To run poly seq2seq finetuning, you can use `peft_poly_seq2seq_with_generate.py`.
+Here is multi-device command examples for google/flan-t5-xl
+```bash
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_generate.py \
+    --model_name_or_path google/flan-t5-xl \
+    --do_train \
+    --report_to=none \
+    --num_train_epochs 1 \
+    --output_dir out_poly \
+    --use_habana \
+    --use_lazy_mode \
+    --evaluation_strategy "epoch" \
+    --logging_strategy "epoch" \
+    --save_strategy "no" \
+    --learning_rate 5e-5  \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --bf16 \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training
+```
+
+
 ## Streaming
 
 To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified in the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
