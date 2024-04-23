@@ -176,8 +176,8 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
 
 
 class GaudiMistralAttention(MistralAttention):
-    def __init__(self, config: MistralConfig, layer_idx: int):
-        super().__init__(config)
+    def __init__(self, config: MistralConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.matmul_qk = Matmul()
@@ -185,7 +185,6 @@ class GaudiMistralAttention(MistralAttention):
         # TODO: replace these two 
         #self.past_key = None
         #self.past_value = None
-        self.layer_idx = layer_idx
         self.inp_seq_len = -1
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
