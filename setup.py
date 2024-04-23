@@ -34,10 +34,10 @@ INSTALL_REQUIRES = [
     "torch",
     "accelerate < 0.28.0",
     "diffusers >= 0.26.0, < 0.27.0",
+    "pytest < 8.0.0",
 ]
 
 TESTS_REQUIRE = [
-    "pytest",
     "psutil",
     "parameterized",
     "GitPython",

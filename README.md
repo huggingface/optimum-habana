@@ -45,9 +45,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 > ```
 > git clone https://github.com/huggingface/optimum-habana
-> cd optimum-habana && git checkout v1.10.4
+> cd optimum-habana && git checkout v1.11.1
 > ```
-> with `v1.10.4` the version number of this release.
+> with `v1.11.1` the version number of this release.
 
 ### Option 2: Use the latest main branch under development
 
@@ -62,7 +62,7 @@ git clone https://github.com/huggingface/optimum-habana
 
 To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.14.0
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 >```
 
 To install the requirements for every example:
@@ -175,9 +175,9 @@ The following model architectures, tasks and device distributions have been vali
 | GPT-J | <div style="text-align:left"><li>DeepSpeed</li></div> | <div style="text-align:left"><li>Single card</li><li>DeepSpeed</li></div> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | GPT-NeoX | <div style="text-align:left"><li>DeepSpeed</li></div> | <div style="text-align:left"><li>DeepSpeed</li></div> | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | OPT |   | <div style="text-align:left"><li>DeepSpeed</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Llama 2 / CodeLlama | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| Llama 2 / CodeLlama / Llama 3 | :heavy_check_mark: | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | StableLM |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
-| Falcon | <div style="text-align:left"><li>LoRA</li></div> | :heavy_check_mark: | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
+| Falcon | <div style="text-align:left"><li>LoRA</li></div> | :heavy_check_mark: | <li>[language modeling](https://github.com/huggingface/optimum-habana/tree/main/examples/language-modeling)</li><li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | CodeGen |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | MPT |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
 | Mistral |   | <div style="text-align:left"><li>Single card</li></div> | <li>[text generation](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation)</li> |
@@ -203,7 +203,8 @@ The following model architectures, tasks and device distributions have been vali
 
 | Architecture     | Training | Inference            | Tasks |
 |------------------|:--------:|:--------------------:|:------|
-| Stable Diffusion |          | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| Stable Diffusion | <li>[textual inversion](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#textual-inversion)</li><li>[ControlNet](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#controlnet-training)</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
+| Stable Diffusion XL | <li>[fine-tuning](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion/training#fine-tuning-for-stable-diffusion-xl)</li> | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 | LDM3D            |          | <li>Single card</li> | <li>[text-to-image generation](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion)</li> |
 
 </div>
@@ -212,10 +213,11 @@ The following model architectures, tasks and device distributions have been vali
 
 <div align="center">
 
-| Architecture     | Training | Inference            | Tasks |
-|------------------|:--------:|:--------------------:|:------|
-| Llama 2          | :heavy_check_mark: |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
-| Llama 2          | :heavy_check_mark: |           | <li>[PPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
+| Architecture     | Training | Inference            | Tasks                                                                                          |
+|------------------|:--------:|:--------------------:|:-----------------------------------------------------------------------------------------------|
+| Llama 2          | :heavy_check_mark: |           | <li>[DPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li>  |
+| Llama 2          | :heavy_check_mark: |           | <li>[PPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li>  |
+| Stable Diffusion | :heavy_check_mark: |           | <li>[DDPO Pipeline](https://github.com/huggingface/optimum-habana/tree/main/examples/trl)</li> |
 
 </div>
 
@@ -230,7 +232,7 @@ Please refer to Habana Gaudi's official [installation guide](https://docs.habana
 
 > Tests should be run in a Docker container based on Habana Docker images.
 >
-> The current version has been validated for SynapseAI 1.14.
+> The current version has been validated for SynapseAI 1.15.
 
 
 ## Development

@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.14.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.15.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -246,7 +246,7 @@ class HabanaProfile(object):
         output_dir: str = "./hpu_profile",
         wait: int = 0,
     ):
-        if active <= 0 or warmup <= 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
+        if active <= 0 or warmup < 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
 
             def noop():
                 pass
