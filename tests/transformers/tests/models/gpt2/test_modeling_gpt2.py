@@ -759,6 +759,8 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
         input_ids = tokenized.input_ids.to(torch_device)
         output_ids = model.generate(input_ids, do_sample=True)
         output_str = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        output_ids_2nd_run = model.generate(input_ids, do_sample=True)
+        output_str_2nd_run = tokenizer.decode(output_ids_2nd_run[0], skip_special_tokens=True)
 
         token_type_ids = tokenized.token_type_ids.to(torch_device)
         output_seq = model.generate(input_ids=input_ids, do_sample=True, num_return_sequences=5)
@@ -771,6 +773,9 @@ class GPT2ModelLanguageGenerationTest(unittest.TestCase):
         EXPECTED_OUTPUT_STR = (
             "Today is a nice day and if you don't know anything about the state of play during your holiday"
         )
+
+        self.assertEqual(output_str, output_str_2nd_run)
+
         self.assertEqual(output_str, EXPECTED_OUTPUT_STR)
         self.assertTrue(
             all(output_seq_strs[idx] != output_seq_tt_strs[idx] for idx in range(len(output_seq_tt_strs)))
