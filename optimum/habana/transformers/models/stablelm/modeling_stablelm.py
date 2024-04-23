@@ -16,6 +16,7 @@ from ...modeling_attn_mask_utils import (
 
 logger = logging.get_logger(__name__)
 
+
 def gaudi_stablelm_attention_forward(
     self,
     hidden_states: torch.Tensor,
@@ -129,6 +130,7 @@ def gaudi_stablelm_attention_forward(
 
     return attn_output, attn_weights, past_key_value
 
+
 def gaudi_stablelm_decoder_layer_forward(
     self,
     hidden_states: torch.Tensor,
@@ -177,6 +179,7 @@ def gaudi_stablelm_decoder_layer_forward(
         outputs += (present_key_value,)
 
     return outputs
+
 
 def gaudi_stablelm_model_forward(
     self,
@@ -310,6 +313,7 @@ def gaudi_stablelm_model_forward(
         hidden_states=all_hidden_states,
         attentions=all_self_attns,
     )
+
 
 class GaudiStableLmForCausalLM(StableLmForCausalLM):
     def forward(
