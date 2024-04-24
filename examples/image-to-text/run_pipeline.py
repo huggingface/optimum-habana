@@ -75,6 +75,13 @@ def main():
         type=str,
         help="Output directory to store results in.",
     )
+    parser.add_argument(
+        "--token",
+        default=None,
+        type=str,
+        help="The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+        "generated when running `huggingface-cli login` (stored in `~/.huggingface`).",
+    )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
