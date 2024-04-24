@@ -14,16 +14,17 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import json
 import logging
 import time
-import json
+from pathlib import Path
+
 import PIL.Image
 import requests
 import torch
 from transformers import pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-from pathlib import Path
 
 
 logging.basicConfig(
