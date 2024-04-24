@@ -15,7 +15,7 @@ limitations under the License.
 -->
 
 [![Unit and integration tests](https://github.com/huggingface/optimum-habana/actions/workflows/fast_tests.yml/badge.svg)](https://github.com/huggingface/optimum-habana/actions/workflows/fast_tests.yml)
-[![Regression tests](https://github.com/huggingface/optimum-habana/actions/workflows/slow_tests.yml/badge.svg)](https://github.com/huggingface/optimum-habana/actions/workflows/slow_tests.yml)
+[![Regression tests (Gaudi1)](https://github.com/huggingface/optimum-habana/actions/workflows/slow_tests.yml/badge.svg)](https://github.com/huggingface/optimum-habana/actions/workflows/slow_tests.yml)
 
 ![](https://github.com/huggingface/optimum-habana/blob/main/readme_logo.png)
 
