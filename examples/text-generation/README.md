@@ -215,7 +215,9 @@ python run_generation.py \
 --peft_model goliaro/llama-2-7b-lora-full
 ```
 
+
 ### Using growing bucket optimization
+
 With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
 
 > For now, it is available only for greedy and beam search generation, and cannot be used with `--reuse_cache`.
@@ -238,9 +240,14 @@ Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For exa
 
 While `--bucket_size` works for any model without model file changes, an even more optimized version of bucketing is supported for certain models like Llama. This can be enabled by setting `--bucket_internal` flag (along with `--bucket_size` to specify the bucket size)
 
+
 ### Running with torch.compile
-torch.compile is an experimental feature. Not every model has tested with it. To enable torch.compile, please
-set enviorment varibles PT_ENABLE_INT64_SUPPORT=1 PT_HPU_LAZY_MODE=0 before the run command. Also add --torch_compile in the command.
+
+torch.compile is an experimental feature. It has not been validated for all models. To enable torch.compile, please
+set the following environment variables before running the command: `PT_ENABLE_INT64_SUPPORT=1` and `PT_HPU_LAZY_MODE=0`.
+
+You will also need to add `--torch_compile` in your command.
+
 
 ### Running with FP8
 
@@ -358,6 +365,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 ```
 `--fp8` is required to enable quantization in fp8.
 
+
 ### Using Habana Flash Attention
 
 Habana Flash Attention addresses large sequence lengths on prompt stage of inference. Using causal attention mask on prompt stage requires input sequences in batch to be of the same length, but can provide a memory saving, thus enabling higher batch sizes.
@@ -382,6 +390,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 ```
 
 For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html#using-fused-sdpa).
+
 
 ## Language Model Evaluation Harness
 
@@ -427,6 +436,7 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --tasks winogrande \
 -o eval.json
 ```
+
 
 ## Text-Generation Pipeline
 
