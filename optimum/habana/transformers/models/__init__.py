@@ -51,6 +51,12 @@ from .falcon import (
     gaudi_falcon_attention_split_heads,
     gaudi_falcon_linear_forward,
 )
+from .gemma import (
+    GaudiGemmaDecoderLayer,
+    GaudiGemmaForCausalLM,
+    gaudi_gemma_attention_forward,
+    gaudi_gemma_model_forward,
+)
 from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
 from .gpt_bigcode import (
     GaudiGPTBigCodeForCausalLM,

@@ -31,6 +31,8 @@ from .models import (
     GaudiFalconForCausalLM,
     GaudiFalconMLP,
     GaudiFalconModel,
+    GaudiGemmaDecoderLayer,
+    GaudiGemmaForCausalLM,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
@@ -90,6 +92,8 @@ from .models import (
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_attention_split_heads,
     gaudi_falcon_linear_forward,
+    gaudi_gemma_attention_forward,
+    gaudi_gemma_model_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
@@ -344,6 +348,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.phi.modeling_phi.PhiAttention.forward = gaudi_phi_attention_forward
     transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
     transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
+
+    # Optimization for gemma on Gaudi
+    transformers.models.gemma.modeling_gemma.GemmaForCausalLM = GaudiGemmaForCausalLM
+    transformers.models.gemma.modeling_gemma.GemmaAttention.forward = gaudi_gemma_attention_forward
+    transformers.models.gemma.modeling_gemma.GemmaDecoderLayer = GaudiGemmaDecoderLayer
+    transformers.models.gemma.modeling_gemma.GemmaModel.forward = gaudi_gemma_model_forward
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
