@@ -250,6 +250,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
     transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
     transformers.models.gpt2.modeling_gpt2.GPT2Block.forward = gaudi_gpt2_block_forward
+    transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in (GaudiGPT2Attention, GaudiGPT2LMHeadModel))
 
     # Optimization for EsmFold on Gaudi
     transformers.models.esm.modeling_esmfold.EsmFoldingTrunk.forward = gaudi_esmfolding_trunk_forward
