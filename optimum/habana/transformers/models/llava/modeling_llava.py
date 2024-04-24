@@ -19,16 +19,20 @@
 # limitations under the License.
 """PyTorch Llava model."""
 
-import torch
 from typing import List, Optional, Tuple, Union
+
+import torch
 from transformers.cache_utils import Cache
-from transformers.models.llava.modeling_llava import LlavaForConditionalGeneration, LlavaCausalLMOutputWithPast
+from transformers.models.llava.modeling_llava import LlavaCausalLMOutputWithPast, LlavaForConditionalGeneration
 from transformers.utils import logging
+
 
 logger = logging.get_logger(__name__)
 
-def _pad_inputs(input_ids, attention_mask, image_token_index, num_patches,
-        pad_token_id, vision_feature_select_strategy=None):
+
+def _pad_inputs(
+    input_ids, attention_mask, image_token_index, num_patches, pad_token_id, vision_feature_select_strategy=None
+):
     """
     pad inputs for static shape
     """
@@ -38,17 +42,13 @@ def _pad_inputs(input_ids, attention_mask, image_token_index, num_patches,
     elif vision_feature_select_strategy == "full":
         num_patches = num_patches + 1
     else:
-        raise ValueError(
-                f"Unexpected select feature strategy: {self.config.vision_feature_select_strategy}"
-            )
+        raise ValueError(f"Unexpected select feature strategy: {vision_feature_select_strategy}")
     image_offset = 0
     new_input_ids = []
     new_attention_mask = []
     tokens_pos = []
     for cur_input_ids, cur_attention_mask in zip(input_ids, attention_mask):
-        num_images = (cur_input_ids == image_token_index).sum()
-        image_token_indices = torch.where(cur_input_ids == image_token_index)[0].tolist() + \
-                [cur_input_ids.shape[0]]
+        image_token_indices = torch.where(cur_input_ids == image_token_index)[0].tolist() + [cur_input_ids.shape[0]]
 
         cur_input_ids_extend = []
         cur_attention_mask_extend = []
@@ -167,7 +167,8 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
 
                 image_features = self.multi_modal_projector(selected_image_feature)
                 inputs_embeds = _merge_input_ids_with_image_features(
-                    image_features, inputs_embeds, input_ids, self.config.image_token_index)
+                    image_features, inputs_embeds, input_ids, self.config.image_token_index
+                )
 
             outputs = self.language_model(
                 attention_mask=attention_mask,
@@ -204,19 +205,20 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
 
         else:
             return super().forward(
-                    input_ids=input_ids,
-                    pixel_values=pixel_values,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    past_key_values=past_key_values,
-                    inputs_embeds=inputs_embeds,
-                    vision_feature_layer=vision_feature_layer,
-                    vision_feature_select_strategy=vision_feature_select_strategy,
-                    labels=labels,
-                    use_cache=use_cache,
-                    output_attentions=output_attentions,
-                    output_hidden_states=output_hidden_states,
-                    return_dict=return_dict)
+                input_ids=input_ids,
+                pixel_values=pixel_values,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                vision_feature_layer=vision_feature_layer,
+                vision_feature_select_strategy=vision_feature_select_strategy,
+                labels=labels,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
 
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, inputs_embeds=None, pixel_values=None, attention_mask=None, **kwargs
@@ -234,13 +236,14 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         image_offset = 0
         tokens_pos = None
         if token_idx is not None and pixel_values is not None:
-            input_ids, attention_mask, image_offset, tokens_pos = \
-                    _pad_inputs(input_ids,
-                            attention_mask,
-                            self.config.image_token_index,
-                            self.vision_tower.vision_model.embeddings.num_patches,
-                            self.pad_token_id,
-                            vision_feature_select_strategy=self.config.vision_feature_select_strategy)
+            input_ids, attention_mask, image_offset, tokens_pos = _pad_inputs(
+                input_ids,
+                attention_mask,
+                self.config.image_token_index,
+                self.vision_tower.vision_model.embeddings.num_patches,
+                self.pad_token_id,
+                vision_feature_select_strategy=self.config.vision_feature_select_strategy,
+            )
 
         past_length = 0
         if past_key_values is not None:
@@ -248,10 +251,8 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 if isinstance(past_key_values, Cache):
                     cache_length = past_key_values.get_seq_length()
                     past_length = past_key_values.seen_tokens
-                    max_cache_length = past_key_values.get_max_length()
                 else:
                     cache_length = past_length = past_key_values[0][0].shape[2]
-                    max_cache_length = None
                 # Keep only the unprocessed tokens:
                 # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
                 # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
@@ -296,7 +297,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 "pixel_values": pixel_values,
                 "token_idx": token_idx,
                 "image_offset": image_offset,
-                "tokens_pos": tokens_pos
+                "tokens_pos": tokens_pos,
             }
         )
 

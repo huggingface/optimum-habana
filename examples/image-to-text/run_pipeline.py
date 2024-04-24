@@ -16,13 +16,14 @@
 import argparse
 import logging
 import time
-
+import json
 import PIL.Image
 import requests
 import torch
 from transformers import pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from pathlib import Path
 
 
 logging.basicConfig(
@@ -67,12 +68,23 @@ def main():
         action="store_true",
         help="Whether to perform generation in bf16 precision.",
     )
+    parser.add_argument(
+        "--output_dir",
+        default=None,
+        type=str,
+        help="Output directory to store results in.",
+    )
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     args = parser.parse_args()
 
     adapt_transformers_to_gaudi()
+    if args.image_path is None and "llava" in args.model_name_or_path:
+        args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
+    if args.prompt is None and "llava" in args.model_name_or_path:
+        args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
+
     image_paths = args.image_path
     image_paths_len = len(image_paths)
 
@@ -115,11 +127,27 @@ def main():
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
 
-    start = time.time()
+    start = time.perf_counter()
     for i in range(args.n_iterations):
         result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
-    end = time.time()
-    logger.info(f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms")
+    end = time.perf_counter()
+    duration = end - start
+
+    total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+    throughput = total_new_tokens_generated / duration
+    logger.info(f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second")
+
+    # Store results if necessary
+    if args.output_dir is not None:
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        results = {
+            "throughput": throughput,
+            "output": result,
+        }
+        with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=4)
 
 
 if __name__ == "__main__":
