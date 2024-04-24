@@ -1,9 +1,13 @@
 import os
+import torch
 from pathlib import Path
 from urllib.request import urlretrieve
 
 from transformers import AutoImageProcessor, AutoTokenizer, VisionTextDualEncoderModel, VisionTextDualEncoderProcessor
 
+# Calculate CLIP score
+from functools import partial
+from torchmetrics.functional.multimodal import clip_score
 
 COCO_URLS = [
     "http://images.cocodataset.org/zips/train2017.zip",
@@ -39,3 +43,12 @@ def create_clip_roberta_model():
     processor.save_pretrained("clip-roberta")
 
     print("Model generated.")
+
+
+clip_score_fn = partial(clip_score, model_name_or_path="openai/clip-vit-base-patch16")
+
+
+def calculate_clip_score(images, prompts):
+    images_int = (images * 255).astype("uint8")
+    clip_score = clip_score_fn(torch.from_numpy(images_int).permute(0, 3, 1, 2), prompts).detach()
+    return round(float(clip_score), 4)
