@@ -29,7 +29,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Meta-Llama-3-8B", 1, True, 129),
             ("meta-llama/Llama-2-7b-hf", 512, True, 12808),
             ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
-            ("stabilityai/stablelm-2-12b", 1, False, 81.842),
+            ("stabilityai/stablelm-2-12b", 1, False, 80.70269834414843),
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
             ("google/gemma-7b", 1, False, 109.70751574382221),
         ],
@@ -65,8 +65,8 @@ else:
             ("mosaicml/mpt-7b", 1, False, 45.45168927038262),
             ("mistralai/Mistral-7B-v0.1", 1, True, 41.21906841459711),
             ("microsoft/phi-2", 1, False, 92.53083167241344),
-            ("stabilityai/stablelm-2-12b", 1, False, 26.873),
             ("google/gemma-7b", 1, False, 28.84284625836978),
+            ("stabilityai/stablelm-2-12b", 1, False, 26.80858949645992),
         ],
         "fp8": [],
         "deepspeed": [
