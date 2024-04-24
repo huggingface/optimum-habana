@@ -96,18 +96,15 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
-def setup_quantization(args, model):
-    import habana_frameworks.torch.core as htcore
-    from habana_frameworks.torch.core.quantization import _check_params_as_const, _mark_params_as_const
-    from habana_frameworks.torch.hpu import hpu
+def setup_const_serialization(const_serialization_path):
+    import uuid
 
-    print("Initializing inference with quantization")
-    _mark_params_as_const(model)
-    _check_params_as_const(model)
-    if not args.quant_config:
-        hpu.enable_quantization()
-    htcore.hpu_initialize(model)
-    return model
+    const_serialization_path = os.path.join(const_serialization_path + uuid.uuid4().hex)
+    os.makedirs(const_serialization_path)
+    from habana_frameworks.torch.hpu import enable_const_section_serialization
+
+    print("Serializing const params to {}".format(const_serialization_path))
+    enable_const_section_serialization(const_serialization_path, True)
 
 
 def setup_env(args):
@@ -154,7 +151,7 @@ def patch_scoped_linear_all_reduce(model):
 
 
 def get_torch_compiled_model(model):
-    model.model = torch.compile(model.model, backend="aot_hpu_inference_backend")
+    model.model = torch.compile(model.model, backend="hpu_backend")
     return model
 
 
@@ -237,7 +234,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     model = deepspeed.init_inference(model, **ds_inference_kwargs)
     model = model.module
-    if model.config.model_type == "llama":
+    if model.config.model_type in ["llama", "falcon"]:
         patch_scoped_linear_all_reduce(model)
 
     if args.quant_config:
@@ -289,7 +286,10 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = PeftModel.from_pretrained(model, args.peft_model, torch_dtype=model_dtype, **model_kwargs)
 
-    return model.merge_and_unload()
+    model = model.merge_and_unload()
+    if model_dtype == torch.bfloat16:
+        model = model.to(torch.bfloat16)
+    return model
 
 
 def setup_tokenizer(args, model):
@@ -349,8 +349,9 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.reduce_recompile = args.reduce_recompile
     if generation_config.reduce_recompile:
         assert generation_config.bucket_size > 0
-    generation_config.kv_cache_fp8 = args.kv_cache_fp8
     generation_config.use_flash_attention = args.use_flash_attention
+    generation_config.flash_attention_recompute = args.flash_attention_recompute
+    generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
     return generation_config
 
 
@@ -373,6 +374,10 @@ def initialize_model(args, logger):
         "revision": args.model_revision,
         "token": args.token,
     }
+    if args.disk_offload:
+        model_kwargs["device_map"] = "auto"
+        model_kwargs["offload_folder"] = "/tmp/offload_folder/"
+
     model = (
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
@@ -380,8 +385,16 @@ def initialize_model(args, logger):
     )
     tokenizer, model = setup_tokenizer(args, model)
     generation_config = setup_generation_config(args, model, tokenizer)
+
+    if args.const_serialization_path:
+        setup_const_serialization(args.const_serialization_path)
     if args.fp8:
-        model = setup_quantization(args, model)
+        import habana_frameworks.torch.core as htcore
+
+        print("Initializing inference mode")
+        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
+        if const_marking == "True":
+            htcore.hpu_initialize(model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")

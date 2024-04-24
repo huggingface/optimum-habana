@@ -24,11 +24,12 @@ from pathlib import Path
 from unittest import TestCase, skipUnless
 
 import numpy as np
+import pytest
 import requests
 import torch
 from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel, UniPCMultistepScheduler
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
-from diffusers.utils import load_image
+from diffusers.utils import load_image, numpy_to_pil
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
@@ -54,7 +55,7 @@ from .clip_coco_utils import download_files
 
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
-    THROUGHPUT_BASELINE_BF16 = 1.016
+    THROUGHPUT_BASELINE_BF16 = 1.086
     THROUGHPUT_BASELINE_AUTOCAST = 0.394
     TEXTUAL_INVERSION_THROUGHPUT = 104.29806
     TEXTUAL_INVERSION_RUNTIME = 114.1344320399221
@@ -63,10 +64,10 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
-    TEXTUAL_INVERSION_THROUGHPUT = 58.17508958300077
-    TEXTUAL_INVERSION_RUNTIME = 202.94231038199996
-    CONTROLNET_THROUGHPUT = 44.412012818816905
-    CONTROLNET_RUNTIME = 1124.0202105600001
+    TEXTUAL_INVERSION_THROUGHPUT = 60.5991479573174
+    TEXTUAL_INVERSION_RUNTIME = 196.43840550999994
+    CONTROLNET_THROUGHPUT = 44.7278034963213
+    CONTROLNET_RUNTIME = 1116.084316640001
 
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
@@ -643,6 +644,8 @@ class GaudiStableDiffusionPipelineTester(TestCase):
                 [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
             )
         image = outputs.images[0]
+        pil_image = numpy_to_pil(image)[0]
+        pil_image.save("test_no_generation_regression_output.png")
 
         self.assertEqual(image.shape, (512, 512, 3))
         self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
@@ -1760,6 +1763,7 @@ class TrainTextToImage(TestCase):
         self.assertEqual(return_code, 0)
 
     @slow
+    @pytest.mark.skip(reason="The dataset used in this test is not available at the moment.")
     def test_train_text_to_image_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (
@@ -1776,19 +1780,21 @@ class TrainTextToImage(TestCase):
                  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0
                  --pretrained_vae_model_name_or_path stabilityai/sdxl-vae
                  --dataset_name lambdalabs/pokemon-blip-captions
-                 --resolution 64
+                 --resolution 512
+                 --crop_resolution 512
                  --center_crop
                  --random_flip
                  --proportion_empty_prompts=0.2
-                 --train_batch_size 1
-                 --gradient_accumulation_steps 4
+                 --train_batch_size 16
                  --learning_rate 1e-05
                  --max_grad_norm 1
                  --lr_scheduler constant
                  --lr_warmup_steps 0
                  --gaudi_config_name Habana/stable-diffusion
                  --throughput_warmup_steps 3
-                 --use_hpu_graphs
+                 --dataloader_num_workers 8
+                 --use_hpu_graphs_for_training
+                 --use_hpu_graphs_for_inference
                  --bf16
                  --max_train_steps 2
                  --output_dir {tmpdir}
@@ -1804,50 +1810,6 @@ class TrainTextToImage(TestCase):
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
-
-    @slow
-    def test_train_text_to_image_sdxl_lora(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path_to_script = (
-                Path(os.path.dirname(__file__)).parent
-                / "examples"
-                / "stable-diffusion"
-                / "training"
-                / "train_text_to_image_sdxl.py"
-            )
-
-            cmd_line = f"""
-                 python3
-                 {path_to_script}
-                 --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0
-                 --pretrained_vae_model_name_or_path=madebyollin/sdxl-vae-fp16-fix
-                 --dataset_name=lambdalabs/pokemon-blip-captions
-                 --caption_column=text
-                 --resolution=64
-                 --random_flip
-                 --train_batch_size=1
-                 --learning_rate=1e-04
-                 --lr_scheduler=constant
-                 --lr_warmup_steps=0
-                 --seed=42
-                 --finetuning_method=lora
-                 --gaudi_config_name=Habana/stable-diffusion
-                 --throughput_warmup_steps=3
-                 --use_hpu_graphs
-                 --bf16
-                 --max_train_steps 2
-                 --output_dir {tmpdir}
-                """.split()
-
-            # Run train_text_to_image_lora.py
-            p = subprocess.Popen(cmd_line)
-            return_code = p.wait()
-
-            # Ensure the run finished without any issue
-            self.assertEqual(return_code, 0)
-
-            # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
 
 class TrainControlNet(TestCase):

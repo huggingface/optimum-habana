@@ -75,10 +75,15 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         self.options = options
         self._device = args.device
         self.model_inputs = {"use_cache": self.options.use_cache}
-        if self.model.config.model_type == "llama":
+        if self.model.config.model_type in ["llama", "falcon"]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
+                }
+            )
+        if self.model.config.model_type == "llama":
+            self.model_inputs.update(
+                {
                     "attn_softmax_bf16": self.options.attn_softmax_bf16,
                 }
             )
@@ -131,12 +136,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         if self.options.static_shapes:
             bucket_length = self.find_bucket(seq_length)
             if self.options.use_cache and self.options.reuse_cache:
-                self.model.allocate_kv_cache(
-                    bs,
-                    bucket_length + 1,
-                    bucket_length,
-                    False,
-                )
+                self.model.allocate_kv_cache(bs, bucket_length + 1, bucket_length)
             padding_length = bucket_length - seq_length
             inps = F.pad(inps, (0, padding_length), value=self.model.config.pad_token_id)
         logits = self.model(inps.to(self._device), **self.model_inputs)["logits"].cpu()
@@ -176,6 +176,10 @@ def main():
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.finish_measurements(model)
+    if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
+        import shutil
+
+        shutil.rmtree(args.const_serialization_path)
 
 
 if __name__ == "__main__":
