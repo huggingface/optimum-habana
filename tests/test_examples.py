@@ -220,6 +220,8 @@ class ExampleTestMeta(type):
             return True
         elif "bloom" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "0":
             return True
+        elif "ast-finetuned-speech-commands-v2" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
+            return True
 
         return False
 
