@@ -13,7 +13,7 @@ $ pip install -U -r requirements.txt
 
 ### Training
 
-##### The following example is for the creation of StackLlaMa 2: a Stack exchange llama-v2-7b model.
+#### The following example is for the creation of StackLlaMa 2: a Stack exchange llama-v2-7b model.
 There are two main steps to the DPO training process:
 1. Supervised fine-tuning of the base llama-v2-7b model to create llama-v2-7b-se:
 
@@ -55,7 +55,7 @@ There are two main steps to the DPO training process:
         --report_to=none
     ```
 
-##### for mistralai/Mistral-7B-v0.1.
+#### For mistralai/Mistral-7B-v0.1.
 1. Supervised fine-tuning of the base Mistral-7B-v0.1 model to create Mistral-7B-v0.1-se:
 
     ```
@@ -97,7 +97,7 @@ There are two main steps to the DPO training process:
     ```
 
 
-##### For large model like Llama2-70B, we could use DeepSpeed Zero-3 to enable DPO training in multi-card.
+#### For large model like Llama2-70B, we could use DeepSpeed Zero-3 to enable DPO training in multi-card.
 steps like:
 1. Supervised fine-tuning of the base llama-v2-70b model to create llama-v2-70b-se:
 
@@ -143,7 +143,7 @@ steps like:
         --report_to=none
     ```
 
-##### For MoE like mistralai/Mixtral-8x7B-v0.1, we could use DeepSpeed Zero-3 to enable DPO training in multi-card.
+#### For MoE like mistralai/Mixtral-8x7B-v0.1, we could use DeepSpeed Zero-3 to enable DPO training in multi-card.
 steps like:
 1. Supervised fine-tuning of the base Mixtral-8x7B-v0.1 model to create Mixtral-8x7B-v0.1-se:
 
