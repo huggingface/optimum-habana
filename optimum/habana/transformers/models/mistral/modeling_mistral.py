@@ -23,6 +23,7 @@ import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
+import habana_frameworks.torch.core as htcore
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -40,10 +41,11 @@ from transformers.models.mistral.modeling_mistral import (
     apply_rotary_pos_emb,
 )
 from transformers.utils import logging
+
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
-import habana_frameworks.torch.core as htcore
+
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -99,6 +101,7 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
+
 class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -106,7 +109,9 @@ class Matmul(torch.nn.Module):
     def forward(self, x, y):
         return torch.matmul(x, y)
 
+
 logger = logging.get_logger(__name__)
+
 
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def gaudi_mistral_repeat_kv(
@@ -176,16 +181,15 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
 
 
 class GaudiMistralAttention(MistralAttention):
-    def __init__(self, config: MistralConfig, layer_idx: int):
-        super().__init__(config)
+    def __init__(self, config: MistralConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
-        # TODO: replace these two 
-        #self.past_key = None
-        #self.past_value = None
-        self.layer_idx = layer_idx
+        # TODO: replace these two
+        # self.past_key = None
+        # self.past_value = None
         self.inp_seq_len = -1
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
@@ -276,7 +280,9 @@ class GaudiMistralAttention(MistralAttention):
             else:
                 if past_key_value is None:
                     past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
-                    past_value = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_value = torch.zeros(
+                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
+                    )
                     past_key_value = (past_key, past_value)
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                 value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
@@ -536,9 +542,11 @@ class GaudiMistralModel(MistralModel):
             htcore.mark_step()
 
         for layer_idx, decoder_layer in enumerate(self.layers):
-            if layer_idx == len(self.layers)//2 or \
-                (lazy_mode and not self.training and \
-                (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)):
+            if layer_idx == len(self.layers) // 2 or (
+                lazy_mode
+                and not self.training
+                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+            ):
                 htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
@@ -775,14 +783,18 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         )
         return model_inputs
 
+
 def apply_customized_rope(q, k, cos, sin, position_ids, use_fused_rope=True):
     if q.device.type == "hpu" and has_fused_rope and use_fused_rope:
         # TODO: remove `.clone()` when SynapseAI v1.15 is released
-        if k.dtype==torch.bfloat16:
+        if k.dtype == torch.bfloat16:
             return FusedRoPE.apply(
                 q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
             ), FusedRoPE.apply(
-                k, cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16), sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16), position_ids
+                k,
+                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
+                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
+                position_ids,
             )
         return FusedRoPE.apply(
             q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
