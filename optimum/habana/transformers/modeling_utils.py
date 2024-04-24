@@ -137,6 +137,7 @@ from .models import (
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
+    gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
@@ -379,3 +380,5 @@ def adapt_transformers_to_gaudi():
     transformers.models.qwen2.modeling_qwen2.Qwen2Model.forward = gaudi_qwen2_model_forward
     transformers.models.qwen2.modeling_qwen2.Qwen2Attention.forward = gaudi_qwen2_attention_forward
     transformers.models.qwen2.modeling_qwen2.Qwen2DecoderLayer = GaudiQwen2DecoderLayer
+
+    transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation
