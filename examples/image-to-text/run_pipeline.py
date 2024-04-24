@@ -22,7 +22,7 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import pipeline
+from transformers import pipeline, AutoConfig
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -81,9 +81,11 @@ def main():
     args = parser.parse_args()
 
     adapt_transformers_to_gaudi()
-    if args.image_path is None and "llava" in args.model_name_or_path:
+
+    model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
+    if args.image_path is None and model_type == "llava":
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
-    if args.prompt is None and "llava" in args.model_name_or_path:
+    if args.prompt is None and model_type == "llava":
         args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
 
     image_paths = args.image_path

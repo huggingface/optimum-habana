@@ -21,6 +21,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
 def _test_image_to_text(
     model_name: str,
     baseline: float,
+    token: str,
     batch_size: int = 1,
 ):
     command = ["python3"]
@@ -43,6 +44,8 @@ def _test_image_to_text(
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
         print(f"\n\nCommand to test: {' '.join(command)}\n")
+        
+        command.append(f"--token {token.value}")
 
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
         command = [x for y in command for x in re.split(pattern, y) if x]
@@ -66,5 +69,5 @@ def _test_image_to_text(
 
 
 @pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["bf16"])
-def test_image_to_text_bf16(model_name: str, baseline: float, batch_size: int):
-    _test_image_to_text(model_name, baseline, batch_size)
+def test_image_to_text_bf16(model_name: str, baseline: float, batch_size: int, token: str):
+    _test_image_to_text(model_name, baseline, token, batch_size)
