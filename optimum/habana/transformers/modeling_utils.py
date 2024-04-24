@@ -147,6 +147,9 @@ def adapt_transformers_to_gaudi():
     for Gaudi.
     """
 
+    # models that support symbolic tracing should be added to this list
+    models_with_tracing_support = []
+
     # optimize Conv1D
     transformers.pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
 
@@ -250,7 +253,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
     transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
     transformers.models.gpt2.modeling_gpt2.GPT2Block.forward = gaudi_gpt2_block_forward
-    transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in (GaudiGPT2Attention, GaudiGPT2LMHeadModel))
+    models_with_tracing_support.extend((GaudiGPT2Attention, GaudiGPT2LMHeadModel))
 
     # Optimization for EsmFold on Gaudi
     transformers.models.esm.modeling_esmfold.EsmFoldingTrunk.forward = gaudi_esmfolding_trunk_forward
@@ -370,3 +373,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
         gaudi_SpeechT5SpeechDecoderPrenet_forward
     )
+
+    # Tell transformers which Gaudi models support tracing
+    transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
