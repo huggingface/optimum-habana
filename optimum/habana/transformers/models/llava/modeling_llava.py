@@ -280,7 +280,10 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
-                position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
+                if token_idx is not None:
+                    position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
+                else:
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
