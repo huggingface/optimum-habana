@@ -23,6 +23,7 @@ import pytest
 import torch
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
+
 LATENCY_VIDEOMAE_BF16_GRAPH_BASELINE = 17.544198036193848
 MODEL_NAME = "MCG-NJU/videomae-base-finetuned-kinetics"
 
@@ -55,9 +56,7 @@ def outputs_cpu(request):
 
 @pytest.fixture(autouse=True, scope="class")
 def model_hpu(request):
-    request.cls.model_hpu = VideoMAEForVideoClassification.from_pretrained(
-        MODEL_NAME
-    ).to("hpu")
+    request.cls.model_hpu = VideoMAEForVideoClassification.from_pretrained(MODEL_NAME).to("hpu")
     request.cls.model_hpu_graph = ht.hpu.wrap_in_hpu_graph(request.cls.model_hpu)
 
 
@@ -83,11 +82,7 @@ class GaudiVideoMAETester(TestCase):
                 self.outputs_hpu_default.logits.cpu().topk(10).indices,
             )
         )
-        self.assertTrue(
-            torch.allclose(
-                self.outputs_cpu.logits, self.outputs_hpu_default.logits, atol=5e-3
-            )
-        )
+        self.assertTrue(torch.allclose(self.outputs_cpu.logits, self.outputs_hpu_default.logits, atol=5e-3))
 
     def test_inference_bf16(self):
         """
