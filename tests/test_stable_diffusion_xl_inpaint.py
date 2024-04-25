@@ -35,7 +35,7 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, slow
 from PIL import Image
 from transformers import (
     CLIPImageProcessor,
@@ -597,7 +597,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         device= "cpu"
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        print(f"torch_device={torch_device}")
         # forward with single prompt
         inputs = self.get_dummy_inputs(device)
         inputs["num_inference_steps"] = 5

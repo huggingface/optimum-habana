@@ -683,8 +683,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
             self._num_timesteps = len(timesteps)
             const_timesteps = copy.deepcopy(timesteps)
             with self.progress_bar(total=num_inference_steps) as progress_bar:
-                #for i, t in enumerate(timesteps):
-                for i in range(num_inference_steps):
+                for i, _ in enumerate(const_timesteps):
                     if self.interrupt:
                         continue
 

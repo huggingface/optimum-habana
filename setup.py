@@ -38,6 +38,7 @@ INSTALL_REQUIRES = [
 ]
 
 TESTS_REQUIRE = [
+    "diffusers[test] >= 0.26.0, < 0.27.0",
     "psutil",
     "parameterized",
     "GitPython",
@@ -45,6 +46,8 @@ TESTS_REQUIRE = [
     "sentencepiece",
     "datasets",
     "safetensors",
+    "scipy",
+    "torchsde"
 ]
 
 QUALITY_REQUIRES = [

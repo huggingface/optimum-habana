@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -485,14 +486,16 @@ class GaudiStableDiffusionInpaintPipeline(
                 ).to(device=device, dtype=latents.dtype)
 
             # 10. Denoising loop
-            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 0)
+            num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, throughput_warmup_steps)
             self._num_timesteps = len(timesteps)
 
             t0 = time.time()
             t1 = t0
 
+            const_timesteps = copy.deepcopy(timesteps)
             with self.progress_bar(total=num_inference_steps) as progress_bar:
-                for i in range(num_inference_steps):
+                for i, _ in enumerate(const_timesteps):
                     if self.interrupt:
                         continue
                     timestep = timesteps[0]
@@ -534,8 +537,8 @@ class GaudiStableDiffusionInpaintPipeline(
                         else:
                             init_mask = mask
 
-                        if i < len(timesteps) - 1:
-                            noise_timestep = timesteps[i + 1]
+                        if i < len(const_timesteps) - 1:
+                            noise_timestep = const_timesteps[i + 1]
                             init_latents_proper = self.scheduler.add_noise(
                                 init_latents_proper, noise, torch.tensor([noise_timestep])
                             )
