@@ -22,7 +22,7 @@ from pathlib import Path
 import PIL.Image
 import requests
 import torch
-from transformers import pipeline, AutoConfig
+from transformers import AutoConfig, pipeline
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -145,7 +145,9 @@ def main():
 
     total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
     throughput = total_new_tokens_generated / duration
-    logger.info(f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second")
+    logger.info(
+        f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
+    )
 
     # Store results if necessary
     if args.output_dir is not None:

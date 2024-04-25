@@ -14,9 +14,17 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("llava-hf/llava-1.5-7b-hf", 1, 70.42849862047758),
+            ("llava-hf/llava-1.5-7b-hf", 1, 87.2901500056982),
         ],
     }
+else:
+    # Gaudi1 CI baselines
+    MODELS_TO_TEST = {
+        "bf16": [
+            ("llava-hf/llava-1.5-7b-hf", 1, 28.04096918512148),
+        ],
+    }
+
 
 def _test_image_to_text(
     model_name: str,
@@ -44,7 +52,7 @@ def _test_image_to_text(
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
         print(f"\n\nCommand to test: {' '.join(command)}\n")
-        
+
         command.append(f"--token {token.value}")
 
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")

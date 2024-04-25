@@ -306,7 +306,7 @@ def adapt_transformers_to_gaudi():
         GaudiLlamaDynamicNTKScalingRotaryEmbedding
     )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
- 
+
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
 
