@@ -1,13 +1,14 @@
 import os
-import torch
-from pathlib import Path
-from urllib.request import urlretrieve
-
-from transformers import AutoImageProcessor, AutoTokenizer, VisionTextDualEncoderModel, VisionTextDualEncoderProcessor
 
 # Calculate CLIP score
 from functools import partial
+from pathlib import Path
+from urllib.request import urlretrieve
+
+import torch
 from torchmetrics.functional.multimodal import clip_score
+from transformers import AutoImageProcessor, AutoTokenizer, VisionTextDualEncoderModel, VisionTextDualEncoderProcessor
+
 
 COCO_URLS = [
     "http://images.cocodataset.org/zips/train2017.zip",
