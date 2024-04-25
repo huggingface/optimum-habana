@@ -13,6 +13,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
+"""
+Adapted from: https://github.com/huggingface/optimum-habana/blob/main/examples/stable-diffusion/text_to_image_generation.py
+- Use the AutoPipelineForInpainting to load the Gaudi inpaint pipeline.
+- Add the inpaint examples from https://huggingface.co/docs/diffusers/en/using-diffusers/inpaint
+"""
 import argparse
 import logging
 import sys
@@ -23,18 +28,11 @@ import PIL
 import requests
 import torch
 
-"""
-Adapted from: https://github.com/huggingface/optimum-habana/blob/main/examples/stable-diffusion/text_to_image_generation.py
-- Use the AutoPipelineForInpainting to load the Gaudi inpaint pipeline.
-- Add the inpaint examples from https://huggingface.co/docs/diffusers/en/using-diffusers/inpaint
-"""
-
-
-logger = logging.getLogger(__name__)
-
 from optimum.habana.diffusers import AutoPipelineForInpainting
 from optimum.habana.utils import set_seed
 
+
+logger = logging.getLogger(__name__)
 
 try:
     from optimum.habana.utils import check_optimum_habana_min_version

@@ -14,8 +14,8 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 import time
+from dataclasses import dataclass
 from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Union
 

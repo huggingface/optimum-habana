@@ -33,6 +33,7 @@ from .stable_diffusion_xl import (
     GaudiStableDiffusionXLPipeline,
 )
 
+
 GAUDI_PREFIX_NAME = "Gaudi"
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(

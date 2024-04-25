@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
+import copy
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -22,7 +22,10 @@ import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLInpaintPipeline
-from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import retrieve_timesteps, rescale_noise_cfg
+from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import (
+    rescale_noise_cfg,
+    retrieve_timesteps,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate, logging, replace_example_docstring
 from transformers import (
@@ -125,6 +128,16 @@ class GaudiStableDiffusionXLInpaintPipeline(
             Whether to use the [invisible_watermark library](https://github.com/ShieldMnt/invisible-watermark/) to
             watermark output images. If not defined, it will default to True if the package is installed, otherwise no
             watermarker will be used.
+        use_habana (bool, defaults to `False`):
+            Whether to use Gaudi (`True`) or CPU (`False`).
+        use_hpu_graphs (bool, defaults to `False`):
+            Whether to use HPU graphs or not.
+        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
+            Gaudi configuration to use. Can be a string to download it from the Hub.
+            Or a previously initialized config can be passed.
+        bf16_full_eval (bool, defaults to `False`):
+            Whether to use full bfloat16 evaluation instead of 32-bit.
+            This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
     """
 
     def __init__(
@@ -169,7 +182,6 @@ class GaudiStableDiffusionXLInpaintPipeline(
             force_zeros_for_empty_prompt,
             add_watermarker,
         )
-
         self.to(self._device)
 
 
@@ -669,6 +681,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 ).to(device=device, dtype=latents.dtype)
 
             self._num_timesteps = len(timesteps)
+            const_timesteps = copy.deepcopy(timesteps)
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 #for i, t in enumerate(timesteps):
                 for i in range(num_inference_steps):
@@ -721,9 +734,8 @@ class GaudiStableDiffusionXLInpaintPipeline(
                             init_mask, _ = mask.chunk(2)
                         else:
                             init_mask = mask
-
-                        if i < len(timesteps) - 1:
-                            noise_timestep = timesteps[i + 1]
+                        if i < len(const_timesteps) - 1:
+                            noise_timestep = const_timesteps[i + 1]
                             init_latents_proper = self.scheduler.add_noise(
                                 init_latents_proper, noise, torch.tensor([noise_timestep])
                             )

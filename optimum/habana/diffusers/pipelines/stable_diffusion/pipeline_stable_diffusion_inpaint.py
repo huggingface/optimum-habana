@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import PIL.Image
 import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
@@ -31,6 +29,7 @@ from ....utils import speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 from .pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class GaudiStableDiffusionInpaintPipeline(
@@ -38,7 +37,7 @@ class GaudiStableDiffusionInpaintPipeline(
     StableDiffusionInpaintPipeline
 ):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py#L172
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py#L222
     - Two `mark_step()` were added to add support for lazy mode
     - Added support for HPU graphs
 
@@ -73,6 +72,16 @@ class GaudiStableDiffusionInpaintPipeline(
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
+        use_habana (bool, defaults to `False`):
+            Whether to use Gaudi (`True`) or CPU (`False`).
+        use_hpu_graphs (bool, defaults to `False`):
+            Whether to use HPU graphs or not.
+        gaudi_config (Union[str, [`GaudiConfig`]], defaults to `None`):
+            Gaudi configuration to use. Can be a string to download it from the Hub.
+            Or a previously initialized config can be passed.
+        bf16_full_eval (bool, defaults to `False`):
+            Whether to use full bfloat16 evaluation instead of 32-bit.
+            This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
