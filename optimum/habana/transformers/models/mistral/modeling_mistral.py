@@ -20,7 +20,6 @@
 """PyTorch Mistral model."""
 
 import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
