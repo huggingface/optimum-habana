@@ -45,6 +45,11 @@ python run_zero_shot_eval.py
 ```bash
 python ../gaudi_spawn.py --world_size 8 --use_mpi run_sequence_classification.py \
     --output_dir ./out \
+    --model_name_or_path mila-intel/protst-esm1b-for-sequential-classification \
+    --tokenizer_name facebook/esm1b_t33_650M_UR50S \
+    --trust_remote_code \
+    --dataset_name mila-intel/ProtST-BinaryLocalization \
+    --torch_dtype bfloat16 \
     --overwrite_output_dir \
     --do_train \
     --per_device_train_batch_size 32 \

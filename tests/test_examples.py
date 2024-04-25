@@ -76,7 +76,10 @@ def _get_supported_models_for_script(
     """
 
     def is_valid_model_type(model_type: str) -> bool:
-        in_task_mapping = CONFIG_MAPPING[model_type] in task_mapping
+        if model_type == "protst":
+            in_task_mapping = True
+        else:
+            in_task_mapping = CONFIG_MAPPING[model_type] in task_mapping
         in_valid_models_for_task = model_type in valid_models_for_task
         if in_task_mapping and in_valid_models_for_task:
             return True
@@ -163,6 +166,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_CAUSAL_LM_MAPPING,
         ["llama"],
     ),
+    "run_sequence_classification": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        ["protst"],
+    ),
 }
 
 
@@ -233,7 +241,7 @@ class ExampleTestMeta(type):
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
-                if example_name in ["run_esmfold", "run_lora_clm"]:
+                if example_name in ["run_esmfold", "run_lora_clm", "run_zero_shot_eval"]:
                     attrs[f"test_{example_name}_{distribution}"] = cls._create_test(None, None, None, None, None)
                     attrs["EXAMPLE_NAME"] = example_name
                     return super().__new__(cls, name, bases, attrs)
@@ -284,7 +292,7 @@ class ExampleTestMeta(type):
                 example_script = example_script[0]
 
             # The ESMFold example has no arguments, so we can execute it right away
-            if self.EXAMPLE_NAME == "run_esmfold":
+            if self.EXAMPLE_NAME in ["run_esmfold", "run_zero_shot_eval"]:
                 p = subprocess.Popen(["python3", example_script])
                 return_code = p.wait()
 
@@ -639,6 +647,10 @@ class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, 
     pass
 
 
+class ProteinFoldingExampleTester2(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_zero_shot_eval"):
+    pass
+
+
 class MultiCardCausalLanguageModelingLORAExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
 ):
@@ -676,3 +688,10 @@ class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, ex
 class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="dpo", multi_card=True):
     TASK_NAME = "trl-dpo"
     DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardProteinFoldingClassificationTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_sequence_classification", multi_card=True
+):
+    TASK_NAME = "prost-sequence-classification"
+    DATASET_NAME = "mila-intel/ProtST-BinaryLocalization"

@@ -16,6 +16,8 @@
 
 import functools
 import logging
+from dataclasses import dataclass, field
+from typing import Optional
 
 import numpy as np
 import torch
@@ -125,18 +127,70 @@ def preprocess_logits_for_metrics(logits, labels):
     return torch.softmax(logits, dim=-1)
 
 
-if __name__ == "__main__":
-    device = torch.device("hpu")
+@dataclass
+class ModelArguments:
+    """
+    Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
+    """
 
-    training_args = HfArgumentParser(GaudiTrainingArguments).parse_args_into_dataclasses()[0]
+    model_name_or_path: str = field(
+        metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+    )
+    tokenizer_name: Optional[str] = field(
+        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
+    )
+    trust_remote_code: bool = field(
+        default=True,
+        metadata={
+            "help": (
+                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
+                "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
+                "execute code present on the Hub on your local machine."
+            )
+        },
+    )
+    torch_dtype: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Override the default `torch.dtype` and load the model under this dtype. If `auto` is passed, the "
+                "dtype will be automatically derived from the model's weights."
+            ),
+            "choices": ["auto", "bfloat16", "float16", "float32"],
+        },
+    )
+
+
+@dataclass
+class DataTrainingArguments:
+    """
+    Arguments pertaining to what data we are going to input our model for training and eval.
+    """
+
+    dataset_name: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    max_length: Optional[str] = field(
+        default=1024,
+        metadata={"help": ("the max length that input id will be padded to")},
+    )
+
+
+if __name__ == "__main__":
+    model_args, data_args, training_args = HfArgumentParser(
+        (ModelArguments, DataTrainingArguments, GaudiTrainingArguments)
+    ).parse_args_into_dataclasses()
 
     transformers.utils.logging.set_verbosity_info()
     log_level = training_args.get_process_log_level()
     logger.setLevel(log_level)
+    torch_dtype = (
+        model_args.torch_dtype if model_args.torch_dtype in ["auto", None] else getattr(torch, model_args.torch_dtype)
+    )
     model = AutoModel.from_pretrained(
-        "mila-intel/protst-esm1b-for-sequential-classification", trust_remote_code=True, torch_dtype=torch.bfloat16
-    ).to(device)
-    tokenizer = AutoTokenizer.from_pretrained("facebook/esm1b_t33_650M_UR50S")
+        model_args.model_name_or_path, trust_remote_code=model_args.trust_remote_code, torch_dtype=torch_dtype
+    )
+    tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name)
 
     def tokenize_protein(example, tokenizer=None):
         protein_seq = example["prot_seq"]
@@ -148,13 +202,15 @@ if __name__ == "__main__":
 
     func_tokenize_protein = functools.partial(tokenize_protein, tokenizer=tokenizer)
 
-    raw_dataset = load_dataset("mila-intel/ProtST-BinaryLocalization")
+    if data_args.dataset_name != "mila-intel/ProtST-BinaryLocalization":
+        raise ValueError("preprocess is only for mila-intel/ProtST-BinaryLocalization now")
+    raw_dataset = load_dataset(data_args.dataset_name)
     for split in ["train", "validation", "test"]:
         raw_dataset[split] = raw_dataset[split].map(
             func_tokenize_protein, batched=False, remove_columns=["Unnamed: 0", "prot_seq", "localization"]
         )
 
-    data_collator = DataCollatorWithPadding(tokenizer=tokenizer, padding="max_length", max_length=1024)
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer, padding="max_length", max_length=data_args.max_length)
 
     optimizer = create_optimizer(model)
     scheduler = create_scheduler(training_args, optimizer)
@@ -176,20 +232,24 @@ if __name__ == "__main__":
         preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
 
-    train_result = trainer.train()
+    if training_args.do_train:
+        train_result = trainer.train()
+        trainer.save_model()
+        # Saves the tokenizer too for easy upload
+        tokenizer.save_pretrained(training_args.output_dir)
 
-    trainer.save_model()
-    # Saves the tokenizer too for easy upload
-    tokenizer.save_pretrained(training_args.output_dir)
+        metrics = train_result.metrics
+        metrics["train_samples"] = len(raw_dataset["train"])
 
-    metrics = train_result.metrics
-    metrics["train_samples"] = len(raw_dataset["train"])
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
+        trainer.save_state()
 
-    trainer.log_metrics("train", metrics)
-    trainer.save_metrics("train", metrics)
-    trainer.save_state()
-    metric = trainer.evaluate(raw_dataset["test"], metric_key_prefix="test")
-    print("test metric: ", metric)
+    if training_args.do_eval:
+        metrics = trainer.evaluate(raw_dataset["test"], metric_key_prefix="test")
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
 
-    metric = trainer.evaluate(raw_dataset["validation"], metric_key_prefix="valid")
-    print("valid metric: ", metric)
+        metrics = trainer.evaluate(raw_dataset["validation"], metric_key_prefix="eval")
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)

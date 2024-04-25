@@ -55,6 +55,7 @@ MODELS_TO_TEST_MAPPING = {
     "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
     "whisper": [("openai/whisper-small", "Habana/whisper")],
     "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/gpt2")],
+    "protst": [("mila-intel/protst-esm1b-for-sequential-classification", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
