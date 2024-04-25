@@ -609,7 +609,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     @slow
     def test_no_generation_regression(self):
         seed = 27
-        torch.use_deterministic_algorithms(True)
         set_seed(seed)
         model_name = "CompVis/stable-diffusion-v1-4"
         # fp32
@@ -649,7 +648,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     @slow
     def test_no_generation_regression_ldm3d(self):
         seed = 27
-        torch.use_deterministic_algorithms(True)
         set_seed(seed)
         model_name = "Intel/ldm3d-4c"
         # fp32
