@@ -15,16 +15,17 @@
 
 # Copied from https://huggingface.co/docs/transformers/model_doc/owlvit
 
-import requests
-from PIL import Image
-import torch
-import habana_frameworks.torch as ht
-import habana_frameworks.torch.core as htcore
-import time
 import argparse
+import time
+
+import habana_frameworks.torch as ht
+import requests
+import torch
+from PIL import Image
 from transformers import AutoProcessor, OwlViTForObjectDetection
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -64,7 +65,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
-    
+
     args = parser.parse_args()
 
     adapt_transformers_to_gaudi()
@@ -82,13 +83,13 @@ if __name__ == "__main__":
 
     autocast = torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16)
     model.to("hpu")
-        
+
     with torch.no_grad(), autocast:
         for i in range(args.warmup):
             inputs = processor(text=texts, images=image, return_tensors="pt").to("hpu")
             outputs = model(**inputs)
             torch.hpu.synchronize()
-        
+
         total_model_time = 0
         for i in range(args.n_iterations):
             inputs = processor(text=texts, images=image, return_tensors="pt").to("hpu")
@@ -97,11 +98,11 @@ if __name__ == "__main__":
             torch.hpu.synchronize()
             model_end_time = time.time()
             total_model_time = total_model_time + (model_end_time - model_start_time)
-            
+
             if args.print_result:
                 # Target image sizes (height, width) to rescale box predictions [batch_size, 2]
                 target_sizes = torch.Tensor([image.size[::-1]])
-                
+
                 # Convert outputs (bounding boxes and class logits) to Pascal VOC format (xmin, ymin, xmax, ymax)
                 results = processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=0.1)
                 i = 0  # Retrieve predictions for the first image for the corresponding text queries
@@ -110,7 +111,7 @@ if __name__ == "__main__":
                 for box, score, label in zip(boxes, scores, labels):
                     box = [round(i, 2) for i in box.tolist()]
                     print(f"Detected {text[label]} with confidence {round(score.item(), 3)} at location {box}")
-    
+
     print("n_iterations: " + str(args.n_iterations))
     print("Total latency (ms): " + str(total_model_time*1000))
     print("Average latency (ms): " + str(total_model_time*1000/args.n_iterations))

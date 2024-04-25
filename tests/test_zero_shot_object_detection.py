@@ -13,20 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import requests
-from PIL import Image
-import torch
-import habana_frameworks.torch as ht
-import habana_frameworks.torch.core as htcore
 import time
-import argparse
-from transformers import OwlViTProcessor, OwlViTForObjectDetection
-import unittest
 from unittest import TestCase
+
+import habana_frameworks.torch as ht
 import numpy as np
-import os
+import requests
+import torch
+from PIL import Image
+from transformers import OwlViTForObjectDetection, OwlViTProcessor
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 adapt_transformers_to_gaudi()
 
@@ -55,7 +53,7 @@ class GaudiOWlVITTester(TestCase):
         outputs = model(**inputs)
         target_sizes = torch.Tensor([image.size[::-1]])
         results = processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=0.1)
-        boxes, scores, labels = results[0]["boxes"], results[0]["scores"], results[0]["labels"]
+        boxes = results[0]["boxes"]
         self.assertEqual(len(boxes), 2)
         expected_location = np.array([324.9933, 20.4362, 640.6164, 373.2621])
         self.assertLess(np.abs(boxes[0].cpu().detach().numpy() - expected_location).max(), 1)
@@ -69,7 +67,7 @@ class GaudiOWlVITTester(TestCase):
             outputs = model(**inputs)
             target_sizes = torch.Tensor([image.size[::-1]])
             results = processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=0.1)
-            boxes, scores, labels = results[0]["boxes"], results[0]["scores"], results[0]["labels"]
+            boxes = results[0]["boxes"]
             expected_location = np.array([324.9933, 20.4362, 640.6164, 373.2621])
             self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 2)
 
@@ -83,7 +81,7 @@ class GaudiOWlVITTester(TestCase):
         outputs = model(**inputs)
         target_sizes = torch.Tensor([image.size[::-1]])
         results = processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=0.1)
-        boxes, scores, labels = results[0]["boxes"], results[0]["scores"], results[0]["labels"]
+        boxes = results[0]["boxes"]
         self.assertEqual(len(boxes), 2)
         expected_location = np.array([324.9933, 20.4362, 640.6164, 373.2621])
         self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 1)
@@ -100,17 +98,17 @@ class GaudiOWlVITTester(TestCase):
         with torch.no_grad(), torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True):
             for i in range(warmup):
                 inputs = processor(text=texts, images=image, return_tensors="pt").to("hpu")
-                outputs = model(**inputs)
+                _ = model(**inputs)
                 torch.hpu.synchronize()
-            
+
             total_model_time = 0
             for i in range(iterations):
                 inputs = processor(text=texts, images=image, return_tensors="pt").to("hpu")
                 model_start_time = time.time()
-                outputs = model(**inputs)
+                _ = model(**inputs)
                 torch.hpu.synchronize()
                 model_end_time = time.time()
                 total_model_time = total_model_time + (model_end_time - model_start_time)
-        
+
         latency = total_model_time*1000/iterations # in terms of ms
         self.assertGreaterEqual(latency, 0.95 * LATENCY_OWLVIT_BF16_GRAPH_BASELINE)

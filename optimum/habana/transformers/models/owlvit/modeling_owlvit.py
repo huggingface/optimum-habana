@@ -1,5 +1,7 @@
+from typing import Optional, Tuple
+
 import torch
-from typing import Any, Dict, Optional, Tuple, Union
+
 
 def gaudi_owlvitclasspredictionhead_forward(
     self,

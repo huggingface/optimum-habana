@@ -122,6 +122,7 @@ from .models import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+    gaudi_owlvitclasspredictionhead_forward,
     gaudi_phi_attention_forward,
     gaudi_phi_decoder_layer_forward,
     gaudi_phi_model_forward,
@@ -148,7 +149,6 @@ from .models import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
-    gaudi_owlvitclasspredictionhead_forward,
 )
 
 
