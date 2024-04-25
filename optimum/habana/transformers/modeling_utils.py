@@ -47,6 +47,7 @@ from .models import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    GaudiLlavaForConditionalGeneration,
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
@@ -309,6 +310,9 @@ def adapt_transformers_to_gaudi():
         GaudiLlamaDynamicNTKScalingRotaryEmbedding
     )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
+
+    # Optimization for llava on Gaudi
+    transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention

@@ -88,6 +88,7 @@ from .llama import (
     GaudiLlamaRotaryEmbedding,
     gaudi_llama_rmsnorm_forward,
 )
+from .llava import GaudiLlavaForConditionalGeneration
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,

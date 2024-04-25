@@ -78,6 +78,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mixtral",
     "gemma",
     "blip_text_model",
+    "llava",
     "stablelm",
 ]
 
