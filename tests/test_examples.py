@@ -220,6 +220,8 @@ class ExampleTestMeta(type):
             return True
         elif "bloom" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "0":
             return True
+        elif "LlamaGuard" in model_name and deepspeed and example_name == "run_glue"and os.environ.get("GAUDI2_CI", "0") == "1":
+            return True
 
         return False
 
