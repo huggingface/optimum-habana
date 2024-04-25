@@ -61,6 +61,7 @@ except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
 
+
 class KVCache(torch.nn.Module):
     def __init__(self):
         super(KVCache, self).__init__()
