@@ -249,7 +249,8 @@ def setup_parser(parser):
     )
     parser.add_argument(
         "--no_ignore_eos",
-        action="store_true",
+        dest="ignore_eos",
+        action="store_false",
         help="Whether to ignore eos",
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
@@ -381,7 +382,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
-                ignore_eos=not args.no_ignore_eos,
+                ignore_eos=args.ignore_eos,
             ).cpu()
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
@@ -562,7 +563,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
-                ignore_eos=not args.no_ignore_eos,
+                ignore_eos=args.ignore_eos,
             ).cpu()
             return prompt, outputs
 
