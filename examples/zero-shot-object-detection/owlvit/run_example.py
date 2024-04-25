@@ -22,7 +22,7 @@ import habana_frameworks.torch as ht
 import habana_frameworks.torch.core as htcore
 import time
 import argparse
-from transformers import OwlViTProcessor, OwlViTForObjectDetection
+from transformers import AutoProcessor, OwlViTForObjectDetection
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--owlvit_model_name_or_path",
+        "--model_name_or_path",
         default="google/owlvit-base-patch32",
         type=str,
         help="Path of the pre-trained model",
@@ -69,8 +69,8 @@ if __name__ == "__main__":
 
     adapt_transformers_to_gaudi()
 
-    processor = OwlViTProcessor.from_pretrained(args.owlvit_model_name_or_path)
-    model = OwlViTForObjectDetection.from_pretrained(args.owlvit_model_name_or_path)
+    processor = AutoProcessor.from_pretrained(args.model_name_or_path)
+    model = OwlViTForObjectDetection.from_pretrained(args.model_name_or_path)
 
     image = Image.open(requests.get(args.image_path, stream=True).raw)
     texts = []

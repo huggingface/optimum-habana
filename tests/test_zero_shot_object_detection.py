@@ -114,7 +114,3 @@ class GaudiOWlVITTester(TestCase):
         
         latency = total_model_time*1000/iterations # in terms of ms
         self.assertGreaterEqual(latency, 0.95 * LATENCY_OWLVIT_BF16_GRAPH_BASELINE)
-
-
-if __name__ == '__main__':
-    unittest.main()
