@@ -29,6 +29,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),
+            ("microsoft/phi-2", 254.08932787178165),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 36.77314954096159),
