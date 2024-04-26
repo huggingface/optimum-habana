@@ -51,6 +51,12 @@ from .falcon import (
     gaudi_falcon_attention_split_heads,
     gaudi_falcon_linear_forward,
 )
+from .gemma import (
+    GaudiGemmaDecoderLayer,
+    GaudiGemmaForCausalLM,
+    gaudi_gemma_attention_forward,
+    gaudi_gemma_model_forward,
+)
 from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
 from .gpt_bigcode import (
     GaudiGPTBigCodeForCausalLM,
@@ -82,6 +88,7 @@ from .llama import (
     GaudiLlamaRotaryEmbedding,
     gaudi_llama_rmsnorm_forward,
 )
+from .llava import GaudiLlavaForConditionalGeneration
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
@@ -141,6 +148,12 @@ from .speecht5 import (
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_SpeechT5SpeechDecoderPrenet_forward,
+)
+from .stablelm import (
+    GaudiStableLmForCausalLM,
+    gaudi_stablelm_attention_forward,
+    gaudi_stablelm_decoder_layer_forward,
+    gaudi_stablelm_model_forward,
 )
 from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
