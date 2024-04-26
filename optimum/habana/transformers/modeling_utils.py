@@ -185,6 +185,7 @@ def adapt_transformers_to_gaudi():
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
+    transformers.generation.GenerationMixin.assisted_decoding = GaudiGenerationMixin.assisted_decoding
     transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
         GaudiGenerationMixin._update_model_kwargs_for_generation
     )
