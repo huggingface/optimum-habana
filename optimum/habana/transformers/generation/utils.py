@@ -79,6 +79,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "gemma",
     "blip_text_model",
     "starcoder2",
+    "qwen2",
     "llava",
     "stablelm",
 ]
