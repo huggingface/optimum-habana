@@ -41,7 +41,11 @@ from transformers import Trainer
 from transformers.data.data_collator import DataCollator
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.integrations import hp_params
-from transformers.integrations.deepspeed import deepspeed_load_checkpoint, is_deepspeed_available
+from transformers.integrations.deepspeed import (
+    deepspeed_load_checkpoint,
+    is_deepspeed_available,
+    is_deepspeed_zero3_enabled,
+)
 from transformers.modeling_utils import PreTrainedModel, load_sharded_checkpoint, unwrap_model
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer import _get_fsdp_ckpt_kwargs
@@ -116,6 +120,7 @@ if is_safetensors_available():
 
 if is_peft_available():
     from peft import PeftModel
+    from peft.utils import PeftType
 
 
 if is_deepspeed_available():
@@ -849,6 +854,10 @@ class GaudiTrainer(Trainer):
         hb_profiler.start()
 
         total_batched_samples = 0
+        if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
+            self.model.base_model.peft_config[self.model.trainable_adapter_name].total_step = max_steps
+            if max_steps < self.model.base_model.peft_config[self.model.trainable_adapter_name].tfinal:
+                self.model.base_model.peft_config[self.model.trainable_adapter_name].tfinal = 0
         for epoch in range(epochs_trained, num_train_epochs):
             epoch_iterator = train_dataloader
             if hasattr(epoch_iterator, "set_epoch"):
@@ -990,7 +999,6 @@ class GaudiTrainer(Trainer):
                         # Delay optimizer scheduling until metrics are generated
                         if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                             self.lr_scheduler.step()
-
                     self._zero_model_grad(model)
 
                     self.state.global_step += 1
@@ -1536,8 +1544,16 @@ class GaudiTrainer(Trainer):
         if self.args.use_lazy_mode and self.args.pipelining_fwd_bwd:
             self.htcore.mark_step()
 
-        self.accelerator.backward(loss)
-
+        if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
+            if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
+                self.accelerator.deepspeed_engine_wrapped.engine.backward(loss)
+                self.model.base_model.update_and_allocate(self.state.global_step)
+                self.accelerator.deepspeed_engine_wrapped.engine.step()
+            else:
+                self.accelerator.backward(loss)
+                self.model.base_model.update_and_allocate(self.state.global_step)
+        else:
+            self.accelerator.backward(loss)
         return loss.detach() / self.args.gradient_accumulation_steps
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
