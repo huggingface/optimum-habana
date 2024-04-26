@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import transformers
+import transformers.utils.fx
 
 from .generation import (
     GaudiGenerationConfig,
