@@ -94,13 +94,15 @@ from .mistral import (
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
     GaudiMistralModel,
+    MistralConfig,
     gaudi_mistral_rmsnorm_forward,
 )
 from .mixtral import (
+    GaudiMixtralAttention,
+    GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
-    gaudi_mixtral_attention_forward,
+    MixtralConfig,
     gaudi_mixtral_block_sparse_moe_forward,
-    gaudi_mixtral_decoder_layer_forward,
     gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
@@ -129,6 +131,12 @@ from .phi import (
     gaudi_phi_attention_forward,
     gaudi_phi_decoder_layer_forward,
     gaudi_phi_model_forward,
+)
+from .qwen2 import (
+    GaudiQwen2DecoderLayer,
+    GaudiQwen2ForCausalLM,
+    gaudi_qwen2_attention_forward,
+    gaudi_qwen2_model_forward,
 )
 from .speecht5 import (
     gaudi_generate_speech,
