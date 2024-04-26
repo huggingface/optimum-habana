@@ -45,6 +45,7 @@ def gaudi_MaxNewTokensCriteria_call(self, input_ids: torch.LongTensor, scores: t
     else:
         return input_ids.shape[-1] >= self.max_length
 
+
 def gaudi_StoppingCriteriaList_call(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
     """
     Copied from https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/generation/stopping_criteria.py

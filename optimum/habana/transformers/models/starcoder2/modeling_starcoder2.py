@@ -1,4 +1,5 @@
 import math
+import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -23,6 +24,7 @@ from ...modeling_attn_mask_utils import (
 
 logger = logging.get_logger(__name__)
 
+
 def gaudi_starcoder2_attention_forward(
     self,
     hidden_states: torch.Tensor,
@@ -41,9 +43,9 @@ def gaudi_starcoder2_attention_forward(
     - optimize KV cache
     """
     if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
+        warnings.warn(
+            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+        )
     bsz, q_len, _ = hidden_states.size()
 
     query_states = self.q_proj(hidden_states)
@@ -125,6 +127,7 @@ def gaudi_starcoder2_attention_forward(
         attn_weights = None
 
     return attn_output, attn_weights, past_key_value
+
 
 class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
     def __init__(self, config: Starcoder2Config, layer_idx: int):
@@ -328,6 +331,7 @@ def gaudi_starcoder2_model_forward(
         hidden_states=all_hidden_states,
         attentions=all_self_attns,
     )
+
 
 class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
     def forward(
