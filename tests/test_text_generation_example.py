@@ -36,7 +36,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("google/gemma-7b", 1, False, 109.70751574382221),
         ],
         "fp8": [
-            #("tiiuae/falcon-180B", 52.85086442722326),
+            # ("tiiuae/falcon-180B", 52.85086442722326),
             ("mistralai/Mistral-7B-Instruct-v0.2", 0),
         ],
         "deepspeed": [
@@ -86,10 +86,11 @@ MISTRAL_FP8_CONFIG = {
     "mistralai/Mistral-7B-Instruct-v0.2": [
         ("896", "128", "128", 13310.566520719813),
         ("120", "128", "2048", 7757.383448024244),
-        ("120", "2048", "128", 1352.070452897798 ),
+        ("120", "2048", "128", 1352.070452897798),
         ("44", "2048", "2048", 3101.5205518843136),
     ],
 }
+
 
 def _test_text_generation(
     model_name: str,
@@ -198,7 +199,6 @@ def _test_text_generation(
                     assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
                 return
 
-
         proc = subprocess.run(command, env=env_variables)
 
         # Ensure the run finished without any issue
@@ -244,4 +244,3 @@ def test_text_generation_torch_compile(model_name: str, baseline: float, token: 
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)
-
