@@ -1522,6 +1522,7 @@ class GenerationTesterMixin:
 
         return
 
+    @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     @slow  # TODO(Joao): remove this. Some models (e.g. data2vec, xcom, roberta) have an error rate between 1 and 10%.
     def test_assisted_decoding_matches_greedy_search(self):
         # This test ensures that the assisted generation does not introduce output changes over greedy search.
@@ -1594,6 +1595,7 @@ class GenerationTesterMixin:
                         for output in (output_greedy, output_assisted):
                             self._check_outputs(output, input_ids, model.config, use_cache=True)
 
+    @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     def test_assisted_decoding_sample(self):
         # In this test we don't check assisted vs non-assisted output -- seeded assisted decoding with sample will not
         # match sample for the same seed, as the forward pass does not return the exact same logits (due to matmul with
