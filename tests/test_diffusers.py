@@ -640,7 +640,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         pil_image.save("test_no_generation_regression_output.png")
 
         clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
-        print(f"CLIP score: {clip_score}")
 
         self.assertEqual(image.shape, (512, 512, 3))
         self.assertGreaterEqual(clip_score, target_score)
@@ -678,7 +677,6 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         depth = outputs.depth[0]
 
         rgb_clip_score = calculate_clip_score(np.expand_dims(rgb, axis=0), [prompt])
-        print(f"RGB CLIP score: {rgb_clip_score}")
 
         self.assertEqual(rgb.shape, (512, 512, 3))
         self.assertEqual(depth.shape, (512, 512, 1))
