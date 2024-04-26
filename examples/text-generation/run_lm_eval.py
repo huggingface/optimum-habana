@@ -152,7 +152,8 @@ def main():
     model, tokenizer, generation_config = initialize_model(args, logger)
 
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
-    lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
+    with torch.no_grad():
+        lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     eval_start = time.perf_counter()
     results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)
