@@ -126,6 +126,12 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .persimmon import (
+    GaudiPersimmonForCausalLM,
+    gaudi_persimmon_attention_forward,
+    gaudi_persimmon_decoder_layer_forward,
+    gaudi_persimmon_model_forward,
+)
 from .phi import (
     GaudiPhiForCausalLM,
     gaudi_phi_attention_forward,

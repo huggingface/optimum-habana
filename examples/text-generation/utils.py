@@ -302,7 +302,7 @@ def setup_tokenizer(args, model):
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
     if not model.config.is_encoder_decoder:
         tokenizer.padding_side = "left"
-    # Some models like GPT2 do not have a PAD token so we have to set it if necessary
+
     if model.config.model_type == "llama":
         # unwind broken decapoda-research config
         model.generation_config.pad_token_id = 0
@@ -314,10 +314,20 @@ def setup_tokenizer(args, model):
         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+    if model.config.model_type == "persimmon":
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id
+        tokenizer.bos_token_id = model.generation_config.bos_token_id
+        tokenizer.eos_token_id = model.generation_config.eos_token_id
+        tokenizer.pad_token_id = model.generation_config.pad_token_id
+        tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
+        tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
+        tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
 
+    # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
+
     return tokenizer, model
 
 
