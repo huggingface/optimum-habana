@@ -111,10 +111,20 @@ def main():
     with torch.autocast("hpu", torch.bfloat16, enabled=args.bf16), torch.no_grad(), torch.inference_mode():
         # warm up
         for i in range(args.warmup):
+            if generator.model.config.model_type == "speecht5":
+                # SpeechT5 forces a dropout with training=True, which may zero out some elements randomly.
+                # A random dropout may need different lengths of spectrograms to fit probability thresholds,
+                # which violates the HPU static shape, so we have to fix the seed here.
+                set_seed(555)
             generator(text, batch_size=args.batch_size, forward_params=forward_params, generate_kwargs=generate_kwargs)
 
         start = time.time()
         for i in range(args.n_iterations):
+            if generator.model.config.model_type == "speecht5":
+                # SpeechT5 forces a dropout with training=True, which may zero out some elements randomly.
+                # A random dropout may need different lengths of spectrograms to fit probability thresholds,
+                # which violates the HPU static shape, so we have to fix the seed here.
+                set_seed(555)
             speech = generator(
                 text, batch_size=args.batch_size, forward_params=forward_params, generate_kwargs=generate_kwargs
             )
