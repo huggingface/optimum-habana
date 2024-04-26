@@ -94,13 +94,15 @@ from .mistral import (
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
     GaudiMistralModel,
+    MistralConfig,
     gaudi_mistral_rmsnorm_forward,
 )
 from .mixtral import (
+    GaudiMixtralAttention,
+    GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
-    gaudi_mixtral_attention_forward,
+    MixtralConfig,
     gaudi_mixtral_block_sparse_moe_forward,
-    gaudi_mixtral_decoder_layer_forward,
     gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
