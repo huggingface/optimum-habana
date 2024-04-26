@@ -136,7 +136,6 @@ from .models import (
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
-    gaudi_SpeechT5SpeechDecoderPrenet_forward,
     gaudi_stablelm_attention_forward,
     gaudi_stablelm_decoder_layer_forward,
     gaudi_stablelm_model_forward,
@@ -394,9 +393,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5.SpeechT5DecoderLayer.forward = gaudi_SpeechT5DecoderLayer_forward
     transformers.models.speecht5.modeling_speecht5.SpeechT5Attention.forward = gaudi_SpeechT5Attention_forward
     transformers.models.speecht5.modeling_speecht5._generate_speech = gaudi_generate_speech
-    transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
-        gaudi_SpeechT5SpeechDecoderPrenet_forward
-    )
 
     # Optimization for qwen2 on Gaudi
     transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = GaudiQwen2ForCausalLM
