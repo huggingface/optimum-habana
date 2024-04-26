@@ -221,16 +221,26 @@ def setup_parser(parser):
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
 
-    parser.add_argument(
-        "--kv_cache_fp8",
-        action="store_true",
-        help="Store kv-cache in float8 when kv-cache is used. Can't use this argument together with QUANT_CONFIG env var",
-    )
     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
+    )
+    parser.add_argument(
+        "--flash_attention_recompute",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
+    )
+    parser.add_argument(
+        "--flash_attention_causal_mask",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
+    )
+    parser.add_argument(
+        "--book_source",
+        action="store_true",
+        help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
     )
     parser.add_argument(
         "--torch_compile",
@@ -239,7 +249,17 @@ def setup_parser(parser):
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
-
+    parser.add_argument(
+        "--const_serialization_path",
+        "--csp",
+        type=str,
+        help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
+    )
+    parser.add_argument(
+        "--disk_offload",
+        action="store_true",
+        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+    )
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -249,10 +269,6 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
-    if args.quant_config and args.kv_cache_fp8:
-        # can't use both quant_config and kv_cache_fp8, since quant_config may trigger kv cache quantization
-        # with habana quantization toolkit
-        raise parser.error("Can't use QUANT_CONFIG env var with kv_cache_fp8 argument")
     return args
 
 
@@ -271,6 +287,45 @@ def main():
         # Benchmark over the prompts below
         if args.prompt:
             input_sentences = args.prompt
+        elif args.book_source:
+
+            def download_book(book_id):
+                import os
+
+                import requests
+
+                url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
+                response = requests.get(url)
+                if response.status_code == 200:
+                    pid = os.getpid()
+                    save_path = f"/tmp/{book_id}_{pid}.txt"
+                    with open(save_path, "wb") as file:
+                        file.write(response.content)
+                    print(f"Book downloaded and saved to: {save_path}")
+                    return save_path
+                else:
+                    print("Failed to download book! Exiting...")
+                    import sys
+
+                    sys.exit()
+
+            def assemble_prompt(prompt_size, book_path):
+                prompt = ""
+                counter = 0
+                book_lines = open(book_path).readlines()
+                for line in book_lines:
+                    for word in line.split():
+                        counter += 1
+                        prompt += word + " "
+                        if counter == prompt_size:
+                            return [prompt] * args.batch_size
+
+            book_ids = [
+                2701,  # Moby Dick; Or, The Whale
+                1513,  # Romeo and Juliet
+                1342,  # Pride and Prejudice
+            ]
+            input_sentences = assemble_prompt(prompt_size=args.max_input_tokens, book_path=download_book(book_ids[0]))
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",
@@ -561,6 +616,10 @@ def main():
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.finish_measurements(model)
+    if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
+        import shutil
+
+        shutil.rmtree(args.const_serialization_path)
 
 
 if __name__ == "__main__":

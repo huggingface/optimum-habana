@@ -1,17 +1,18 @@
 # Fine-Tune Llama2-7b on SE paired dataset
 # copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama_2/scripts/sft_llama2.py, enable it for Gaudi2
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 import torch
 import transformers
 from datasets import load_dataset
-from peft import AutoPeftModelForCausalLM, LoraConfig
+from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
-from transformers.trainer_utils import is_main_process
+from transformers.integrations.deepspeed import (
+    is_deepspeed_available,
+)
 from trl.trainer import ConstantLengthDataset
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
@@ -126,9 +127,16 @@ def create_datasets(tokenizer, args, seed=None):
     return train_dataset, valid_dataset
 
 
+low_cpu_mem_usage = True
+if is_deepspeed_available():
+    from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
+
+    if is_deepspeed_zero3_enabled():
+        low_cpu_mem_usage = False
+
 base_model = AutoModelForCausalLM.from_pretrained(
     script_args.model_name_or_path,
-    low_cpu_mem_usage=True,
+    low_cpu_mem_usage=low_cpu_mem_usage,
     torch_dtype=torch.bfloat16,
     use_auth_token=True,
 )
@@ -161,15 +169,8 @@ trainer = GaudiSFTTrainer(
     tokenizer=tokenizer,
     args=training_args,
 )
-trainer.train()
+train_result = trainer.train()
 trainer.save_model(training_args.output_dir)
-
-# Free memory for merging weights
-del base_model
-with training_args.main_process_first(desc="merge peft model"):
-    if is_main_process(training_args.local_rank):
-        model = AutoPeftModelForCausalLM.from_pretrained(training_args.output_dir, torch_dtype=torch.bfloat16)
-        model = model.merge_and_unload()
-
-        output_merged_dir = os.path.join(training_args.output_dir, "final_merged_checkpoint")
-        model.save_pretrained(output_merged_dir, safe_serialization=True)
+metrics = train_result.metrics
+trainer.log_metrics("train", metrics)
+trainer.save_metrics("train", metrics)

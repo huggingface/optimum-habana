@@ -48,7 +48,7 @@
 < from transformers.modeling_outputs import CausalLMOutputWithPast
 ---
 > from optimum.habana.utils import get_hpu_memory_stats
-62,263d42
+62,266d42
 < MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 < 
 < MODEL_CLASSES = {
@@ -251,10 +251,10 @@
 <             attentions=None,
 <         )
 <         return fixed_output
-265,287c44,46
+< 
 <     def __getattr__(self, item):
 <         return getattr(self._default, item)
-< 
+268,287c44,46
 <     def prepare_inputs_for_generation(
 <         self, input_ids, past_key_values=None, inputs_embeds=None, use_cache=None, **kwargs
 <     ):
@@ -477,32 +477,39 @@
 <     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
 <     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
 <     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
-323d223
+323c224,229
 <     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
-325c225
-<         "--use_cpu",
----
->         "--kv_cache_fp8",
-327c227
-<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
----
->         help="Store kv-cache in float8 when kv-cache is used. Can't use this argument together with QUANT_CONFIG env var",
-329c229
-<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
 ---
 >     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
-331c231
+>     parser.add_argument(
+>         "--use_flash_attention",
+>         action="store_true",
+>         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
+>     )
+325c231
+<         "--use_cpu",
+---
+>         "--flash_attention_recompute",
+327c233
+<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
+---
+>         help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
+329d234
+<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+331c236
 <         "--fp16",
 ---
->         "--use_flash_attention",
-333c233
+>         "--flash_attention_causal_mask",
+333c238,261
 <         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
 ---
->         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
-335,336c235,241
-<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
-<     args = parser.parse_args()
----
+>         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
+>     )
+>     parser.add_argument(
+>         "--book_source",
+>         action="store_true",
+>         help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
+>     )
 >     parser.add_argument(
 >         "--torch_compile",
 >         action="store_true",
@@ -510,23 +517,36 @@
 >     )
 >     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
 >     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
-338,339c243
+>     parser.add_argument(
+>         "--const_serialization_path",
+>         "--csp",
+>         type=str,
+>         help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
+>     )
+>     parser.add_argument(
+>         "--disk_offload",
+>         action="store_true",
+>         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+335d262
+<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
+338,339c265,266
 <     # Initialize the distributed state.
 <     distributed_state = PartialState(cpu=args.use_cpu)
 ---
->     args = parser.parse_args()
-341c245,246
-<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
----
 >     if args.torch_compile:
 >         args.use_hpu_graphs = False
-343,344c248,249
-<     if args.seed is not None:
-<         set_seed(args.seed)
+341c268,269
+<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
 >     if not args.use_hpu_graphs:
 >         args.limit_hpu_graphs = False
-346,373c251,256
+343,344c271,272
+<     if args.seed is not None:
+<         set_seed(args.seed)
+---
+>     args.quant_config = os.getenv("QUANT_CONFIG", "")
+>     return args
+346,378d273
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -555,19 +575,12 @@
 <     if requires_preprocessing:
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
----
->     args.quant_config = os.getenv("QUANT_CONFIG", "")
->     if args.quant_config and args.kv_cache_fp8:
->         # can't use both quant_config and kv_cache_fp8, since quant_config may trigger kv cache quantization
->         # with habana quantization toolkit
->         raise parser.error("Can't use QUANT_CONFIG env var with kv_cache_fp8 argument")
->     return args
-375,378d257
+< 
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
 <         else:
 <             tokenizer_kwargs = {}
-380,386c259,262
+380,386c275,278
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
@@ -580,7 +593,7 @@
 >     parser = argparse.ArgumentParser()
 >     args = setup_parser(parser)
 >     model, tokenizer, generation_config = initialize_model(args, logger)
-388,389c264,413
+388,389c280,468
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
@@ -594,6 +607,45 @@
 >         # Benchmark over the prompts below
 >         if args.prompt:
 >             input_sentences = args.prompt
+>         elif args.book_source:
+> 
+>             def download_book(book_id):
+>                 import os
+> 
+>                 import requests
+> 
+>                 url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
+>                 response = requests.get(url)
+>                 if response.status_code == 200:
+>                     pid = os.getpid()
+>                     save_path = f"/tmp/{book_id}_{pid}.txt"
+>                     with open(save_path, "wb") as file:
+>                         file.write(response.content)
+>                     print(f"Book downloaded and saved to: {save_path}")
+>                     return save_path
+>                 else:
+>                     print("Failed to download book! Exiting...")
+>                     import sys
+> 
+>                     sys.exit()
+> 
+>             def assemble_prompt(prompt_size, book_path):
+>                 prompt = ""
+>                 counter = 0
+>                 book_lines = open(book_path).readlines()
+>                 for line in book_lines:
+>                     for word in line.split():
+>                         counter += 1
+>                         prompt += word + " "
+>                         if counter == prompt_size:
+>                             return [prompt] * args.batch_size
+> 
+>             book_ids = [
+>                 2701,  # Moby Dick; Or, The Whale
+>                 1513,  # Romeo and Juliet
+>                 1342,  # Pride and Prejudice
+>             ]
+>             input_sentences = assemble_prompt(prompt_size=args.max_input_tokens, book_path=download_book(book_ids[0]))
 >         else:
 >             input_sentences = [
 >                 "DeepSpeed is a machine learning framework",
@@ -734,7 +786,7 @@
 >         print(f"Graph compilation duration          = {compilation_duration} seconds")
 >         print(separator)
 >         print()
-391c415,432
+391c470,487
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -755,7 +807,7 @@
 >             .shuffle()
 >             .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
 >         )
-393,399c434,441
+393,399c489,496
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -772,7 +824,7 @@
 >             logger.info(
 >                 f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >             )
-401,439c443,463
+401,439c498,518
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -834,7 +886,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-440a465,545
+440a520,600
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
@@ -916,7 +968,7 @@
 > 
 >         throughput = total_new_tokens_generated / duration
 >         # Print Stats
-442,443c547,561
+442,443c602,620
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
@@ -935,7 +987,11 @@
 >         print(separator)
 >     if args.quant_config:
 >         import habana_quantization_toolkit
-445c563
+> 
+>         habana_quantization_toolkit.finish_measurements(model)
+>     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
+>         import shutil
+445c622
 <     return generated_sequences
 ---
->         habana_quantization_toolkit.finish_measurements(model)
+>         shutil.rmtree(args.const_serialization_path)

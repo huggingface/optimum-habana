@@ -26,8 +26,13 @@ from .models import (
     GaudiBloomMLP,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
+    GaudiFalconAttention,
+    GaudiFalconDecoderLayer,
     GaudiFalconForCausalLM,
+    GaudiFalconMLP,
     GaudiFalconModel,
+    GaudiGemmaDecoderLayer,
+    GaudiGemmaForCausalLM,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
@@ -42,13 +47,24 @@ from .models import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    GaudiLlavaForConditionalGeneration,
+    GaudiMistralAttention,
+    GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
+    GaudiMistralModel,
+    GaudiMixtralAttention,
+    GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     GaudiPhiForCausalLM,
+    GaudiQwen2DecoderLayer,
+    GaudiQwen2ForCausalLM,
+    GaudiStableLmForCausalLM,
+    MistralConfig,
+    MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     gaudi_albert_forward,
@@ -81,9 +97,10 @@ from .models import (
     gaudi_conv1d_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
-    gaudi_falcon_attention_forward,
     gaudi_falcon_attention_split_heads,
-    gaudi_falcon_decoder_layer_forward,
+    gaudi_falcon_linear_forward,
+    gaudi_gemma_attention_forward,
+    gaudi_gemma_model_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
@@ -99,12 +116,8 @@ from .models import (
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
-    gaudi_mistral_attention_forward,
-    gaudi_mistral_decoder_layer_forward,
-    gaudi_mistral_model_forward,
-    gaudi_mixtral_attention_forward,
+    gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_sparse_moe_forward,
-    gaudi_mixtral_decoder_layer_forward,
     gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
     gaudi_mpt_attention_forward,
@@ -116,11 +129,16 @@ from .models import (
     gaudi_phi_attention_forward,
     gaudi_phi_decoder_layer_forward,
     gaudi_phi_model_forward,
+    gaudi_qwen2_attention_forward,
+    gaudi_qwen2_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
+    gaudi_stablelm_attention_forward,
+    gaudi_stablelm_decoder_layer_forward,
+    gaudi_stablelm_model_forward,
     gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -129,9 +147,12 @@ from .models import (
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
+    gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
+    gaudi_wav2vec2_tdnnlayer_forward,
+    gaudi_wav2vec2forctc_forward,
 )
 
 
@@ -158,9 +179,12 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Model.forward = gaudi_wav2vec2_forward
     transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2Encoder.forward = gaudi_wav2vec2_encoder_forward
+    transformers.models.wav2vec2.modeling_wav2vec2.Wav2Vec2ForCTC.forward = gaudi_wav2vec2forctc_forward
+    transformers.models.wav2vec2.modeling_wav2vec2.TDNNLayer.forward = gaudi_wav2vec2_tdnnlayer_forward
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
+    transformers.generation.GenerationMixin.assisted_decoding = GaudiGenerationMixin.assisted_decoding
     transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
         GaudiGenerationMixin._update_model_kwargs_for_generation
     )
@@ -293,12 +317,17 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
+    # Optimization for llava on Gaudi
+    transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
+
     # Optimization for falcon generation on Gaudi
+    transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention
     transformers.models.falcon.modeling_falcon.FalconForCausalLM = GaudiFalconForCausalLM
+    transformers.models.falcon.modeling_falcon.FalconMLP = GaudiFalconMLP
     transformers.models.falcon.modeling_falcon.FalconModel = GaudiFalconModel
-    transformers.models.falcon.modeling_falcon.FalconDecoderLayer.forward = gaudi_falcon_decoder_layer_forward
-    transformers.models.falcon.modeling_falcon.FalconAttention.forward = gaudi_falcon_attention_forward
+    transformers.models.falcon.modeling_falcon.FalconDecoderLayer = GaudiFalconDecoderLayer
     transformers.models.falcon.modeling_falcon.FalconAttention._split_heads = gaudi_falcon_attention_split_heads
+    transformers.models.falcon.modeling_falcon.FalconLinear.forward = gaudi_falcon_linear_forward
 
     # Optimization for t5 on Gaudi
     transformers.models.t5.modeling_t5.T5LayerNorm.forward = gaudi_t5_layernorm_forward
@@ -319,15 +348,23 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for mistral on Gaudi
     transformers.models.mistral.modeling_mistral.MistralForCausalLM = GaudiMistralForCausalLM
-    transformers.models.mistral.modeling_mistral.MistralAttention.forward = gaudi_mistral_attention_forward
-    transformers.models.mistral.modeling_mistral.MistralDecoderLayer.forward = gaudi_mistral_decoder_layer_forward
-    transformers.models.mistral.modeling_mistral.MistralModel.forward = gaudi_mistral_model_forward
+    transformers.models.mistral.modeling_mistral.MistralAttention = GaudiMistralAttention
+    transformers.models.mistral.modeling_mistral.MistralDecoderLayer = GaudiMistralDecoderLayer
+    transformers.models.mistral.modeling_mistral.MistralModel = GaudiMistralModel
+    transformers.models.mistral.modeling_mistral.MistralRMSNorm.forward = gaudi_mistral_rmsnorm_forward
+    transformers.models.mistral.configuration_mistral.MistralConfig = MistralConfig
 
     # Optimization for phi on Gaudi
     transformers.models.phi.modeling_phi.PhiForCausalLM = GaudiPhiForCausalLM
     transformers.models.phi.modeling_phi.PhiAttention.forward = gaudi_phi_attention_forward
     transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
     transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
+
+    # Optimization for gemma on Gaudi
+    transformers.models.gemma.modeling_gemma.GemmaForCausalLM = GaudiGemmaForCausalLM
+    transformers.models.gemma.modeling_gemma.GemmaAttention.forward = gaudi_gemma_attention_forward
+    transformers.models.gemma.modeling_gemma.GemmaDecoderLayer = GaudiGemmaDecoderLayer
+    transformers.models.gemma.modeling_gemma.GemmaModel.forward = gaudi_gemma_model_forward
 
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
@@ -343,15 +380,30 @@ def adapt_transformers_to_gaudi():
     transformers.models.blip.BlipForConditionalGeneration.generate = gaudi_BlipForConditionalGeneration_generate
 
     # Optimization for mixtral on Gaudi
+    transformers.models.mixtral.modeling_mixtral.MixtralAttention = GaudiMixtralAttention
     transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM = GaudiMixtralForCausalLM
     transformers.models.mixtral.modeling_mixtral.MixtralModel.forward = gaudi_mixtral_model_forward
-    transformers.models.mixtral.modeling_mixtral.MixtralAttention.forward = gaudi_mixtral_attention_forward
     transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = gaudi_mixtral_block_sparse_moe_forward
-    transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer.forward = gaudi_mixtral_decoder_layer_forward
+    transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer = GaudiMixtralDecoderLayer
     transformers.models.mixtral.modeling_mixtral.MixtralRMSNorm.forward = gaudi_mixtral_rmsnorm_forward
+    transformers.models.mixtral.configuration_mixtral.MixtralConfig = MixtralConfig
 
     # Optimization for speecht5 on Gaudi
     transformers.models.speecht5.modeling_speecht5.SpeechT5Decoder.forward = gaudi_SpeechT5Decoder_forward
     transformers.models.speecht5.modeling_speecht5.SpeechT5DecoderLayer.forward = gaudi_SpeechT5DecoderLayer_forward
     transformers.models.speecht5.modeling_speecht5.SpeechT5Attention.forward = gaudi_SpeechT5Attention_forward
     transformers.models.speecht5.modeling_speecht5._generate_speech = gaudi_generate_speech
+
+    # Optimization for qwen2 on Gaudi
+    transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = GaudiQwen2ForCausalLM
+    transformers.models.qwen2.modeling_qwen2.Qwen2Model.forward = gaudi_qwen2_model_forward
+    transformers.models.qwen2.modeling_qwen2.Qwen2Attention.forward = gaudi_qwen2_attention_forward
+    transformers.models.qwen2.modeling_qwen2.Qwen2DecoderLayer = GaudiQwen2DecoderLayer
+
+    # Optimization for stablelm on Gaudi
+    transformers.models.stablelm.modeling_stablelm.StableLmForCausalLM = GaudiStableLmForCausalLM
+    transformers.models.stablelm.modeling_stablelm.StableLmModel.forward = gaudi_stablelm_model_forward
+    transformers.models.stablelm.modeling_stablelm.StableLmAttention.forward = gaudi_stablelm_attention_forward
+    transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer.forward = gaudi_stablelm_decoder_layer_forward
+
+    transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation

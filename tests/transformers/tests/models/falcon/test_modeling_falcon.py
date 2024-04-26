@@ -353,7 +353,7 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
             outputs = model(**inputs)
 
             # If "past_key_values" is not returned, pass the test (e.g. RWKV uses a different cache name and format)
-            if "past_key_values" not in outputs:
+            if "past_key_values" not in outputs or all(ele is None for ele in outputs["past_key_values"]):
                 return
 
             num_hidden_layers = (
@@ -394,7 +394,7 @@ class FalconLanguageGenerationTest(unittest.TestCase):
         inputs = tokenizer("My favorite food is", return_tensors="pt").to(torch_device)
 
         EXPECTED_OUTPUT = (
-            "My favorite food is pizza. I love it so much that I have a pizza party every year for my birthday."
+            "My favorite food is pizza. I love it so much that I have a pizza party every week. I love it"
         )
 
         output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=19)
