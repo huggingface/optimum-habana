@@ -31,6 +31,8 @@ from .models import (
     GaudiFalconForCausalLM,
     GaudiFalconMLP,
     GaudiFalconModel,
+    GaudiGemmaDecoderLayer,
+    GaudiGemmaForCausalLM,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
@@ -45,6 +47,7 @@ from .models import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    GaudiLlavaForConditionalGeneration,
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
@@ -55,6 +58,7 @@ from .models import (
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     GaudiPhiForCausalLM,
+    GaudiStableLmForCausalLM,
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     gaudi_albert_forward,
@@ -89,6 +93,8 @@ from .models import (
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_attention_split_heads,
     gaudi_falcon_linear_forward,
+    gaudi_gemma_attention_forward,
+    gaudi_gemma_model_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
@@ -125,6 +131,9 @@ from .models import (
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_SpeechT5SpeechDecoderPrenet_forward,
+    gaudi_stablelm_attention_forward,
+    gaudi_stablelm_decoder_layer_forward,
+    gaudi_stablelm_model_forward,
     gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -133,6 +142,7 @@ from .models import (
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
+    gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
@@ -301,6 +311,9 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
+    # Optimization for llava on Gaudi
+    transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
+
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention
     transformers.models.falcon.modeling_falcon.FalconForCausalLM = GaudiFalconForCausalLM
@@ -340,6 +353,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
     transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
 
+    # Optimization for gemma on Gaudi
+    transformers.models.gemma.modeling_gemma.GemmaForCausalLM = GaudiGemmaForCausalLM
+    transformers.models.gemma.modeling_gemma.GemmaAttention.forward = gaudi_gemma_attention_forward
+    transformers.models.gemma.modeling_gemma.GemmaDecoderLayer = GaudiGemmaDecoderLayer
+    transformers.models.gemma.modeling_gemma.GemmaModel.forward = gaudi_gemma_model_forward
+
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
     transformers.models.blip.modeling_blip_text.BlipTextLMHeadModel.forward = gaudi_BlipTextLMHead_forward
@@ -369,3 +388,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
         gaudi_SpeechT5SpeechDecoderPrenet_forward
     )
+
+    # Optimization for stablelm on Gaudi
+    transformers.models.stablelm.modeling_stablelm.StableLmForCausalLM = GaudiStableLmForCausalLM
+    transformers.models.stablelm.modeling_stablelm.StableLmModel.forward = gaudi_stablelm_model_forward
+    transformers.models.stablelm.modeling_stablelm.StableLmAttention.forward = gaudi_stablelm_attention_forward
+    transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer.forward = gaudi_stablelm_decoder_layer_forward
+
+    transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation
