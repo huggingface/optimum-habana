@@ -31,6 +31,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
             ("stabilityai/stablelm-2-12b", 1, False, 80.70269834414843),
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
+            ("Qwen/Qwen1.5-7B", 4, False, 451.7454544774087),
             ("google/gemma-7b", 1, False, 109.70751574382221),
         ],
         "fp8": [
@@ -67,6 +68,7 @@ else:
             ("microsoft/phi-2", 1, False, 92.53083167241344),
             ("google/gemma-7b", 1, False, 28.84284625836978),
             ("stabilityai/stablelm-2-12b", 1, False, 26.80858949645992),
+            ("Qwen/Qwen1.5-7B", 1, False, 39.29068423087616),
         ],
         "fp8": [],
         "deepspeed": [
