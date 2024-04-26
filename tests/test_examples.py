@@ -163,6 +163,16 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_CAUSAL_LM_MAPPING,
         ["llama"],
     ),
+    "run_multitask_prompt_tuning": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
+        ["t5"],
+    ),
+    "peft_poly_seq2seq_with_generate": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
+        ["t5"],
+    ),
 }
 
 
@@ -428,7 +438,8 @@ class ExampleTesterBase(TestCase):
     ) -> List[str]:
         dataset_name = self.DATASET_NAME if self.DATASET_NAME is not None else task
         task_option = f"--{self.DATASET_PARAMETER_NAME} {dataset_name}" if task else " "
-
+        if task in ["multitask-prompt-tuning", "poly-tuning"]:
+            task_option = " "
         cmd_line = ["python3"]
         if multi_card:
             cmd_line.append(f"{script.parent.parent / 'gaudi_spawn.py'}")
@@ -507,7 +518,6 @@ class ExampleTesterBase(TestCase):
         for metric_name in self.REGRESSION_METRICS.keys():
             if metric_name in baseline and metric_name in results:
                 metrics_to_assess.append(metric_name)
-
         # There is no accuracy metric for `run_clip.py`, `run_bridgetower.py` and BLOOM
         min_number_metrics = 3
         if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower", "sft", "dpo"] or "bloom" in model_name:
@@ -676,3 +686,15 @@ class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, ex
 class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="dpo", multi_card=True):
     TASK_NAME = "trl-dpo"
     DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardMultiTastPromptPeftExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_multitask_prompt_tuning", multi_card=True
+):
+    TASK_NAME = "multitask-prompt-tuning"
+
+
+class MultiCardPolyPeftExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="peft_poly_seq2seq_with_generate", multi_card=True
+):
+    TASK_NAME = "poly-tuning"
