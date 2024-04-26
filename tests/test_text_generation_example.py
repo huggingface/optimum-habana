@@ -68,6 +68,7 @@ else:
             ("microsoft/phi-2", 1, False, 92.53083167241344),
             ("google/gemma-7b", 1, False, 28.84284625836978),
             ("stabilityai/stablelm-2-12b", 1, False, 26.80858949645992),
+            ("Qwen/Qwen1.5-7B", 1, False, 39.29068423087616),
         ],
         "fp8": [],
         "deepspeed": [
