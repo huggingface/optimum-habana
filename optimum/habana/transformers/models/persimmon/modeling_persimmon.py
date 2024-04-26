@@ -16,6 +16,7 @@ from ...modeling_attn_mask_utils import (
 
 logger = logging.get_logger(__name__)
 
+
 def gaudi_persimmon_attention_forward(
     self,
     hidden_states: torch.Tensor,
@@ -132,6 +133,7 @@ def gaudi_persimmon_attention_forward(
 
     return attn_output, attn_weights, past_key_value
 
+
 def gaudi_persimmon_decoder_layer_forward(
     self,
     hidden_states: torch.Tensor,
@@ -181,8 +183,9 @@ def gaudi_persimmon_decoder_layer_forward(
 
     return outputs
 
+
 def gaudi_persimmon_model_forward(
-     self,
+    self,
     input_ids: torch.LongTensor = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
@@ -248,9 +251,7 @@ def gaudi_persimmon_model_forward(
         inputs_embeds = self.embed_tokens(input_ids)
     # embed positions
     if attention_mask is None:
-        attention_mask = torch.ones(
-            (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
-        )
+        attention_mask = torch.ones((batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device)
     attention_mask = _gaudi_prepare_4d_causal_attention_mask(
         attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
     )
@@ -312,6 +313,7 @@ def gaudi_persimmon_model_forward(
         hidden_states=all_hidden_states,
         attentions=all_self_attns,
     )
+
 
 class GaudiPersimmonForCausalLM(PersimmonForCausalLM):
     def forward(
