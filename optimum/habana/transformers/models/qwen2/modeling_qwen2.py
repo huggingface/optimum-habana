@@ -42,6 +42,7 @@ from ...modeling_attn_mask_utils import (
 
 logger = logging.get_logger(__name__)
 
+
 def gaudi_qwen2_attention_forward(
     self,
     hidden_states: torch.Tensor,
@@ -144,6 +145,7 @@ def gaudi_qwen2_attention_forward(
 
     return attn_output, attn_weights, past_key_value
 
+
 class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
     def __init__(self, config: Qwen2Config, layer_idx: int):
         super().__init__(config, layer_idx)
@@ -202,6 +204,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
             outputs += (present_key_value,)
 
         return outputs
+
 
 def gaudi_qwen2_model_forward(
     self,
@@ -346,6 +349,7 @@ def gaudi_qwen2_model_forward(
         hidden_states=all_hidden_states,
         attentions=all_self_attns,
     )
+
 
 class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
     def forward(
