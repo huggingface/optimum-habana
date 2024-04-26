@@ -427,4 +427,3 @@ def adapt_transformers_to_gaudi():
 
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
-    
