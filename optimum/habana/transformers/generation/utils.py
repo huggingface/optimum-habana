@@ -76,8 +76,11 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mistral",
     "phi",
     "mixtral",
+    "gemma",
     "blip_text_model",
     "starcoder2",
+    "llava",
+    "stablelm",
 ]
 
 
@@ -523,6 +526,8 @@ class GaudiGenerationMixin(GenerationMixin):
         generation_config = copy.deepcopy(generation_config)
         if generation_config.static_shapes is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+            if self.config.model_type == "vision-encoder-decoder":
+                generation_config.static_shapes = self.config.decoder.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
         self.generation_config.static_shapes = generation_config.static_shapes
         if generation_config.ignore_eos is None:
             generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode)
