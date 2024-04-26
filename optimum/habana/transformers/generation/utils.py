@@ -76,8 +76,11 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mistral",
     "phi",
     "mixtral",
+    "gemma",
     "blip_text_model",
     "qwen2",
+    "llava",
+    "stablelm",
 ]
 
 
