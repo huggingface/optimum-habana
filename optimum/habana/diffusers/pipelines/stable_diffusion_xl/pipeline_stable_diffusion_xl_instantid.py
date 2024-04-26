@@ -44,6 +44,7 @@ from optimum.utils import logging
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
+from ..stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
 
@@ -543,6 +544,10 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             else:
                 num_prompts = prompt_embeds.shape[0]
             num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
+            logger.info(
+                f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
+                f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
+            )
 
             device = self._execution_device
 
@@ -584,7 +589,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             # 3.2 Encode image prompt
             prompt_image_emb = self._encode_prompt_image_emb(image_embeds, 
                                                             device,
-                                                            batch_size * num_images_per_prompt,
+                                                            1, #FIXME: remove hardcode
                                                             self.unet.dtype,
                                                             self.do_classifier_free_guidance)
             
@@ -700,15 +705,32 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             else:
                 negative_add_time_ids = add_time_ids
 
-            if self.do_classifier_free_guidance:
-                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-                add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-                add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
-
             prompt_embeds = prompt_embeds.to(device)
+            if negative_prompt_embeds is not None:
+                negative_prompt_embeds = negative_prompt_embeds.to(device)
             add_text_embeds = add_text_embeds.to(device)
-            add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
-            encoder_hidden_states = torch.cat([prompt_embeds, prompt_image_emb], dim=1)
+            if negative_pooled_prompt_embeds is not None:
+                negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(device)
+            add_time_ids = add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
+            negative_add_time_ids = negative_add_time_ids.to(device).repeat(num_prompts * num_images_per_prompt, 1)
+
+            # 7.3 Split into batches (HPU-specific step)
+            (
+                latents_batches,
+                prompt_embeds_batches,
+                add_text_embeddings_batches,
+                add_time_ids_batches,
+                num_dummy_samples,
+            ) = GaudiStableDiffusionXLPipeline._split_inputs_into_batches(
+                batch_size,
+                latents,
+                prompt_embeds,
+                negative_prompt_embeds,
+                add_text_embeds,
+                negative_pooled_prompt_embeds,
+                add_time_ids,
+                negative_add_time_ids,
+            )
 
             outputs = {
                 "images": [],
@@ -733,6 +755,15 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                 if j == throughput_warmup_steps:
                     t1 = time.time()
 
+                latents_batch = latents_batches[0]
+                latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
+                prompt_embeds_batch = prompt_embeds_batches[0]
+                prompt_embeds_batches = torch.roll(prompt_embeds_batches, shifts=-1, dims=0)
+                add_text_embeddings_batch = add_text_embeddings_batches[0]
+                add_text_embeddings_batches = torch.roll(add_text_embeddings_batches, shifts=-1, dims=0)
+                add_time_ids_batch = add_time_ids_batches[0]
+                add_time_ids_batches = torch.roll(add_time_ids_batches, shifts=-1, dims=0)
+                encoder_hidden_states = torch.cat([prompt_embeds_batch, prompt_image_emb], dim=1)
                 num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
                 for i in range(num_inference_steps):
@@ -741,25 +772,25 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
-                        torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                        torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
                     )
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                    added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                    added_cond_kwargs = {"text_embeds": add_text_embeddings_batch, "time_ids": add_time_ids_batch}
 
                     # controlnet(s) inference
                     if guess_mode and self.do_classifier_free_guidance:
                         # Infer ControlNet only for the conditional batch.
-                        control_model_input = latents
+                        control_model_input = latents_batch
                         control_model_input = self.scheduler.scale_model_input(control_model_input, t)
                         controlnet_added_cond_kwargs = {
-                            "text_embeds": add_text_embeds.chunk(2)[1],
-                            "time_ids": add_time_ids.chunk(2)[1],
+                            "text_embeds": add_text_embeddings_batch.chunk(2)[1],
+                            "time_ids": add_time_ids_batch.chunk(2)[1],
                         }
                     else:
                         control_model_input = latent_model_input
                         controlnet_added_cond_kwargs = added_cond_kwargs
-                    
+
                     if isinstance(controlnet_keep[i], list):
                         cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                     else:
@@ -805,8 +836,8 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.scheduler.step(
-                        noise_pred, t, latents, **extra_step_kwargs, return_dict=False
+                    latents_batch = self.scheduler.step(
+                        noise_pred, t, latents_batch, **extra_step_kwargs, return_dict=False
                     )[0]
 
                     if not self.use_hpu_graphs:
@@ -818,15 +849,17 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                             callback_kwargs[k] = locals()[k]
                         callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                        latents = callback_outputs.pop("latents", latents)
-                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                        latents_batch = callback_outputs.pop("latents", latents_batch)
+                        _prompt_embeds = callback_outputs.pop("prompt_embeds", None)
+                        _negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", None)
+                        if _prompt_embeds is not None and _negative_prompt_embeds is not None:
+                            prompt_embeds_batch = torch.cat([_negative_prompt_embeds, _prompt_embeds])
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         if callback is not None and i % callback_steps == 0:
                             step_idx = i // getattr(self.scheduler, "order", 1)
-                            callback(step_idx, t, latents)
+                            callback(step_idx, t, latents_batch)
 
                     hb_profiler.step()
 
@@ -844,17 +877,17 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                     has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
                     if has_latents_mean and has_latents_std:
                         latents_mean = (
-                            torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1).to(latents.device, latents.dtype)
+                            torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1).to(latents_batch.device, latents_batch.dtype)
                         )
                         latents_std = (
-                            torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
+                            torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1).to(latents_batch.device, latents_batch.dtype)
                         )
-                        latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
+                        latents_batch = latents_batch * latents_std / self.vae.config.scaling_factor + latents_mean
                     else:
-                        latents = latents / self.vae.config.scaling_factor
+                        latents_batch = latents_batch / self.vae.config.scaling_factor
 
                     output_image = self.vae.decode(
-                        latents,
+                        latents_batch,
                         return_dict=False,
                     )[0]
 
@@ -862,7 +895,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                     if needs_upcasting:
                         self.vae.to(dtype=torch.bfloat16)
                 else:
-                    output_image = latents
+                    output_image = latents_batch
 
                 outputs["images"].append(output_image)
 
@@ -882,6 +915,10 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                 start_time_after_warmup=t1,
             )
             logger.info(f"Speed metrics: {speed_measures}")
+
+            # Remove dummy generations if needed
+            if num_dummy_samples > 0:
+                outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
 
             # Process generated images
             for i, image in enumerate(outputs["images"][:]):
