@@ -120,7 +120,6 @@ class PipelineLatentTesterMixin:
     def _test_pt_np_pil_outputs_equivalent(self, expected_max_diff=1e-4, input_image_type="pt"):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        #pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         output_pt = pipe(
@@ -147,7 +146,6 @@ class PipelineLatentTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        #pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         out_input_pt = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="pt"))[0]
@@ -166,7 +164,6 @@ class PipelineLatentTesterMixin:
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
-        #pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         out = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="pt"))[0]
@@ -325,7 +322,6 @@ class PipelineTesterMixin:
         torch.cuda.empty_cache()
 
     def test_save_load_local(self, expected_max_difference=5e-4):
-        #set_seed(0)
         components = self.get_dummy_components()
         init_kwargs = {
             "use_habana": True,
@@ -416,7 +412,6 @@ class PipelineTesterMixin:
     ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        #pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -475,7 +470,6 @@ class PipelineTesterMixin:
             if hasattr(components, "set_default_attn_processor"):
                 components.set_default_attn_processor()
 
-        #pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs(torch_device)
         # Reset generator in case it is has been used in self.get_dummy_inputs
@@ -525,7 +519,6 @@ class PipelineTesterMixin:
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
 
-        #pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator_device = "cpu"
@@ -719,7 +712,6 @@ class PipelineTesterMixin:
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
-        #pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator_device = "cpu"
@@ -815,7 +807,6 @@ class PipelineTesterMixin:
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
-        #pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -841,7 +832,6 @@ class PipelineTesterMixin:
     def test_progress_bar(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        #pipe.to(torch_device)
 
         inputs = self.get_dummy_inputs(torch_device)
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
@@ -868,7 +858,6 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        #pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         batch_sizes = [1, 2]
@@ -894,7 +883,6 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        #pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -917,7 +905,6 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        #pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         self.assertTrue(
             hasattr(pipe, "_callback_tensor_inputs"),
@@ -982,7 +969,6 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        #pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         self.assertTrue(
             hasattr(pipe, "_callback_tensor_inputs"),

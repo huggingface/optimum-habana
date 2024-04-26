@@ -15,7 +15,7 @@
 
 
 """
-Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/stable_diffusion_xl/test_stable_diffusion_xl_inpaint.py
+Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/stable_diffusion_xl/test_stable_diffusion_xl_inpaint.py
 - Modified pipeline to Gaudi pipeline.
 - Modified the get_dummy_components to add the Gaudi pipeline parameters: use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval
 """
@@ -255,7 +255,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = GaudiStableDiffusionXLInpaintPipeline(**components)
-        #sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
@@ -273,7 +272,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         components = self.get_dummy_components(time_cond_proj_dim=256)
         sd_pipe = GaudiStableDiffusionXLInpaintPipeline(**components)
         sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.config)
-        sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
@@ -291,7 +289,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         components = self.get_dummy_components(time_cond_proj_dim=256)
         sd_pipe = GaudiStableDiffusionXLInpaintPipeline(**components)
         sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.config)
-        #sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
@@ -320,8 +317,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         device = "cpu"
         components = self.get_dummy_components()
         sd_pipe = GaudiStableDiffusionXLInpaintPipeline(**components)
-        #sd_pipe = sd_pipe.to(torch_device)
-        #sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         # forward without prompt embeds
@@ -362,7 +357,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         components = self.get_dummy_components(skip_first_text_encoder=True)
 
         sd_pipe = self.pipeline_class(**components)
-        #sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
@@ -656,7 +650,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        #sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
@@ -715,7 +708,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        #sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         # test to confirm if we pass two same image, we will get same output
@@ -745,7 +737,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
     def test_pipeline_interrupt(self):
         components = self.get_dummy_components()
         sd_pipe = GaudiStableDiffusionXLInpaintPipeline(**components)
-        #sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs()
