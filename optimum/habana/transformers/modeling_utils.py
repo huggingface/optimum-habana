@@ -128,6 +128,7 @@ from .models import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+    gaudi_owlvitclasspredictionhead_forward,
     gaudi_persimmon_attention_forward,
     gaudi_persimmon_decoder_layer_forward,
     gaudi_persimmon_model_forward,

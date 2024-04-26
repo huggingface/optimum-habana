@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
                 # Convert outputs (bounding boxes and class logits) to Pascal VOC format (xmin, ymin, xmax, ymax)
                 results = processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=0.1)
-                if i == 0:  
+                if i == 0:
                     text = texts[i] # Retrieve predictions for the first image for the corresponding text queries
                     boxes, scores, labels = results[i]["boxes"], results[i]["scores"], results[i]["labels"]
                     for box, score, label in zip(boxes, scores, labels):
