@@ -94,13 +94,15 @@ from .mistral import (
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
     GaudiMistralModel,
+    MistralConfig,
     gaudi_mistral_rmsnorm_forward,
 )
 from .mixtral import (
+    GaudiMixtralAttention,
+    GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
-    gaudi_mixtral_attention_forward,
+    MixtralConfig,
     gaudi_mixtral_block_sparse_moe_forward,
-    gaudi_mixtral_decoder_layer_forward,
     gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
@@ -124,19 +126,29 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
-from .owlvit import gaudi_owlvitclasspredictionhead_forward
+from .persimmon import (
+    GaudiPersimmonForCausalLM,
+    gaudi_persimmon_attention_forward,
+    gaudi_persimmon_decoder_layer_forward,
+    gaudi_persimmon_model_forward,
+)
 from .phi import (
     GaudiPhiForCausalLM,
     gaudi_phi_attention_forward,
     gaudi_phi_decoder_layer_forward,
     gaudi_phi_model_forward,
 )
+from .qwen2 import (
+    GaudiQwen2DecoderLayer,
+    GaudiQwen2ForCausalLM,
+    gaudi_qwen2_attention_forward,
+    gaudi_qwen2_model_forward,
+)
 from .speecht5 import (
     gaudi_generate_speech,
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
-    gaudi_SpeechT5SpeechDecoderPrenet_forward,
 )
 from .stablelm import (
     GaudiStableLmForCausalLM,
@@ -167,3 +179,4 @@ from .wav2vec2 import (
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
 )
+from .owlvit import gaudi_owlvitclasspredictionhead_forward

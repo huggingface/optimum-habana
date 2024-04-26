@@ -36,6 +36,11 @@ fast_tests:
 	python -m pip install .[tests]
 	python -m pytest tests/test_gaudi_configuration.py tests/test_trainer_distributed.py tests/test_trainer.py tests/test_trainer_seq2seq.py
 
+# Run unit tests related to zero shot object detection
+fast_tests_zeroshotobjectdetection:
+	python -m pip install .[tests]
+	python -m pytest tests/test_zero_shot_object_detection.py
+
 # Run unit and integration tests related to Diffusers
 fast_tests_diffusers:
 	python -m pip install .[tests]

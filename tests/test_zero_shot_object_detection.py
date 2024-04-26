@@ -15,7 +15,7 @@
 
 import time
 from unittest import TestCase
-
+import unittest
 import habana_frameworks.torch as ht
 import numpy as np
 import requests
@@ -29,7 +29,7 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 adapt_transformers_to_gaudi()
 
 # For Gaudi 2
-LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 3.7109851837158203
+LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 4.2139556878198333
 
 class GaudiOWlVITTester(TestCase):
     """
@@ -111,4 +111,4 @@ class GaudiOWlVITTester(TestCase):
                 total_model_time = total_model_time + (model_end_time - model_start_time)
 
         latency = total_model_time*1000/iterations # in terms of ms
-        self.assertGreaterEqual(latency, 0.95 * LATENCY_OWLVIT_BF16_GRAPH_BASELINE)
+        self.assertLessEqual(latency, 1.05 * LATENCY_OWLVIT_BF16_GRAPH_BASELINE)

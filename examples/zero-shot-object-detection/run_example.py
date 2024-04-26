@@ -105,12 +105,12 @@ if __name__ == "__main__":
 
                 # Convert outputs (bounding boxes and class logits) to Pascal VOC format (xmin, ymin, xmax, ymax)
                 results = processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=0.1)
-                i = 0  # Retrieve predictions for the first image for the corresponding text queries
-                text = texts[i]
-                boxes, scores, labels = results[i]["boxes"], results[i]["scores"], results[i]["labels"]
-                for box, score, label in zip(boxes, scores, labels):
-                    box = [round(i, 2) for i in box.tolist()]
-                    print(f"Detected {text[label]} with confidence {round(score.item(), 3)} at location {box}")
+                if i == 0:  
+                    text = texts[i] # Retrieve predictions for the first image for the corresponding text queries
+                    boxes, scores, labels = results[i]["boxes"], results[i]["scores"], results[i]["labels"]
+                    for box, score, label in zip(boxes, scores, labels):
+                        box = [round(i, 2) for i in box.tolist()]
+                        print(f"Detected {text[label]} with confidence {round(score.item(), 3)} at location {box}")
 
     print("n_iterations: " + str(args.n_iterations))
     print("Total latency (ms): " + str(total_model_time*1000))
