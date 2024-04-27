@@ -592,9 +592,12 @@ def main():
             )
 
     if training_args.do_train:
+        def tensor_mapper(x):
+            return {i:torch.tensor(x[i], dtype=torch.int32) for i in x}
         if "train" not in tokenized_datasets:
             raise ValueError("--do_train requires a train dataset")
         train_dataset = lm_datasets["train"]
+        train_dataset = train_dataset.map(tensor_mapper)
         if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
