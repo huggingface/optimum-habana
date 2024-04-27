@@ -427,7 +427,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation
 
     # Optimization for Owl ViT model on Gaudi
-    transformers.models.owlvit.modeling_owlvit.OwlViTClassPredictionHead.forward = gaudi_owlvitclasspredictionhead_forward
+    transformers.models.owlvit.modeling_owlvit.OwlViTClassPredictionHead.forward = (
+        gaudi_owlvitclasspredictionhead_forward
+    )
 
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)

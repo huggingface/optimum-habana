@@ -15,7 +15,7 @@
 
 import time
 from unittest import TestCase
-import unittest
+
 import habana_frameworks.torch as ht
 import numpy as np
 import requests
@@ -31,10 +31,12 @@ adapt_transformers_to_gaudi()
 # For Gaudi 2
 LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 4.2139556878198333
 
+
 class GaudiOWlVITTester(TestCase):
     """
     Tests for Zero Shot Object Detection - OWLVIT
     """
+
     def prepare_model_and_processor(self):
         model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32").to("hpu")
         model = model.eval()
@@ -63,10 +65,12 @@ class GaudiOWlVITTester(TestCase):
         texts, image = self.prepare_data()
         inputs = processor(text=texts, images=image, return_tensors="pt").to("hpu")
 
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16): # Autocast BF16
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16):  # Autocast BF16
             outputs = model(**inputs)
             target_sizes = torch.Tensor([image.size[::-1]])
-            results = processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=0.1)
+            results = processor.post_process_object_detection(
+                outputs=outputs, target_sizes=target_sizes, threshold=0.1
+            )
             boxes = results[0]["boxes"]
             expected_location = np.array([324.9933, 20.4362, 640.6164, 373.2621])
             self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 2)
@@ -76,7 +80,7 @@ class GaudiOWlVITTester(TestCase):
         texts, image = self.prepare_data()
         inputs = processor(text=texts, images=image, return_tensors="pt").to("hpu")
 
-        model = ht.hpu.wrap_in_hpu_graph(model) #Apply graph
+        model = ht.hpu.wrap_in_hpu_graph(model)  # Apply graph
 
         outputs = model(**inputs)
         target_sizes = torch.Tensor([image.size[::-1]])
@@ -110,5 +114,5 @@ class GaudiOWlVITTester(TestCase):
                 model_end_time = time.time()
                 total_model_time = total_model_time + (model_end_time - model_start_time)
 
-        latency = total_model_time*1000/iterations # in terms of ms
+        latency = total_model_time * 1000 / iterations  # in terms of ms
         self.assertLessEqual(latency, 1.05 * LATENCY_OWLVIT_BF16_GRAPH_BASELINE)

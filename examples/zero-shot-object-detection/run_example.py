@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     image = Image.open(requests.get(args.image_path, stream=True).raw)
     texts = []
-    for text in args.prompt.split(','):
+    for text in args.prompt.split(","):
         texts.append(text)
 
     if args.use_hpu_graphs:
@@ -104,7 +104,9 @@ if __name__ == "__main__":
                 target_sizes = torch.Tensor([image.size[::-1]])
 
                 # Convert outputs (bounding boxes and class logits) to Pascal VOC format (xmin, ymin, xmax, ymax)
-                results = processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=0.1)
+                results = processor.post_process_object_detection(
+                    outputs=outputs, target_sizes=target_sizes, threshold=0.1
+                )
                 if i == 0:
                     boxes, scores, labels = results[i]["boxes"], results[i]["scores"], results[i]["labels"]
                     for box, score, label in zip(boxes, scores, labels):
@@ -112,5 +114,5 @@ if __name__ == "__main__":
                         print(f"Detected {texts[label]} with confidence {round(score.item(), 3)} at location {box}")
 
     print("n_iterations: " + str(args.n_iterations))
-    print("Total latency (ms): " + str(total_model_time*1000))
-    print("Average latency (ms): " + str(total_model_time*1000/args.n_iterations))
+    print("Total latency (ms): " + str(total_model_time * 1000))
+    print("Average latency (ms): " + str(total_model_time * 1000 / args.n_iterations))
