@@ -128,6 +128,7 @@ from .models import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+    gaudi_owlvitclasspredictionhead_forward,
     gaudi_persimmon_attention_forward,
     gaudi_persimmon_decoder_layer_forward,
     gaudi_persimmon_model_forward,
@@ -424,6 +425,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer.forward = gaudi_stablelm_decoder_layer_forward
 
     transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation
+
+    # Optimization for Owl ViT model on Gaudi
+    transformers.models.owlvit.modeling_owlvit.OwlViTClassPredictionHead.forward = (
+        gaudi_owlvitclasspredictionhead_forward
+    )
 
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)

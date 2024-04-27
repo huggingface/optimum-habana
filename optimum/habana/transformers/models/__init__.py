@@ -126,6 +126,7 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .owlvit import gaudi_owlvitclasspredictionhead_forward
 from .persimmon import (
     GaudiPersimmonForCausalLM,
     gaudi_persimmon_attention_forward,
