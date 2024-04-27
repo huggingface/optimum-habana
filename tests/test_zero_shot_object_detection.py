@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import time
 from unittest import TestCase
 
@@ -28,8 +29,12 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 
 adapt_transformers_to_gaudi()
 
-# For Gaudi 2
-LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 4.2139556878198333
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    # Gaudi2 CI baselines
+    LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 4.2139556878198333
+else:
+    # Gaudi1 CI baselines
+    LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 8.460688591003418
 
 
 class GaudiOWlVITTester(TestCase):
