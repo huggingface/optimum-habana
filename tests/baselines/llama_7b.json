@@ -100,7 +100,7 @@
             }
         },
         "trl-sft": {
-	    "num_train_epochs": 1,
+            "num_train_epochs": 1,
             "eval_batch_size": 1,
             "distribution": {
                 "multi_card": {
@@ -122,16 +122,16 @@
                         "--lora_dropout 0.05",
                         "--lora_target_modules q_proj v_proj",
                         "--seq_length 1024",
-			"--optim paged_adamw_32bit",
-			"--weight_decay 0.05",
-			"--report_to none",
+                        "--optim paged_adamw_32bit",
+                        "--weight_decay 0.05",
+                        "--report_to none",
                         "--max_steps 100"
                     ]
                 }
             }
-	},
+        },
         "trl-dpo": {
-	    "num_train_epochs": 1,
+            "num_train_epochs": 1,
             "eval_batch_size": 1,
             "distribution": {
                 "multi_card": {
@@ -147,17 +147,17 @@
                         "--lora_target_modules q_proj v_proj k_proj out_proj fc_in fc_out wte",
                         "--max_length 1024",
                         "--max_prompt_length 512",
-			"--report_to none",
+                        "--report_to none",
                         "--max_steps 100",
-			"--eval_steps 200",
-			"--lr_scheduler_type cosine",
-			"--warmup_steps 0",
+                        "--eval_steps 200",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
                         "--weight_decay 0.05",
-			"--optimizer_type paged_adamw_32bit",
-			"--beta 0.1",
-			"--gradient_accumulation_steps 4",
-			"--sanity_check"
-		     ]
+                        "--optimizer_type paged_adamw_32bit",
+                        "--beta 0.1",
+                        "--gradient_accumulation_steps 4",
+                        "--sanity_check"
+                    ]
                 }
             }
         }
