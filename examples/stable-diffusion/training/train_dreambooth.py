@@ -1098,8 +1098,11 @@ def main(args):
                 accelerator.ddp_handler = DistributedDataParallelKwargs(**kwargs)
             if args.use_hpu_graphs_for_training:
                 if _is_peft_model(model):
-                    model = model.get_base_model()
-                htcore.hpu.ModuleCacher()(model=model, inplace=True)
+                    base_model = model.get_base_model()
+                    htcore.hpu.ModuleCacher()(model=base_model, inplace=True)
+                else:
+                    htcore.hpu.ModuleCacher()(model=model, inplace=True)
+            return model
 
     unwrap_model(model=unet, training=True)
 

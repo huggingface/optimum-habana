@@ -373,3 +373,51 @@ python ../text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --bf16
 ```
+
+### DreamBooth training example for Stable Diffusion XL
+we could use the dog images as example as well.
+we can launch training using:
+```bash
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="lora-trained-xl"
+export VAE_PATH="stabilityai/sdxl-vae"
+
+python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_sdxl.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --pretrained_vae_model_name_or_path=$VAE_PATH \
+  --output_dir=$OUTPUT_DIR \
+  --mixed_precision="bf16" \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --learning_rate=1e-4 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=500 \
+  --validation_prompt="A photo of sks dog in a bucket" \
+  --validation_epochs=25 \
+  --seed=0 \
+  --use_hpu_graphs_for_inference \
+  --use_hpu_graphs_for_training \
+  --gaudi_config_name Habana/stable-diffusion
+
+```
+
+you could use text_to_image_generation.py to generate pic using the peft adapter like
+
+```bash
+python ../text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0  \
+    --prompts "A picture of a sks dog in a bucket" \
+    --num_images_per_prompt 5 \
+    --batch_size 1 \
+    --image_save_dir /tmp/stable_diffusion_xl_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --lora_id  lora-trained-xl \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
