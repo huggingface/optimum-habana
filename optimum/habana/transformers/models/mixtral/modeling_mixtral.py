@@ -397,6 +397,8 @@ class GaudiMixtralAttention(MixtralAttention):
         if not output_attentions:
             attn_weights = None
 
+        return attn_output, attn_weights, past_key_value
+
 
 def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
