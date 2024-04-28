@@ -60,9 +60,9 @@ logger = logging.get_logger(__name__)
 
 def update(prev, cur, dim, idx):
     orig_cur = cur
-    if prev.shape == cur.shape:
+    if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
         # Initialize
-        prev.copy_(cur)
+        prev[:, :, :idx, :].copy_(cur)
         return orig_cur
     assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
     if idx is not None:
@@ -257,7 +257,7 @@ class GaudiMistralAttention(MistralAttention):
             value_states = update(past_value, value_states, 2, token_idx)
         if use_cache:
             if reuse_cache:
-                past_key_value = (key_states.contiguous().shape, value_states.contiguous().shape)
+                past_key_value = (past_key.contiguous().shape, past_value.contiguous().shape)
             else:
                 past_key_value = (key_states.contiguous(), value_states.contiguous())
         else:
