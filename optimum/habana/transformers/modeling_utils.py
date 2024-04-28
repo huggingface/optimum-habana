@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import transformers
+import transformers.utils.fx
 
 from .generation import (
     GaudiGenerationConfig,
@@ -31,6 +32,8 @@ from .models import (
     GaudiFalconForCausalLM,
     GaudiFalconMLP,
     GaudiFalconModel,
+    GaudiGemmaDecoderLayer,
+    GaudiGemmaForCausalLM,
     GaudiGPT2Attention,
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
@@ -45,6 +48,7 @@ from .models import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    GaudiLlavaForConditionalGeneration,
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
@@ -57,7 +61,11 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiPersimmonForCausalLM,
     GaudiPhiForCausalLM,
+    GaudiQwen2DecoderLayer,
+    GaudiQwen2ForCausalLM,
+    GaudiStableLmForCausalLM,
     MistralConfig,
     MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -93,6 +101,9 @@ from .models import (
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
     gaudi_falcon_attention_split_heads,
+    gaudi_falcon_linear_forward,
+    gaudi_gemma_attention_forward,
+    gaudi_gemma_model_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
     gaudi_gpt2_block_forward,
@@ -117,15 +128,23 @@ from .models import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+    gaudi_owlvitclasspredictionhead_forward,
+    gaudi_persimmon_attention_forward,
+    gaudi_persimmon_decoder_layer_forward,
+    gaudi_persimmon_model_forward,
     gaudi_phi_attention_forward,
     gaudi_phi_decoder_layer_forward,
     gaudi_phi_model_forward,
+    gaudi_qwen2_attention_forward,
+    gaudi_qwen2_model_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
-    gaudi_SpeechT5SpeechDecoderPrenet_forward,
+    gaudi_stablelm_attention_forward,
+    gaudi_stablelm_decoder_layer_forward,
+    gaudi_stablelm_model_forward,
     gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -134,6 +153,7 @@ from .models import (
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
+    gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
     gaudi_vit_self_attention_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
@@ -147,6 +167,9 @@ def adapt_transformers_to_gaudi():
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
     """
+
+    # models that support symbolic tracing should be added to this list
+    models_with_tracing_support = []
 
     # optimize Conv1D
     transformers.pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
@@ -170,6 +193,7 @@ def adapt_transformers_to_gaudi():
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
+    transformers.generation.GenerationMixin.assisted_decoding = GaudiGenerationMixin.assisted_decoding
     transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
         GaudiGenerationMixin._update_model_kwargs_for_generation
     )
@@ -251,6 +275,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
     transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
     transformers.models.gpt2.modeling_gpt2.GPT2Block.forward = gaudi_gpt2_block_forward
+    models_with_tracing_support.extend((GaudiGPT2Attention, GaudiGPT2LMHeadModel))
 
     # Optimization for EsmFold on Gaudi
     transformers.models.esm.modeling_esmfold.EsmFoldingTrunk.forward = gaudi_esmfolding_trunk_forward
@@ -302,6 +327,9 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
 
+    # Optimization for llava on Gaudi
+    transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
+
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention
     transformers.models.falcon.modeling_falcon.FalconForCausalLM = GaudiFalconForCausalLM
@@ -309,6 +337,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.falcon.modeling_falcon.FalconModel = GaudiFalconModel
     transformers.models.falcon.modeling_falcon.FalconDecoderLayer = GaudiFalconDecoderLayer
     transformers.models.falcon.modeling_falcon.FalconAttention._split_heads = gaudi_falcon_attention_split_heads
+    transformers.models.falcon.modeling_falcon.FalconLinear.forward = gaudi_falcon_linear_forward
 
     # Optimization for t5 on Gaudi
     transformers.models.t5.modeling_t5.T5LayerNorm.forward = gaudi_t5_layernorm_forward
@@ -341,6 +370,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
     transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
 
+    # Optimization for gemma on Gaudi
+    transformers.models.gemma.modeling_gemma.GemmaForCausalLM = GaudiGemmaForCausalLM
+    transformers.models.gemma.modeling_gemma.GemmaAttention.forward = gaudi_gemma_attention_forward
+    transformers.models.gemma.modeling_gemma.GemmaDecoderLayer = GaudiGemmaDecoderLayer
+    transformers.models.gemma.modeling_gemma.GemmaModel.forward = gaudi_gemma_model_forward
+
     # Optimization for blip Text model on Gaudi
     transformers.models.blip.BlipTextModel.forward = gaudi_BlipTextModel_forward
     transformers.models.blip.modeling_blip_text.BlipTextLMHeadModel.forward = gaudi_BlipTextLMHead_forward
@@ -368,6 +403,33 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5.SpeechT5DecoderLayer.forward = gaudi_SpeechT5DecoderLayer_forward
     transformers.models.speecht5.modeling_speecht5.SpeechT5Attention.forward = gaudi_SpeechT5Attention_forward
     transformers.models.speecht5.modeling_speecht5._generate_speech = gaudi_generate_speech
-    transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
-        gaudi_SpeechT5SpeechDecoderPrenet_forward
+
+    # Optimization for persimmon on Gaudi
+    transformers.models.persimmon.modeling_persimmon.PersimmonForCausalLM = GaudiPersimmonForCausalLM
+    transformers.models.persimmon.modeling_persimmon.PersimmonModel.forward = gaudi_persimmon_model_forward
+    transformers.models.persimmon.modeling_persimmon.PersimmonAttention.forward = gaudi_persimmon_attention_forward
+    transformers.models.persimmon.modeling_persimmon.PersimmonDecoderLayer.forward = (
+        gaudi_persimmon_decoder_layer_forward
     )
+
+    # Optimization for qwen2 on Gaudi
+    transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = GaudiQwen2ForCausalLM
+    transformers.models.qwen2.modeling_qwen2.Qwen2Model.forward = gaudi_qwen2_model_forward
+    transformers.models.qwen2.modeling_qwen2.Qwen2Attention.forward = gaudi_qwen2_attention_forward
+    transformers.models.qwen2.modeling_qwen2.Qwen2DecoderLayer = GaudiQwen2DecoderLayer
+
+    # Optimization for stablelm on Gaudi
+    transformers.models.stablelm.modeling_stablelm.StableLmForCausalLM = GaudiStableLmForCausalLM
+    transformers.models.stablelm.modeling_stablelm.StableLmModel.forward = gaudi_stablelm_model_forward
+    transformers.models.stablelm.modeling_stablelm.StableLmAttention.forward = gaudi_stablelm_attention_forward
+    transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer.forward = gaudi_stablelm_decoder_layer_forward
+
+    transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation
+
+    # Optimization for Owl ViT model on Gaudi
+    transformers.models.owlvit.modeling_owlvit.OwlViTClassPredictionHead.forward = (
+        gaudi_owlvitclasspredictionhead_forward
+    )
+
+    # Tell transformers which Gaudi models support tracing
+    transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
