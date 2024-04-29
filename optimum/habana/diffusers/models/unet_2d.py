@@ -1,10 +1,10 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 from diffusers.models.unets.unet_2d import UNet2DOutput
-from diffusers.utils import USE_PEFT_BACKEND, deprecate, scale_lora_layers, unscale_lora_layers
 
 from optimum.utils import logging
+
 
 logger = logging.get_logger(__name__)
 
@@ -14,26 +14,16 @@ def gaudi_unet_2d_model_forward(
     sample: torch.FloatTensor,
     timestep: Union[torch.Tensor, float, int],
     cal_timestep_only : bool = True,
-    emb : Optional[torch.Tensor] = None, 
+    emb : Optional[torch.Tensor] = None,
     class_labels: Optional[torch.Tensor] = None,
     return_dict: bool = True,
 ) -> Union[UNet2DOutput, Tuple]:
     r"""
-    The [`UNet2DModel`] forward method.
 
-    Args:
-        sample (`torch.FloatTensor`):
-            The noisy input tensor with the following shape `(batch, channel, height, width)`.
-        timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
-        class_labels (`torch.FloatTensor`, *optional*, defaults to `None`):
-            Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
-        return_dict (`bool`, *optional*, defaults to `True`):
-            Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
+    Copied from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/unets/unet_2d.py#L243
 
-    Returns:
-        [`~models.unet_2d.UNet2DOutput`] or `tuple`:
-            If `return_dict` is True, an [`~models.unet_2d.UNet2DOutput`] is returned, otherwise a `tuple` is
-            returned where the first element is the sample tensor.
+    Changes:
+        1. Add an if case to seperate timestep calculations and the diffusion process
     """
     # 0. center input if necessary
     if self.config.center_input_sample:
@@ -69,7 +59,7 @@ def gaudi_unet_2d_model_forward(
             emb = emb + class_emb
         elif self.class_embedding is None and class_labels is not None:
             raise ValueError("class_embedding needs to be initialized in order to use class conditioning")
-        
+
         return emb
     else:
         # 2. pre-process
