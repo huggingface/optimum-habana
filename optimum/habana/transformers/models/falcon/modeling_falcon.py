@@ -83,6 +83,11 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
 
 
+def gaudi_falcon_linear_forward(self, input: torch.Tensor) -> torch.Tensor:
+    hidden_states = F.linear(input, self.weight, bias=self.bias)
+    return hidden_states
+
+
 def gaudi_falcon_attention_split_heads(
     self, fused_qkv: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

@@ -153,6 +153,16 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING,
         MODELS_TO_TEST_FOR_SPEECH_RECOGNITION,
     ),
+    "sft": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama"],
+    ),
+    "dpo": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama"],
+    ),
 }
 
 
@@ -175,9 +185,12 @@ class ExampleTestMeta(type):
             "google/flan-t5-xxl",
             "tiiuae/falcon-40b",
             "bigscience/bloom-7b1",
+            "codellama/CodeLlama-13b-Instruct-hf",
         ]
 
         if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
+            return False
+        elif ("sft" in example_name or "dpo" in example_name) and os.environ.get("GAUDI2_CI", "0") == "0":
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -189,6 +202,9 @@ class ExampleTestMeta(type):
             return True
         elif "flan-t5" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
             # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "CodeLlama" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+            # CodeLlama is tested only on Gaudi2 and with DeepSpeed
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -425,30 +441,39 @@ class ExampleTesterBase(TestCase):
                 "--num_gpus 8",
                 "--no_local_rank",
             ]
-
-        cmd_line += [
-            f"{script}",
-            f"--model_name_or_path {model_name}",
-            f"--gaudi_config_name {gaudi_config_name}",
-            f"{task_option}",
-            "--do_train",
-            f"--output_dir {output_dir}",
-            "--overwrite_output_dir",
-            f"--learning_rate {lr}",
-            f"--per_device_train_batch_size {train_batch_size}",
-            f"--per_device_eval_batch_size {eval_batch_size}",
-            f" --num_train_epochs {num_epochs}",
-            "--use_habana",
-            "--throughput_warmup_steps 3",
-            "--save_strategy no",
-        ]
+        if self.EXAMPLE_NAME == "dpo":
+            cmd_line += [
+                f"{script}",
+                f"--model_name_or_path {model_name}",
+                f"--tokenizer_name_or_path {model_name}",
+                f"--output_dir {output_dir}",
+                f"--per_device_train_batch_size {train_batch_size}",
+                f"--per_device_eval_batch_size {eval_batch_size}",
+            ]
+        else:
+            cmd_line += [
+                f"{script}",
+                f"--model_name_or_path {model_name}",
+                f"--gaudi_config_name {gaudi_config_name}",
+                f"{task_option}",
+                "--do_train",
+                f"--output_dir {output_dir}",
+                "--overwrite_output_dir",
+                f"--learning_rate {lr}",
+                f"--per_device_train_batch_size {train_batch_size}",
+                f"--per_device_eval_batch_size {eval_batch_size}",
+                f" --num_train_epochs {num_epochs}",
+                "--use_habana",
+                "--throughput_warmup_steps 3",
+                "--save_strategy no",
+            ]
 
         if "compile" in task:
             cmd_line += ["--use_lazy_mode False"]
-        else:
+        elif self.EXAMPLE_NAME != "dpo":
             cmd_line += ["--use_lazy_mode"]
 
-        if "bloom" not in model_name:
+        if "bloom" not in model_name and self.EXAMPLE_NAME != "dpo":
             cmd_line.append("--do_eval")
 
         if extra_command_line_arguments is not None:
@@ -485,7 +510,7 @@ class ExampleTesterBase(TestCase):
 
         # There is no accuracy metric for `run_clip.py`, `run_bridgetower.py` and BLOOM
         min_number_metrics = 3
-        if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower"] or "bloom" in model_name:
+        if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower", "sft", "dpo"] or "bloom" in model_name:
             min_number_metrics = 2
 
         # Check that at least 3 metrics are assessed:
@@ -641,3 +666,13 @@ class MultiCardCausalLanguageModelingLORAFSDPCompileExampleTester(
 ):
     TASK_NAME = "tatsu-lab/alpaca_fsdpcompile"
     DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", multi_card=True):
+    TASK_NAME = "trl-sft"
+    DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="dpo", multi_card=True):
+    TASK_NAME = "trl-dpo"
+    DATASET_NAME = "lvwerra/stack-exchange-paired"

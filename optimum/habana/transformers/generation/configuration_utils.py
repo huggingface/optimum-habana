@@ -33,6 +33,8 @@ class GaudiGenerationConfig(GenerationConfig):
         Whether to use flash attention optimization.
     flash_attention_recompute (`bool`, *optional*):
         Whether to enable recompute if use Habana flash attention.
+    flash_attention_causal_mask (`bool`, *optional*):
+        Whether to enable causal_mask if use Habana flash attention.
     """
 
     def __init__(self, **kwargs):
@@ -48,4 +50,5 @@ class GaudiGenerationConfig(GenerationConfig):
         self.reduce_recompile = kwargs.get("reduce_recompile", None)
         self.use_flash_attention = kwargs.get("use_flash_attention", None)
         self.flash_attention_recompute = kwargs.get("flash_attention_recompute", None)
+        self.flash_attention_causal_mask = kwargs.get("flash_attention_causal_mask", None)
         self.use_fused_rope = kwargs.get("use_fused_rope", None)

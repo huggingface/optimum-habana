@@ -204,3 +204,66 @@ python run_generation.py \
 --prompt "Here is my prompt"
 ```
 
+## DDPO pipeline
+
+### Training
+The following example is for fine-tuning stable diffusion using Denoising Diffusion Policy Optimization
+([DDPO](https://huggingface.co/docs/trl/en/ddpo_trainer)). The implementation supports LoRA and 
+non-LoRA-based training. LoRA based training is faster and less finicky to converge than non-LoRA
+based training. Recommendations for non-Lora based training (described [here](https://huggingface.co/blog/trl-ddpo)) 
+are setting the learning rate relatively low (e.g., 1e-5) and disabling mixed precision training. 
+HPU graphs are enabled by default for better performance.
+
+There are two main steps to the DDPO training process:
+
+1. Fine-tuning of the base stable-diffusion model with LoRA to create ddpo-aesthetic-predictor:
+```
+python ddpo.py \
+  --num_epochs=200 \
+  --train_gradient_accumulation_steps=1 \
+  --sample_num_steps=50 \
+  --sample_batch_size=6 \
+  --train_batch_size=3 \
+  --sample_num_batches_per_epoch=4 \
+  --per_prompt_stat_tracking=True \
+  --per_prompt_stat_tracking_buffer_size=32 \
+  --train_learning_rate=1e-05 \
+  --tracker_project_name="stable_diffusion_training" \
+  --log_with="tensorboard" \
+  --use_habana \
+  --use_hpu_graphs \
+  --bf16 \
+  --hf_hub_model_id="ddpo-finetuned-stable-diffusion" \
+  --push_to_hub False
+```
+   
+2. Inference using the fine-tuned LoRA weights as shown in the example below:
+```python
+import torch
+
+from optimum.habana import GaudiConfig
+from optimum.habana.trl import GaudiDefaultDDPOStableDiffusionPipeline
+
+gaudi_config = GaudiConfig.from_pretrained("Habana/stable-diffusion")
+model_id = "runwayml/stable-diffusion-v1-5"
+lora_model_id = "ddpo-finetuned-stable-diffusion"
+pipeline = GaudiDefaultDDPOStableDiffusionPipeline(
+    model_id,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config=gaudi_config,
+)
+pipeline.sd_pipeline.load_lora_weights(lora_model_id)
+device = torch.device("hpu")
+
+# memory optimization
+pipeline.vae.to(device, torch.bfloat16)
+pipeline.text_encoder.to(device, torch.bfloat16)
+pipeline.unet.to(device, torch.bfloat16)
+
+prompts = ["lion", "squirrel", "crab", "starfish", "whale", "sponge", "plankton"]
+results = pipeline(prompts)
+
+for prompt, image in zip(prompts, results.images):
+    image.save(f"{prompt}.png")
+```

@@ -12,4 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from trl.import_utils import is_diffusers_available
+
 from .modeling_base import adapt_PreTrainedModelWrapper_to_gaudi
+
+
+if is_diffusers_available():
+    from .modeling_sd_base import (
+        GaudiDefaultDDPOStableDiffusionPipeline,
+    )

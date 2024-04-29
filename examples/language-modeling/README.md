@@ -350,7 +350,7 @@ python run_clm.py \
 ## PEFT
 
 To run LoRA finetuning, you can use `run_lora_clm.py`.
-Here are single-/multi-device command examples for Llama1-7B, Falcon-40B and Llama2-70B.
+Here are single-/multi-device command examples for Llama1-7B, Falcon-40B, Llama2-70B, Llama3-8B and Llama3-70B.
 You can also use multicard version for Falcon-180B:
 
 - Single-card finetuning of Llama1-7B:
@@ -556,7 +556,8 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --lora_rank 4 \
   --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
   --validation_split_percentage 4 \
-  --use_flash_attention True
+  --use_flash_attention True \
+  --flash_attention_causal_mask True
 ```
 
 - Multi-card finetuning of Llama2-70B with FSDP and LoRA:

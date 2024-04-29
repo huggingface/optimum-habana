@@ -66,8 +66,17 @@ slow_tests_text_generation_example: test_installs
 	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
+# Run image-to-text non-regression tests
+slow_tests_image_to_text_example: test_installs
+	python -m pytest tests/test_image_to_text_example.py -v -s --token $(TOKEN)
+
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
+
+slow_tests_trl: test_installs
+	python -m pip install trl==0.7.8
+	python -m pip install peft==0.7.0
+	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs

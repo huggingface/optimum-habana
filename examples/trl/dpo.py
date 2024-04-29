@@ -165,6 +165,7 @@ if __name__ == "__main__":
         use_hpu_graphs_for_inference=not script_args.deepspeed,
         seed=script_args.seed,
         deepspeed=script_args.deepspeed,
+        overwrite_output_dir=True,
     )
 
     # Set seed before initializing model.
@@ -247,7 +248,12 @@ if __name__ == "__main__":
     )
 
     # 6. train
-    dpo_trainer.train()
+    train_result = dpo_trainer.train()
 
     # 7. save
     dpo_trainer.save_model(script_args.output_dir)
+
+    # 8. save metric
+    metrics = train_result.metrics
+    dpo_trainer.log_metrics("train", metrics)
+    dpo_trainer.save_metrics("train", metrics)

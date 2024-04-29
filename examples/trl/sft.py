@@ -169,5 +169,8 @@ trainer = GaudiSFTTrainer(
     tokenizer=tokenizer,
     args=training_args,
 )
-trainer.train()
+train_result = trainer.train()
 trainer.save_model(training_args.output_dir)
+metrics = train_result.metrics
+trainer.log_metrics("train", metrics)
+trainer.save_metrics("train", metrics)

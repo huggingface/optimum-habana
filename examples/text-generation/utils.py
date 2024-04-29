@@ -104,7 +104,7 @@ def setup_const_serialization(const_serialization_path):
     from habana_frameworks.torch.hpu import enable_const_section_serialization
 
     print("Serializing const params to {}".format(const_serialization_path))
-    enable_const_section_serialization(const_serialization_path, False, True)
+    enable_const_section_serialization(const_serialization_path, True)
 
 
 def setup_env(args):
@@ -151,7 +151,7 @@ def patch_scoped_linear_all_reduce(model):
 
 
 def get_torch_compiled_model(model):
-    model.model = torch.compile(model.model, backend="aot_hpu_inference_backend")
+    model.model = torch.compile(model.model, backend="hpu_backend")
     return model
 
 
@@ -286,7 +286,10 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = PeftModel.from_pretrained(model, args.peft_model, torch_dtype=model_dtype, **model_kwargs)
 
-    return model.merge_and_unload()
+    model = model.merge_and_unload()
+    if model_dtype == torch.bfloat16:
+        model = model.to(torch.bfloat16)
+    return model
 
 
 def setup_tokenizer(args, model):
@@ -299,7 +302,7 @@ def setup_tokenizer(args, model):
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
     if not model.config.is_encoder_decoder:
         tokenizer.padding_side = "left"
-    # Some models like GPT2 do not have a PAD token so we have to set it if necessary
+
     if model.config.model_type == "llama":
         # unwind broken decapoda-research config
         model.generation_config.pad_token_id = 0
@@ -311,10 +314,20 @@ def setup_tokenizer(args, model):
         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+    if model.config.model_type == "persimmon":
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id
+        tokenizer.bos_token_id = model.generation_config.bos_token_id
+        tokenizer.eos_token_id = model.generation_config.eos_token_id
+        tokenizer.pad_token_id = model.generation_config.pad_token_id
+        tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
+        tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
+        tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
 
+    # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
+
     return tokenizer, model
 
 
@@ -347,6 +360,8 @@ def setup_generation_config(args, model, tokenizer):
     if generation_config.reduce_recompile:
         assert generation_config.bucket_size > 0
     generation_config.use_flash_attention = args.use_flash_attention
+    generation_config.flash_attention_recompute = args.flash_attention_recompute
+    generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
     return generation_config
 
 
