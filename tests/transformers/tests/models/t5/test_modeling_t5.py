@@ -1397,10 +1397,11 @@ class T5ModelIntegrationTests(unittest.TestCase):
             early_stopping=True,
         )
         translation = tok.decode(output[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+
         new_truncated_translation = (
             "Cette section d'images provenant de l'enregistrement infrarouge effectué par le télescope Spitzer montre "
             "un "
-            "« portrait familial » de générations innombrables d’étoiles : les plus anciennes sont observées "
+            "« portrait familial » de générations innombrables d’étoiles : les plus anciennes sont visibles "
             "sous forme "
             "de points bleus."
         )
