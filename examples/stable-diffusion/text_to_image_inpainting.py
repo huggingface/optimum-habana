@@ -78,6 +78,9 @@ def main():
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
     )
     parser.add_argument(
+        "--batch_size", type=int, default=1, help="The batch size to generate per step."
+    )
+    parser.add_argument(
         "--height",
         type=int,
         default=None,
@@ -189,7 +192,8 @@ def main():
         "height": args.height,
         "width": args.width,
         "guidance_scale": args.guidance_scale,
-        "output_type": args.output_type
+        "output_type": args.output_type,
+        "batch_size": args.batch_size
     }
 
     prompts = args.prompts
