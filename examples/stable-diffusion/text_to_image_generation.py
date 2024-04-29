@@ -388,6 +388,7 @@ def main():
                 image_embeds=face_emb,
                 image=face_kps,
                 num_images_per_prompt=args.num_images_per_prompt,
+                batch_size=args.batch_size,
                 controlnet_conditioning_scale=0.8,
                 ip_adapter_scale=0.8,
                 profiling_warmup_steps=args.profiling_warmup_steps,
