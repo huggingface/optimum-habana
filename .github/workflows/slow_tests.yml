@@ -47,6 +47,7 @@ jobs:
   sentence-transformers:
     name: Test Sentence Transformers integration
     if: ${{ !cancelled() && (success() || failure()) }}
+    needs: start-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
       AWS_REGION: us-west-2
@@ -79,7 +80,9 @@ jobs:
             /bin/bash optimum-habana/tests/ci/sentence_transformers.sh
   example-diff:
     name: Test examples differences
-    needs: start-runner # required to start the main job when the runner is ready
+    needs:
+      - start-runner # required to start the main job when the runner is ready
+      - sentence-transformers
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
       AWS_REGION: us-west-2
@@ -107,6 +110,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
+      - sentence-transformers
       - example-diff  # run the job when the previous test job is done
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     env:
@@ -135,6 +139,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
+      - sentence-transformers
       - example-diff
       - stable-diffusion  # run the job when the previous test job is done
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
@@ -164,6 +169,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
+      - sentence-transformers
       - example-diff
       - deepspeed  # run the job when the previous test job is done
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
@@ -193,6 +199,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
+      - sentence-transformers
       - example-diff
       - deepspeed
       - multi-card  # run the job when the previous test jobs are done
@@ -223,6 +230,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
+      - sentence-transformers
       - example-diff
       - deepspeed
       - multi-card
@@ -260,6 +268,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
+      - sentence-transformers
       - example-diff
       - deepspeed
       - multi-card
@@ -292,6 +301,7 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - start-runner
+      - sentence-transformers
       - example-diff
       - deepspeed
       - multi-card

@@ -1,15 +1,10 @@
-import json
-import gzip
 import csv
+import gzip
 import os
-import re
 import time
-import subprocess
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from sentence_transformers import SentenceTransformer, util
 
 import pytest
+from sentence_transformers import SentenceTransformer, util
 
 from .test_examples import TIME_PERF_FACTOR
 
@@ -51,7 +46,7 @@ def _test_sentence_transformers(
 
     for i in range(2):
         start_time = time.perf_counter()
-        emb = model.encode(sentences, batch_size=32)
+        _ = model.encode(sentences, batch_size=32)
         end_time = time.perf_counter()
         diff_time = end_time - start_time
         measured_throughput = len(sentences) / diff_time
