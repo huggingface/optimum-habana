@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd ../sentence-transformers
+cd /root/workspace/sentence-transformers
 python -m pytest test_compute_embeddings.py
-cd ../optimum-habana
+cd /root/workspace/optimum-habana
 python -m pytest test_sentence_transformers.py

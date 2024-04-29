@@ -27,7 +27,7 @@ def _test_sentence_transformers(
 ):
     model = SentenceTransformer(model_name)
 
-    nli_dataset_path = "datasets/AllNLI.tsv.gz"
+    nli_dataset_path = "/tmp/datasets/AllNLI.tsv.gz"
     sentences = set()
     max_sentences = 10000
 
