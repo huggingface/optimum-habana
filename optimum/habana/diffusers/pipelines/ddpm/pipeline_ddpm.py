@@ -12,23 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from typing import List, Optional, Tuple, Union
+
 import numpy as np
 import PIL
 import torch
-import time
 from diffusers.models import UNet2DModel
-from diffusers.schedulers import DDPMScheduler, DDIMScheduler
-
 from diffusers.pipelines import DDPMPipeline
+from diffusers.schedulers import DDIMScheduler, DDPMScheduler
 from diffusers.utils import BaseOutput
-from optimum.utils import logging
-import copy
+from diffusers.utils.torch_utils import randn_tensor
 
-from optimum.habana.transformers.gaudi_configuration import GaudiConfig
-from optimum.habana.utils import speed_metrics
 from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
+from optimum.habana.transformers.gaudi_configuration import GaudiConfig
+from optimum.utils import logging
+
 
 logger = logging.get_logger(__name__)
 
@@ -44,7 +45,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
     - Clone a new UNet for calculations of timestep embeddings
     - Seperate autocast mechanism for scheduler and UNet
     - Markstep for non-graph mode
-    - Support GaudiDDIMScheduler 
+    - Support GaudiDDIMScheduler
 
     Pipeline for image generation.
 
@@ -59,8 +60,8 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
             [`DDPMScheduler`], or [`DDIMScheduler`].
     """
 
-    def __init__(self, 
-        unet : UNet2DModel, 
+    def __init__(self,
+        unet : UNet2DModel,
         scheduler : Union[DDPMScheduler, DDIMScheduler],
         use_habana: bool = True,
         use_hpu_graphs: bool = False,
@@ -132,7 +133,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
 
         if self._device.type == "mps":
             # randn does not work reproducibly on mps
-            image = randn_tensor(image_shape, generator=generator) 
+            image = randn_tensor(image_shape, generator=generator)
             image = image.to(self.device)
         elif self._device.type =="hpu": # Patch random tensor
             image = torch.randn(image_shape, generator=generator, device="cpu")
@@ -171,7 +172,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
                 model_output = self.unet(image, timestep, False, emb).sample
             # 2. compute previous image: x_t -> x_t-1
             image = self.scheduler.step(model_output.to(torch.float32), timestep, image, generator=generator).prev_sample
-                        
+
             if not self.use_hpu_graphs: # for checking output resutls
                 self.htcore.mark_step()
 

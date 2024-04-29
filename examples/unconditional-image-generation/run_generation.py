@@ -1,13 +1,11 @@
-from optimum.habana.diffusers import GaudiDDIMScheduler
-from optimum.habana.diffusers import GaudiDDPMPipeline
-from diffusers import DDPMScheduler
 import argparse
 import logging
-import sys
-from optimum.habana.transformers.gaudi_configuration import GaudiConfig
+
+from diffusers import DDPMScheduler
 from transformers.utils import check_min_version
-import time
-import torch
+
+from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiDDPMPipeline
+from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 
 
 logger = logging.getLogger(__name__)
@@ -33,7 +31,7 @@ def main():
     )
     parser.add_argument(
         "--batch_size",
-        type=int, 
+        type=int,
         default=16,
         help="Batch size for the task.",
     )
@@ -105,7 +103,7 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+
 
 
 
