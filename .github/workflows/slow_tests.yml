@@ -44,6 +44,39 @@ jobs:
               {"Key": "Name", "Value": "optimum-habana-ci-slow-tests"},
               {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
             ]
+  sentence-transformers:
+    name: Test Sentence Transformers integration
+    if: ${{ !cancelled() && (success() || failure()) }}
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    env:
+      AWS_REGION: us-west-2
+    steps:
+      - name: Checkout Optimum Habana
+        uses: actions/checkout@v2
+        with:
+          repository: 'huggingface/optimum-habana'
+          path: optimum-habana
+      - name: Checkout Sentence Transformers
+        uses: actions/checkout@v2
+        with:
+          repository: 'UKPLab/sentence-transformers'
+          path: sentence-transformers
+      - name: Pull image
+        run: |
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+      - name: Run tests
+        run: |
+            docker run \
+            -v $PWD:/root/workspace \
+            --workdir=/root/workspace \
+            --runtime=habana \
+            -e HABANA_VISIBLE_DEVICES=all \
+            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            --cap-add=sys_nice \
+            --net=host \
+            --ipc=host \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            /bin/bash optimum-habana/tests/ci/sentence_transformers.sh
   example-diff:
     name: Test examples differences
     needs: start-runner # required to start the main job when the runner is ready
@@ -298,6 +331,7 @@ jobs:
       - albert-xxl-single-card
       - text-generation
       - trl
+      - sentence-transformers
     runs-on: ubuntu-22.04
     env:
       AWS_REGION: us-west-2
