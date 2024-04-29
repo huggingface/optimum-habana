@@ -133,7 +133,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 
 ### Usage with LangChain
 
-To run Q&A example with LangChain use script `run_pipeline_langchain.py` it supports similar syntax to `run_pipeline.py`. For example you can use following command.
+To run a Q&A example with LangChain, use the script `run_pipeline_langchain.py`. It supports a similar syntax to `run_pipeline.py`. For example, you can use following command:
 ```
 python run_pipeline_langchain.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
