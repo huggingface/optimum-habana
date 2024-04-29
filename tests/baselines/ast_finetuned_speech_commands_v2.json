@@ -8,9 +8,9 @@
                     "learning_rate": 5e-4,
                     "train_batch_size": 32,
                     "eval_accuracy": 0.1871,
-                    "train_runtime": 116.149,
-                    "train_samples_per_second": 2317.387,
-                    "eval_samples_per_second": 3761.009,
+                    "train_runtime": 139.9477,
+                    "train_samples_per_second": 1955.74,
+                    "eval_samples_per_second": 2301.088,
                     "extra_arguments": [
                         "--audio_column_name audio",
                         "--label_column_name language",
