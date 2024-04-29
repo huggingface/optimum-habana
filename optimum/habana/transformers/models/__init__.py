@@ -126,6 +126,13 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .owlvit import gaudi_owlvitclasspredictionhead_forward
+from .persimmon import (
+    GaudiPersimmonForCausalLM,
+    gaudi_persimmon_attention_forward,
+    gaudi_persimmon_decoder_layer_forward,
+    gaudi_persimmon_model_forward,
+)
 from .phi import (
     GaudiPhiForCausalLM,
     gaudi_phi_attention_forward,
@@ -143,7 +150,6 @@ from .speecht5 import (
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
-    gaudi_SpeechT5SpeechDecoderPrenet_forward,
 )
 from .stablelm import (
     GaudiStableLmForCausalLM,

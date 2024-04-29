@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import transformers
+import transformers.utils.fx
 
 from .generation import (
     GaudiGenerationConfig,
@@ -60,6 +61,7 @@ from .models import (
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
+    GaudiPersimmonForCausalLM,
     GaudiPhiForCausalLM,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
@@ -129,6 +131,10 @@ from .models import (
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
+    gaudi_owlvitclasspredictionhead_forward,
+    gaudi_persimmon_attention_forward,
+    gaudi_persimmon_decoder_layer_forward,
+    gaudi_persimmon_model_forward,
     gaudi_phi_attention_forward,
     gaudi_phi_decoder_layer_forward,
     gaudi_phi_model_forward,
@@ -139,7 +145,6 @@ from .models import (
     gaudi_SpeechT5Attention_forward,
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
-    gaudi_SpeechT5SpeechDecoderPrenet_forward,
     gaudi_stablelm_attention_forward,
     gaudi_stablelm_decoder_layer_forward,
     gaudi_stablelm_model_forward,
@@ -168,6 +173,9 @@ def adapt_transformers_to_gaudi():
     for Gaudi.
     """
 
+    # models that support symbolic tracing should be added to this list
+    models_with_tracing_support = []
+
     # optimize Conv1D
     transformers.pytorch_utils.Conv1D.forward = gaudi_conv1d_forward
 
@@ -190,6 +198,7 @@ def adapt_transformers_to_gaudi():
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
+    transformers.generation.GenerationMixin.assisted_decoding = GaudiGenerationMixin.assisted_decoding
     transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
         GaudiGenerationMixin._update_model_kwargs_for_generation
     )
@@ -272,6 +281,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
     transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
     transformers.models.gpt2.modeling_gpt2.GPT2Block.forward = gaudi_gpt2_block_forward
+    models_with_tracing_support.extend((GaudiGPT2Attention, GaudiGPT2LMHeadModel))
 
     # Optimization for EsmFold on Gaudi
     transformers.models.esm.modeling_esmfold.EsmFoldingTrunk.forward = gaudi_esmfolding_trunk_forward
@@ -399,8 +409,13 @@ def adapt_transformers_to_gaudi():
     transformers.models.speecht5.modeling_speecht5.SpeechT5DecoderLayer.forward = gaudi_SpeechT5DecoderLayer_forward
     transformers.models.speecht5.modeling_speecht5.SpeechT5Attention.forward = gaudi_SpeechT5Attention_forward
     transformers.models.speecht5.modeling_speecht5._generate_speech = gaudi_generate_speech
-    transformers.models.speecht5.modeling_speecht5.SpeechT5SpeechDecoderPrenet.forward = (
-        gaudi_SpeechT5SpeechDecoderPrenet_forward
+
+    # Optimization for persimmon on Gaudi
+    transformers.models.persimmon.modeling_persimmon.PersimmonForCausalLM = GaudiPersimmonForCausalLM
+    transformers.models.persimmon.modeling_persimmon.PersimmonModel.forward = gaudi_persimmon_model_forward
+    transformers.models.persimmon.modeling_persimmon.PersimmonAttention.forward = gaudi_persimmon_attention_forward
+    transformers.models.persimmon.modeling_persimmon.PersimmonDecoderLayer.forward = (
+        gaudi_persimmon_decoder_layer_forward
     )
 
     # Optimization for starcoder2 on Gaudi
@@ -422,3 +437,11 @@ def adapt_transformers_to_gaudi():
     transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer.forward = gaudi_stablelm_decoder_layer_forward
 
     transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation
+
+    # Optimization for Owl ViT model on Gaudi
+    transformers.models.owlvit.modeling_owlvit.OwlViTClassPredictionHead.forward = (
+        gaudi_owlvitclasspredictionhead_forward
+    )
+
+    # Tell transformers which Gaudi models support tracing
+    transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
