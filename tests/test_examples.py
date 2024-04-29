@@ -185,6 +185,7 @@ class ExampleTestMeta(type):
             "google/flan-t5-xxl",
             "tiiuae/falcon-40b",
             "bigscience/bloom-7b1",
+            "codellama/CodeLlama-13b-Instruct-hf",
         ]
 
         if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
@@ -201,6 +202,9 @@ class ExampleTestMeta(type):
             return True
         elif "flan-t5" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
             # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "CodeLlama" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+            # CodeLlama is tested only on Gaudi2 and with DeepSpeed
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
