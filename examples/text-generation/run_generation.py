@@ -348,6 +348,7 @@ def main():
 
         def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
+            encode_t0 = time.perf_counter()
 
             # Tokenization
             if args.max_input_tokens > 0:
@@ -360,7 +361,7 @@ def main():
                 )
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
-
+            encode_duration = time.perf_counter() - encode_t0
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
             if not reduce_recompile:
@@ -368,7 +369,7 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
-
+            iteration_times = []
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
@@ -376,7 +377,12 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                iteration_times=iteration_times,
             ).cpu()
+            first_token_time = iteration_times[0] + encode_duration
+            logger.info(
+                f"1st token time = {first_token_time*1000}ms"
+            )
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile

@@ -49,7 +49,7 @@ from transformers.utils import ModelOutput
 
 from optimum.utils import logging
 
-from ...utils import HabanaProfile
+from ...utils import HabanaGenerationtime, HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .configuration_utils import GaudiGenerationConfig
 
@@ -381,6 +381,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hpu_graphs: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
+        iteration_times: Optional[List[float]] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -1240,6 +1241,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
+        iteration_times: Optional[List[float]] = None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""

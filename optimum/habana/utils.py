@@ -16,7 +16,7 @@
 import random
 import subprocess
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
@@ -33,6 +33,19 @@ logger = logging.get_logger(__name__)
 
 CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.15.0")
 
+class HabanaGenerationtime(object):
+    def __init__(self, iteration_times: List[float] = None):
+        self.iteration_times = iteration_times
+        self.start_time = 0
+        self.end_time = 0
+
+    def start(self):
+        self.start_time = time.perf_counter()
+
+    def step(self):
+        self.end_time = time.perf_counter()
+        self.iteration_times.append(self.end_time - self.start_time)
+        self.start_time = self.end_time
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
     """
