@@ -522,4 +522,20 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion
+### Unconditional Image Generation Example
+
+Here is how to perform unconditional-image-generation on Gaudi/HPU.
+
+Original unconditional image generation pipeline is shared in here: [Unconditional Image Generation](https://huggingface.co/docs/diffusers/using-diffusers/unconditional_image_generation)
+
+```bash
+python3 unconditional_image_generation.py \
+    --model_name_or_path "google/ddpm-ema-celebahq-256" \
+    --batch_size 16 \
+    --use_habana \
+    --use_gaudi_optimized_scheduler \
+    --use_hpu_graphs \
+    --bf16 \
+    --save_outputs \
+    --output_dir "/tmp/" 
 ```
