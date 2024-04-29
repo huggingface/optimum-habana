@@ -694,9 +694,9 @@ class PipelineTesterMixin:
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(torch_dtype=torch.bfloat16)
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
-        self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
+        self.assertTrue(all(dtype == torch.bfloat16 for dtype in model_dtypes))
 
     def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
         self._test_attention_slicing_forward_pass(expected_max_diff=expected_max_diff)

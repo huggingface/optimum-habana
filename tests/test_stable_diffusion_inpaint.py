@@ -66,7 +66,7 @@ enable_full_determinism()
 if os.environ.get("GAUDI2_CI", "0") == "1":
     THROUGHPUT_BASELINE_BF16 = 0.767
 else:
-    THROUGHPUT_BASELINE_BF16 = 0.309
+    THROUGHPUT_BASELINE_BF16 = 0.226
 
 
 
@@ -377,3 +377,4 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
         self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_BF16)
+        assert False

@@ -192,12 +192,11 @@ def main():
         "output_type": args.output_type
     }
 
-    #prompt = ["Face of a yellow cat, high resolution, sitting on a park bench"]
     prompts = args.prompts
     logger.info(f"prompts={prompts}")
     outputs = pipe(prompt=prompts, image=init_image, mask_image=mask_image, **kwargs)
 
-        # Save images in the specified directory if not None and if they are in PIL format
+    # Save images in the specified directory if not None and if they are in PIL format
     if args.image_save_dir is not None:
         if args.output_type == "pil":
             image_save_dir = Path(args.image_save_dir)

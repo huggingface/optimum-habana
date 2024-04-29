@@ -18,8 +18,10 @@
 Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/stable_diffusion_xl/test_stable_diffusion_xl_inpaint.py
 - Modified pipeline to Gaudi pipeline.
 - Modified the get_dummy_components to add the Gaudi pipeline parameters: use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval
+- added test_stable_diffusion_xl_inpaint_no_throughput_regression
 """
-
+import os
+import time
 import copy
 import random
 import unittest
@@ -63,6 +65,12 @@ from .test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixi
 
 
 enable_full_determinism()
+
+
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    THROUGHPUT_BASELINE_BF16 = 0.1299
+else:
+    THROUGHPUT_BASELINE_BF16 = 0.04842
 
 
 class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
@@ -792,3 +800,55 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         # compare the intermediate latent to the output of the interrupted process
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
+
+    @slow
+    def test_stable_diffusion_xl_inpaint_no_throughput_regression(self):
+        """Test that stable diffusion inpainting no throughput regression autocast"""
+        from diffusers.utils import load_image
+
+        #Initialize inpaint parameters
+        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+        prompts = [
+            "a black cat with glowing eyes, cute, adorable, disney, pixar, highly detailed, 8k",
+            "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k",
+        ]
+        model_name = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
+
+        init_kwargs = {
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": "Habana/stable-diffusion",
+            "torch_dtype": torch.bfloat16
+        }
+        sdi_pipe = GaudiStableDiffusionXLInpaintPipeline.from_pretrained(model_name, **init_kwargs)
+
+        set_seed(0)
+        elapsed_time = []
+        NUM_RUN = 4
+        num_images_per_prompt = 1
+        num_inference_steps = 3
+        # Warmup
+        outputs = sdi_pipe(
+                prompt=prompts,
+                image=init_image,
+                mask_image=mask_image,
+                num_images_per_prompt=num_images_per_prompt,
+                num_inference_steps = num_inference_steps
+        )
+        # run benchmark
+        for i in range(NUM_RUN):
+            start = time.time()
+            outputs = sdi_pipe(
+                prompt=prompts,
+                image=init_image,
+                mask_image=mask_image,
+                num_images_per_prompt=num_images_per_prompt,
+            )
+            duration = time.time() - start
+            elapsed_time.append(duration)
+        num_samples = num_images_per_prompt * len(prompts)
+        avg_throughput = num_samples * NUM_RUN / sum(elapsed_time)
+        self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
+        self.assertGreaterEqual(avg_throughput, 0.95 * THROUGHPUT_BASELINE_BF16)
