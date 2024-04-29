@@ -589,7 +589,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
             # 3.2 Encode image prompt
             prompt_image_emb = self._encode_prompt_image_emb(image_embeds, 
                                                             device,
-                                                            1, #FIXME: remove hardcode
+                                                            batch_size,
                                                             self.unet.dtype,
                                                             self.do_classifier_free_guidance)
             
