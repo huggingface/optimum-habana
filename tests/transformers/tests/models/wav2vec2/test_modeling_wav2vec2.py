@@ -1023,6 +1023,7 @@ class Wav2Vec2RobustModelTest(ModelTesterMixin, unittest.TestCase):
             model.config.mask_time_length,
             min_masks=2,
         )
+        mask_time_indices = mask_time_indices.cpu().numpy()
         sampled_negative_indices = _sample_negative_indices(features_shape, 10, mask_time_indices)
 
         mask_time_indices = torch.from_numpy(mask_time_indices).to(torch_device)
