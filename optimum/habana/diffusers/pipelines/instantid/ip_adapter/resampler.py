@@ -1,4 +1,4 @@
-# modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
+# Copied from: https://github.com/InstantID/InstantID/blob/main/ip_adapter/resampler.py
 import math
 
 import torch
