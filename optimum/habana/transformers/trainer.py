@@ -1183,11 +1183,10 @@ class GaudiTrainer(Trainer):
             if is_accelerate_available() and self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
                 grad_norm = model.get_global_grad_norm()
             else:
-                grad_norm = (
-                    _grad_norm.item()
-                    if (_grad_norm is not None and self.accelerator.distributed_type != GaudiDistributedType.FSDP)
-                    else None
-                )
+                if _grad_norm is not None and self.accelerator.distributed_type != GaudiDistributedType.FSDP:
+                    grad_norm = _grad_norm.item() if _grad_norm.size()==1 else _grad_norm.tolist()
+                else:
+                    grad_norm = None
 
             if grad_norm is not None:
                 logs["grad_norm"] = grad_norm
