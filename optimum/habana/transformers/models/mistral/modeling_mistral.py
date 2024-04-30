@@ -20,9 +20,9 @@
 """PyTorch Mistral model."""
 
 import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
+import habana_frameworks.torch.core as htcore
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -40,17 +40,77 @@ from transformers.models.mistral.modeling_mistral import (
     apply_rotary_pos_emb,
 )
 from transformers.utils import logging
+
 from optimum.habana.transformers.models.modeling_all_models import KVCache
+
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
-import habana_frameworks.torch.core as htcore
+
+
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+
+    has_fused_rope = True
+except ImportError:
+    has_fused_rope = False
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
 
 try:
     from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
 except ImportError:
     print("Not using HPU fused kernel for RMSNorm")
     FusedRMSNorm = None
+
+'''
+class KVCache(torch.nn.Module):
+    def __init__(self):
+        super(KVCache, self).__init__()
+        self.cache = None
+        self.inp_seq_len = -1
+
+    def allocate(self, inp_seq_len, dtype, device, shape):
+        if self.cache is None or self.cache.shape != shape:
+            self.inp_seq_len = inp_seq_len
+            self.cache = torch.zeros(shape, dtype=dtype, device=device)
+        else:
+            assert (
+                self.inp_seq_len == inp_seq_len
+            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
+            self.cache.fill_(0)
+
+    def update(self, prev, cur, dim, idx, inp_seq_len):
+        orig_cur = cur
+        if prev.shape == cur.shape:
+            prev.copy_(cur)
+            return orig_cur
+        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+            # Initialize
+            prev[:, :, :inp_seq_len, :].copy_(cur)
+            return orig_cur
+        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
+        if idx is not None:
+            prev.index_copy_(dim, idx - 1, cur)
+            return prev
+        else:
+            return torch.cat((prev, cur), dim=dim)
+
+    def get_shape(self):
+        if self.cache is None:
+            return None
+        return self.cache.shape
+
+    def forward(self, cur, dim, idx):
+        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
+
+'''
+class Matmul(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, y):
+        return torch.matmul(x, y)
+
 
 logger = logging.get_logger(__name__)
 
@@ -123,14 +183,13 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
 
 
 class GaudiMistralAttention(MistralAttention):
-    def __init__(self, config: MistralConfig, layer_idx: int):
-        super().__init__(config)
+    def __init__(self, config: MistralConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
         self.k_cache = KVCache()
         self.v_cache = KVCache()
-        # TODO: replace these two 
-        #self.past_key = None
-        #self.past_value = None
-        self.layer_idx = layer_idx
+        self.matmul_qk = Matmul()
+        self.matmul_av = Matmul()
+        self.inp_seq_len = -1
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -165,6 +224,7 @@ class GaudiMistralAttention(MistralAttention):
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
         attn_softmax_bf16: Optional[bool] = False,
+        use_fused_rope: Optional[bool] = True,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
@@ -174,10 +234,6 @@ class GaudiMistralAttention(MistralAttention):
          - add new args reuse_cache
         - add new args cache_idx
         """
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
         bsz, q_len, _ = hidden_states.size()
 
         query_states = self.q_proj(hidden_states)
@@ -206,7 +262,9 @@ class GaudiMistralAttention(MistralAttention):
             else:
                 kv_seq_len += kv_shape
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(
+            query_states, key_states, cos, sin, position_ids, use_fused_rope=use_fused_rope
+        )
 
         if use_cache:
             # reuse k, v, self_attention
@@ -217,7 +275,9 @@ class GaudiMistralAttention(MistralAttention):
             else:
                 if past_key_value is None:
                     past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
-                    past_value = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_value = torch.zeros(
+                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
+                    )
                     past_key_value = (past_key, past_value)
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                 value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
@@ -235,7 +295,7 @@ class GaudiMistralAttention(MistralAttention):
         query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
             query_states, key_states, value_states, attention_mask, self.num_key_value_groups
         )
-        attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) / math.sqrt(self.head_dim)
 
         if attn_weights.size() not in [
             (bsz, self.num_heads, q_len, kv_seq_len),
@@ -262,7 +322,7 @@ class GaudiMistralAttention(MistralAttention):
             # upcast attention to fp32
             attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-        attn_output = torch.matmul(attn_weights, value_states)
+        attn_output = self.matmul_av(attn_weights, value_states)
         attn_output = attn_output.reshape(bsz, -1, q_len, self.head_dim)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -314,6 +374,7 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
         attn_softmax_bf16: Optional[bool] = False,
+        use_fused_rope: Optional[bool] = True,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -321,11 +382,6 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
         The only differences are:
         - add new args token_idx
         """
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
-
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -342,6 +398,7 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
             attn_softmax_bf16=attn_softmax_bf16,
+            use_fused_rope=use_fused_rope,
         )
         hidden_states = residual + hidden_states
 
@@ -385,11 +442,14 @@ class GaudiMistralModel(MistralModel):
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
         attn_softmax_bf16: Optional[bool] = False,
+        use_fused_rope: Optional[bool] = True,
+        lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from MistralModel.forward: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
         The only differences are:
         - add new args token_idx
+        - add new arg lazy_mode
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -468,8 +528,15 @@ class GaudiMistralModel(MistralModel):
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if not use_new_cache else None
 
+        if lazy_mode:
+            htcore.mark_step()
+
         for layer_idx, decoder_layer in enumerate(self.layers):
-            if layer_idx == len(self.layers)//2:
+            if layer_idx == len(self.layers) // 2 or (
+                lazy_mode
+                and not self.training
+                and (torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1)
+            ):
                 htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
@@ -484,6 +551,7 @@ class GaudiMistralModel(MistralModel):
                     output_attentions,
                     use_cache,
                     None,
+                    use_fused_rope,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -497,6 +565,7 @@ class GaudiMistralModel(MistralModel):
                     reuse_cache=reuse_cache,
                     cache_idx=cache_idx,
                     attn_softmax_bf16=attn_softmax_bf16,
+                    use_fused_rope=use_fused_rope,
                 )
 
             hidden_states = layer_outputs[0]
@@ -557,6 +626,8 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         trim_logits: Optional[bool] = False,
         cache_idx: Optional[int] = None,
         attn_softmax_bf16: Optional[bool] = False,
+        use_fused_rope: Optional[bool] = True,
+        lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from MistralForCausalLM: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/mistral/modeling_mistral.py
@@ -585,6 +656,8 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
             attn_softmax_bf16=attn_softmax_bf16,
+            use_fused_rope=use_fused_rope,
+            lazy_mode=lazy_mode,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -695,6 +768,28 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
                 "trim_logits": kwargs.get("trim_logits"),
                 "cache_idx": kwargs.get("cache_idx"),
                 "attn_softmax_bf16": kwargs.get("attn_softmax_bf16"),
+                "lazy_mode": kwargs.get("lazy_mode"),
             }
         )
         return model_inputs
+
+
+def apply_customized_rope(q, k, cos, sin, position_ids, use_fused_rope=True):
+    if q.device.type == "hpu" and has_fused_rope and use_fused_rope:
+        # TODO: remove `.clone()` when SynapseAI v1.15 is released
+        if k.dtype == torch.bfloat16:
+            return FusedRoPE.apply(
+                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+            ), FusedRoPE.apply(
+                k,
+                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
+                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
+                position_ids,
+            )
+        return FusedRoPE.apply(
+            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+        ), FusedRoPE.apply(
+            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+        )
+    else:
+        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
