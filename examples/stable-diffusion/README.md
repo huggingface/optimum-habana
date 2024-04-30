@@ -445,6 +445,34 @@ python image_to_image_generation.py \
     --bf16
 ```
 
+### SDXL InstantID
+
+InstantID was proposed in [InstantID: Zero-shot Identity-Preserving Generation in Seconds](https://arxiv.org/pdf/2401.07519) by the InstantX Team, Xiaohongshu Inc, Peking University.
+
+Before you can start generating images, you need to download a few models:
+```bash
+pip install gdown
+python download_instandid_models.py
+```
+
+Here is how to generate images with a single prompt:
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --controlnet_model_name_or_path checkpoints/ControlNetModel \
+    --prompts "analog film photo of a woman. faded film, desaturated, 35mm photo, grainy, vignette, vintage, Kodachrome, Lomography, stained, highly detailed, found footage, masterpiece, best quality" \
+    --negative_prompts "(lowres, low quality, worst quality:1.2), (text:1.2), watermark, painting, drawing, illustration, glitch, deformed, mutated, cross-eyed, ugly, disfigured (lowres, low quality, worst quality:1.2), (text:1.2), watermark, painting, drawing, illustration, glitch,deformed, mutated, cross-eyed, ugly, disfigured" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --control_preprocessing_type "none" \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --num_images_per_prompt 10 \
+    --batch_size 8 \
+    --bf16
+```
+
 # Stable Video Diffusion Examples
 
 Stable Video Diffusion (SVD) was unveiled in [Stable Video Diffusion Announcement](https://stability.ai/news/stable-video-diffusion-open-ai-video-model)
