@@ -1,4 +1,4 @@
-# modified from https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py
+# Copied from: https://github.com/InstantID/InstantID/blob/main/ip_adapter/attention_processor.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

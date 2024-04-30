@@ -1,3 +1,5 @@
+# Copied from: https://github.com/InstantID/InstantID/blob/main/ip_adapter/utils.py
+
 import torch.nn.functional as F
 
 
