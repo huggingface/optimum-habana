@@ -374,6 +374,8 @@ def initialize_model(args, logger):
         "token": args.token,
         "trust_remote_code": args.trust_remote_code,
     }
+    if args.trust_remote_code:
+        print("trust_remote_code is set. Model may not be complaint and may fail")
     if args.disk_offload:
         model_kwargs["device_map"] = "auto"
         model_kwargs["offload_folder"] = "/tmp/offload_folder/"
