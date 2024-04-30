@@ -18,8 +18,6 @@ from diffusers.utils import (
 )
 from diffusers.utils.torch_utils import is_compiled_module
 
-from optimum.habana.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipelineOutput
-
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -32,19 +30,19 @@ from diffusers import StableDiffusionXLControlNetPipeline
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.schedulers import KarrasDiffusionSchedulers
 
-from ip_adapter.resampler import Resampler
-from ip_adapter.utils import is_torch2_available
+from .ip_adapter.resampler import Resampler
+from .ip_adapter.utils import is_torch2_available
 
 if is_torch2_available():
-    from ip_adapter.attention_processor import IPAttnProcessor2_0 as IPAttnProcessor, AttnProcessor2_0 as AttnProcessor
+    from .ip_adapter.attention_processor import IPAttnProcessor2_0 as IPAttnProcessor, AttnProcessor2_0 as AttnProcessor
 else:
-    from ip_adapter.attention_processor import IPAttnProcessor, AttnProcessor
+    from .ip_adapter.attention_processor import IPAttnProcessor, AttnProcessor
 
 from optimum.utils import logging
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
-from ..stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline
+from ..stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline, GaudiStableDiffusionXLPipelineOutput
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
 
