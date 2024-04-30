@@ -189,6 +189,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
     )
+    use_safetensors: bool = field(
+        default=None,
+        metadata={"help": "Use safetensors file to load the model."},
+    )
 
 
 def main():
@@ -351,6 +355,7 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
         ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
+        use_safetensors=model_args.use_safetensors
     )
     image_processor = AutoImageProcessor.from_pretrained(
         model_args.image_processor_name or model_args.model_name_or_path,
