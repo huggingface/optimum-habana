@@ -64,9 +64,9 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
             output_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
 
         if self.use_with_langchain:
-            if not use_batch:
-                return [{"generated_text": output_text}]
-            elif use_batch:
+            if use_batch:
                 return [{"generated_text": unbatched_output_text} for unbatched_output_text in output_text]
+            else:
+                return [{"generated_text": output_text}]
 
         return output_text
