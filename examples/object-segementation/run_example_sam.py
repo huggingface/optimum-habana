@@ -15,16 +15,17 @@
 
 # Copied from https://huggingface.co/facebook/sam-vit-base
 
-from transformers import SamModel, SamProcessor
-from PIL import Image
+import argparse
+import time
+
+import habana_frameworks.torch as ht
 import requests
 import torch
-import habana_frameworks.torch as ht
-import habana_frameworks.torch.core as htcore
-import time
-import argparse
+from PIL import Image
+from transformers import AutoModel, AutoProcessor
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -69,8 +70,8 @@ if __name__ == "__main__":
 
     adapt_transformers_to_gaudi()
 
-    processor = SamProcessor.from_pretrained(args.model_name_or_path)
-    model = SamModel.from_pretrained(args.model_name_or_path)
+    processor = AutoProcessor.from_pretrained(args.model_name_or_path)
+    model = AutoModel.from_pretrained(args.model_name_or_path)
 
     image = Image.open(requests.get(args.image_path, stream=True).raw).convert("RGB")
     points = []

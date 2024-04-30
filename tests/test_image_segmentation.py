@@ -13,20 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import requests
-from PIL import Image
-import torch
-import habana_frameworks.torch as ht
-import habana_frameworks.torch.core as htcore
 import time
-import argparse
-from transformers import OwlViTProcessor, OwlViTForObjectDetection, SamProcessor, SamModel
-import unittest
 from unittest import TestCase
+
+import habana_frameworks.torch as ht
 import numpy as np
-import os
+import requests
+import torch
+from PIL import Image
+from transformers import AutoModel, AutoProcessor
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 adapt_transformers_to_gaudi()
 
@@ -39,8 +37,8 @@ class GaudiSAMTester(TestCase):
     Tests for Segment Anything Model - SAM
     """
     def prepare_model_and_processor(self):
-        model = SamModel.from_pretrained("facebook/sam-vit-huge").to("hpu")
-        processor = SamProcessor.from_pretrained("facebook/sam-vit-huge")
+        model = AutoModel.from_pretrained("facebook/sam-vit-huge").to("hpu")
+        processor = AutoProcessor.from_pretrained("facebook/sam-vit-huge")
         model = model.eval()
         return model, processor
 
@@ -54,7 +52,6 @@ class GaudiSAMTester(TestCase):
         input_points, image = self.prepare_data()
         inputs = processor(image, input_points=input_points, return_tensors="pt").to("hpu")
         outputs = model(**inputs)
-        masks = processor.image_processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu())
         scores = outputs.iou_scores
         scores = scores[0][0]
         expected_scores = np.array([0.9912, 0.9818, 0.9666])
@@ -68,7 +65,6 @@ class GaudiSAMTester(TestCase):
 
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16): # Autocast BF16
             outputs = model(**inputs)
-            masks = processor.image_processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu())
             scores = outputs.iou_scores
             scores = scores[0][0]
             expected_scores = np.array([0.9912, 0.9818, 0.9666])
@@ -83,7 +79,6 @@ class GaudiSAMTester(TestCase):
         model = ht.hpu.wrap_in_hpu_graph(model) #Apply graph
 
         outputs = model(**inputs)
-        masks = processor.image_processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu())
         scores = outputs.iou_scores
         scores = scores[0][0]
         expected_scores = np.array([0.9912, 0.9818, 0.9666])
@@ -102,20 +97,18 @@ class GaudiSAMTester(TestCase):
         with torch.no_grad(), torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True):
             for i in range(warmup):
                 inputs = processor(image, input_points=input_points, return_tensors="pt").to("hpu")
-                outputs = model(**inputs)
+                _ = model(**inputs)
                 torch.hpu.synchronize()
-            
+
             total_model_time = 0
             for i in range(iterations):
                 inputs = processor(image, input_points=input_points, return_tensors="pt").to("hpu")
                 model_start_time = time.time()
-                outputs = model(**inputs)
+                _ = model(**inputs)
                 torch.hpu.synchronize()
                 model_end_time = time.time()
                 total_model_time = total_model_time + (model_end_time - model_start_time)
-        
-        latency = total_model_time*1000/iterations # in terms of ms
-        self.assertGreaterEqual(latency, 0.95 * LATENCY_SAM_BF16_GRAPH_BASELINE)
 
-# if __name__ == '__main__':
-#     unittest.main()
+        latency = total_model_time*1000/iterations # in terms of ms
+        self.assertLessEqual(latency, 1.05 * LATENCY_SAM_BF16_GRAPH_BASELINE)
+
