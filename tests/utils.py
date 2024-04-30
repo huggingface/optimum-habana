@@ -16,6 +16,9 @@
 
 # Mapping between model families and specific model names with their configuration
 MODELS_TO_TEST_MAPPING = {
+    "audio-spectrogram-transformer": [
+        ("MIT/ast-finetuned-speech-commands-v2", "Habana/wav2vec2"),
+    ],
     "bert": [
         # ("bert-base-uncased", "Habana/bert-base-uncased"),
         ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
@@ -86,7 +89,7 @@ MODELS_TO_TEST_FOR_MASKED_LANGUAGE_MODELING = [
     # "distilbert",
 ]
 
-MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION = ["wav2vec2"]
+MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION = ["wav2vec2", "audio-spectrogram-transformer"]
 
 MODELS_TO_TEST_FOR_SPEECH_RECOGNITION = ["wav2vec2", "whisper"]
 

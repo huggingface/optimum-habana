@@ -37,11 +37,20 @@ from transformers.modeling_attn_mask_utils import (
 )
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
 from transformers.models.mixtral.modeling_mixtral import (
+    MixtralAttention,
+    MixtralDecoderLayer,
     MixtralForCausalLM,
     apply_rotary_pos_emb,
     load_balancing_loss_func,
 )
 from transformers.utils import logging
+
+from ..llama.modeling_llama import (
+    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
+    GaudiLlamaLinearScalingRotaryEmbedding,
+    GaudiLlamaRotaryEmbedding,
+)
+from .configuration_mixtral import MixtralConfig
 
 
 try:
@@ -177,105 +186,146 @@ class KVCache(torch.nn.Module):
         return update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
-def gaudi_mixtral_attention_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Cache] = None,
-    output_attentions: bool = False,
-    use_cache: bool = False,
-    token_idx: Optional[torch.Tensor] = None,
-    **kwargs,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-    """
-    Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
-    The only differences are:
-    - add new args token_idx
-    - optimize KV cache
-    """
-    if "padding_mask" in kwargs:
-        warnings.warn(
-            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-        )
-    bsz, q_len, _ = hidden_states.size()
+class GaudiMixtralAttention(MixtralAttention):
+    def __init__(self, config: MixtralConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
+        self._init_rope()
 
-    query_states = self.q_proj(hidden_states)
-    key_states = self.k_proj(hidden_states)
-    value_states = self.v_proj(hidden_states)
-
-    query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-    value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-
-    kv_seq_len = key_states.shape[-2]
-    if past_key_value is not None:
-        if self.layer_idx is None:
-            raise ValueError(
-                f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                "with a layer index."
+    def _init_rope(self):
+        """
+        Copied from: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L294
+        """
+        if self.config.rope_scaling is None:
+            self.rotary_emb = GaudiLlamaRotaryEmbedding(
+                self.head_dim,
+                max_position_embeddings=self.max_position_embeddings,
+                base=self.rope_theta,
             )
-        if token_idx is not None:
-            if 0 <= self.layer_idx < len(past_key_value.key_cache):
-                kv_seq_len = past_key_value.key_cache[self.layer_idx].shape[-2]
         else:
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-    cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-    query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
-
-    if past_key_value is not None:
-        cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-        if token_idx is not None:
-            if 0 <= self.layer_idx < len(past_key_value.key_cache):
-                past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
-                past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
-                key_states = past_key_value.key_cache[self.layer_idx]
-                value_states = past_key_value.value_cache[self.layer_idx]
+            scaling_type = self.config.rope_scaling["type"]
+            scaling_factor = self.config.rope_scaling["factor"]
+            if scaling_type == "linear":
+                self.rotary_emb = GaudiLlamaLinearScalingRotaryEmbedding(
+                    self.head_dim,
+                    max_position_embeddings=self.max_position_embeddings,
+                    scaling_factor=scaling_factor,
+                    base=self.rope_theta,
+                )
+            elif scaling_type == "dynamic":
+                self.rotary_emb = GaudiLlamaDynamicNTKScalingRotaryEmbedding(
+                    self.head_dim,
+                    max_position_embeddings=self.max_position_embeddings,
+                    scaling_factor=scaling_factor,
+                    base=self.rope_theta,
+                )
             else:
-                past_key_value.key_cache.append(key_states)
-                past_key_value.value_cache.append(value_states)
+                raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        output_attentions: bool = False,
+        use_cache: bool = False,
+        token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        """
+        Copied from MixtralAttention.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
+        The only differences are:
+        - add new args token_idx
+        - optimize KV cache
+        """
+        if "padding_mask" in kwargs:
+            warnings.warn(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            )
+        bsz, q_len, _ = hidden_states.size()
+
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+        kv_seq_len = key_states.shape[-2]
+        if past_key_value is not None:
+            if self.layer_idx is None:
+                raise ValueError(
+                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                    "with a layer index."
+                )
+            if token_idx is not None:
+                if 0 <= self.layer_idx < len(past_key_value.key_cache):
+                    kv_seq_len = past_key_value.key_cache[self.layer_idx].shape[-2]
+            else:
+                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+
+        if past_key_value is not None:
+            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            if token_idx is not None:
+                if 0 <= self.layer_idx < len(past_key_value.key_cache):
+                    past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
+                    past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
+                    key_states = past_key_value.key_cache[self.layer_idx]
+                    value_states = past_key_value.value_cache[self.layer_idx]
+                else:
+                    past_key_value.key_cache.append(key_states)
+                    past_key_value.value_cache.append(value_states)
+            else:
+                key_states, value_states = past_key_value.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs
+                )
+
+        if FusedSDPA:
+            import habana_frameworks.torch.hpu as ht
+
+            if q_len == 1:
+                # next token
+                with ht.sdp_kernel(enable_recompute=False):
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
+            else:
+                # first token
+                with ht.sdp_kernel(enable_recompute=False):  # inference: flash_attention_recompute = False
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
         else:
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            query_states, key_states, value_states, attention_mask = gaudi_mixtral_repeat_kv(
+                query_states, key_states, value_states, attention_mask, self.num_key_value_groups
+            )
 
-    if FusedSDPA:
-        import habana_frameworks.torch.hpu as ht
+            attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) / math.sqrt(self.head_dim)
 
-        if q_len == 1:
-            # next token
-            with ht.sdp_kernel(enable_recompute=False):
-                attn_output = FusedSDPA.apply(query_states, key_states, value_states, attention_mask, 0.0, False, None)
-        else:
-            # first token
-            with ht.sdp_kernel(enable_recompute=False):  # inference: flash_attention_recompute = False
-                attn_output = FusedSDPA.apply(query_states, key_states, value_states, attention_mask, 0.0, False, None)
-    else:
-        query_states, key_states, value_states, attention_mask = gaudi_mixtral_repeat_kv(
-            query_states, key_states, value_states, attention_mask, self.num_key_value_groups
-        )
+            if attention_mask is not None:
+                attention_mask = attention_mask.unsqueeze(2)
+                attn_weights = attn_weights + attention_mask
 
-        attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) / math.sqrt(self.head_dim)
+            # upcast attention to fp32
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+            attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+            attn_output = torch.matmul(attn_weights, value_states)
 
-        if attention_mask is not None:
-            attention_mask = attention_mask.unsqueeze(2)
-            attn_weights = attn_weights + attention_mask
+            attn_output = attn_output.reshape(bsz, self.num_heads, q_len, self.head_dim).contiguous()
 
-        # upcast attention to fp32
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-        attn_output = torch.matmul(attn_weights, value_states)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
-        attn_output = attn_output.reshape(bsz, self.num_heads, q_len, self.head_dim).contiguous()
+        attn_output = self.o_proj(attn_output)
 
-    attn_output = attn_output.transpose(1, 2).contiguous()
-    attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        if not output_attentions:
+            attn_weights = None
 
-    attn_output = self.o_proj(attn_output)
-
-    if not output_attentions:
-        attn_weights = None
-
-    return attn_output, attn_weights, past_key_value
+        return attn_output, attn_weights, past_key_value
 
 
 def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -327,65 +377,70 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     return final_hidden_states, router_logits
 
 
-def gaudi_mixtral_decoder_layer_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
-    output_attentions: Optional[bool] = False,
-    output_router_logits: Optional[bool] = False,
-    use_cache: Optional[bool] = False,
-    token_idx: Optional[torch.Tensor] = None,
-    **kwargs,
-) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-    """
-    Copied from MixtralDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
-    The only differences are:
-    - add new args token_idx
-    """
-    if "padding_mask" in kwargs:
-        warnings.warn(
-            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
+    def __init__(self, config: MixtralConfig, layer_idx: int):
+        super().__init__(config, layer_idx)
+        self.self_attn = GaudiMixtralAttention(config, layer_idx)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        output_router_logits: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        """
+        Copied from MixtralDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.37.0/src/transformers/models/mixtral/modeling_mixtral.py
+        The only differences are:
+        - add new args token_idx
+        """
+        if "padding_mask" in kwargs:
+            warnings.warn(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+            )
+
+        htcore.mark_step()
+        residual = hidden_states
+
+        hidden_states = self.input_layernorm(hidden_states)
+
+        # Self Attention
+        hidden_states, self_attn_weights, present_key_value = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            token_idx=token_idx,
         )
+        hidden_states = residual + hidden_states
+        htcore.mark_step()
 
-    htcore.mark_step()
-    residual = hidden_states
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states, router_logits = self.block_sparse_moe(hidden_states)
+        hidden_states = residual + hidden_states
+        htcore.mark_step()
 
-    hidden_states = self.input_layernorm(hidden_states)
+        outputs = (hidden_states,)
 
-    # Self Attention
-    hidden_states, self_attn_weights, present_key_value = self.self_attn(
-        hidden_states=hidden_states,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        past_key_value=past_key_value,
-        output_attentions=output_attentions,
-        use_cache=use_cache,
-        token_idx=token_idx,
-    )
-    hidden_states = residual + hidden_states
-    htcore.mark_step()
+        if output_attentions:
+            outputs += (self_attn_weights,)
 
-    # Fully Connected
-    residual = hidden_states
-    hidden_states = self.post_attention_layernorm(hidden_states)
-    hidden_states, router_logits = self.block_sparse_moe(hidden_states)
-    hidden_states = residual + hidden_states
-    htcore.mark_step()
+        if use_cache:
+            outputs += (present_key_value,)
 
-    outputs = (hidden_states,)
+        if output_router_logits:
+            outputs += (router_logits,)
 
-    if output_attentions:
-        outputs += (self_attn_weights,)
-
-    if use_cache:
-        outputs += (present_key_value,)
-
-    if output_router_logits:
-        outputs += (router_logits,)
-
-    return outputs
+        return outputs
 
 
 def gaudi_mixtral_model_forward(

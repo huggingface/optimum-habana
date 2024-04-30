@@ -186,6 +186,7 @@ class ExampleTestMeta(type):
             "tiiuae/falcon-40b",
             "bigscience/bloom-7b1",
             "codellama/CodeLlama-13b-Instruct-hf",
+            "MIT/ast-finetuned-speech-commands-v2",
         ]
 
         if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
@@ -219,6 +220,8 @@ class ExampleTestMeta(type):
         elif "falcon" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and not fsdp:
             return True
         elif "bloom" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "0":
+            return True
+        elif "ast-finetuned-speech-commands-v2" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
             return True
 
         return False
