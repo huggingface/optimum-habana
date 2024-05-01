@@ -70,7 +70,10 @@ class KVCache(torch.nn.Module):
 class GaudiGPTJAttention(GPTJAttention):
     def __init__(self, config: GPTJConfig):
         super().__init__(config)
-
+        self.config = config
+        
+        self.matmul_qk = Matmul()
+        self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.inp_seq_len = -1
@@ -82,6 +85,20 @@ class GaudiGPTJAttention(GPTJAttention):
         dtype = self.config.torch_dtype
         self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
         self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
+
+    def reorder(self, tensor, beam_idx, dim_a, dim_b):
+        updated = tensor.index_select(0, beam_idx)
+        tensor.copy_(updated)
+
+    def reorder_kv_cache(self, beam_idx: torch.LongTensor):
+        if self.k_cache.cache is None:
+            return (None, None)
+
+        head_dim = self.k_cache.cache.size(-1)
+        seq_length = self.k_cache.cache.size(-2)
+        self.reorder(self.k_cache.cache, beam_idx, seq_length, head_dim)
+        self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
+        return (self.k_cache.cache.shape, self.v_cache.cache.shape)
 
     def update_sincos_cache(self, seq_len):
         # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
@@ -106,10 +123,6 @@ class GaudiGPTJAttention(GPTJAttention):
         query = query.contiguous()
         key = key.contiguous()
         value = value.contiguous()
-
-        # Move Matmul() here due to issue if set it in __init__(), need investigating ...
-        self.matmul_qk = Matmul()
-        self.matmul_av = Matmul()
 
         attn_weights = self.matmul_qk(query, key.transpose(-1, -2))
 
@@ -147,6 +160,8 @@ class GaudiGPTJAttention(GPTJAttention):
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
         token_idx: Optional[torch.Tensor] = None,
+        reuse_cache: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
         sin: Optional[torch.Tensor] = None,
         cos: Optional[torch.Tensor] = None,
     ) -> Union[
@@ -157,10 +172,14 @@ class GaudiGPTJAttention(GPTJAttention):
         Copied from GPTJAttention.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/modeling_gptj.py
         The only differences are:
         - add new args token_idx
+        - add new args reuse_cache
+        - add new args cache_idx
         - remove is_torch_fx_proxy
         - optimize KV cache
         - pass sin and cos from upper level as they are identical for each attn block
         """
+        _, q_len, _ = hidden_states.size()
+         
         query = self.q_proj(hidden_states)
         key = self.k_proj(hidden_states)
         value = self.v_proj(hidden_states)
@@ -188,23 +207,42 @@ class GaudiGPTJAttention(GPTJAttention):
         key = key.permute(0, 2, 1, 3).contiguous()
         query = query.permute(0, 2, 1, 3).contiguous()
 
-        if layer_past is not None:
-            past_key = layer_past[0]
-            past_value = layer_past[1]
+        # if layer_past is not None:
+        #     past_key = layer_past[0]
+        #     past_value = layer_past[1]
 
-            if token_idx is not None:
-                past_key.index_copy_(2, token_idx - 1, key)
-                past_value.index_copy_(2, token_idx - 1, value)
-                key = past_key
-                value = past_value
+        #     if token_idx is not None:
+        #         past_key.index_copy_(2, token_idx - 1, key)
+        #         past_value.index_copy_(2, token_idx - 1, value)
+        #         key = past_key
+        #         value = past_value
+        #     else:
+        #         key = torch.cat([past_key, key], dim=-2)
+        #         value = torch.cat([past_value, value], dim=-2)
+
+        if use_cache is True and token_idx is not None:
+            if reuse_cache:
+                key = self.k_cache(key, 2, token_idx)
+                value = self.v_cache(value, 2, token_idx)
+                present = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
-                key = torch.cat([past_key, key], dim=-2)
-                value = torch.cat([past_value, value], dim=-2)
+                if layer_past is None:
+                    past_key = torch.zeros(key.shape, dtype=self.k_proj.weight.dtype, device=key.device)
+                    past_value = torch.zeros(key.shape, dtype=self.k_proj.weight.dtype, device=key.device)
+                    layer_past = (past_key, past_value)
+                key = self.k_cache.update(layer_past[0], key, 2, token_idx, self.inp_seq_len)
+                value = self.v_cache.update(layer_past[1], value, 2, token_idx, self.inp_seq_len)
+                present = layer_past
+                
+            if cache_idx is not None and q_len == 1:
+                key = key[:, :, :cache_idx, :]
+                value = value[:, :, :cache_idx, :]
+                if attention_mask is not None:
+                    attention_mask = attention_mask[:, :, :, :cache_idx]
 
-        if use_cache is True:
             # Note that this cast is quite ugly, but is not implemented before ROPE as the original codebase keeps the key in float32 all along the computation.
             # Reference: https://github.com/kingoflolz/mesh-transformer-jax/blob/f8315e3003033b23f21d78361b288953064e0e76/mesh_transformer/layers.py#L128
-            present = (key.to(hidden_states.dtype), value)
+            #present = (key.to(hidden_states.dtype), value)
         else:
             present = None
 
@@ -234,6 +272,9 @@ class GaudiGPTJBlock(GPTJBlock):
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
+    def reorder_kv_cache(self, beam_idx: torch.LongTensor):
+        return self.attn.reorder_kv_cache(beam_idx)
+
     def update_sincos_cache(self, seq_len):
         self.attn.update_sincos_cache(seq_len)
 
@@ -247,6 +288,8 @@ class GaudiGPTJBlock(GPTJBlock):
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
         token_idx: Optional[torch.Tensor] = None,
+        reuse_cache: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
         sin: Optional[torch.Tensor] = None,
         cos: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
@@ -267,6 +310,8 @@ class GaudiGPTJBlock(GPTJBlock):
             use_cache=use_cache,
             output_attentions=output_attentions,
             token_idx=token_idx,
+            reuse_cache=reuse_cache,
+            cache_idx=cache_idx,
             sin=sin,
             cos=cos,
         )
@@ -340,6 +385,9 @@ class GaudiGPTJModel(GPTJModel):
         for layer in self.h:
             layer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
+    def reorder_kv_cache(self, beam_idx: torch.LongTensor):
+        return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.h)
+
     def update_sincos_cache(self, seq_len):
         for layer in self.layers:
             layer.update_sincos_cache(seq_len)
@@ -358,6 +406,8 @@ class GaudiGPTJModel(GPTJModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        reuse_cache: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
         sin: Optional[torch.Tensor] = None,
         cos: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
@@ -395,6 +445,9 @@ class GaudiGPTJModel(GPTJModel):
         if past_key_values is None:
             past_length = 0
             past_key_values = tuple([None] * len(self.h))
+        elif use_cache:
+            if reuse_cache:
+                past_length = past_key_values[0][0][0]
         else:
             past_length = past_key_values[0][0].size(-2)
 
@@ -452,6 +505,8 @@ class GaudiGPTJModel(GPTJModel):
         all_self_attentions = () if output_attentions else None
         all_hidden_states = () if output_hidden_states else None
 
+        htcore.mark_step()
+
         # replace original `_get_embed_positions` method and sin cos calculation in the attn block here to improve perf
         rotary_dim = self.config.rotary_dim
         embed_dim = self.config.hidden_size
@@ -479,6 +534,7 @@ class GaudiGPTJModel(GPTJModel):
                     attention_mask = attention_mask.to(hidden_states.device)
                 if isinstance(head_mask, torch.Tensor):
                     head_mask = head_mask.to(hidden_states.device)
+            htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -506,6 +562,8 @@ class GaudiGPTJModel(GPTJModel):
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                     token_idx=token_idx,
+                    reuse_cache=reuse_cache,
+                    cache_idx=cache_idx,
                     sin=sin,
                     cos=cos,
                 )
@@ -752,6 +810,9 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.transformer.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
 
+    def reorder_kv_cache(self, beam_idx: torch.LongTensor):
+        return self.transformer.reorder_kv_cache(beam_idx)
+
     def update_sincos_cache(self, seq_len):
         self.transformer.update_sincos_cache(seq_len)
 
@@ -808,6 +869,8 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
                 "attention_mask": attention_mask,
                 "token_type_ids": token_type_ids,
                 "token_idx": token_idx,
+                "reuse_cache": kwargs.get("reuse_cache"),
+                "cache_idx": kwargs.get("cache_idx"),
             }
         )
 
@@ -828,6 +891,8 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        reuse_cache: Optional[bool] = False,
+        cache_idx: Optional[int] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -850,6 +915,8 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             token_idx=token_idx,
+            reuse_cache=reuse_cache,
+            cache_idx=cache_idx,
         )
         hidden_states = transformer_outputs[0]
 
