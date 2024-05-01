@@ -1,5 +1,6 @@
 from typing import Optional, Tuple, Union
 
+import habana_frameworks.torch.core as htcore
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -14,8 +15,6 @@ from transformers.models.gptj.modeling_gptj import (
     create_sinusoidal_positions,
     logger,
 )
-
-import habana_frameworks.torch.core as htcore
 
 
 class Matmul(nn.Module):
@@ -71,7 +70,7 @@ class GaudiGPTJAttention(GPTJAttention):
     def __init__(self, config: GPTJConfig):
         super().__init__(config)
         self.config = config
-        
+
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
@@ -179,7 +178,6 @@ class GaudiGPTJAttention(GPTJAttention):
         - pass sin and cos from upper level as they are identical for each attn block
         """
         _, q_len, _ = hidden_states.size()
-         
         query = self.q_proj(hidden_states)
         key = self.k_proj(hidden_states)
         value = self.v_proj(hidden_states)
@@ -233,7 +231,6 @@ class GaudiGPTJAttention(GPTJAttention):
                 key = self.k_cache.update(layer_past[0], key, 2, token_idx, self.inp_seq_len)
                 value = self.v_cache.update(layer_past[1], value, 2, token_idx, self.inp_seq_len)
                 present = layer_past
-                
             if cache_idx is not None and q_len == 1:
                 key = key[:, :, :cache_idx, :]
                 value = value[:, :, :cache_idx, :]
@@ -242,7 +239,7 @@ class GaudiGPTJAttention(GPTJAttention):
 
             # Note that this cast is quite ugly, but is not implemented before ROPE as the original codebase keeps the key in float32 all along the computation.
             # Reference: https://github.com/kingoflolz/mesh-transformer-jax/blob/f8315e3003033b23f21d78361b288953064e0e76/mesh_transformer/layers.py#L128
-            #present = (key.to(hidden_states.dtype), value)
+            # present = (key.to(hidden_states.dtype), value)
         else:
             present = None
 
