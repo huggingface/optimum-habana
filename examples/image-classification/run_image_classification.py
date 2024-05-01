@@ -357,13 +357,19 @@ def main():
         ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
         use_safetensors=model_args.use_safetensors
     )
-    image_processor = AutoImageProcessor.from_pretrained(
-        model_args.image_processor_name or model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        token=model_args.token,
-        trust_remote_code=model_args.trust_remote_code,
-    )
+
+    try:
+        image_processor = AutoImageProcessor.from_pretrained(
+            model_args.image_processor_name or model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            token=model_args.token,
+            trust_remote_code=model_args.trust_remote_code,
+        )
+    except EnvironmentError as e:
+        logger.warning(str(e))
+        if not model_args.image_processor_name:
+            logger.info('Specify custom processor config file or URL using --image_processor_name option')
 
     # Define torchvision transforms to be applied to each image.
     if "shortest_edge" in image_processor.size:
