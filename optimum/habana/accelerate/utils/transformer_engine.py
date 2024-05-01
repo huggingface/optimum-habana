@@ -15,7 +15,9 @@
 
 import torch
 from peft.tuners.lora.layer import Linear as PEFTLinear
+
 from optimum.habana.peft.layer import LoRALinear
+
 
 try:
     import habana_frameworks.torch.hpex.experimental.transformer_engine as te
@@ -35,14 +37,23 @@ def convert_model(model, to_transformer_engine=True, _convert_linear=True):
     """
     if not has_transformer_engine:
         raise ImportError("Using `convert_model` requires transformer_engine to be installed.")
-    #import pdb;pdb.set_trace()
+
     for name, module in model.named_children():
         if type(module) == PEFTLinear and to_transformer_engine and _convert_linear:
             LoRALinear.replace_forward(module)
-        if isinstance(module, torch.nn.Linear) and not type(module) == PEFTLinear and to_transformer_engine and _convert_linear:
+        if (
+            isinstance(module, torch.nn.Linear)
+            and not type(module) == PEFTLinear
+            and to_transformer_engine
+            and _convert_linear
+        ):
             has_bias = module.bias is not None
             te_module = te.Linear(
-                module.in_features, module.out_features, bias=has_bias, params_dtype=module.weight.dtype, skip_weight_param_allocation=True
+                module.in_features,
+                module.out_features,
+                bias=has_bias,
+                params_dtype=module.weight.dtype,
+                skip_weight_param_allocation=True,
             )
             te_module.weight = module.weight
 
@@ -50,7 +61,6 @@ def convert_model(model, to_transformer_engine=True, _convert_linear=True):
                 te_module.bias = module.bias
 
             setattr(model, name, te_module)
-            #print("libin debug Convert linear  to te.linear",  name, te_module)
 
         elif isinstance(module, te.Linear) and not to_transformer_engine and _convert_linear:
             has_bias = module.bias is not None
@@ -64,7 +74,6 @@ def convert_model(model, to_transformer_engine=True, _convert_linear=True):
             setattr(model, name, new_module)
         else:
             convert_model(module, to_transformer_engine=to_transformer_engine, _convert_linear=_convert_linear)
-
 
 
 def has_transformer_engine_layers(model):

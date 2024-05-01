@@ -1,8 +1,9 @@
 from typing import Any
 
-import torch
 import habana_frameworks.torch.hpex.experimental.transformer_engine as te
+import torch
 from peft.utils.other import transpose
+
 
 def GaudiLoraLayerLinearForward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
     # https://github.com/huggingface/peft/blob/4b02148af252c17e36b0a4b995f9e8519806fbb5/src/peft/tuners/lora/layer.py#L354C1-L376C22
@@ -61,16 +62,25 @@ def GaudiAdaloraLayerSVDLinearForward(self, x: torch.Tensor, *args: Any, **kwarg
 
     return result
 
+
 class LoRALinear:
     def __init__(self, module):
         has_bias = module.bias is not None
         self.module = module
-        self.module.te_linear =  te.Linear(module.in_features, module.out_features, bias=has_bias, params_dtype=module.weight.dtype, skip_weight_param_allocation=True)
+        self.module.te_linear = te.Linear(
+            module.in_features,
+            module.out_features,
+            bias=has_bias,
+            params_dtype=module.weight.dtype,
+            skip_weight_param_allocation=True,
+        )
 
     def _linear(self, input: torch.Tensor) -> torch.Tensor:
-        #TODO: to check if bias is removed from lora linear
+        # TODO: to check if bias is removed from lora linear
         if hasattr(self.module, "bias"):
-            return self.module.te_linear(input, transpose(self.module.weight, self.module.fan_in_fan_out), bias=self.module.bias)
+            return self.module.te_linear(
+                input, transpose(self.module.weight, self.module.fan_in_fan_out), bias=self.module.bias
+            )
         else:
             return self.module.te_linear(input, transpose(self.module.weight, self.module.fan_in_fan_out))
 

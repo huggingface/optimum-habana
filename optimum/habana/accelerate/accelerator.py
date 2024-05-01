@@ -80,10 +80,13 @@ from .utils import (
     is_fp8_available,
 )
 
+
 if is_fp8_available():
     import habana_frameworks.torch.hpex.experimental.transformer_engine as te
 
 logger = get_logger(__name__)
+
+
 class SwitchableForwardMaker:
     def __init__(self, module, fp8_recipe_handler):
         self.original_forward = module.forward
@@ -100,6 +103,7 @@ class SwitchableForwardMaker:
     @staticmethod
     def convert(module, fp8_recipe_handler):
         SwitchableForwardMaker(module, fp8_recipe_handler)
+
 
 class GaudiAccelerator(Accelerator):
     """
@@ -129,6 +133,7 @@ class GaudiAccelerator(Accelerator):
         dynamo_backend: GaudiDynamoBackend | str | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
+        fp8_recipe_format: str = None,
     ):
         self.trackers = []
         if project_config is not None:
@@ -196,6 +201,7 @@ class GaudiAccelerator(Accelerator):
         self.scaler_handler = None
         self.init_handler = None
         self.fp8_recipe_handler = None
+        self.fp8_recipe_format = None
         self.autocast_handler = None
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
@@ -240,8 +246,13 @@ class GaudiAccelerator(Accelerator):
             **kwargs,
         )
         if self.fp8_recipe_handler is None and self.state.is_fp8_enabled:
+            fp8_format = te.recipe.Format.E5M2
+            if self.fp8_recipe_format == "E4M3":
+                fp8_format = te.recipe.Format.E4M3
+            elif self.fp8_recipe_format == "HYBRID":
+                fp8_format = te.recipe.Format.HYBRID
             self.fp8_recipe_handler = te.recipe.DelayedScaling(
-                fp8_format=te.recipe.Format.E5M2,
+                fp8_format=fp8_format,
                 margin=0,
                 interval=16,
                 amax_history_len=1,
@@ -317,7 +328,7 @@ class GaudiAccelerator(Accelerator):
     @property
     def use_fp16(self):
         raise ValueError("fp16 is not supported on Habana Gaudi.")
-    
+
     def wrap_fp8(self, model):
         if not has_transformer_engine_layers(model):
             with torch.no_grad():
@@ -497,7 +508,11 @@ class GaudiAccelerator(Accelerator):
 
         is_dataloader_present = any(isinstance(obj, torch.utils.data.DataLoader) for obj in args)
         result = [
-            self._prepare_one(obj, first_pass=True) if isinstance(obj, torch.utils.data.DataLoader) else self.wrap_fp8(obj) if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled else obj
+            self._prepare_one(obj, first_pass=True)
+            if isinstance(obj, torch.utils.data.DataLoader)
+            else self.wrap_fp8(obj)
+            if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled
+            else obj
             for obj in args
         ]
 
