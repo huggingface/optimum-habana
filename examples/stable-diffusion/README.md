@@ -16,7 +16,7 @@ limitations under the License.
 
 # Stable Diffusion Examples
 
-This directory contains a script that showcases how to perform text-to-image generation using Stable Diffusion on Intel:registered: Gaudi:registered: accelerator.
+This directory contains a script that showcases how to perform text-to-image generation using Stable Diffusion on Intel::registered: Gaudi::registered: accelerator.
 
 Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stability.ai/blog/stable-diffusion-announcement) by Patrick Esser and Robin Rombach and the Stability AI team.
 
