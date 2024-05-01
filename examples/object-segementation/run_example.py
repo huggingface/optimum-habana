@@ -15,17 +15,18 @@
 
 # Copied from https://huggingface.co/docs/transformers/main/en/model_doc/clipseg
 
-from transformers import AutoProcessor, CLIPSegForImageSegmentation
-from PIL import Image
+import argparse
+import time
+
+import habana_frameworks.torch as ht
 import requests
 import torch
-import habana_frameworks.torch as ht
-import habana_frameworks.torch.core as htcore
-import time
-import argparse
+from PIL import Image
 from torchvision.utils import save_image
+from transformers import AutoProcessor, CLIPSegForImageSegmentation
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--prompt",
-        default="a cat, a remote, a blanket",
+        default="a cat,a remote,a blanket",
         type=str,
         help='Prompt for classification. It should be a string seperated by comma. (eg: --prompt "a photo of a cat, a photo of a dog")',
     )
@@ -71,7 +72,8 @@ if __name__ == "__main__":
     adapt_transformers_to_gaudi()
 
     processor = AutoProcessor.from_pretrained(args.model_name_or_path)
-    model = CLIPSegForImageSegmentation.from_pretrained(args.model_name_or_path)
+    model = CLIPSegForImageSegmentation.from_pretrained(args.model_name_or_path) # Use CLIPSegForImageSegmentation instead of automodel.
+                                                                                #  The output will contains the logits which are required to generated segmented images
 
     image = Image.open(requests.get(args.image_path, stream=True).raw)
     texts = []
@@ -106,7 +108,7 @@ if __name__ == "__main__":
                         threshold = 0.5
                         segmented_image = ((torch.sigmoid(logits[j])  > threshold)*255).unsqueeze(0)
                         segmented_image = segmented_image.to(torch.float32)
-                        save_image(segmented_image, 'segmented' + texts[j] + '.png')
+                        save_image(segmented_image, 'segmented_' + texts[j].strip() + '.png')
                     print('Segmented images are generated.')
 
     print("n_iterations: " + str(args.n_iterations))
