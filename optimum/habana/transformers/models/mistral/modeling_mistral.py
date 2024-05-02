@@ -150,15 +150,6 @@ def gaudi_mistral_repeat_kv(
     return query_states, key_states, value_states, attention_mask
 
 
-def update_sincos_cache(self, seq_len):
-    # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
-    # This helps in avoiding creation of these caches during actual model forward pass and
-    # reduce memory consumption and improve performance.
-    if seq_len > self.max_position_embeddings:
-        self.max_position_embeddings = seq_len
-        _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
-
-
 def gaudi_mistral_rmsnorm_forward(self, hidden_states):
     """
     Copied from MistralRMSNorm.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py
