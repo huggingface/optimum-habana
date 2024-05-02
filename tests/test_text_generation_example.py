@@ -130,7 +130,7 @@ def _test_text_generation(
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
-    if reuse_cache or torch_compile:
+    if reuse_cache or torch_compile or fp8:
         command += ["--reuse_cache"]
 
     if torch_compile:
@@ -146,14 +146,9 @@ def _test_text_generation(
         command.append("--bf16")
 
     if fp8:
-        command += [
-            "--reuse_cache",
-            "--trim_logits",
-        ]
+        if "--trim_logits" not in command:
+            command += ["--trim_logits"]
         if "Llama-2" in model_name:
-            command += [
-                "--attn_softmax_bf16",
-            ]
             command.remove("--max_new_tokens 100")
 
     with TemporaryDirectory() as tmp_dir:
