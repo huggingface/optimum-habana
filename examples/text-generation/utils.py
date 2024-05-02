@@ -362,6 +362,50 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.use_flash_attention = args.use_flash_attention
     generation_config.flash_attention_recompute = args.flash_attention_recompute
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
+    import os
+    if int(os.environ.get('HammingDiversityLogitsProcessor','0')) == 1:
+        generation_config.diversity_penalty = 0.1
+        generation_config.num_beam_groups = 2
+    if int(os.environ.get('EncoderNoRepeatNGramLogitsProcessor','0')) == 1:
+        generation_config.encoder_no_repeat_ngram_size = 2
+    if int(os.environ.get('EncoderRepetitionPenaltyLogitsProcessor','0')) == 1:
+        generation_config.encoder_repetition_penalty = 1.2
+    if int(os.environ.get('EpsilonLogitsWarper','0')) == 1:
+        generation_config.epsilon_cutoff = 0.1
+    if int(os.environ.get('EtaLogitsWarper','0')) == 1:
+        generation_config.eta_cutoff = 0.1
+    if int(os.environ.get('ExponentialDecayLengthPenalty','0')) == 1:
+        generation_config.temperature = 0.9
+        generation_config.exponential_decay_length_penalty=(15, 1.6)
+    if int(os.environ.get('ForcedBOSTokenLogitsProcessor','0')) == 1:
+        generation_config.forced_bos_token_id = tokenizer.eos_token_id
+    if int(os.environ.get('ForcedEOSTokenLogitsProcessor','0')) == 1:
+        generation_config.forced_eos_token_id=tokenizer.eos_token_id
+    if int(os.environ.get('InfNanRemoveLogitsProcessor','0')) == 1:
+        generation_config.remove_invalid_values=True
+    if int(os.environ.get('LogitNormalization','0')) == 1:
+        generation_config.renormalize_logits=True
+    if int(os.environ.get('MinLengthLogitsProcessor','0')) == 1:
+        generation_config.min_length=10
+    if int(os.environ.get('MinNewTokensLengthLogitsProcessor','0')) == 1:
+        generation_config.min_new_tokens=2
+    if int(os.environ.get('NoBadWordsLogitsProcessor','0')) == 1:
+        tokenizer_with_prefix_space = AutoTokenizer.from_pretrained("openai-community/gpt2", add_prefix_space=True)
+        def get_tokens_as_list(word_list):
+            "Converts a sequence of words into a list of tokens"
+            tokens_list = []
+            for word in word_list:
+                tokenized_word = tokenizer_with_prefix_space([word], add_special_tokens=False).input_ids[0]
+                tokens_list.append(tokenized_word)
+            return tokens_list
+        bad_words_ids = get_tokens_as_list(word_list=["create"])
+        generation_config.bad_words_ids = bad_words_ids
+    if int(os.environ.get('NoRepeatNGramLogitsProcessor','0')) == 1:
+        generation_config.no_repeat_ngram_size = 2
+    
+
+    
+
     return generation_config
 
 

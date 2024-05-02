@@ -369,14 +369,37 @@ def main():
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
 
-            outputs = model.generate(
-                **input_tokens,
-                generation_config=generation_config,
-                lazy_mode=use_lazy_mode,
-                hpu_graphs=args.use_hpu_graphs,
-                profiling_steps=args.profiling_steps,
-                profiling_warmup_steps=args.profiling_warmup_steps,
-            ).cpu()
+            if int(os.environ.get('PrefixConstrainedLogitsProcessor','0')) == 1:
+                entity = tokenizer(" Bob Marley", return_tensors="pt").input_ids[0]
+                def prefix_allowed_tokens_fn(batch_id, input_ids):
+                    '''
+                    Attempts to generate 'Bob Marley' when 'Bob' is detected.
+                    In this case, `batch_id` is not used, but you can set rules for each batch member.
+                    '''
+                    if input_ids[-1] == entity[0]:
+                        return [entity[1].item()]
+                    elif input_ids[-2] == entity[0] and input_ids[-1] == entity[1]:
+                        return [entity[2].item()]
+                    return list(range(tokenizer.vocab_size))  # If no match, allow all tokens
+
+                outputs = model.generate(
+                    **input_tokens,
+                    generation_config=generation_config,
+                    lazy_mode=use_lazy_mode,
+                    hpu_graphs=args.use_hpu_graphs,
+                    profiling_steps=args.profiling_steps,
+                    profiling_warmup_steps=args.profiling_warmup_steps,
+                    prefix_allowed_tokens_fn=prefix_allowed_tokens_fn,
+                ).cpu()
+            else:
+                outputs = model.generate(
+                    **input_tokens,
+                    generation_config=generation_config,
+                    lazy_mode=use_lazy_mode,
+                    hpu_graphs=args.use_hpu_graphs,
+                    profiling_steps=args.profiling_steps,
+                    profiling_warmup_steps=args.profiling_warmup_steps,
+                ).cpu()
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile

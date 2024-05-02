@@ -804,6 +804,7 @@ class GaudiGenerationMixin(GenerationMixin):
             negative_prompt_ids=negative_prompt_ids,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
         )
+        print(prepared_logits_processor, '......')
 
         # 9. prepare stopping criteria
         self.generation_config.generation_mode = generation_mode
@@ -902,6 +903,7 @@ class GaudiGenerationMixin(GenerationMixin):
         elif generation_mode == GenerationMode.SAMPLE:
             # 11. prepare logits warper
             logits_warper = self._get_logits_warper(generation_config)
+            print(logits_warper, 'xxxxxxx')
 
             # 12. expand input_ids with `num_return_sequences` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
