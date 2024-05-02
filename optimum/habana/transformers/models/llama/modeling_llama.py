@@ -974,7 +974,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         past_length = 0
 
         reuse_cache = kwargs.get("reuse_cache")
-        bucket_internal= kwargs.get("bucket_internal")
+        bucket_internal = kwargs.get("bucket_internal")
         if past_key_values is not None:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
