@@ -168,7 +168,7 @@ Llama Guard can be fine-tuned with DeepSpeed, here is how you would do it on the
 python ../gaudi_spawn.py /
     --world_size 8 --use_deepspeed run_glue.py \
     --model_name_or_path meta-llama/LlamaGuard-7b \
-    --gaudi_config gaudi_config.json  \
+    --gaudi_config Habana/llama \
     --task_name mrpc  \
     --do_train  \
     --do_eval \
@@ -196,8 +196,8 @@ You can run inference with Llama Guard on GLUE on 1 Gaudi card with the followin
 
 ```bash
 python run_glue.py \
-  --gaudi_config gaudi_config.json \
   --model_name_or_path meta-llama/LlamaGuard-7b \
+  --gaudi_config Habana/llama \
   --task_name mrpc \
   --do_eval \
   --per_device_eval_batch_size 64 \
