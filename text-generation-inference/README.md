@@ -14,6 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Text Generation Inference on Intel® Gaudi® accelerator
+# Text Generation Inference on Intel® Gaudi® AI Accelerators
 
 Please refer to the following fork of TGI for deploying it on Habana Gaudi: https://github.com/huggingface/tgi-gaudi
