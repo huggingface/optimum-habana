@@ -368,6 +368,7 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.use_flash_attention = args.use_flash_attention
     generation_config.flash_attention_recompute = args.flash_attention_recompute
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
+    generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     return generation_config
 
 
