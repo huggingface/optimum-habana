@@ -67,6 +67,7 @@ except ImportError:
 
 logger = logging.get_logger(__name__)
 
+
 class KVCache(torch.nn.Module):
     def __init__(self):
         super(KVCache, self).__init__()
