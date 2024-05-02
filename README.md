@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-![](https://github.com/huggingface/optimum-habana/blob/main/readme_logo.png)
+![](https://github.com/huggingface/optimum-habana/blob/update_readme_logo/readme_logo.png)
 
 
 # Optimum Habana
