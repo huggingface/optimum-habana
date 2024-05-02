@@ -622,16 +622,13 @@ class GaudiGenerationMixin(GenerationMixin):
         )
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
-<<<<<<< HEAD
         if generation_config.reuse_cache:
             assert self.config.model_type in [
                 "llama",
                 "mistral",
                 "falcon",
             ], "reuse_cache only supported by llama, mistral and falcon at the moment"
-=======
         # Below condition checked explicitly since llama supports bucket_internal even without reuse_cache
->>>>>>> 64efe5b (Sampling search UseKV cache till input seq len for prefill phase (#161))
         if generation_config.bucket_internal:
             assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
         if generation_config.reuse_cache:
