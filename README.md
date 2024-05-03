@@ -229,6 +229,7 @@ Other models and tasks supported by the 🤗 Transformers and 🤗 Diffusers lib
 
 If you find any issues while using those, please open an issue or a pull request.
 
+After training your model, feel free to submit it to the Intel [leaderboard](https://huggingface.co/spaces/Intel/powered_by_intel_llm_leaderboard) which is designed to evaluate, score, and rank open-source LLMs that have been pre-trained or fine-tuned on Intel Hardwares. Models submitted to the leaderboard will be evaluated on the Intel Developer Cloud. The evaluation platform consists of Gaudi Accelerators and Xeon CPUs running benchmarks from the Eleuther AI Language Model Evaluation Harness.
 
 ## Gaudi Setup
 
