@@ -167,9 +167,7 @@ class ModelArguments:
     use_fused_rope: bool = field(
         default=True,
         metadata={
-            "help": (
-                "Whether to use Habana fused-rope for fine-tuning. The current support is limited to Llama only."
-            )
+            "help": ("Whether to use Habana fused-rope for fine-tuning. The current support is limited to Llama only.")
         },
     )
     load_meta_device: bool = field(
