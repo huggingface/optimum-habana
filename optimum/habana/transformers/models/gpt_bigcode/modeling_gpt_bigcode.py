@@ -558,7 +558,10 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
         # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx - 1
+                if "inputs_embeds_offset" in kwargs:
+                    idx = idx + kwargs["inputs_embeds_offset"]
+                input_ids = torch.index_select(input_ids, 1, idx)
                 if token_type_ids is not None:
                     token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
             else:

@@ -827,7 +827,10 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         reuse_cache = kwargs.get("reuse_cache")
         if past_key_values is not None:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx - 1
+                if "inputs_embeds_offset" in kwargs:
+                    idx = idx + kwargs["inputs_embeds_offset"]
+                input_ids = torch.index_select(input_ids, 1, idx)
             else:
                 if inputs_embeds is not None:  # Exception 1
                     input_ids = input_ids[:, -cache_position.shape[0] :]

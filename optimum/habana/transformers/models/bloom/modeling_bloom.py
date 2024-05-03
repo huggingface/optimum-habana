@@ -489,7 +489,10 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
             if token_idx is None:
                 input_ids = input_ids[:, -1].unsqueeze(-1)
             else:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx - 1
+                if "inputs_embeds_offset" in kwargs:
+                    idx = idx + kwargs["inputs_embeds_offset"]
+                input_ids = torch.index_select(input_ids, 1, idx)
 
             # the cache may be in the stardard format (e.g. in contrastive search), convert to bloom's format if needed
             if past_key_values[0][0].shape[0] == input_ids.shape[0]:

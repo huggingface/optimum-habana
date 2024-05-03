@@ -61,7 +61,10 @@ def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
                 # the length of `cache_params.conv_states`, which is `config.conv_kernel`
                 cache_position = torch.arange(0, self.config.conv_kernel, device=input_ids.device)
         else:
-            input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+            idx = token_idx - 1
+            if "inputs_embeds_offset" in kwargs:
+                idx = idx + kwargs["inputs_embeds_offset"]
+            input_ids = torch.index_select(input_ids, 1, idx)
     else:
         if token_idx is not None:
             input_ids = torch.index_select(input_ids, 1, torch.arange(token_idx_cpu, device=input_ids.device))

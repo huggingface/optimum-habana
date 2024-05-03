@@ -425,7 +425,10 @@ class GaudiPersimmonForCausalLM(PersimmonForCausalLM):
                 ):  # Default case (the "else", a no op, is Exception 2)
                     input_ids = input_ids[:, cache_position]
             else:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+                idx = token_idx - 1
+                if "inputs_embeds_offset" in kwargs:
+                    idx = idx + kwargs["inputs_embeds_offset"]
+                input_ids = torch.index_select(input_ids, 1, idx)
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
