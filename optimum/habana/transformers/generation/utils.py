@@ -883,13 +883,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     embeds_pad_shape = (0, 0, 0, new_token_padding)
                     pad_token_id = generation_config.pad_token_id
                     if model_input_name == "inputs_embeds":
-                        inputs_tensor = torch.nn.functional.pad(
-                            inputs_tensor, embeds_pad_shape, value=0
-                        )
+                        inputs_tensor = torch.nn.functional.pad(inputs_tensor, embeds_pad_shape, value=0)
                     else:
-                        inputs_tensor = torch.nn.functional.pad(
-                            inputs_tensor, default_pad_shape, value=pad_token_id
-                        )
+                        inputs_tensor = torch.nn.functional.pad(inputs_tensor, default_pad_shape, value=pad_token_id)
                     for other_inputs, pad_shape, pad_value in [
                         ("attention_mask", default_pad_shape, 0),
                         ("input_ids", default_pad_shape, pad_token_id),
@@ -1848,7 +1844,9 @@ class GaudiGenerationMixin(GenerationMixin):
             # update generated ids, model inputs, and length for next step
             if token_idx is not None:
                 input_ids.index_copy_(
-                    1, token_idx + token_fill_offset, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
+                    1,
+                    token_idx + token_fill_offset,
+                    next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens,
                 )
             else:
                 input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
