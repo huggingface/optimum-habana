@@ -14,11 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Gaudi Configuration
+# GaudiConfig
 
 Here is a description of each configuration parameter:
-- `use_fused_adam` enables to decide whether to use the [custom fused implementation of the ADAM optimizer provided by Habana](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
-- `use_fused_clip_norm` enables to decide whether to use the [custom fused implementation of gradient norm clipping provided by Habana](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
+- `use_fused_adam` enables to decide whether to use the [custom fused implementation of the ADAM optimizer provided by Intel® Gaudi® AI Accelerator](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#custom-optimizers).
+- `use_fused_clip_norm` enables to decide whether to use the [custom fused implementation of gradient norm clipping provided by Intel® Gaudi® AI Accelerator](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Custom_Ops_PyTorch.html#other-custom-ops).
 - `use_torch_autocast` enables PyTorch autocast; used to define good pre-defined config; users should favor `--bf16` training argument
 - `autocast_bf16_ops` list of operations that should be run with bf16 precision under autocast context; using environment flag LOWER_LIST is a preffered way for operator autocast list override
 - `autocast_fp32_ops` list of operations that should be run with fp32 precision under autocast context; using environment flag FP32_LIST is a preffered way for operator autocast list override

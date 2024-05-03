@@ -53,11 +53,11 @@ MODELS_TO_TEST_MAPPING = {
     "clip": [("./clip-roberta", "Habana/clip")],
     "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
     "gpt_neox": [("EleutherAI/gpt-neox-20b", "Habana/gpt2")],
-    "llama": [("huggyllama/llama-7b", "Habana/gpt2")],
-    "falcon": [("tiiuae/falcon-40b", "Habana/gpt2")],
+    "llama": [("huggyllama/llama-7b", "Habana/llama")],
+    "falcon": [("tiiuae/falcon-40b", "Habana/falcon")],
     "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
     "whisper": [("openai/whisper-small", "Habana/whisper")],
-    "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/gpt2")],
+    "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/llama")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
