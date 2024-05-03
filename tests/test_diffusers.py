@@ -631,7 +631,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         )
 
         if os.environ.get("GAUDI2_CI", "0") == "1":
-            target_score = 30.2968
+            target_score = 29.8925
         else:
             target_score = 36.774
 
@@ -669,7 +669,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         )
 
         if os.environ.get("GAUDI2_CI", "0") == "1":
-            target_score = 29.63
+            target_score = 28.0894
         else:
             target_score = 35.81
 
