@@ -129,8 +129,7 @@ class GenerationConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             with self.assertRaises(ValueError) as exc:
                 config.save_pretrained(tmp_dir)
-            self.assertEqual(len(captured_warnings), 1)
-            self.assertTrue("Fix these issues to save the configuration." in str(captured_warnings[0].message))
+            self.assertTrue("Fix these issues to save the configuration." in str(exc.exception))
             self.assertTrue(len(os.listdir(tmp_dir)) == 0)
 
         # greedy decoding throws an exception if we try to return multiple sequences -> throws an exception that is
