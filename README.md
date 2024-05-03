@@ -19,9 +19,9 @@ limitations under the License.
 
 # Optimum for Intel® Gaudi® Accelerators 
 
-Optimum for Intel Gaudi - a.k.a. `optimum-habana` - is the interface between the Transformers and Diffusers libraries and [Intel® Gaudi® AI Accelerators (HPU)](https://docs.habana.ai/en/latest/index.html).
+Optimum for Intel Gaudi - a.k.a. `optimum-habana` - is the interface between the Transformers and Diffusers libraries and [Intel Gaudi AI Accelerators (HPU)](https://docs.habana.ai/en/latest/index.html).
 It provides a set of tools enabling easy model loading, training and inference on single- and multi-HPU settings for different downstream tasks.
-The list of officially validated models and tasks is available [here](https://github.com/huggingface/optimum-habana#validated-models). Users can try other of the thousands of Hugging Face models on Intel® Gaudi accelerators and tasks with only few changes.
+The list of officially validated models and tasks is available [here](https://github.com/huggingface/optimum-habana#validated-models). Users can try other of the thousands of Hugging Face models on Intel Gaudi accelerators and tasks with only few changes.
 
 
 ## What are Intel Gaudi AI Accelerators (HPUs)?
@@ -227,7 +227,7 @@ If you find any issues while using those, please open an issue or a pull request
 
 ## Gaudi Setup
 
-Please refer to the Intel® Gaudi® accelerator's official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html).
+Please refer to the Intel Gaudi AI Accelerator official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html).
 
 > Tests should be run in a Docker container based on Intel Gaudi Docker images.
 >
