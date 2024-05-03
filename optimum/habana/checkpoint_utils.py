@@ -92,9 +92,7 @@ def model_on_meta(config):
     """
     Checks if load the model to meta.
     """
-    return config.model_type in ["bloom", "llama", "falcon"] or (
-        config.model_type == "mixtral" and config.hidden_size == 6144
-    )
+    return config.model_type in ["bloom", "llama", "falcon", "mixtral"]
 
 
 def get_optimized_model_name(config):
