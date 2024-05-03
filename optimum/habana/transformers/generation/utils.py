@@ -876,11 +876,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     token_idx = inputs_tensor.shape[1]
                     model_kwargs["token_idx"] = torch.tensor(token_idx, device=inputs_tensor.device)
                     model_kwargs["token_idx_cpu"] = token_idx
-                    if model_input_name != "input_ids":
-                        token_fill_offset = -token_idx
-                        if "input_ids" in model_kwargs:
-                            token_fill_offset += model_kwargs["input_ids"].shape[1]
-                        model_kwargs["token_fill_offset"] = token_fill_offset
                     new_token_padding = generation_config.max_new_tokens
                     if new_token_padding is None:
                         new_token_padding = generation_config.max_length - token_idx
@@ -1765,7 +1760,9 @@ class GaudiGenerationMixin(GenerationMixin):
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
         model_kwargs["lazy_mode"] = lazy_mode
-        token_fill_offset = model_kwargs.get("token_fill_offset", 0)
+        token_fill_offset = 0
+        if "inputs_embeds" in model_kwargs:
+            token_fill_offset = input_ids.shape[1] - model_kwargs["inputs_embeds"].shape[1]
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
                 self.htcore_generation.mark_step()
