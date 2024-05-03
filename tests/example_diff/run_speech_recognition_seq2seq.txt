@@ -1,0 +1,79 @@
+32,33d31
+< from datasets import DatasetDict, load_dataset
+< 
+34a33
+> from datasets import DatasetDict, load_dataset
+42,44d40
+<     Seq2SeqTrainer,
+<     Seq2SeqTrainingArguments,
+<     set_seed,
+49a46,56
+> from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+> from optimum.habana.utils import set_seed
+> 
+> 
+> try:
+>     from optimum.habana.utils import check_optimum_habana_min_version
+> except ImportError:
+> 
+>     def check_optimum_habana_min_version(*a, **b):
+>         return ()
+> 
+52c59,60
+< check_min_version("4.41.0.dev0")
+---
+> check_min_version("4.38.0")
+> check_optimum_habana_min_version("1.10.0")
+237a246,249
+>     label_features_max_length: int = field(
+>         default=None,
+>         metadata={"help": "Max length for padding label features."},
+>     )
+255a268
+>     label_features_max_length: int
+269c282,286
+<         labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt")
+---
+>         kwargs = {}
+>         if self.label_features_max_length is not None:
+>             kwargs["padding"] = "max_length"
+>             kwargs["max_length"] = self.label_features_max_length
+>         labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt", **kwargs)
+289c306
+<     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+---
+>     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
+325a343,349
+>     gaudi_config = GaudiConfig.from_pretrained(
+>         training_args.gaudi_config_name,
+>         cache_dir=model_args.cache_dir,
+>         # use_auth_token=True if data_args.use_auth_token else None,
+>         use_auth_token=False,
+>     )
+> 
+326a351
+>     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
+328,329c353,355
+<         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
+<         f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
+---
+>         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
+>         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
+>         + f"mixed-precision training: {mixed_precision}"
+445a472,474
+>         model.generation_config.task = data_args.task
+>         model.generation_config.language = data_args.language
+>         model.generation_config.forced_decoder_ids = None
+449a479,482
+>         logger.warning(
+>             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
+>             f" ({feature_extractor.sampling_rate}).Data resampling should be done."
+>         )
+554a588
+>         label_features_max_length=data_args.label_features_max_length,
+558c592
+<     trainer = Seq2SeqTrainer(
+---
+>     trainer = GaudiSeq2SeqTrainer(
+559a594
+>         gaudi_config=gaudi_config,

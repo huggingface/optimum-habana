@@ -29,15 +29,15 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.37.0, < 4.38.0",
+    "transformers >= 4.38.0, < 4.39.0",
     "optimum",
     "torch",
     "accelerate < 0.28.0",
     "diffusers >= 0.26.0, < 0.27.0",
+    "pytest < 8.0.0",
 ]
 
 TESTS_REQUIRE = [
-    "pytest",
     "psutil",
     "parameterized",
     "GitPython",

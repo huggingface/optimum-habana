@@ -10,23 +10,37 @@ import pytest
 from .test_examples import ACCURACY_PERF_FACTOR, TIME_PERF_FACTOR
 
 
-# Gaudi2 CI baselines
-# FSDP is not supported on Gaudi1
-MODELS_TO_TEST = {
-    "bf16": [
-        (
-            "bert-base-uncased",
-            "Habana/bert-base-uncased",
-            2807,
-            85.4688,
-            "question-answering",
-            24,
-            8,
-            "run_qa.py",
-            "full_shard",
-        ),
-    ],
-}
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    # Gaudi2 CI baselines
+    MODELS_TO_TEST = {
+        "bf16": [
+            (
+                "bert-base-uncased",
+                "Habana/bert-base-uncased",
+                3516.322,
+                85.5503,
+                "question-answering",
+                24,
+                8,
+                "run_qa.py",
+                "full_shard",
+            ),
+            (
+                "meta-llama/Llama-2-7b-hf",
+                "",
+                87.016,
+                0.9093,
+                "language-modeling",
+                8,
+                8,
+                "run_lora_clm.py",
+                "auto_wrap",
+            ),
+        ],
+    }
+else:
+    # FSDP is not supported on Gaudi1
+    MODELS_TO_TEST = {"bf16": []}
 
 
 def _test_fsdp(
@@ -39,11 +53,10 @@ def _test_fsdp(
     batch_size_eval: int,
     script: str,
     policy: str,
+    token: str,
     world_size: int = 8,
 ):
     os.environ["PT_HPU_LAZY_MODE"] = "0"
-    os.environ["PT_HPU_EAGER_4_STAGE_PIPELINE_ENABLE"] = "0"  # To be removed later
-    os.environ["PT_HPU_EAGER_PIPELINE_ENABLE"] = "0"  # To be removed later
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
 
     # Install question-answering example requirements
@@ -58,32 +71,60 @@ def _test_fsdp(
         f"{path_to_example_dir / 'gaudi_spawn.py'}",
         "--use_mpi",
         f"--world_size {world_size}",
-    ]
-
-    command += [
         f"{path_to_example_dir / task / script}",
         f"--model_name_or_path {model_name}",
         "--do_train",
-        "--dataset_name squad",
-        "--max_seq_length 384",
         f"--per_device_eval_batch_size {batch_size_eval}",
         f"--per_device_train_batch_size {batch_size_train}",
-        "--learning_rate 3e-05",
-        "--num_train_epochs 2.0",
-        "--logging_steps 20",
-        "--save_steps 5000",
-        "--seed 42",
-        "--doc_stride 128",
-        "--use_habana",
-        "--overwrite_output_dir",
-        f"--gaudi_config_name {gaudi_config}",
-        "--throughput_warmup_steps 100",
         f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
         f"--fsdp '{policy}'",
-        "--do_eval",
-        "--torch_compile_backend aot_hpu_training_backend",
+        "--torch_compile_backend hpu_backend",
         "--torch_compile",
+        "--use_habana",
     ]
+
+    if model_name == "bert-base-uncased":
+        command += [
+            "--dataset_name squad",
+            "--max_seq_length 384",
+            "--learning_rate 3e-05",
+            "--num_train_epochs 2.0",
+            "--logging_steps 20",
+            "--save_steps 5000",
+            "--seed 42",
+            "--doc_stride 128",
+            "--overwrite_output_dir",
+            f"--gaudi_config_name {gaudi_config}",
+            "--throughput_warmup_steps 100",
+            "--do_eval",
+        ]
+    else:
+        command += [
+            "--dataset_name tatsu-lab/alpaca ",
+            "--bf16 True ",
+            "--gradient_accumulation_steps 2",
+            "--save_strategy 'no'",
+            "--evaluation_strategy 'no'",
+            "--learning_rate 0.0003",
+            "--warmup_ratio 0.03",
+            "--max_grad_norm 0.3",
+            "--lr_scheduler_type 'constant'",
+            "--logging_steps 1",
+            "--use_lazy_mode False",
+            "--pipelining_fwd_bwd False",
+            "--throughput_warmup_steps 3",
+            "--lora_rank 8",
+            "--lora_alpha 16",
+            "--lora_dropout 0.05",
+            "--lora_target_modules 'q_proj' 'v_proj'",
+            "--dataset_concatenation",
+            "--max_seq_length 512",
+            "--adam_epsilon 1e-08",
+            "--low_cpu_mem_usage True",
+            "--attn_softmax_bf16 True",
+            "--num_train_epochs 3",
+            f"--token {token.value}",
+        ]
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
@@ -108,7 +149,10 @@ def _test_fsdp(
 
         # Ensure performance requirements (throughput) are met
         assert results["train_samples_per_second"] >= (2 - TIME_PERF_FACTOR) * baseline
-        assert results["eval_f1"] >= ACCURACY_PERF_FACTOR * baseline_acc
+        if model_name == "bert-base-uncased":
+            assert results["eval_f1"] >= ACCURACY_PERF_FACTOR * baseline_acc
+        else:
+            assert results["train_loss"] <= baseline_acc
 
 
 @pytest.mark.parametrize(
@@ -124,5 +168,6 @@ def test_fsdp_bf16(
     bs_eval: int,
     script: str,
     policy: str,
+    token: str,
 ):
-    _test_fsdp(model_name, gaudi_config, baseline, baseline_acc, task, bs_train, bs_eval, script, policy)
+    _test_fsdp(model_name, gaudi_config, baseline, baseline_acc, task, bs_train, bs_eval, script, policy, token)

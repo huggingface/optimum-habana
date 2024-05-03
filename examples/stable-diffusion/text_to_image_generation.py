@@ -240,7 +240,7 @@ def main():
             control_image = Image.fromarray(image)
 
     # Import selected pipeline
-    sdxl_models = ["stable-diffusion-xl-base-1.0", "sdxl-turbo"]
+    sdxl_models = ["stable-diffusion-xl", "sdxl"]
 
     if args.control_image is not None:
         from diffusers import ControlNetModel
@@ -340,6 +340,8 @@ def main():
             negative_prompt_2=args.negative_prompts_2,
             eta=args.eta,
             output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
             **res,
         )
     else:
@@ -360,6 +362,8 @@ def main():
             negative_prompt=args.negative_prompts,
             eta=args.eta,
             output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
             **res,
         )
 

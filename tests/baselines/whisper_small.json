@@ -1,0 +1,69 @@
+{
+    "gaudi": {
+        "mozilla-foundation/common_voice_11_0": {
+            "num_train_epochs": 10,
+            "eval_batch_size": 2,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 1e-4,
+                    "train_batch_size": 8,
+                    "eval_wer": 2.1133,
+                    "train_runtime": 551.3249,
+                    "train_samples_per_second": 145.59,
+                    "eval_samples_per_second": 6.851,
+                    "extra_arguments": [
+                        "--dataset_config_name hi",
+                        "--language hindi",
+                        "--train_split_name train+validation",
+                        "--eval_split_name test",
+                        "--preprocessing_num_workers 1",
+                        "--generation_max_length 225",
+                        "--length_column_name input_length",
+                        "--max_duration_in_seconds 30",
+                        "--text_column_name sentence",
+                        "--freeze_feature_encoder False",
+                        "--group_by_length",
+                        "--dataloader_num_workers 8",
+                        "--predict_with_generate",
+                        "--use_hpu_graphs_for_inference",
+                        "--label_features_max_length 128",
+                        "--pipelining_fwd_bwd True"
+                    ]
+                }
+            }
+        }
+    },
+    "gaudi2": {
+        "mozilla-foundation/common_voice_11_0": {
+            "num_train_epochs": 10,
+            "eval_batch_size": 8,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 8e-5,
+                    "train_batch_size": 32,
+                    "eval_wer": 0.8477,
+                    "train_runtime": 287.0947,
+                    "train_samples_per_second": 307.526,
+                    "eval_samples_per_second": 12.069,
+                    "extra_arguments": [
+                        "--dataset_config_name hi",
+                        "--language hindi",
+                        "--train_split_name train+validation",
+                        "--eval_split_name test",
+                        "--preprocessing_num_workers 1",
+                        "--generation_max_length 225",
+                        "--length_column_name input_length",
+                        "--max_duration_in_seconds 30",
+                        "--text_column_name sentence",
+                        "--freeze_feature_encoder False",
+                        "--group_by_length",
+                        "--dataloader_num_workers 8",
+                        "--predict_with_generate",
+                        "--use_hpu_graphs_for_inference",
+                        "--label_features_max_length 128"
+                    ]
+                }
+            }
+        }
+    }
+}

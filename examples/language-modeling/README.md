@@ -350,7 +350,7 @@ python run_clm.py \
 ## PEFT
 
 To run LoRA finetuning, you can use `run_lora_clm.py`.
-Here are single-/multi-device command examples for Llama1-7B, Falcon-40B and Llama2-70B.
+Here are single-/multi-device command examples for Llama1-7B, Falcon-40B, Llama2-70B, Llama3-8B and Llama3-70B.
 You can also use multicard version for Falcon-180B:
 
 - Single-card finetuning of Llama1-7B:
@@ -556,7 +556,48 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --lora_rank 4 \
   --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
   --validation_split_percentage 4 \
-  --use_flash_attention True
+  --use_flash_attention True \
+  --flash_attention_causal_mask True
+```
+
+- Multi-card finetuning of Llama2-70B with FSDP and LoRA:
+
+```bash
+LOWER_LIST=ops_bf16.txt PT_HPU_LAZY_MODE=0 \
+python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
+  --model_name_or_path meta-llama/Llama-2-70b-hf \
+  --dataset_name tatsu-lab/alpaca \
+  --bf16 True \
+  --output_dir ./lora_out \
+  --max_seq_len 2048 \
+  --gradient_checkpointing \
+  --per_device_train_batch_size 5 \
+  --save_strategy no \
+  --learning_rate 0.0004 \
+  --warmup_ratio 0.03 \
+  --lr_scheduler_type "constant" \
+  --logging_steps 1 \
+  --dataset_concatenation \
+  --do_train \
+  --use_habana \
+  --throughput_warmup_steps 3 \
+  --lora_rank 4 \
+  --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
+  --attn_softmax_bf16 True \
+  --validation_split_percentage 4 \
+  --use_lazy_mode False \
+  --fsdp_config fsdp_config.json \
+  --fsdp auto_wrap \
+  --num_train_epochs 2 \
+  --evaluation_strategy epoch \
+  --per_device_eval_batch_size 1 \
+  --eval_delay 2 \
+  --do_eval \
+  --pipelining_fwd_bwd False \
+  --use_fused_rope False \
+  --torch_compile_backend hpu_backend \
+  --torch_compile \
+  --gradient_accumulation_steps 2
 ```
 
 - Multi-card finetuning of Falcon-180B:
