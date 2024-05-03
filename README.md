@@ -17,18 +17,17 @@ limitations under the License.
 ![](https://github.com/huggingface/optimum-habana/blob/main/readme_logo.png)
 
 
-# Optimum Habana
+# Optimum for Intel® Gaudi® Accelerators 
 
-🤗 Optimum Habana is the interface between the 🤗 Transformers and Diffusers libraries and [Habana's Gaudi processor (HPU)](https://docs.habana.ai/en/latest/index.html).
+Optimum for Intel Gaudi - a.k.a. `optimum-habana` - is the interface between the Transformers and Diffusers libraries and [Intel Gaudi AI Accelerators (HPU)](https://docs.habana.ai/en/latest/index.html).
 It provides a set of tools enabling easy model loading, training and inference on single- and multi-HPU settings for different downstream tasks.
-The list of officially validated models and tasks is available [here](https://github.com/huggingface/optimum-habana#validated-models). Users can try other models and tasks with only few changes.
+The list of officially validated models and tasks is available [here](https://github.com/huggingface/optimum-habana#validated-models). Users can try other of the thousands of Hugging Face models on Intel Gaudi accelerators and tasks with only few changes.
 
 
-## What is a Habana Processing Unit (HPU)?
+## What are Intel Gaudi AI Accelerators (HPUs)?
 
 HPUs offer fast model training and inference as well as a great price-performance ratio.
-Check out [this blog post about BERT pre-training](https://huggingface.co/blog/pretraining-bert) and [this article benchmarking Habana Gaudi2 versus Nvidia A100 GPUs](https://huggingface.co/blog/habana-gaudi-2-benchmark) for concrete examples.
-If you are not familiar with HPUs and would like to know more about them, we recommend you take a look at [our conceptual guide](https://huggingface.co/docs/optimum/habana/concept_guides/hpu).
+Check out [this blog post about BLOOM inference](https://huggingface.co/blog/habana-gaudi-2-bloom) and [this post benchmarking Intel Gaudi 2 and NVIDIA A100 GPUs for BridgeTower training](https://huggingface.co/blog/bridgetower) for concrete examples.
 
 
 ## Install the library and get example scripts
@@ -51,7 +50,7 @@ To use the example associated with the latest stable release, run:
 
 ### Option 2: Use the latest main branch under development
 
-Optimum Habana is a fast-moving project, and you may want to install it from source and get the latest scripts :
+Optimum for Intel Gaudi is a fast-moving project, and you may want to install it from source and get the latest scripts :
 
 ```bash
 pip install git+https://github.com/huggingface/optimum-habana.git
@@ -76,7 +75,7 @@ To install the requirements for every example:
 
 ### Quick Start
 
-🤗 Optimum Habana was designed with one goal in mind: **to make training and inference straightforward for any 🤗 Transformers and 🤗 Diffusers user while leveraging the complete power of Gaudi processors**.
+Optimum for Intel Gaudi was designed with one goal in mind: **to make training and inference straightforward for Transformers and Diffusers users, while fully leveraging the power of Intel Gaudi AI Accelerators**.
 
 #### Transformers Interface
 
@@ -84,7 +83,7 @@ There are two main classes one needs to know:
 - [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer): the trainer class that takes care of compiling and distributing the model to run on HPUs, and performing training and evaluation.
 - [GaudiConfig](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config): the class that enables to configure Habana Mixed Precision and to decide whether optimized operators and optimizers should be used or not.
 
-The [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer) is very similar to the [🤗 Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Gaudi will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
+The [GaudiTrainer](https://huggingface.co/docs/optimum/habana/package_reference/trainer) is very similar to the [Transformers Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), and adapting a script using the Trainer to make it work with Intel Gaudi accelerators will mostly consist in simply swapping the `Trainer` class for the `GaudiTrainer` one.
 That's how most of the [example scripts](https://github.com/huggingface/optimum-habana/tree/main/examples) were adapted from their [original counterparts](https://github.com/huggingface/transformers/tree/main/examples/pytorch).
 
 Here is an example:
@@ -115,12 +114,12 @@ Here is an example:
 )
 ```
 
-where `gaudi_config_name` is the name of a model from the [Hub](https://huggingface.co/Habana) (Gaudi configurations are stored in model repositories) or a path to a local Gaudi configuration file (you can see [here](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config) how to write your own).
+where `gaudi_config_name` is the name of a model from the [Hub](https://huggingface.co/Habana) (Intel Gaudi configurations are stored in model repositories) or a path to a local Intel Gaudi configuration file (you can see [here](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config) how to write your own).
 
 
 #### Diffusers Interface
 
-You can generate images from prompts using Stable Diffusion on Gaudi using the [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline) class and the [`GaudiDDIMScheduler`] which have been both optimized for HPUs. Here is how to use them and the differences with the 🤗 Diffusers library:
+You can generate images from prompts using Stable Diffusion on Intel Gaudi using the [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline) class and the [`GaudiDDIMScheduler`] which have been both optimized for HPUs. Here is how to use them and the differences with the Diffusers library:
 
 ```diff
 - from diffusers import DDIMScheduler, StableDiffusionPipeline
@@ -151,12 +150,12 @@ outputs = generator(
 
 ### Documentation
 
-Check out [the documentation of Optimum Habana](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
+Check out [the documentation of Optimum for Intel Gaudi](https://huggingface.co/docs/optimum/habana/index) for more advanced usage.
 
 
 ## Validated Models
 
-The following model architectures, tasks and device distributions have been validated for 🤗 Optimum Habana:
+The following model architectures, tasks and device distributions have been validated for Optimum for Intel Gaudi:
 
 > In the tables below, :heavy_check_mark: means single-card, multi-card and DeepSpeed have all been validated.
 
@@ -225,7 +224,7 @@ The following model architectures, tasks and device distributions have been vali
 
 </div>
 
-Other models and tasks supported by the 🤗 Transformers and 🤗 Diffusers library may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with 🤗 Optimum Habana. Besides, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the 🤗 Transformers library to make it work with 🤗 Optimum Habana.
+Other models and tasks supported by the Transformers and Diffusers libraries may also work. You can refer to this [section](https://github.com/huggingface/optimum-habana#how-to-use-it) for using them with Optimum for Intel Gaudi. In addition, [this page](https://github.com/huggingface/optimum-habana/tree/main/examples) explains how to modify any [example](https://github.com/huggingface/transformers/tree/main/examples/pytorch) from the Transformers library to make it work with Optimum for Intel Gaudi.
 
 If you find any issues while using those, please open an issue or a pull request.
 
@@ -233,9 +232,9 @@ After training your model, feel free to submit it to the Intel [leaderboard](htt
 
 ## Gaudi Setup
 
-Please refer to Habana Gaudi's official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html).
+Please refer to the Intel Gaudi AI Accelerator official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html).
 
-> Tests should be run in a Docker container based on Habana Docker images.
+> Tests should be run in a Docker container based on Intel Gaudi Docker images.
 >
 > The current version has been validated for SynapseAI 1.15.
 
