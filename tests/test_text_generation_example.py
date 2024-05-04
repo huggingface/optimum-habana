@@ -159,7 +159,6 @@ def _test_text_generation(
         command.append(f"--token {token.value}")
 
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
-        command = [x for y in command for x in re.split(pattern, y) if x]
 
         if fp8:
             env_variables["QUANT_CONFIG"] = os.path.join(
@@ -200,6 +199,7 @@ def _test_text_generation(
                     assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
                 return
 
+        command = [x for y in command for x in re.split(pattern, y) if x]
         proc = subprocess.run(command, env=env_variables)
 
         # Ensure the run finished without any issue
