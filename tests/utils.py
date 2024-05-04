@@ -53,14 +53,12 @@ MODELS_TO_TEST_MAPPING = {
     "clip": [("./clip-roberta", "Habana/clip")],
     "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
     "gpt_neox": [("EleutherAI/gpt-neox-20b", "Habana/gpt2")],
-    "llama": [
-        ("huggyllama/llama-7b", "Habana/gpt2"),
-        ("meta-llama/LlamaGuard-7b", "Habana/llama"),
-    ],
+    "llama": [("huggyllama/llama-7b", "Habana/gpt2")],
     "falcon": [("tiiuae/falcon-40b", "Habana/gpt2")],
     "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
     "whisper": [("openai/whisper-small", "Habana/whisper")],
     "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/gpt2")],
+    "llama_guard": [("meta-llama/LlamaGuard-7b", "Habana/llama")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -73,7 +71,7 @@ MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
 # Only BERT has been officially validated for sequence classification
 MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     "bert",
-    "llama",
+    "llama_guard",
     # "roberta",
     # "albert",
     # "distilbert",

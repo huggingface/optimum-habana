@@ -156,16 +156,16 @@ python run_glue.py \
   --bf16
 ```
 
-## Llama Guard for GLUE MRPC task
+## Llama Guard on MRPC
 
-Llama Guard can be used for text classification task. The *transformers* library will change the head of the model for you during fine-tuning or inference. You can use same general command as for BERT, except you need to add `--add_pad_token=True`, because Llama based models don't have `pad_token` in their model and tokenizer configuration files. So, `--add_pad_token=True` will add `pad_token` to tokenizer and model's config as `eos_token` if it's not defined.
+Llama Guard can be used for text classification. The Transformers library will change the head of the model for you during fine-tuning or inference. You can use the same general command as for BERT, except you need to add `--add_pad_token=True` because Llama based models don't have a `pad_token` in their model and tokenizer configuration files. So `--add_pad_token=True` will add a `pad_token` equal to the `eos_token` to the tokenizer and model configurations if it's not defined.
 
 ### Fine-tuning with DeepSpeed
 
 Llama Guard can be fine-tuned with DeepSpeed, here is how you would do it on the text classification MRPC task using DeepSpeed with 8 HPUs:
 
 ```bash
-python ../gaudi_spawn.py /
+python ../gaudi_spawn.py \
     --world_size 8 --use_deepspeed run_glue.py \
     --model_name_or_path meta-llama/LlamaGuard-7b \
     --gaudi_config Habana/llama \
