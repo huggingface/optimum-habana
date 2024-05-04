@@ -80,7 +80,7 @@ python run_speech_recognition_ctc.py \
     --throughput_warmup_steps="3" \
     --bf16 \
     --use_hpu_graphs_for_training \
-    --use_hpu_grpahs_for_inference
+    --use_hpu_graphs_for_inference
 ```
 
 On a single HPU, this script should run in *ca.* 6 hours and yield a CTC loss of **0.059** and a word error rate of **0.0423**.

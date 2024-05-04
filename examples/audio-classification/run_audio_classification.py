@@ -390,8 +390,8 @@ def main():
         ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
     )
 
-    # freeze the convolutional waveform encoder
-    if model_args.freeze_feature_encoder:
+    # freeze the convolutional waveform encoder if supported by model
+    if hasattr(model, "freeze_feature_encoder") and model_args.freeze_feature_encoder:
         model.freeze_feature_encoder()
 
     if training_args.do_train:
