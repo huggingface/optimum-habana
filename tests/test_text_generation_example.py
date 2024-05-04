@@ -37,6 +37,8 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),
+            ("meta-llama/Llama-2-7b-hf", 0.0),
+            ("meta-llama/Llama-2-70b-hf", 0.0),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 36.77314954096159),
@@ -49,6 +51,20 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "torch_compile_distributed": [
             ("meta-llama/Llama-2-7b-hf", 39.72973199515235),
+        ],
+    }
+    LLAMA2_FP8_CONFIG = {
+        "meta-llama/Llama-2-7b-hf": [
+            ("1200", "128", "128", 13415.103401047876),
+            ("160", "128", "2048", 2930.9086839308384),
+            ("90", "2048", "128", 1104.0681776998265),
+            ("60", "2048", "2048", 1248.3177998857964),
+        ],
+        "meta-llama/Llama-2-70b-hf": [
+            ("2500", "128", "128", 10327.895829614834),
+            ("430", "128", "2048", 10425.578514886345),
+            ("40", "2048", "128", 695.475101514524),
+            ("64", "2048", "2048", 2773.173092391251),
         ],
     }
 else:
@@ -114,7 +130,7 @@ def _test_text_generation(
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
-    if reuse_cache or torch_compile:
+    if reuse_cache or torch_compile or fp8:
         command += ["--reuse_cache"]
 
     if torch_compile:
@@ -130,10 +146,10 @@ def _test_text_generation(
         command.append("--bf16")
 
     if fp8:
-        command += [
-            "--reuse_cache",
-            "--trim_logits",
-        ]
+        if "--trim_logits" not in command:
+            command += ["--trim_logits"]
+        if "Llama-2" in model_name:
+            command.remove("--max_new_tokens 100")
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
@@ -153,6 +169,35 @@ def _test_text_generation(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
             )
             command.insert(-2, "--fp8")
+            command.insert(-2, "--warmup 1")
+            command.insert(-2, "--n_iterations 2")
+            if "Llama-2" in model_name:
+                command.insert(-2, "--limit_hpu_graphs")
+                command.insert(-2, "--max_input_tokens 1")
+                command.insert(-2, "--max_new_tokens 1")
+                command = [x for y in command for x in re.split(pattern, y) if x]
+                for model_config in LLAMA2_FP8_CONFIG[model_name]:
+                    command[command.index("--batch_size") + 1] = model_config[0]
+                    command[command.index("--max_input_tokens") + 1] = model_config[1]
+                    command[command.index("--max_new_tokens") + 1] = model_config[2]
+                    baseline = model_config[3]
+                    proc = subprocess.run(command, env=env_variables)
+
+                    # Ensure the run finished without any issue
+                    # Use try-except to avoid logging the token if used
+                    try:
+                        assert proc.returncode == 0
+                    except AssertionError as e:
+                        if "'--token', 'hf_" in e.args[0]:
+                            e.args = (f"The following command failed:\n{' '.join(command[:-2])}",)
+                        raise
+
+                    with open(Path(tmp_dir) / "results.json") as fp:
+                        results = json.load(fp)
+
+                    # Ensure performance requirements (throughput) are met
+                    assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
+                return
 
         proc = subprocess.run(command, env=env_variables)
 
@@ -179,8 +224,8 @@ def test_text_generation_bf16(model_name: str, baseline: float, batch_size: int,
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["fp8"])
 def test_text_generation_fp8(model_name: str, baseline: float, token: str):
-    deepspeed = True if "falcon-180B" in model_name else False
-    world_size = 8 if "falcon-180B" in model_name else None
+    deepspeed = True if "falcon-180B" in model_name or "Llama-2-70b" in model_name else False
+    world_size = 8 if "falcon-180B" in model_name or "Llama-2-70b" in model_name else None
     _test_text_generation(model_name, baseline, token, deepspeed=deepspeed, world_size=world_size, fp8=True)
 
 
