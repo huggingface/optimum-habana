@@ -76,7 +76,9 @@ def _get_supported_models_for_script(
     """
 
     def is_valid_model_type(model_type: str) -> bool:
-        in_task_mapping = CONFIG_MAPPING[model_type] in task_mapping
+        # llama_guard is not a model type in Transformers so CONFIG_MAPPING wouldn't find it
+        true_model_type = "llama" if model_type == "llama_guard" else model_type
+        in_task_mapping = CONFIG_MAPPING[true_model_type] in task_mapping
         in_valid_models_for_task = model_type in valid_models_for_task
         if in_task_mapping and in_valid_models_for_task:
             return True
@@ -187,6 +189,7 @@ class ExampleTestMeta(type):
             "bigscience/bloom-7b1",
             "codellama/CodeLlama-13b-Instruct-hf",
             "MIT/ast-finetuned-speech-commands-v2",
+            "meta-llama/LlamaGuard-7b",
         ]
 
         if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
@@ -220,6 +223,8 @@ class ExampleTestMeta(type):
         elif "falcon" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and not fsdp:
             return True
         elif "bloom" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "0":
+            return True
+        elif "LlamaGuard" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "1":
             return True
         elif "ast-finetuned-speech-commands-v2" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
             return True
@@ -552,6 +557,13 @@ class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMe
 
 class MultiCardTextClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue", multi_card=True
+):
+    TASK_NAME = "mrpc"
+    DATASET_PARAMETER_NAME = "task_name"
+
+
+class DeepSpeedTextClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue", deepspeed=True
 ):
     TASK_NAME = "mrpc"
     DATASET_PARAMETER_NAME = "task_name"

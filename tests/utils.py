@@ -57,6 +57,7 @@ MODELS_TO_TEST_MAPPING = {
     "falcon": [("tiiuae/falcon-40b", "Habana/falcon")],
     "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
     "whisper": [("openai/whisper-small", "Habana/whisper")],
+    "llama_guard": [("meta-llama/LlamaGuard-7b", "Habana/llama")],
     "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/llama")],
 }
 
@@ -70,6 +71,7 @@ MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
 # Only BERT has been officially validated for sequence classification
 MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     "bert",
+    "llama_guard",
     # "roberta",
     # "albert",
     # "distilbert",
