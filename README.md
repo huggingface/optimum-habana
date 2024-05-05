@@ -14,7 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-![](https://github.com/huggingface/optimum-habana/blob/main/readme_logo.png)
+<a href="https://github.com/huggingface/optimum-habana#gh-light-mode-only">
+  <img src="https://github.com/huggingface/optimum-habana/blob/update_readme_logo/readme_logo_light.png"/>
+</a>
+
+<a href="https://github.com/huggingface/optimum-habana#gh-dark-mode-only">
+  <img src="https://github.com/huggingface/optimum-habana/blob/update_readme_logo/readme_logo_dark.png"/>
+</a>
 
 
 # Optimum for Intel® Gaudi® Accelerators 
