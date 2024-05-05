@@ -639,8 +639,8 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
 ```
 
 To run prompt tuning finetuning, you can use `run_prompt_tuning_clm.py`.
-Here are single-/multi-device command examples for Llama2-7B
-- single-card finetuning of meta-llama/Llama-2-7b-hf in dataset "ought/raft" and config "twitter_complaints":
+Here are single-/multi-device command examples for Llama2-7B:
+- single-card finetuning of meta-llama/Llama-2-7b-hf with dataset "ought/raft" and config "twitter_complaints":
 ```bash
 python3 run_prompt_tuning_clm.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf \
@@ -659,7 +659,7 @@ python3 run_prompt_tuning_clm.py \
     --use_lazy_mode
 ```
 
-- multi-card finetuning of meta-llama/Llama-2-7b-hf in dataset "ought/raft" and config "twitter_complaints":
+- multi-card finetuning of meta-llama/Llama-2-7b-hf with dataset "ought/raft" and config "twitter_complaints":
 ```bash
 python3 ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_prompt_tuning_clm.py \
@@ -678,9 +678,9 @@ python3 ../gaudi_spawn.py \
     --use_habana  \
     --use_lazy_mode
 ```
-Default peft_type is prompt_tuning, you could enable prefix-tuning or p-tuning using "--peft_type prefix_tuning" or "--peft_type p_tuning"
+Default `peft_type` is `prompt_tuning`, you could enable prefix-tuning or p-tuning using "--peft_type prefix_tuning" or "--peft_type p_tuning"
 
-use the prompt finetuned model for text-generation:
+Use the prompt finetuned model for text-generation:
 ```bash
 python3 ../text-generation/run_generation.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf  \
