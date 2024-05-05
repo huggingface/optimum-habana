@@ -380,7 +380,7 @@ class GaudiLlamaAttention(LlamaAttention):
             # reuse k, v, self_attention
             if reuse_cache:
                 if past_key_value is not None and isinstance(past_key_value[0], torch.Tensor):
-                    # prefix tunining case. attach past_key_value to generate first token.
+                    # prefix tuning case. attach past_key_value to generate first token.
                     key_states = torch.cat((past_key_value[0], key_states), -2)
                     value_states = torch.cat((past_key_value[1], value_states), -2)
                 key_states = self.k_cache(key_states, 2, token_idx)
