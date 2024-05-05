@@ -15,15 +15,15 @@ limitations under the License.
 -->
 
 <a href="https://github.com/huggingface/optimum-habana#gh-light-mode-only">
-  <img src="https://github.com/huggingface/optimum-habana/blob/update_readme_logo/readme_logo_light.png"/>
+  <img src="https://github.com/huggingface/optimum-habana/blob/main/readme_logo_light.png"/>
 </a>
 
 <a href="https://github.com/huggingface/optimum-habana#gh-dark-mode-only">
-  <img src="https://github.com/huggingface/optimum-habana/blob/update_readme_logo/readme_logo_dark.png"/>
+  <img src="https://github.com/huggingface/optimum-habana/blob/main/readme_logo_dark.png"/>
 </a>
 
 
-# Optimum for Intel® Gaudi® Accelerators 
+# Optimum for Intel® Gaudi® Accelerators
 
 Optimum for Intel Gaudi - a.k.a. `optimum-habana` - is the interface between the Transformers and Diffusers libraries and [Intel Gaudi AI Accelerators (HPU)](https://docs.habana.ai/en/latest/index.html).
 It provides a set of tools enabling easy model loading, training and inference on single- and multi-HPU settings for different downstream tasks.
