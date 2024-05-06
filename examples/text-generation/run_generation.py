@@ -247,6 +247,12 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to use torch compiled model or not.",
     )
+    parser.add_argument(
+        "--ignore_eos",
+        default=True,
+        action=argparse.BooleanOptionalAction,
+        help="Whether to ignore eos, set False to disable it",
+    )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
     parser.add_argument(
@@ -259,6 +265,11 @@ def setup_parser(parser):
         "--disk_offload",
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+    )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
     )
     args = parser.parse_args()
 
@@ -377,6 +388,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                ignore_eos=args.ignore_eos,
                 iteration_times=iteration_times,
             ).cpu()
             first_token_time = iteration_times[0] + encode_duration
@@ -560,6 +572,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                ignore_eos=args.ignore_eos,
             ).cpu()
             return prompt, outputs
 
