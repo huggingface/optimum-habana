@@ -294,7 +294,7 @@ class GaudiMistralAttention(MistralAttention):
                 kv_seq_len += kv_shape
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(
-            query_states, key_states, cos, sin, position_ids, use_fused_rope=use_fused_rope
+            query_states, key_states, cos, sin, position_ids
         )
 
         if use_cache:
@@ -669,6 +669,10 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        if self.generation_config.use_fused_rope is False:
+            global has_fused_rope
+            has_fused_rope = False
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
@@ -802,8 +806,8 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         return model_inputs
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids, use_fused_rope=True):
-    if q.device.type == "hpu" and has_fused_rope and use_fused_rope:
+def apply_customized_rope(q, k, cos, sin, position_ids):
+    if q.device.type == "hpu" and has_fused_rope:
         # TODO: remove `.clone()` when SynapseAI v1.15 is released
         if k.dtype == torch.bfloat16:
             return FusedRoPE.apply(
