@@ -195,7 +195,9 @@ class ExampleTestMeta(type):
 
         if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
             return False
-        elif ("sft" in example_name or "dpo" in example_name) and os.environ.get("GAUDI2_CI", "0") == "0":
+        elif ("sft" in example_name or "dpo" in example_name or "prompt_tuning" in example_name) and os.environ.get(
+            "GAUDI2_CI", "0"
+        ) == "0":
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True

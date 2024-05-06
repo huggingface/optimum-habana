@@ -250,9 +250,7 @@ def setup_parser(parser):
     parser.add_argument(
         "--ignore_eos",
         default=True,
-        const=True,
-        nargs="?",
-        type=lambda x: x.lower() == "true",
+        action=argparse.BooleanOptionalAction,
         help="Whether to ignore eos, set False to disable it",
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")

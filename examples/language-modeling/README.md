@@ -639,9 +639,10 @@ DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 LOWER_LIST=ops_bf16.txt python3 ..
     --validation_split_percentage 5 \
     --deepspeed ds_falcon_180b_z3.json
 ```
-Default `peft_type` is `lora`, you could enable adalora or ia3 using "--peft_type adalora" or "--peft_type ia3"
+Default `peft_type` is `lora`, you could enable adalora or ia3 using `--peft_type adalora` or `--peft_type ia3`.
 
 ### Prompt/Prefix/P-tuning
+
 To run prompt tuning finetuning, you can use `run_prompt_tuning_clm.py`.
 Here are single-/multi-device command examples for Llama2-7B:
 - single-card finetuning of meta-llama/Llama-2-7b-hf with dataset "ought/raft" and config "twitter_complaints":
@@ -682,7 +683,7 @@ python3 ../gaudi_spawn.py \
     --use_habana  \
     --use_lazy_mode
 ```
-Default `peft_type` is `prompt_tuning`, you could enable prefix-tuning or p-tuning using "--peft_type prefix_tuning" or "--peft_type p_tuning"
+Default `peft_type` is `prompt_tuning`, you could enable prefix-tuning or p-tuning using `--peft_type prefix_tuning` or `--peft_type p_tuning`.
 
 Use the prompt finetuned model for text-generation:
 ```bash
@@ -693,7 +694,7 @@ python3 ../text-generation/run_generation.py \
     --use_kv_cache \
     --batch_size 1 \
     --use_hpu_graphs \
-    --ignore_eos False \
+    --ignore_eos \
     --peft_model prompt_tuning_out \
     --prompt "@SEPTA_SOCIAL Ok. Thanks. Label :"
 
