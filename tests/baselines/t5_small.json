@@ -7,10 +7,10 @@
                 "multi_card": {
                     "learning_rate": 5e-5,
                     "train_batch_size": 4,
-                    "eval_rougeLsum": 38.6197,
-                    "train_runtime": 1087.1076,
-                    "train_samples_per_second": 268.231,
-                    "eval_samples_per_second": 68.222,
+                    "eval_rougeLsum": 38.5895,
+                    "train_runtime": 1089.366,
+                    "train_samples_per_second": 267.843,
+                    "eval_samples_per_second": 71.913,
                     "extra_arguments": [
                         "--dataset_config \"3.0.0\"",
                         "--source_prefix \"summarize: \"",
@@ -30,9 +30,9 @@
                 "multi_card": {
                     "learning_rate": 2e-4,
                     "train_batch_size": 16,
-                    "eval_f1": 64.8034,
-                    "train_runtime": 228.8655,
-                    "train_samples_per_second": 1246.527,
+                    "eval_f1": 64.8769,
+                    "train_runtime": 230.6405,
+                    "train_samples_per_second": 1235.893,
                     "extra_arguments": [
                         "--context_column context",
                         "--question_column question",
@@ -57,10 +57,10 @@
                 "multi_card": {
                     "learning_rate": 2e-4,
                     "train_batch_size": 32,
-                    "eval_rougeLsum": 38.5749,
-                    "train_runtime": 162.5389,
-                    "train_samples_per_second": 1870.707,
-                    "eval_samples_per_second": 78.586,
+                    "eval_rougeLsum": 38.5648,
+                    "train_runtime": 164.962,
+                    "train_samples_per_second": 1912.578,
+                    "eval_samples_per_second": 116.48,
                     "extra_arguments": [
                         "--dataset_config \"3.0.0\"",
                         "--source_prefix \"summarize: \"",
@@ -80,9 +80,9 @@
                 "multi_card": {
                     "learning_rate": 2e-3,
                     "train_batch_size": 64,
-                    "eval_f1": 66.4991,
-                    "train_runtime": 53.9037,
-                    "train_samples_per_second": 5710.614,
+                    "eval_f1": 65.7157,
+                    "train_runtime": 49.5816,
+                    "train_samples_per_second": 6353.351,
                     "extra_arguments": [
                         "--context_column context",
                         "--question_column question",

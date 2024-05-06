@@ -66,27 +66,51 @@ python textual_inversion.py \
 > As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`. However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters. This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one, *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
 
 
+## ControlNet Training
+
+ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models ](https://huggingface.co/papers/2302.05543) by Lvmin Zhang and Maneesh Agrawala. It is a type of model for controlling StableDiffusion by conditioning the model with an additional input image.
+This example is adapted from [controlnet example in the diffusers repository](https://github.com/huggingface/diffusers/tree/main/examples/controlnet#training).
+
+First, download the conditioning images as shown below:
+
+```bash
+wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png
+wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
+```
+
+Then proceed to training with command:
+
+```bash
+python train_controlnet.py \
+ --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5\
+ --output_dir=/tmp/stable_diffusion1_5 \
+ --dataset_name=fusing/fill50k \
+ --resolution=512 \
+ --learning_rate=1e-5 \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+ --train_batch_size=4 \
+ --throughput_warmup_steps=3 \
+ --use_hpu_graphs \
+ --bf16
+```
+
 ### Multi-card Run
 
-You can run this fine-tuning script in a distributed fashion as follows:
+You can run these fine-tuning scripts in a distributed fashion as follows:
 ```bash
-python ../../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
+python ../../gaudi_spawn.py --use_mpi --world_size 8 train_controlnet.py \
   --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
-  --train_data_dir ./cat \
-  --learnable_property object \
-  --placeholder_token '"<cat-toy>"' \
-  --initializer_token toy \
-  --resolution 512 \
-  --train_batch_size 4 \
-  --max_train_steps 375 \
-  --learning_rate 5.0e-04 \
-  --scale_lr \
-  --lr_scheduler constant \
-  --lr_warmup_steps 0 \
-  --output_dir /tmp/textual_inversion_cat \
-  --save_as_full_pipeline \
-  --gaudi_config_name Habana/stable-diffusion \
-  --throughput_warmup_steps 3
+  --output_dir=/tmp/stable_diffusion1_5 \
+  --dataset_name=fusing/fill50k \
+  --resolution=512 \
+  --learning_rate=1e-5 \
+  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
+  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+  --train_batch_size=4 \
+  --throughput_warmup_steps 3 \
+  --use_hpu_graphs \
+  --bf16
 ```
 
 
@@ -95,23 +119,36 @@ python ../../gaudi_spawn.py --use_mpi --world_size 8 textual_inversion.py \
 Once you have trained a model as described right above, inference can be done simply using the `GaudiStableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
 
 ```python
+from diffusers import ControlNetModel, UniPCMultistepScheduler
+from diffusers.utils import load_image
 import torch
-from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
 
-model_id = "path-to-your-trained-model"
-pipe = GaudiStableDiffusionPipeline.from_pretrained(
-  model_id,
-  torch_dtype=torch.bfloat16,
-  use_habana=True,
-  use_hpu_graphs=True,
-  gaudi_config="Habana/stable-diffusion",
+base_model_path = "runwayml/stable-diffusion-v1-5"
+controlnet_path = "/tmp/stable_diffusion1_5"
+
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.bfloat16)
+pipe = GaudiStableDiffusionControlNetPipeline.from_pretrained(
+    base_model_path,
+    controlnet=controlnet,
+    torch_dtype=torch.bfloat16,
+    use_habana=True,
+    use_hpu_graphs=True,
+    gaudi_config="Habana/stable-diffusion",
 )
 
-prompt = "A <cat-toy> backpack"
+# speed up diffusion process with faster scheduler and memory optimization
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
-image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+control_image = load_image("./conditioning_image_1.png")
+prompt = "pale golden rod circle with old lace background"
 
-image.save("cat-backpack.png")
+# generate image
+generator = torch.manual_seed(0)
+image = pipe(
+    prompt, num_inference_steps=20, generator=generator, image=control_image
+).images[0]
+image.save("./output.png")
 ```
 
 
@@ -211,8 +248,13 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
   --output_dir sdxl-pokemon-model \
   --gaudi_config_name Habana/stable-diffusion \
   --throughput_warmup_steps 3 \
+  --use_hpu_graphs_for_training \
+  --use_hpu_graphs_for_inference \
   --bf16
 ```
 
-**Note:** There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.
+> [!NOTE]
+> There is a known issue that in the first 2 steps, graph compilation takes longer than 10 seconds. This will be fixed in a future release.
 
+> [!NOTE]
+> `--mediapipe` only works on Gaudi2.

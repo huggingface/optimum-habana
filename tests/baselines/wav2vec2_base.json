@@ -7,10 +7,10 @@
                 "multi_card": {
                     "learning_rate": 5e-4,
                     "train_batch_size": 32,
-                    "eval_accuracy": 0.8045,
-                    "train_runtime": 363.7165,
-                    "train_samples_per_second": 715.004,
-                    "eval_samples_per_second": 312.719,
+                    "eval_accuracy": 0.8013,
+                    "train_runtime": 366.8081,
+                    "train_samples_per_second": 716.385,
+                    "eval_samples_per_second": 329.12,
                     "extra_arguments": [
                         "--audio_column_name audio",
                         "--label_column_name language",
@@ -35,10 +35,10 @@
                 "multi_card": {
                     "learning_rate": 5e-4,
                     "train_batch_size": 32,
-                    "eval_accuracy": 0.795,
-                    "train_runtime": 109.4142,
-                    "train_samples_per_second": 2962.248,
-                    "eval_samples_per_second": 580.266,
+                    "eval_accuracy": 0.8006,
+                    "train_runtime": 109.2047,
+                    "train_samples_per_second": 3048.207,
+                    "eval_samples_per_second": 631.601,
                     "extra_arguments": [
                         "--audio_column_name audio",
                         "--label_column_name language",
