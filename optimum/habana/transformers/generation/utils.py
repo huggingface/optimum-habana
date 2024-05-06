@@ -1802,9 +1802,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 if token_idx is not None:
                     # Reset inputs to top_k_ids for static shapes to override selection by token_idx
                     if self.config.is_encoder_decoder:
-                        next_model_inputs["decoder_input_ids"] =top_k_ids[:, selected_idx].view(-1, 1)
+                        next_model_input["decoder_input_ids"] =top_k_ids[:, selected_idx].view(-1, 1)
                     else:
-                        next_model_inputs["input_ids"] = top_k_ids[:, selected_idx].view(-1, 1)
+                        next_model_input["input_ids"] = top_k_ids[:, selected_idx].view(-1, 1)
 
                 selected_outputs = self(
                     **next_model_input,
