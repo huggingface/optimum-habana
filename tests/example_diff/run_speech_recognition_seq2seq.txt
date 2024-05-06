@@ -60,20 +60,20 @@
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-445a472,474
->         model.generation_config.task = data_args.task
->         model.generation_config.language = data_args.language
->         model.generation_config.forced_decoder_ids = None
-449a479,482
+462c488
+<         model.generation_config.forced_decoder_ids = model_args.forced_decoder_ids
+---
+>     model.generation_config.forced_decoder_ids = model_args.forced_decoder_ids
+473a500,503
 >         logger.warning(
 >             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
 >             f" ({feature_extractor.sampling_rate}).Data resampling should be done."
 >         )
-554a588
+578a609
 >         label_features_max_length=data_args.label_features_max_length,
-558c592
+582c613
 <     trainer = Seq2SeqTrainer(
 ---
 >     trainer = GaudiSeq2SeqTrainer(
-559a594
+583a615
 >         gaudi_config=gaudi_config,
