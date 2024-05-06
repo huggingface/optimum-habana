@@ -702,7 +702,7 @@ python3 ../text-generation/run_generation.py \
 
 ## Streaming
 
-To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified in the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
+To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified in the command line. This is supported by `run_mlm.py` and `run_clm.py`.
 
 For example:
 ```bash
