@@ -37,6 +37,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 0),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 36.77314954096159),
@@ -49,6 +50,14 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "torch_compile_distributed": [
             ("meta-llama/Llama-2-7b-hf", 39.72973199515235),
+        ],
+    }
+    MISTRAL_FP8_CONFIG = {
+        "mistralai/Mistral-7B-Instruct-v0.2": [
+            ("896", "128", "128", 13310.566520719813),
+            ("120", "128", "2048", 7757.383448024244),
+            ("120", "2048", "128", 1352.070452897798),
+            ("44", "2048", "2048", 3101.5205518843136),
         ],
     }
 else:
@@ -79,7 +88,6 @@ else:
         "torch_compile": [],
         "torch_compile_distributed": [],
     }
-
 
 def _test_text_generation(
     model_name: str,
