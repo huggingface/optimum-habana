@@ -230,6 +230,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
     )
+    add_pad_token: bool = field(
+        default=False,
+        metadata={"help": "Will add `pad_token` to tokenizer and model's config as `eos_token` if it's not defined."},
+    )
 
 
 def main():
@@ -451,6 +455,11 @@ def main():
     else:
         # We will pad later, dynamically at batch creation, to the max sequence length in each batch
         padding = False
+
+    if model_args.add_pad_token:
+        if not model.config.pad_token_id and not tokenizer.pad_token:
+            tokenizer.pad_token = tokenizer.eos_token
+            model.config.pad_token_id = tokenizer.eos_token_id
 
     # Some models have set the order of the labels to use, so let's make sure we do use it.
     label_to_id = None
