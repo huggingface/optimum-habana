@@ -280,6 +280,8 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config == "" and args.disk_offload:
+        print("WARNING: --disk_offload was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag.")
     return args
 
 
