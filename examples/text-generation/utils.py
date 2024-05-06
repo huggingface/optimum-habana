@@ -374,6 +374,8 @@ def setup_generation_config(args, model, tokenizer):
 
 def initialize_model(args, logger):
     init_start = time.perf_counter()
+    if args.batch_size == 1 and args.limit_hpu_graphs:
+        args.limit_hpu_graphs = False
     setup_distributed(args)
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
     setup_env(args)
