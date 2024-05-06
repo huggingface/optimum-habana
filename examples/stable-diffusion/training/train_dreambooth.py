@@ -972,12 +972,11 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
-    unet.to("hpu")
     if args.adapter != "full":
         config = create_unet_adapter_config(args)
         unet = get_peft_model(unet, config)
         unet.print_trainable_parameters()
-
+    unet.to(accelerator.device)
     vae.requires_grad_(False)
     if not args.train_text_encoder:
         text_encoder.requires_grad_(False)
@@ -985,7 +984,7 @@ def main(args):
         config = create_text_encoder_adapter_config(args)
         text_encoder = get_peft_model(text_encoder, config)
         text_encoder.print_trainable_parameters()
-
+    text_encoder.to(accelerator.device)
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             unet.enable_xformers_memory_efficient_attention()
@@ -1105,7 +1104,8 @@ def main(args):
             return model
 
     unwrap_model(model=unet, training=True)
-
+    if args.train_text_encoder:
+        unwrap_model(model=text_encoder, training=True)
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1146,7 +1146,6 @@ def main(args):
         unet.train()
         if args.train_text_encoder:
             text_encoder.train()
-            unwrap_model(model=text_encoder, training=True)
         with TorchTracemalloc() as tracemalloc:
             for step, batch in enumerate(train_dataloader):
                 # Skip steps until we reach the resumed step

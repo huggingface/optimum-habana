@@ -1370,7 +1370,9 @@ def main(args):
         accelerator.init_trackers("dreambooth-lora-sd-xl", config=vars(args))
 
     unwrap_model(model=unet, training=True)
-
+    if args.train_text_encoder:
+        unwrap_model(model=text_encoder_one, training=True)
+        unwrap_model(model=text_encoder_two, training=True)
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1424,14 +1426,12 @@ def main(args):
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         if args.train_text_encoder:
-            unwrap_model(model=text_encoder_one, training=True)
-            unwrap_model(model=text_encoder_two, training=True)
             text_encoder_one.train()
             text_encoder_two.train()
 
             # set top parameter requires_grad = True for gradient checkpointing works
-            text_encoder_one.text_model.embeddings.requires_grad_(True)
-            text_encoder_two.text_model.embeddings.requires_grad_(True)
+            accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
+            accelerator.unwrap_model(text_encoder_two).text_model.embeddings.requires_grad_(True)
 
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
