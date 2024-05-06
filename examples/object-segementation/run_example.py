@@ -72,12 +72,14 @@ if __name__ == "__main__":
     adapt_transformers_to_gaudi()
 
     processor = AutoProcessor.from_pretrained(args.model_name_or_path)
-    model = CLIPSegForImageSegmentation.from_pretrained(args.model_name_or_path) # Use CLIPSegForImageSegmentation instead of automodel.
-                                                                                #  The output will contains the logits which are required to generated segmented images
+    model = CLIPSegForImageSegmentation.from_pretrained(
+        args.model_name_or_path
+    )  # Use CLIPSegForImageSegmentation instead of automodel.
+    #  The output will contains the logits which are required to generated segmented images
 
     image = Image.open(requests.get(args.image_path, stream=True).raw)
     texts = []
-    for text in args.prompt.split(','):
+    for text in args.prompt.split(","):
         texts.append(text)
 
     if args.use_hpu_graphs:
@@ -88,13 +90,13 @@ if __name__ == "__main__":
 
     with torch.no_grad(), autocast:
         for i in range(args.warmup):
-            inputs = processor(text=texts, images=[image]* len(texts), padding=True, return_tensors="pt").to("hpu")
+            inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to("hpu")
             outputs = model(**inputs)
             torch.hpu.synchronize()
 
         total_model_time = 0
         for i in range(args.n_iterations):
-            inputs = processor(text=texts, images=[image]* len(texts), padding=True, return_tensors="pt").to("hpu")
+            inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to("hpu")
             model_start_time = time.time()
             outputs = model(**inputs)
             torch.hpu.synchronize()
@@ -102,15 +104,15 @@ if __name__ == "__main__":
             total_model_time = total_model_time + (model_end_time - model_start_time)
 
             if args.print_result:
-                if (i == 0): # generate/output once only
+                if i == 0:  # generate/output once only
                     logits = outputs.logits
                     for j in range(logits.shape[0]):
                         threshold = 0.5
-                        segmented_image = ((torch.sigmoid(logits[j])  > threshold)*255).unsqueeze(0)
+                        segmented_image = ((torch.sigmoid(logits[j]) > threshold) * 255).unsqueeze(0)
                         segmented_image = segmented_image.to(torch.float32)
-                        save_image(segmented_image, 'segmented_' + texts[j].strip() + '.png')
-                    print('Segmented images are generated.')
+                        save_image(segmented_image, "segmented_" + texts[j].strip() + ".png")
+                    print("Segmented images are generated.")
 
     print("n_iterations: " + str(args.n_iterations))
-    print("Total latency (ms): " + str(total_model_time*1000))
-    print("Average latency (ms): " + str(total_model_time*1000/args.n_iterations))
+    print("Total latency (ms): " + str(total_model_time * 1000))
+    print("Average latency (ms): " + str(total_model_time * 1000 / args.n_iterations))

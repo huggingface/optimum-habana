@@ -29,10 +29,12 @@ adapt_transformers_to_gaudi()
 # For Gaudi 2
 LATENCY_ClipSeg_BF16_GRAPH_BASELINE = 5.3107380867004395
 
+
 class GaudiClipSegTester(TestCase):
     """
     Tests for ClipSeg model
     """
+
     def prepare_model_and_processor(self):
         model = AutoModel.from_pretrained("CIDAS/clipseg-rd64-refined").to("hpu")
         processor = AutoProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
@@ -51,7 +53,7 @@ class GaudiClipSegTester(TestCase):
         inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to("hpu")
         outputs = model(**inputs)
         probs = outputs.logits_per_image.softmax(dim=-1).detach().cpu().numpy()[0]
-        expected_scores = np.array([0.02889409, 0.87959206, 0.09151383]) #from CPU
+        expected_scores = np.array([0.02889409, 0.87959206, 0.09151383])  # from CPU
         self.assertEqual(len(probs), 3)
         self.assertLess(np.abs(probs - expected_scores).max(), 0.01)
 
@@ -60,10 +62,10 @@ class GaudiClipSegTester(TestCase):
         texts, image = self.prepare_data()
         inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to("hpu")
 
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16): # Autocast BF16
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16):  # Autocast BF16
             outputs = model(**inputs)
             probs = outputs.logits_per_image.softmax(dim=-1).to(torch.float32).detach().cpu().numpy()[0]
-            expected_scores = np.array([0.02889409, 0.87959206, 0.09151383]) #from CPU
+            expected_scores = np.array([0.02889409, 0.87959206, 0.09151383])  # from CPU
             self.assertEqual(len(probs), 3)
             self.assertEqual(probs.argmax(), expected_scores.argmax())
 
@@ -72,11 +74,11 @@ class GaudiClipSegTester(TestCase):
         texts, image = self.prepare_data()
         inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to("hpu")
 
-        model = ht.hpu.wrap_in_hpu_graph(model) #Apply graph
+        model = ht.hpu.wrap_in_hpu_graph(model)  # Apply graph
 
         outputs = model(**inputs)
         probs = outputs.logits_per_image.softmax(dim=-1).to(torch.float32).detach().cpu().numpy()[0]
-        expected_scores = np.array([0.02889409, 0.87959206, 0.09151383]) #from CPU
+        expected_scores = np.array([0.02889409, 0.87959206, 0.09151383])  # from CPU
         self.assertEqual(len(probs), 3)
         self.assertEqual(probs.argmax(), expected_scores.argmax())
 
@@ -91,18 +93,22 @@ class GaudiClipSegTester(TestCase):
 
         with torch.no_grad(), torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=True):
             for i in range(warmup):
-                inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to("hpu")
+                inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to(
+                    "hpu"
+                )
                 _ = model(**inputs)
                 torch.hpu.synchronize()
 
             total_model_time = 0
             for i in range(iterations):
-                inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to("hpu")
+                inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to(
+                    "hpu"
+                )
                 model_start_time = time.time()
                 _ = model(**inputs)
                 torch.hpu.synchronize()
                 model_end_time = time.time()
                 total_model_time = total_model_time + (model_end_time - model_start_time)
 
-        latency = total_model_time*1000/iterations # in terms of ms
+        latency = total_model_time * 1000 / iterations  # in terms of ms
         self.assertLessEqual(latency, 1.05 * LATENCY_ClipSeg_BF16_GRAPH_BASELINE)
