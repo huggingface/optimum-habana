@@ -165,6 +165,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_CAUSAL_LM_MAPPING,
         ["llama"],
     ),
+    "run_prompt_tuning_clm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama"],
+    ),
 }
 
 
@@ -194,7 +199,9 @@ class ExampleTestMeta(type):
 
         if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
             return False
-        elif ("sft" in example_name or "dpo" in example_name) and os.environ.get("GAUDI2_CI", "0") == "0":
+        elif ("sft" in example_name or "dpo" in example_name or "prompt_tuning" in example_name) and os.environ.get(
+            "GAUDI2_CI", "0"
+        ) == "0":
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -691,3 +698,24 @@ class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, ex
 class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="dpo", multi_card=True):
     TASK_NAME = "trl-dpo"
     DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardCausalLanguageModelingPromptTuningExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
+):
+    TASK_NAME = ["prompt-tuning"]
+    DATASET_NAME = "ought/raft"
+
+
+class MultiCardCausalLanguageModelingPrefixTuningExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
+):
+    TASK_NAME = ["prefix-tuning"]
+    DATASET_NAME = "ought/raft"
+
+
+class MultiCardCausalLanguageModelingPTuningExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
+):
+    TASK_NAME = ["p-tuning"]
+    DATASET_NAME = "ought/raft"

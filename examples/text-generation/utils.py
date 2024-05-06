@@ -171,10 +171,14 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
+        from optimum.habana.transformers.trainer import _is_peft_model
+
         if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
             model = wrap_in_hpu_graph(model, hash_with_views=False)
         else:
             model = wrap_in_hpu_graph(model)
+        if _is_peft_model(model):
+            model.base_model = wrap_in_hpu_graph(model.base_model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
@@ -285,11 +289,17 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
 
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = PeftModel.from_pretrained(model, args.peft_model, torch_dtype=model_dtype, **model_kwargs)
+    if hasattr(model, "merge_and_unload"):
+        model = model.merge_and_unload()
+        if model_dtype == torch.bfloat16:
+            model = model.to(torch.bfloat16)
+        return model
+    else:
+        from optimum.habana.peft.peft_model import gaudi_generate, gaudi_prepare_inputs_for_generation
 
-    model = model.merge_and_unload()
-    if model_dtype == torch.bfloat16:
-        model = model.to(torch.bfloat16)
-    return model
+        model.__class__.generate = gaudi_generate
+        model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
+        return model
 
 
 def setup_tokenizer(args, model):
