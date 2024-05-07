@@ -19,23 +19,25 @@ from peft.tuners.lora.layer import Linear as PEFTLinear
 from optimum.habana.peft.layer import LoRALinear
 
 
-try:
-    import habana_frameworks.torch.hpex.experimental.transformer_engine as te
-
-    has_transformer_engine = True
-except ImportError:
-    has_transformer_engine = False
+te = None
 
 
-def is_fp8_available():
-    return has_transformer_engine
+def get_te():
+    global te
+    if te is None:
+        try:
+            import habana_frameworks.torch.hpex.experimental.transformer_engine as te
+
+            te = te
+        except ImportError:
+            te = None
 
 
 def convert_model(model, to_transformer_engine=True, _convert_linear=True):
     """
     Recursively converts the linear and layernorm layers of a model to their `transformers_engine` counterpart.
     """
-    if not has_transformer_engine:
+    if te is None:
         raise ImportError("Using `convert_model` requires transformer_engine to be installed.")
 
     for name, module in model.named_children():
@@ -80,9 +82,47 @@ def has_transformer_engine_layers(model):
     """
     Returns whether a given model has some `transformer_engine` layer or not.
     """
-    if not is_fp8_available():
+    if te is None:
+        # if not is_fp8_available():
         raise ImportError("Using `has_transformer_engine_layers` requires transformer_engine to be installed.")
     for m in model.modules():
         if isinstance(m, (te.Linear)):
             return True
     return False
+
+
+def setup_fp8_recipe_handler(fp8_recipe_format):
+    get_te()
+    fp8_format = te.recipe.Format.E5M2
+    if fp8_recipe_format == "E4M3":
+        fp8_format = te.recipe.Format.E4M3
+    elif fp8_recipe_format == "HYBRID":
+        fp8_format = te.recipe.Format.HYBRID
+    fp8_recipe_handler = te.recipe.DelayedScaling(
+        fp8_format=fp8_format,
+        margin=0,
+        interval=16,
+        amax_history_len=1,
+        amax_compute_algo="most_recent",
+        reduce_amax=False,
+    )
+    fp8_recipe_handler.backend = "TE"
+    return fp8_recipe_handler
+
+
+class SwitchableForwardMaker:
+    def __init__(self, module, fp8_recipe_handler):
+        self.original_forward = module.forward
+        self.fp8_forward = te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe_handler)(module.forward)
+        self.module = module
+        module.forward = self.forward
+
+    def forward(self, *args, **kwargs):
+        if self.module.training:
+            return self.fp8_forward(*args, **kwargs)
+        else:
+            return self.original_forward(*args, **kwargs)
+
+    @staticmethod
+    def convert(module, fp8_recipe_handler):
+        SwitchableForwardMaker(module, fp8_recipe_handler)

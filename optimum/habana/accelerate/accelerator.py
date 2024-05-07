@@ -75,34 +75,14 @@ from .utils import (
     GaudiDynamoBackend,
     GaudiFullyShardedDataParallelPlugin,
     GaudiTorchDynamoPlugin,
+    SwitchableForwardMaker,
     convert_model,
     has_transformer_engine_layers,
-    is_fp8_available,
+    setup_fp8_recipe_handler,
 )
 
 
-if is_fp8_available():
-    import habana_frameworks.torch.hpex.experimental.transformer_engine as te
-
 logger = get_logger(__name__)
-
-
-class SwitchableForwardMaker:
-    def __init__(self, module, fp8_recipe_handler):
-        self.original_forward = module.forward
-        self.fp8_forward = te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe_handler)(module.forward)
-        self.module = module
-        module.forward = self.forward
-
-    def forward(self, *args, **kwargs):
-        if self.module.training:
-            return self.fp8_forward(*args, **kwargs)
-        else:
-            return self.original_forward(*args, **kwargs)
-
-    @staticmethod
-    def convert(module, fp8_recipe_handler):
-        SwitchableForwardMaker(module, fp8_recipe_handler)
 
 
 class GaudiAccelerator(Accelerator):
@@ -246,20 +226,7 @@ class GaudiAccelerator(Accelerator):
             **kwargs,
         )
         if self.fp8_recipe_handler is None and self.state.is_fp8_enabled:
-            fp8_format = te.recipe.Format.E5M2
-            if self.fp8_recipe_format == "E4M3":
-                fp8_format = te.recipe.Format.E4M3
-            elif self.fp8_recipe_format == "HYBRID":
-                fp8_format = te.recipe.Format.HYBRID
-            self.fp8_recipe_handler = te.recipe.DelayedScaling(
-                fp8_format=fp8_format,
-                margin=0,
-                interval=16,
-                amax_history_len=1,
-                amax_compute_algo="most_recent",
-                reduce_amax=False,
-            )
-            self.fp8_recipe_handler.backend = "TE"
+            self.fp8_recipe_handler = setup_fp8_recipe_handler(self.fp8_recipe_format)
         trackers = filter_trackers(log_with, self.logging_dir)
         if len(trackers) < 1 and log_with is not None:
             warnings.warn(f"`log_with={log_with}` was passed but no supported trackers are currently installed.")

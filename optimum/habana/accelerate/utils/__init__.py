@@ -5,7 +5,8 @@ from .dataclasses import (
     GaudiTorchDynamoPlugin,
 )
 from .transformer_engine import (
+    SwitchableForwardMaker,
     convert_model,
     has_transformer_engine_layers,
-    is_fp8_available,
+    setup_fp8_recipe_handler,
 )

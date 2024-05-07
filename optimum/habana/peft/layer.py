@@ -1,6 +1,5 @@
 from typing import Any
 
-import habana_frameworks.torch.hpex.experimental.transformer_engine as te
 import torch
 from peft.utils.other import transpose
 
@@ -67,6 +66,8 @@ class LoRALinear:
     def __init__(self, module):
         has_bias = module.bias is not None
         self.module = module
+        import habana_frameworks.torch.hpex.experimental.transformer_engine as te
+
         self.module.te_linear = te.Linear(
             module.in_features,
             module.out_features,
