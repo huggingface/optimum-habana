@@ -392,7 +392,7 @@ python3 run_lora_clm.py \
     --fp8 True \
     --output_dir ./model_lora_mistral \
     --num_train_epochs 3 \
-    --per_device_train_batch_size 2 \
+    --per_device_train_batch_size 8 \
     --evaluation_strategy "no" \
     --save_strategy "no" \
     --learning_rate 1e-4 \

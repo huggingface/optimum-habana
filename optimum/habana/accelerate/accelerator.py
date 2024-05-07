@@ -75,10 +75,10 @@ from .utils import (
     GaudiDynamoBackend,
     GaudiFullyShardedDataParallelPlugin,
     GaudiTorchDynamoPlugin,
-    SwitchableForwardMaker,
-    convert_model,
-    has_transformer_engine_layers,
-    setup_fp8_recipe_handler,
+    te_forward_convert,
+    te_setup_fp8_recipe_handler,
+    te_wrap_fp8,
+    te_wrap_fp8_forward_convert,
 )
 
 
@@ -226,7 +226,7 @@ class GaudiAccelerator(Accelerator):
             **kwargs,
         )
         if self.fp8_recipe_handler is None and self.state.is_fp8_enabled:
-            self.fp8_recipe_handler = setup_fp8_recipe_handler(self.fp8_recipe_format)
+            self.fp8_recipe_handler = te_setup_fp8_recipe_handler(self.fp8_recipe_format)
         trackers = filter_trackers(log_with, self.logging_dir)
         if len(trackers) < 1 and log_with is not None:
             warnings.warn(f"`log_with={log_with}` was passed but no supported trackers are currently installed.")
@@ -296,13 +296,6 @@ class GaudiAccelerator(Accelerator):
     def use_fp16(self):
         raise ValueError("fp16 is not supported on Habana Gaudi.")
 
-    def wrap_fp8(self, model):
-        if not has_transformer_engine_layers(model):
-            with torch.no_grad():
-                convert_model(model)
-            model._converted_to_transformer_engine = True
-        return model
-
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """
         Prepares a PyTorch model for training in any distributed setup. It is recommended to use
@@ -357,8 +350,7 @@ class GaudiAccelerator(Accelerator):
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
         elif self.state.is_fp8_enabled:
-            model = self.wrap_fp8(model)
-            SwitchableForwardMaker.convert(model, self.fp8_recipe_handler)
+            model = te_wrap_fp8_forward_convert(model, self.fp8_recipe_handler)
         # FP8 is not supported on Gaudi2 yet
         # elif self.mixed_precision == "fp8":
         #     if not has_transformer_engine_layers(model):
@@ -477,7 +469,7 @@ class GaudiAccelerator(Accelerator):
         result = [
             self._prepare_one(obj, first_pass=True)
             if isinstance(obj, torch.utils.data.DataLoader)
-            else self.wrap_fp8(obj)
+            else te_wrap_fp8(obj)
             if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled
             else obj
             for obj in args
@@ -694,7 +686,7 @@ class GaudiAccelerator(Accelerator):
             # pointing for deepspeed_engine_wrapped.backward()
             self.deepspeed_engine_wrapped = DeepSpeedEngineWrapper(engine)
             if self.state.is_fp8_enabled:
-                SwitchableForwardMaker.convert(engine, self.fp8_recipe_handler)
+                model = te_forward_convert(engine, self.fp8_recipe_handler)
             self._models.append(engine)
             if optimizer is not None:
                 self._optimizers.append(optimizer)

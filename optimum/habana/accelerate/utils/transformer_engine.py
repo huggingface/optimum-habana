@@ -22,6 +22,24 @@ from optimum.habana.peft.layer import LoRALinear
 te = None
 
 
+class SwitchableForwardMaker:
+    def __init__(self, module, fp8_recipe_handler):
+        self.original_forward = module.forward
+        self.fp8_forward = te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe_handler)(module.forward)
+        self.module = module
+        module.forward = self.forward
+
+    def forward(self, *args, **kwargs):
+        if self.module.training:
+            return self.fp8_forward(*args, **kwargs)
+        else:
+            return self.original_forward(*args, **kwargs)
+
+    @staticmethod
+    def convert(module, fp8_recipe_handler):
+        SwitchableForwardMaker(module, fp8_recipe_handler)
+
+
 def get_te():
     global te
     if te is None:
@@ -83,7 +101,6 @@ def has_transformer_engine_layers(model):
     Returns whether a given model has some `transformer_engine` layer or not.
     """
     if te is None:
-        # if not is_fp8_available():
         raise ImportError("Using `has_transformer_engine_layers` requires transformer_engine to be installed.")
     for m in model.modules():
         if isinstance(m, (te.Linear)):
@@ -91,7 +108,7 @@ def has_transformer_engine_layers(model):
     return False
 
 
-def setup_fp8_recipe_handler(fp8_recipe_format):
+def te_setup_fp8_recipe_handler(fp8_recipe_format):
     get_te()
     fp8_format = te.recipe.Format.E5M2
     if fp8_recipe_format == "E4M3":
@@ -110,19 +127,19 @@ def setup_fp8_recipe_handler(fp8_recipe_format):
     return fp8_recipe_handler
 
 
-class SwitchableForwardMaker:
-    def __init__(self, module, fp8_recipe_handler):
-        self.original_forward = module.forward
-        self.fp8_forward = te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe_handler)(module.forward)
-        self.module = module
-        module.forward = self.forward
+def te_wrap_fp8(model):
+    if not has_transformer_engine_layers(model):
+        with torch.no_grad():
+            convert_model(model)
+        model._converted_to_transformer_engine = True
+    return model
 
-    def forward(self, *args, **kwargs):
-        if self.module.training:
-            return self.fp8_forward(*args, **kwargs)
-        else:
-            return self.original_forward(*args, **kwargs)
 
-    @staticmethod
-    def convert(module, fp8_recipe_handler):
-        SwitchableForwardMaker(module, fp8_recipe_handler)
+def te_wrap_fp8_forward_convert(model, fp8_recipe_handler):
+    model = te_wrap_fp8(model)
+    SwitchableForwardMaker.convert(model, fp8_recipe_handler)
+    return model
+
+
+def te_forward_convert(model, fp8_recipe_handler):
+    SwitchableForwardMaker.convert(model, fp8_recipe_handler)
