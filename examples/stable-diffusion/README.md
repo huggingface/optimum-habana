@@ -62,7 +62,7 @@ python text_to_image_generation.py \
 
 ### Distributed inference with multiple HPUs
 Here is how to generate images with two prompts on two HPUs:
-```python
+```bash
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
     --model_name_or_path runwayml/stable-diffusion-v1-5 \
@@ -191,7 +191,7 @@ python text_to_image_generation.py \
 ```
 
 Here is how to distributed generate SDXL images with two prompts on two HPUs:
-```python
+```bash
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
