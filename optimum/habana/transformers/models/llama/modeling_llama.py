@@ -380,6 +380,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
+                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
