@@ -12,6 +12,11 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+"""
+Training script for LORA DreamBooth to Text-to-Image Diffusion Models
+Adapted from the following source:
+https://github.com/huggingface/diffusers/blob/v0.26.3/examples/dreambooth/train_dreambooth_lora_sdxl.py
+"""
 
 import argparse
 import gc
@@ -69,12 +74,6 @@ from optimum.habana.transformers.trainer import _is_peft_model
 from optimum.habana.utils import set_seed
 
 
-# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-"""
-Training script for LORA DreamBooth to Text-to-Image Diffusion Models
-Adapted from the following source:
-https://github.com/huggingface/diffusers/blob/v0.26.3/examples/dreambooth/train_dreambooth_lora_sdxl.py
-"""
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.26.0")
 
