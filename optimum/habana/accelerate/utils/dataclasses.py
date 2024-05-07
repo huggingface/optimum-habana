@@ -73,7 +73,7 @@ class GaudiDynamoBackend(str, BaseEnum):
         - **IPEX** -- Uses IPEX for inference on CPU. Inference only. [Read
           more](https://github.com/intel/intel-extension-for-pytorch).
         - **TVM** -- Uses Apach TVM for inference optimizations. [Read more](https://tvm.apache.org/)
-        - **HPU_BACKEND** -- Uses Habana Gaudi.
+        - **HPU_BACKEND** -- Uses Intel Gaudi.
 
     """
 

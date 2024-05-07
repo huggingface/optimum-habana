@@ -16,7 +16,7 @@ limitations under the License.
 
 # Stable Diffusion Examples
 
-This directory contains a script that showcases how to perform text-to-image generation using Stable Diffusion on Habana Gaudi.
+This directory contains a script that showcases how to perform text-to-image generation using Stable Diffusion on Intel® Gaudi® AI Accelerators.
 
 Stable Diffusion was proposed in [Stable Diffusion Announcement](https://stability.ai/blog/stable-diffusion-announcement) by Patrick Esser and Robin Rombach and the Stability AI team.
 

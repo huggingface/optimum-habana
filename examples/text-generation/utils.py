@@ -171,10 +171,14 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
+        from optimum.habana.transformers.trainer import _is_peft_model
+
         if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
             model = wrap_in_hpu_graph(model, hash_with_views=False)
         else:
             model = wrap_in_hpu_graph(model)
+        if _is_peft_model(model):
+            model.base_model = wrap_in_hpu_graph(model.base_model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
@@ -285,24 +289,31 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
 
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = PeftModel.from_pretrained(model, args.peft_model, torch_dtype=model_dtype, **model_kwargs)
+    if hasattr(model, "merge_and_unload"):
+        model = model.merge_and_unload()
+        if model_dtype == torch.bfloat16:
+            model = model.to(torch.bfloat16)
+        return model
+    else:
+        from optimum.habana.peft.peft_model import gaudi_generate, gaudi_prepare_inputs_for_generation
 
-    model = model.merge_and_unload()
-    if model_dtype == torch.bfloat16:
-        model = model.to(torch.bfloat16)
-    return model
+        model.__class__.generate = gaudi_generate
+        model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
+        return model
 
 
 def setup_tokenizer(args, model):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
+        "trust_remote_code": args.trust_remote_code,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
     if not model.config.is_encoder_decoder:
         tokenizer.padding_side = "left"
-    # Some models like GPT2 do not have a PAD token so we have to set it if necessary
+
     if model.config.model_type == "llama":
         # unwind broken decapoda-research config
         model.generation_config.pad_token_id = 0
@@ -314,10 +325,20 @@ def setup_tokenizer(args, model):
         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
+    if model.config.model_type == "persimmon":
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id
+        tokenizer.bos_token_id = model.generation_config.bos_token_id
+        tokenizer.eos_token_id = model.generation_config.eos_token_id
+        tokenizer.pad_token_id = model.generation_config.pad_token_id
+        tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
+        tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
+        tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
 
+    # Some models like GPT2 do not have a PAD token so we have to set it if necessary
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
+
     return tokenizer, model
 
 
@@ -352,6 +373,7 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.use_flash_attention = args.use_flash_attention
     generation_config.flash_attention_recompute = args.flash_attention_recompute
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
+    generation_config.trust_remote_code = args.trust_remote_code
     return generation_config
 
 
@@ -373,7 +395,10 @@ def initialize_model(args, logger):
     model_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
+        "trust_remote_code": args.trust_remote_code,
     }
+    if args.trust_remote_code:
+        logger.warning("`trust_remote_code` is set, there is no guarantee this model works properly and it may fail")
     if args.disk_offload:
         model_kwargs["device_map"] = "auto"
         model_kwargs["offload_folder"] = "/tmp/offload_folder/"
