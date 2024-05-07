@@ -164,6 +164,7 @@ def _test_text_generation(
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_measure_include_outputs.json"
             )
+            command = [x for y in command for x in re.split(pattern, y) if x]
             subprocess.run(command, env=env_variables)
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
