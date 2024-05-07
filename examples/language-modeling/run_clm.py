@@ -599,7 +599,8 @@ def main():
         if "train" not in tokenized_datasets:
             raise ValueError("--do_train requires a train dataset")
         train_dataset = lm_datasets["train"]
-        train_dataset = train_dataset.map(tensor_mapper)
+        if training_args.resume_from_checkpoint != '':
+            train_dataset = train_dataset.map(tensor_mapper)
         if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
