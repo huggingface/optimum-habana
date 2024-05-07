@@ -69,7 +69,7 @@ def main():
         action="store_true",
         help="Whether to perform generation in bf16 precision.",
     )
-    parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
+    parser.add_argument("--quant_config", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--output_dir",
         default=None,
@@ -112,12 +112,12 @@ def main():
     for image_path in image_paths:
         images.append(PIL.Image.open(requests.get(image_path, stream=True, timeout=3000).raw))
 
-    if args.bf16 or args.fp8:
+    if args.bf16 or args.quant_config:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float32
 
-    if args.fp8:
+    if args.quant_config:
         import habana_frameworks.torch.core as htcore
         htcore.hpu_set_env()
 
@@ -138,7 +138,7 @@ def main():
 
         generator.model = wrap_in_hpu_graph(generator.model)
 
-    if args.fp8:
+    if args.quant_config:
         import habana_quantization_toolkit
         habana_quantization_toolkit.prep_model(generator.model)
 
@@ -160,7 +160,7 @@ def main():
         f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
     
-    if args.fp8:
+    if args.quant_config:
         habana_quantization_toolkit.finish_measurements(generator.model)
 
     # Store results if necessary

@@ -63,7 +63,7 @@ def _test_image_to_text(
         command = [x for y in command for x in re.split(pattern, y) if x]
 
         if fp8:
-            command.insert(-2, "--fp8")
+            command.insert(-2, "--quant_config")
             print(f"\n\nCommand to test: {' '.join(command)}\n")
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "image-to-text/quantization_config/maxabs_measure.json"
