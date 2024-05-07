@@ -377,7 +377,7 @@ class GaudiMistralAttention(MistralAttention):
 
 class GaudiMistralDecoderLayer(MistralDecoderLayer):
     def __init__(self, config: MistralConfig, layer_idx: int):
-        super(MistralDecoderLayer, self).__init__(config, layer_idx)
+        super(MistralDecoderLayer, self).__init__()
         self.hidden_size = config.hidden_size
 
         self.self_attn = GaudiMistralAttention(config, layer_idx)
