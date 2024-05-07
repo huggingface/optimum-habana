@@ -1,14 +1,15 @@
 import argparse
-from open_clip import create_model_from_pretrained, get_tokenizer # works on open-clip-torch>=2.23.0, timm>=0.9.8
-import torch
-from urllib.request import urlopen
-from PIL import Image
-import matplotlib.pyplot as plt
-import habana_frameworks.torch.core as htcore
 import logging
-#from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 import time
 from pprint import pprint
+from urllib.request import urlopen
+
+import matplotlib.pyplot as plt
+import torch
+from open_clip import create_model_from_pretrained, get_tokenizer  # works on open-clip-torch>=2.23.0, timm>=0.9.8
+from PIL import Image
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 
 logging.basicConfig(
@@ -43,7 +44,7 @@ TEST_IMGS = [
         'pie_chart.png'
     ]
 
-
+# TODO: Keep/use with tensorboard for validation?
 def plot_images_with_metadata(images, metadata):
     num_images = len(images)
     fig, axes = plt.subplots(nrows=num_images, ncols=1, figsize=(5, 5 * num_images))
@@ -61,16 +62,15 @@ def plot_images_with_metadata(images, metadata):
 
 def run_qa(model, preprocess, tokenizer, template, device):
     context_length = 256
-    images = torch.stack([preprocess(Image.open(urlopen(DATASET_URL + img))) for img in TEST_IMGS])
-    texts = tokenizer([template + l for l in LABELS], context_length=context_length)
+    model = model.to(device)
+    model.eval()
+    images = torch.stack([preprocess(Image.open(urlopen(DATASET_URL + img))) for img in TEST_IMGS]).to(device)
+    texts = tokenizer([template + l for l in LABELS], context_length=context_length).to(device)
     with torch.no_grad():
         image_features, text_features, logit_scale = model(images, texts)
 
         logits = (logit_scale * image_features @ text_features.t()).detach().softmax(dim=-1)
         sorted_indices = torch.argsort(logits, dim=-1, descending=True)
-
-        logits = logits.cpu().numpy()
-        sorted_indices = sorted_indices.cpu().numpy()
     return sorted_indices, logits
 
 
@@ -111,42 +111,45 @@ def main():
     parser.add_argument(
         "--bf16",
         action="store_true",
-        help="[Untested] Whether to perform in bf16 precision.",
+        help="Whether to perform in bf16 precision.",
     )
     parser.add_argument("--batch_size", type=int, default=1, help="[Untested] Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
-    parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
+    parser.add_argument("--n_iterations", type=int, default=10, help="Number of inference iterations for benchmarking.")
     args = parser.parse_args()
 
-    #adapt_transformers_to_gaudi() fails on this
-   
+    adapt_transformers_to_gaudi()
 
     precision ="fp32"
+    dtype =torch.float32
     if args.bf16:
         precision ="bf16"
-        
+        dtype = torch.bfloat16
+
     model, preprocess = create_model_from_pretrained(f"hf-hub:{args.model_name_or_path}", precision=precision)
     tokenizer = get_tokenizer(f"hf-hub:{args.model_name_or_path}")
 
     template = 'this is a photo of '
 
     device = torch.device('hpu') if torch.hpu.is_available() else torch.device('cpu')
+    device_type = "hpu" if torch.hpu.is_available() else "cpu"
     # warm up
     logger.info("Running warmup")
     for i in range(args.warmup):
-        with torch.autocast(device_type="hpu", dtype=torch.float32, enabled=True):
-            _, _ = run_qa(model, preprocess, tokenizer, template, device="hpu")
+        with torch.autocast(device_type=device_type, dtype=dtype, enabled=True):
+            _, _ = run_qa(model, preprocess, tokenizer, template, device=device)
     logger.info("Running inference")
     start = time.time()
     for i in range(args.n_iterations):
         logits = None
-        with torch.autocast(device_type="hpu", dtype=torch.float32, enabled=True):
-            sorted_indices, logits = run_qa(model, preprocess, tokenizer, template, device="hpu")
-        
-        # Post Processing
+        with torch.autocast(device_type=device_type, dtype=dtype, enabled=True):
+            sorted_indices, logits = run_qa(model, preprocess, tokenizer, template, device=device)
+
+        # TODO: exclude? Post Processing
+        logits = logits.float().cpu().numpy()
+        sorted_indices = sorted_indices.int().cpu().numpy()
         metadata_list = []
         for i, img in enumerate(TEST_IMGS):
-            pred = LABELS[sorted_indices[i][0]]
             img_name = img.split('/')[-1]
 
             top_probs = []
