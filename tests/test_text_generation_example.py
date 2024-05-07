@@ -181,12 +181,13 @@ def _test_text_generation(
             command.insert(-2, "--fp8")
             command.insert(-2, "--warmup 1")
             command.insert(-2, "--n_iterations 2")
-            if "Llama-2" in model_name:
+            if "Llama-2" in model_name or "Mistral" in model_name:
+                fp8_model_configs = LLAMA2_FP8_CONFIG if "Llama-2" in model_name else MISTRAL_FP8_CONFIG
                 command.insert(-2, "--limit_hpu_graphs")
                 command.insert(-2, "--max_input_tokens 1")
                 command.insert(-2, "--max_new_tokens 1")
                 command = [x for y in command for x in re.split(pattern, y) if x]
-                for model_config in LLAMA2_FP8_CONFIG[model_name]:
+                for model_config in fp8_model_configs[model_name]:
                     command[command.index("--batch_size") + 1] = model_config[0]
                     command[command.index("--max_input_tokens") + 1] = model_config[1]
                     command[command.index("--max_new_tokens") + 1] = model_config[2]
@@ -208,35 +209,6 @@ def _test_text_generation(
                     # Ensure performance requirements (throughput) are met
                     assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
                 return
-
-            if "Mistral" in model_name:
-                command.insert(-2, "--limit_hpu_graphs")
-                command.insert(-2, "--max_input_tokens 1")
-                command.insert(-2, "--max_new_tokens 1")
-                command = [x for y in command for x in re.split(pattern, y) if x]
-                for model_config in MISTRAL_FP8_CONFIG[model_name]:
-                    command[command.index("--batch_size") + 1] = model_config[0]
-                    command[command.index("--max_input_tokens") + 1] = model_config[1]
-                    command[command.index("--max_new_tokens") + 1] = model_config[2]
-                    baseline = model_config[3]
-                    proc = subprocess.run(command, env=env_variables)
-
-                    # Ensure the run finished without any issue
-                    # Use try-except to avoid logging the token if used
-                    try:
-                        assert proc.returncode == 0
-                    except AssertionError as e:
-                        if "'--token', 'hf_" in e.args[0]:
-                            e.args = (f"The following command failed:\n{' '.join(command[:-2])}",)
-                        raise
-
-                    with open(Path(tmp_dir) / "results.json") as fp:
-                        results = json.load(fp)
-
-                    # Ensure performance requirements (throughput) are met
-                    assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
-                return
-
 
         command = [x for y in command for x in re.split(pattern, y) if x]
         proc = subprocess.run(command, env=env_variables)
