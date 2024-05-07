@@ -30,7 +30,6 @@ import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
-from transformers.integrations.deepspeed import is_deepspeed_available
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
@@ -61,6 +60,12 @@ try:
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
+
+try:
+    from deepspeed import comm as dist
+except ImportError:
+    print("Not using HPU DeepSpeed.")
+    dist = None
 
 logger = logging.get_logger(__name__)
 
@@ -289,13 +294,10 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     # router_logits: (batch * sequence_length, n_experts)
     router_logits = self.gate(hidden_states)
 
-    if is_deepspeed_available():
-        from deepspeed import comm as dist
-
-        if dist.is_initialized():
-            output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
-            dist.all_gather(output_tensors, router_logits)
-            router_logits = torch.cat(output_tensors, dim=1)
+    if dist and dist.is_initialized():
+        output_tensors = [router_logits.clone() for _ in range(dist.get_world_size())]
+        dist.all_gather(output_tensors, router_logits)
+        router_logits = torch.cat(output_tensors, dim=1)
 
     routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
     routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
@@ -627,13 +629,10 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
         aux_loss = None
         if output_router_logits:
             aux_loss = load_balancing_loss_func(
-                outputs.router_logits if return_dict else outputs[-1],
-                self.num_experts,
-                self.num_experts_per_tok,
-                attention_mask,
+                outputs.router_logits if return_dict else outputs[-1], self.num_experts, self.num_experts_per_tok
             )
             if labels is not None:
-                loss += self.router_aux_loss_coef * aux_loss.to(loss.device)  # make sure to reside in the same device
+                loss += self.router_aux_loss_coef * aux_loss
 
         if not return_dict:
             output = (logits,) + outputs[1:]

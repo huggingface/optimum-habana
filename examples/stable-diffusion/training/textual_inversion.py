@@ -886,9 +886,9 @@ def main():
                 index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
 
                 with torch.no_grad():
-                    accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[index_no_updates] = (
-                        orig_embeds_params[index_no_updates]
-                    )
+                    accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
+                        index_no_updates
+                    ] = orig_embeds_params[index_no_updates]
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -950,7 +950,7 @@ def main():
                 break
 
     duration = time.perf_counter() - t0
-    throughput = (args.max_train_steps - args.throughput_warmup_steps) * total_batch_size / duration
+    throughput = args.max_train_steps * total_batch_size / duration
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()

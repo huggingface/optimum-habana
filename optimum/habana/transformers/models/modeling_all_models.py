@@ -117,15 +117,20 @@ def gaudi_conv1d_forward(self, x):
 # Adapted from transformers.modeling_utils.PreTrainedModel._check_and_enable_sdpa
 @classmethod
 def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> PretrainedConfig:
-    # This model doesn't support SDPA in Gaudi yet, fallback to original code.
-    MODELS_ATTN_IMPLEMENTATION_EAGER = ["bart", "gpt_bigcode", "mistral", "mixtral"]
+
+    #This model doesn't support SDPA in Gaudi yet, fallback to original code.
+    MODELS_ATTN_IMPLEMENTATION_EAGER = [
+        "gpt_bigcode",
+        "mistral",
+        "mixtral"
+    ]
 
     if config.model_type in MODELS_ATTN_IMPLEMENTATION_EAGER:
         config._attn_implementation = "eager"
         return config
 
-    # Otherwise, fallback to original implementation
-    # https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/modeling_utils.py#L1542
+    #Otherwise, fallback to original implementation
+    #https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/modeling_utils.py#L1542
     if hard_check_only:
         if not cls._supports_sdpa:
             raise ValueError(
@@ -134,7 +139,9 @@ def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> P
                 ' this error is a bug, please open an issue in Transformers GitHub repository and load your model with the argument `attn_implementation="eager"` meanwhile. Example: `model = AutoModel.from_pretrained("openai/whisper-tiny", attn_implementation="eager")`'
             )
         if not is_torch_sdpa_available():
-            raise ImportError("PyTorch SDPA requirements in Transformers are not met. Please install torch>=2.1.1.")
+            raise ImportError(
+                "PyTorch SDPA requirements in Transformers are not met. Please install torch>=2.1.1."
+            )
 
     if not is_torch_sdpa_available() or not cls._supports_sdpa:
         return config
@@ -147,7 +154,6 @@ def gaudi_check_and_enable_sdpa(cls, config, hard_check_only: bool = False) -> P
         config._attn_implementation = "sdpa"
 
     return config
-
 
 # Splitting DeepSpeed LinearAllReduce to three parts to avoid redundant memory consumption
 class ScopedLinearAllReduce(torch.nn.Module):

@@ -262,16 +262,16 @@ def setup_parser(parser):
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
     parser.add_argument(
-        "--const_serialization_path",
-        "--csp",
+        '--const_serialization_path',
+        '--csp',
         type=str,
-        help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
-    )
+        help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.")
     parser.add_argument(
         "--disk_offload",
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
     )
+
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -282,8 +282,7 @@ def setup_parser(parser):
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config == "" and args.disk_offload:
-        raise parser.error("--bf16 is not supported with --disk_offload")
-
+        print("WARNING: --disk_offload was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag.")
     return args
 
 
@@ -794,7 +793,6 @@ def main():
         habana_quantization_toolkit.finish_measurements(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
-
         shutil.rmtree(args.const_serialization_path)
 
 

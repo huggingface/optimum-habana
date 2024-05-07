@@ -1883,8 +1883,8 @@ class ModelTesterMixin:
 
         # some params shouldn't be scattered by nn.DataParallel
         # so just remove them if they are present.
-        blacklist_non_batched_params = ["head_mask", "decoder_head_mask", "cross_attn_head_mask"]
-        for k in blacklist_non_batched_params:
+        blocklist_non_batched_params = ["head_mask", "decoder_head_mask", "cross_attn_head_mask"]
+        for k in blocklist_non_batched_params:
             inputs_dict.pop(k, None)
 
         # move input tensors to cuda:O

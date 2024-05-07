@@ -73,7 +73,7 @@ def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: 
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
+        # TODO: remove `.clone()` once the problem is fixed in SynapseAI
         return FusedRoPE.apply(
             q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
         ), FusedRoPE.apply(
@@ -229,15 +229,6 @@ class KVCache(torch.nn.Module):
 
 
 class GaudiFalconAttention(FalconAttention):
-    """
-    Inherits from FalconAttention: https://github.com/huggingface/transformers/blob/838b87abe231fd70be5132088d0dee72a7bb8d62/src/transformers/models/falcon/modeling_falcon.py#L267
-    The only differences are:
-    - add new args token_idx and position_ids
-    - replace F.scaled_dot_product_attention with Habana torch's version for BF16
-    - use ScaledDotProductAttention for FP8 quantization
-    - add new arg reuse_cache
-    """
-
     def __init__(self, config: FalconConfig):
         super().__init__(config)
 
@@ -284,6 +275,13 @@ class GaudiFalconAttention(FalconAttention):
         cache_idx: int = None,
         **kwargs,
     ):
+        """
+        Copied from FalconAttention: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
+        The only differences are:
+        - add new args token_idx and position_ids
+        - replace F.scaled_dot_product_attention with Habana torch's version
+        - add new arg reuse_cache
+        """
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
@@ -315,7 +313,13 @@ class GaudiFalconAttention(FalconAttention):
 
         if use_cache:
             if self.training:
-                present = None
+                if layer_past is not None:
+                    key_layer = update(layer_past[0], key_layer, -2, token_idx, self.inp_seq_len)
+                    value_layer = update(layer_past[1], value_layer, -2, token_idx, self.inp_seq_len)
+                    present = (key_layer, value_layer)
+                else:
+                    present = None
+
             else:
                 if reuse_cache:
                     key_layer = self.k_cache(key_layer, -2, token_idx)
@@ -338,8 +342,6 @@ class GaudiFalconAttention(FalconAttention):
                         layer_past[0], key_layer, -2, token_idx, self.inp_seq_len
                     )  # k_layer bs*1, q_len, head_dim
                     value_layer = self.v_cache.update(layer_past[1], value_layer, -2, token_idx, self.inp_seq_len)
-                    if token_idx is None:
-                        layer_past = (key_layer, value_layer)
                     present = layer_past
 
                 if cache_idx is not None and query_length == 1:
@@ -349,7 +351,7 @@ class GaudiFalconAttention(FalconAttention):
         else:
             present = None
 
-        if self.training or present is None:
+        if self.training and layer_past is None:
             kv_length = key_layer.shape[-2]
         else:
             kv_length = present[0][-2] if reuse_cache else present[0].shape[-2]
@@ -407,7 +409,7 @@ class GaudiFalconAttention(FalconAttention):
             if output_attentions:
                 return attn_output, present, attention_scores
             else:
-                return attn_output, present, _
+                return attn_output, present
 
         else:
             if self._use_sdpa and not output_attentions and head_mask is None:
@@ -469,7 +471,7 @@ class GaudiFalconAttention(FalconAttention):
             if output_attentions:
                 return attn_output, present, attention_probs
             else:
-                return attn_output, present, _
+                return attn_output, present
 
     def attention_all_reduce(self, attn_output):
         if hasattr(self.dense, "all_reduce"):
@@ -482,10 +484,6 @@ class GaudiFalconAttention(FalconAttention):
 
 
 class GaudiFalconMLP(FalconMLP):
-    """
-    Inherits from FalconMLP: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
-    """
-
     def pre_mlp_forward(self, x):
         x = self.act(self.dense_h_to_4h(x))
         x = self.dense_4h_to_h(x)
@@ -502,14 +500,6 @@ class GaudiFalconMLP(FalconMLP):
 
 
 class GaudiFalconDecoderLayer(FalconDecoderLayer):
-    """
-    Inherits from FalconDecoderLayer: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
-    The only differences are:
-    - add new args token_idx and position_ids
-    - add token_idx and position_ids into attention inputs
-    - add new args reuse_cache
-    """
-
     def __init__(self, config: FalconConfig):
         super().__init__(config)
         self.self_attention = GaudiFalconAttention(config)
@@ -535,6 +525,13 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         cache_idx: int = None,
         **kwargs,
     ):
+        """
+        Copied from FalconDecoderLayer: https://github.com/huggingface/transformers/blob/main/src/transformers/models/falcon/modeling_falcon.py
+        The only differences are:
+        - add new args token_idx and position_ids
+        - add token_idx and position_ids into attention inputs
+        - add new args reuse_cache
+        """
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
@@ -615,19 +612,35 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
             mlp_layernorm_out = None
 
         # Self attention.
-        attn_outputs, present, attn_scores = self.self_attention.pre_attn_forward(
-            attention_layernorm_out,
-            layer_past=layer_past,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            alibi=alibi,
-            head_mask=head_mask,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            token_idx=token_idx,
-            reuse_cache=reuse_cache,
-            cache_idx=cache_idx,
-        )
+        attn_scores = None
+        if output_attentions:
+            attn_outputs, present, attn_scores = self.self_attention.pre_attn_forward(
+                attention_layernorm_out,
+                layer_past=layer_past,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                alibi=alibi,
+                head_mask=head_mask,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                token_idx=token_idx,
+                reuse_cache=reuse_cache,
+                cache_idx=cache_idx,
+            )
+        else:
+            attn_outputs, present = self.self_attention.pre_attn_forward(
+                attention_layernorm_out,
+                layer_past=layer_past,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                alibi=alibi,
+                head_mask=head_mask,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                token_idx=token_idx,
+                reuse_cache=reuse_cache,
+                cache_idx=cache_idx,
+            )
 
         return attn_outputs, present, attn_scores, attention_layernorm_out, mlp_layernorm_out
 
@@ -638,6 +651,9 @@ class GaudiFalconModel(FalconModel):
     The only differences are:
     - add new args token_idx and position_ids
     - add token_idx and position_ids into decoder inputs
+    - set past_key_values_length=0 when token_idx is used (with static input shape)
+    - add new arg tgt_len to _expand_mask because past_key_values_length is no longer valid with token_idx
+    - use old version of _make_causal_mask to workaround toch.triu that is not supported in Synapse
     - add new arg reuse_cache
     """
 

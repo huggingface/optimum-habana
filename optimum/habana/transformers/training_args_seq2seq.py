@@ -50,7 +50,8 @@ class GaudiSeq2SeqTrainingArguments(GaudiTrainingArguments):
             Allows to load a [`transformers.generation.GenerationConfig`] from the `from_pretrained` method. This can be either:
 
             - a string, the *model id* of a pretrained model configuration hosted inside a model repo on
-              huggingface.co.
+              huggingface.co. Valid model ids can be located at the root-level, like `bert-base-uncased`, or namespaced
+              under a user or organization name, like `dbmdz/bert-base-german-cased`.
             - a path to a *directory* containing a configuration file saved using the
               [`transformers.GenerationConfig.save_pretrained`] method, e.g., `./my_model_directory/`.
             - a [`transformers.generation.GenerationConfig`] object.

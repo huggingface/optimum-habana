@@ -49,7 +49,7 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
         )
 
         model = T5ForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-t5-v1.1")
-        tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
+        tokenizer = AutoTokenizer.from_pretrained("t5-small")
 
         model.config.max_length = 128
 
