@@ -106,7 +106,7 @@ class GaudiGPTJAttention(GPTJAttention):
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
             # Update register 'bias' buffer size
-            self.bias.view(1, 1, seq_len, seq_len)
+            self.bias = torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool)).view(1, 1, seq_len, seq_len)
             # TODO: implement rotary_emb()
             # _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
 
