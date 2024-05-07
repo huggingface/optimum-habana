@@ -37,6 +37,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 0),
             ("mistralai/Mixtral-8x7B-v0.1", 39.26845661768185),
             ("meta-llama/Llama-2-7b-hf", 0.0),
             ("meta-llama/Llama-2-70b-hf", 0.0),
@@ -66,6 +67,14 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("430", "128", "2048", 10425.578514886345),
             ("40", "2048", "128", 695.475101514524),
             ("64", "2048", "2048", 2773.173092391251),
+        ],
+    }
+    MISTRAL_FP8_CONFIG = {
+        "mistralai/Mistral-7B-Instruct-v0.2": [
+            ("896", "128", "128", 12397.11410288204),
+            ("120", "128", "2048", 5394.675714459493),
+            ("120", "2048", "128", 919.8470890081497),
+            ("44", "2048", "2048", 2471.950758729518),
         ],
     }
 else:
@@ -149,7 +158,7 @@ def _test_text_generation(
     if fp8:
         if "--trim_logits" not in command:
             command += ["--trim_logits"]
-        if "Llama-2" in model_name:
+        if "Llama-2" in model_name or "Mistral" in model_name:
             command.remove("--max_new_tokens 100")
 
     with TemporaryDirectory() as tmp_dir:
@@ -172,12 +181,13 @@ def _test_text_generation(
             command.insert(-2, "--fp8")
             command.insert(-2, "--warmup 1")
             command.insert(-2, "--n_iterations 2")
-            if "Llama-2" in model_name:
+            if "Llama-2" in model_name or "Mistral" in model_name:
+                fp8_model_configs = LLAMA2_FP8_CONFIG if "Llama-2" in model_name else MISTRAL_FP8_CONFIG
                 command.insert(-2, "--limit_hpu_graphs")
                 command.insert(-2, "--max_input_tokens 1")
                 command.insert(-2, "--max_new_tokens 1")
                 command = [x for y in command for x in re.split(pattern, y) if x]
-                for model_config in LLAMA2_FP8_CONFIG[model_name]:
+                for model_config in fp8_model_configs[model_name]:
                     command[command.index("--batch_size") + 1] = model_config[0]
                     command[command.index("--max_input_tokens") + 1] = model_config[1]
                     command[command.index("--max_new_tokens") + 1] = model_config[2]
