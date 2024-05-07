@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from accelerate import PartialState
 
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
@@ -214,6 +215,8 @@ def main():
         type=int,
         help="Number of steps to capture for profiling.",
     )
+
+    parser.add_argument("--distributed", action="store_true", help="Use distributed inference on multi-cards")
     args = parser.parse_args()
 
     # Set image resolution
@@ -293,6 +296,25 @@ def main():
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
 
+    negative_prompts = args.negative_prompts
+    if args.distributed:
+        distributed_state = PartialState()
+        if args.negative_prompts is not None:
+            with distributed_state.split_between_processes(args.negative_prompts) as negative_prompt:
+                negative_prompts = negative_prompt
+
+    infer_kwargs = {
+        "num_images_per_prompt": args.num_images_per_prompt,
+        "batch_size": args.batch_size,
+        "num_inference_steps": args.num_inference_steps,
+        "guidance_scale": args.guidance_scale,
+        "negative_prompt": negative_prompts,
+        "eta": args.eta,
+        "output_type": args.output_type,
+        "profiling_warmup_steps": args.profiling_warmup_steps,
+        "profiling_steps": args.profiling_steps
+    }
+
     # Generate images
     if args.control_image is not None:
         model_dtype = torch.bfloat16 if args.bf16 else None
@@ -305,21 +327,8 @@ def main():
 
         # Set seed before running the model
         set_seed(args.seed)
+        infer_kwargs["image"] = control_image
 
-        outputs = pipeline(
-            prompt=args.prompts,
-            image=control_image,
-            num_images_per_prompt=args.num_images_per_prompt,
-            batch_size=args.batch_size,
-            num_inference_steps=args.num_inference_steps,
-            guidance_scale=args.guidance_scale,
-            negative_prompt=args.negative_prompts,
-            eta=args.eta,
-            output_type=args.output_type,
-            profiling_warmup_steps=args.profiling_warmup_steps,
-            profiling_steps=args.profiling_steps,
-            **res,
-        )
     elif sdxl:
         pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
             args.model_name_or_path,
@@ -329,21 +338,18 @@ def main():
         # Set seed before running the model
         set_seed(args.seed)
 
-        outputs = pipeline(
-            prompt=args.prompts,
-            prompt_2=args.prompts_2,
-            num_images_per_prompt=args.num_images_per_prompt,
-            batch_size=args.batch_size,
-            num_inference_steps=args.num_inference_steps,
-            guidance_scale=args.guidance_scale,
-            negative_prompt=args.negative_prompts,
-            negative_prompt_2=args.negative_prompts_2,
-            eta=args.eta,
-            output_type=args.output_type,
-            profiling_warmup_steps=args.profiling_warmup_steps,
-            profiling_steps=args.profiling_steps,
-            **res,
-        )
+        prompts_2 = args.prompts_2
+        negative_prompts_2 = args.negative_prompts_2
+        if args.distributed and args.prompts_2 is not None:
+            with distributed_state.split_between_processes(args.prompts_2) as prompt_2:
+                prompts_2 = prompt_2
+        if args.distributed and args.negative_prompts_2 is not None:
+            with distributed_state.split_between_processes(args.negative_prompts_2) as negative_prompt_2:
+                negative_prompts_2 = negative_prompt_2
+
+        infer_kwargs["prompt_2"] = prompts_2
+        infer_kwargs["negative_prompt_2"] = negative_prompts_2
+
     else:
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
             args.model_name_or_path,
@@ -352,29 +358,26 @@ def main():
 
         # Set seed before running the model
         set_seed(args.seed)
-
-        outputs = pipeline(
-            prompt=args.prompts,
-            num_images_per_prompt=args.num_images_per_prompt,
-            batch_size=args.batch_size,
-            num_inference_steps=args.num_inference_steps,
-            guidance_scale=args.guidance_scale,
-            negative_prompt=args.negative_prompts,
-            eta=args.eta,
-            output_type=args.output_type,
-            profiling_warmup_steps=args.profiling_warmup_steps,
-            profiling_steps=args.profiling_steps,
-            **res,
-        )
+    if args.distributed:
+        with distributed_state.split_between_processes(args.prompts) as prompt:
+            outputs = pipeline(prompt=prompt, **infer_kwargs, **res)
+    else:
+        outputs = pipeline(prompt=args.prompts, **infer_kwargs, **res)
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
-        pipeline.save_pretrained(args.pipeline_save_dir)
+        save_dir = args.pipeline_save_dir
+        if args.distributed:
+            save_dir = f"{args.pipeline_save_dir}_{distributed_state.process_index}"
+        pipeline.save_pretrained(save_dir)
 
     # Save images in the specified directory if not None and if they are in PIL format
     if args.image_save_dir is not None:
         if args.output_type == "pil":
             image_save_dir = Path(args.image_save_dir)
+            if args.distributed:
+                image_save_dir = Path(f"{image_save_dir}_{distributed_state.process_index}")
+
             image_save_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Saving images in {image_save_dir.resolve()}...")
             if args.ldm3d:
