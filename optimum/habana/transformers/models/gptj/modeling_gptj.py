@@ -105,7 +105,10 @@ class GaudiGPTJAttention(GPTJAttention):
         # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
-            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
+            # Update register 'bias' buffer size
+            self.bias.view(1, 1, seq_len, seq_len)
+            # TODO: implement rotary_emb()
+            # _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
 
     def _attn(
         self,
@@ -386,7 +389,7 @@ class GaudiGPTJModel(GPTJModel):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.h)
 
     def update_sincos_cache(self, seq_len):
-        for layer in self.layers:
+        for layer in self.h:
             layer.update_sincos_cache(seq_len)
 
     def forward(

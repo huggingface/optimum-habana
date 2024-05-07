@@ -760,7 +760,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     )
                     model_kwargs["kv_cache_len"] = calculated_max_length
 
-            if self.config.model_type in ["llama", "falcon"]:
+            if self.config.model_type in ["llama", "falcon", "gptj"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
