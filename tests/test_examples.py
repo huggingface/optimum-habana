@@ -76,7 +76,9 @@ def _get_supported_models_for_script(
     """
 
     def is_valid_model_type(model_type: str) -> bool:
-        in_task_mapping = CONFIG_MAPPING[model_type] in task_mapping
+        # llama_guard is not a model type in Transformers so CONFIG_MAPPING wouldn't find it
+        true_model_type = "llama" if model_type == "llama_guard" else model_type
+        in_task_mapping = CONFIG_MAPPING[true_model_type] in task_mapping
         in_valid_models_for_task = model_type in valid_models_for_task
         if in_task_mapping and in_valid_models_for_task:
             return True
@@ -163,6 +165,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_CAUSAL_LM_MAPPING,
         ["llama"],
     ),
+    "run_prompt_tuning_clm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama"],
+    ),
 }
 
 
@@ -186,11 +193,15 @@ class ExampleTestMeta(type):
             "tiiuae/falcon-40b",
             "bigscience/bloom-7b1",
             "codellama/CodeLlama-13b-Instruct-hf",
+            "MIT/ast-finetuned-speech-commands-v2",
+            "meta-llama/LlamaGuard-7b",
         ]
 
         if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
             return False
-        elif ("sft" in example_name or "dpo" in example_name) and os.environ.get("GAUDI2_CI", "0") == "0":
+        elif ("sft" in example_name or "dpo" in example_name or "prompt_tuning" in example_name) and os.environ.get(
+            "GAUDI2_CI", "0"
+        ) == "0":
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -219,6 +230,10 @@ class ExampleTestMeta(type):
         elif "falcon" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and not fsdp:
             return True
         elif "bloom" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "0":
+            return True
+        elif "LlamaGuard" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "1":
+            return True
+        elif "ast-finetuned-speech-commands-v2" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
             return True
 
         return False
@@ -554,6 +569,13 @@ class MultiCardTextClassificationExampleTester(
     DATASET_PARAMETER_NAME = "task_name"
 
 
+class DeepSpeedTextClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue", deepspeed=True
+):
+    TASK_NAME = "mrpc"
+    DATASET_PARAMETER_NAME = "task_name"
+
+
 class QuestionAnsweringExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa"):
     TASK_NAME = "squad"
 
@@ -676,3 +698,24 @@ class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, ex
 class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="dpo", multi_card=True):
     TASK_NAME = "trl-dpo"
     DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardCausalLanguageModelingPromptTuningExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
+):
+    TASK_NAME = ["prompt-tuning"]
+    DATASET_NAME = "ought/raft"
+
+
+class MultiCardCausalLanguageModelingPrefixTuningExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
+):
+    TASK_NAME = ["prefix-tuning"]
+    DATASET_NAME = "ought/raft"
+
+
+class MultiCardCausalLanguageModelingPTuningExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
+):
+    TASK_NAME = ["p-tuning"]
+    DATASET_NAME = "ought/raft"

@@ -16,7 +16,7 @@ limitations under the License.
 
 # Language generation
 
-Conditional text generation on Habana Gaudi/Gaudi2. You can find more information about it in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom).
+Conditional text generation on Intel® Gaudi® AI Accelerators. You can find more information about it in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom).
 
 
 ## Requirements
@@ -34,7 +34,7 @@ pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 
 ## Usage
 
-In this section, we present how to benchmark a model on Habana Gaudi/Gaudi2 with this script. We also show how to use it to run generation on any dataset from the [Hugging Face Hub](https://huggingface.co/datasets).
+In this section, we present how to benchmark a model on Intel Gaudi AI Accelerators with this script. We also show how to use it to run generation on any dataset from the [Hugging Face Hub](https://huggingface.co/datasets).
 
 To run generation with DeepSpeed-inference, you must launch the script as follows:
 

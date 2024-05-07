@@ -101,9 +101,9 @@ from .mixtral import (
     GaudiMixtralAttention,
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
+    GaudiMixtralModel,
     MixtralConfig,
     gaudi_mixtral_block_sparse_moe_forward,
-    gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
 from .modeling_all_models import (
