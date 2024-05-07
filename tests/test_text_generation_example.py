@@ -38,6 +38,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),
             ("mistralai/Mistral-7B-Instruct-v0.2", 0),
+            ("mistralai/Mixtral-8x7B-v0.1", 39.26845661768185),
             ("meta-llama/Llama-2-7b-hf", 0.0),
             ("meta-llama/Llama-2-70b-hf", 0.0),
         ],
@@ -172,6 +173,7 @@ def _test_text_generation(
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_measure_include_outputs.json"
             )
+            command = [x for y in command for x in re.split(pattern, y) if x]
             subprocess.run(command, env=env_variables)
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
@@ -234,6 +236,7 @@ def _test_text_generation(
                     # Ensure performance requirements (throughput) are met
                     assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
                 return
+
 
         command = [x for y in command for x in re.split(pattern, y) if x]
         proc = subprocess.run(command, env=env_variables)

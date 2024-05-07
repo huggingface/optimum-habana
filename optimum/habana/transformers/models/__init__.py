@@ -101,9 +101,9 @@ from .mixtral import (
     GaudiMixtralAttention,
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
+    GaudiMixtralModel,
     MixtralConfig,
     gaudi_mixtral_block_sparse_moe_forward,
-    gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
 )
 from .modeling_all_models import (
@@ -126,6 +126,7 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .owlvit import gaudi_owlvitclasspredictionhead_forward
 from .persimmon import (
     GaudiPersimmonForCausalLM,
     gaudi_persimmon_attention_forward,

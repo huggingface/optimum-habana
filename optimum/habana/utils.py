@@ -16,7 +16,7 @@
 import random
 import subprocess
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
@@ -229,6 +229,21 @@ def get_driver_version():
     if output.returncode == 0 and output.stdout:
         return version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
     return None
+
+
+class HabanaGenerationtime(object):
+    def __init__(self, iteration_times: List[float] = None):
+        self.iteration_times = iteration_times
+        self.start_time = 0
+        self.end_time = 0
+
+    def start(self):
+        self.start_time = time.perf_counter()
+
+    def step(self):
+        self.end_time = time.perf_counter()
+        self.iteration_times.append(self.end_time - self.start_time)
+        self.start_time = self.end_time
 
 
 class HabanaProfile(object):
