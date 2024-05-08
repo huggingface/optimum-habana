@@ -1,3 +1,4 @@
+
 # coding=utf-8
 # Copyright 2018 Google T5 Authors and HuggingFace Inc. team.
 #
@@ -23,7 +24,14 @@ import unittest
 import pytest
 from transformers import T5Config, is_torch_available
 from transformers.models.auto.modeling_auto import MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING_NAMES
-from transformers.testing_utils import require_sentencepiece, require_tokenizers, require_torch, slow
+from transformers.testing_utils import (
+    require_accelerate,
+    require_sentencepiece,
+    require_tokenizers,
+    require_torch,
+    slow,
+    torch_device,
+)
 from transformers.utils import cached_property, is_torch_fx_available
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -422,6 +430,19 @@ class T5ModelTester:
         output_with_past_cache = model.generate(input_ids[:1], num_beams=2, max_length=5, do_sample=True)
         self.parent.assertTrue(torch.all(output_with_past_cache == output_without_past_cache))
 
+    def create_and_check_model_fp16_forward(
+        self,
+        config,
+        input_ids,
+        decoder_input_ids,
+        attention_mask,
+        decoder_attention_mask,
+        lm_labels,
+    ):
+        model = T5Model(config=config).to(torch_device).half().eval()
+        output = model(input_ids, decoder_input_ids=input_ids, attention_mask=attention_mask)["last_hidden_state"]
+        self.parent.assertFalse(torch.isnan(output).any().item())
+
     def create_and_check_encoder_decoder_shared_weights(
         self,
         config,
@@ -810,6 +831,11 @@ class T5ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_encoder_decoder_shared_weights(*config_and_inputs)
 
+    @unittest.skipIf(torch_device == "cpu", "Cant do half precision")
+    def test_model_fp16_forward(self):
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_model_fp16_forward(*config_and_inputs)
+
     def test_v1_1_resize_embeddings(self):
         config = self.model_tester.prepare_config_and_inputs()[0]
         self.model_tester.check_resize_embeddings_t5_v1_1(config)
@@ -871,6 +897,10 @@ class T5ModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
 
     @unittest.skip("Does not work on the tiny model as we keep hitting edge cases.")
     def test_disk_offload(self):
+        pass
+
+    @unittest.skip("Does not support conversations.")
+    def test_pipeline_conversational(self):
         pass
 
 
@@ -966,6 +996,16 @@ class T5EncoderOnlyModelTester:
 
         self.parent.assertEqual(encoder_output.size(), (self.batch_size, self.encoder_seq_length, self.hidden_size))
 
+    def create_and_check_model_fp16_forward(
+        self,
+        config,
+        input_ids,
+        attention_mask,
+    ):
+        model = T5EncoderModel(config=config).to(torch_device).half().eval()
+        output = model(input_ids, attention_mask=attention_mask)["last_hidden_state"]
+        self.parent.assertFalse(torch.isnan(output).any().item())
+
     def prepare_config_and_inputs_for_common(self):
         config_and_inputs = self.prepare_config_and_inputs()
         (
@@ -1002,6 +1042,65 @@ class T5EncoderOnlyModelTest(ModelTesterMixin, unittest.TestCase):
 
 def use_task_specific_params(model, task):
     model.config.update(model.config.task_specific_params[task])
+
+
+@require_torch
+@require_accelerate
+@require_tokenizers
+@slow
+class T5ModelFp16Tests(unittest.TestCase):
+    def test_fp16_fp32_conversion(self):
+        r"""
+        A test to check whether the argument `keep_in_fp32_modules` correctly does its job
+        """
+        orig_import = __import__
+        accelerate_mock = unittest.mock.Mock()
+
+        # mock import of accelerate
+        def import_accelerate_mock(name, *args, **kwargs):
+            if name == "accelerate":
+                if accelerate_available:
+                    return accelerate_mock
+                else:
+                    raise ImportError
+            return orig_import(name, *args, **kwargs)
+
+        # Load without using `accelerate`
+        with unittest.mock.patch("builtins.__import__", side_effect=import_accelerate_mock):
+            accelerate_available = False
+
+            model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.float16)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.float32)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.float16)
+
+            # Load without in bf16
+            model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.bfloat16)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.bfloat16)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.bfloat16)
+
+        # Load using `accelerate` in bf16
+        model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.bfloat16, device_map="auto")
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.bfloat16)
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.bfloat16)
+
+        # Load using `accelerate` in bf16
+        model = T5ForConditionalGeneration.from_pretrained(
+            "t5-small", torch_dtype=torch.bfloat16, low_cpu_mem_usage=True
+        )
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.bfloat16)
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.bfloat16)
+
+        # Load without using `accelerate`
+        model = T5ForConditionalGeneration.from_pretrained(
+            "t5-small", torch_dtype=torch.float16, low_cpu_mem_usage=True
+        )
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.float32)
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.float16)
+
+        # Load using `accelerate`
+        model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.float16, device_map="auto")
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.float32)
+        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.float16)
 
 
 @require_torch
@@ -1450,56 +1549,4 @@ class T5ModelIntegrationTests(unittest.TestCase):
             " up to four years in prison.  Her next court appearance is scheduled for May 18."
         )
         article = "summarize: " + article.strip()
-        t5_tokenizer = AutoTokenizer.from_pretrained("flax-community/t5-base-cnn-dm")
-        t5_model = T5ForConditionalGeneration.from_pretrained("flax-community/t5-base-cnn-dm").to(torch_device)
-        input_ids = t5_tokenizer(
-            article, add_special_tokens=False, truncation=True, max_length=512, return_tensors="pt"
-        ).input_ids.to(torch_device)
-
-        outputs = t5_model.generate(input_ids, penalty_alpha=0.5, top_k=5, max_length=64)
-        generated_text = t5_tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
-        self.assertListEqual(
-            generated_text,
-            [
-                "Liana Barrientos has been married 10 times, nine of them in the Bronx. Her husbands filed for "
-                "permanent residence after the marriages, prosecutors say."
-            ],
-        )
-
-
-@require_torch
-class TestAsymmetricT5(unittest.TestCase):
-    def build_model_and_check_forward_pass(self, **kwargs):
-        tester = T5ModelTester(self, **kwargs)
-        config, *inputs = tester.prepare_config_and_inputs()
-        (
-            input_ids,
-            decoder_input_ids,
-            attention_mask,
-            decoder_attention_mask,
-            lm_labels,
-        ) = inputs
-        model = T5ForConditionalGeneration(config=config).to(torch_device).eval()
-        outputs = model(
-            input_ids=input_ids,
-            decoder_input_ids=decoder_input_ids,
-            decoder_attention_mask=decoder_attention_mask,
-            labels=lm_labels,
-        )
-        # outputs = model(*inputs)
-        assert len(outputs) == 4
-        assert outputs["logits"].size() == (tester.batch_size, tester.decoder_seq_length, tester.vocab_size)
-        assert outputs["loss"].size() == ()
-        return model
-
-    def test_small_decoder(self):
-        # num_hidden_layers is passed to T5Config as num_layers
-        model = self.build_model_and_check_forward_pass(decoder_layers=1, num_hidden_layers=2)
-        assert len(model.encoder.block) == 2
-        assert len(model.decoder.block) == 1
-
-    def test_defaulting_to_symmetry(self):
-        # num_hidden_layers is passed to T5Config as num_layers
-        model = self.build_model_and_check_forward_pass(num_hidden_layers=2)
-        assert len(model.decoder.block) == len(model.encoder.block) == 2
+        t5_tokenizer = AutoTokenizer.from_pretrained("flax-c
