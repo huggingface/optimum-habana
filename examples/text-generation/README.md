@@ -107,7 +107,6 @@ Here are a few settings you may be interested in:
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
-- `--fp8` Enable Quantization to fp8
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -284,7 +283,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --reuse_cache \
 --bf16 \
 --batch_size 1 \
---fp8
 ```
 
 Alternatively, here is another example to quantize the model based on previous measurements for LLama2-70b:
@@ -302,7 +300,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --max_new_tokens 2048 \
 --max_input_tokens 2048 \
 --limit_hpu_graphs \
---fp8
 ```
 
 Here is an example to measure the tensor quantization statistics on Mixtral-8x7B with 1 card:
@@ -329,7 +326,6 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generati
 --max_new_tokens 2048 \
 --batch_size 16 \
 --bf16 \
---fp8
 ```
 
 Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
@@ -361,9 +357,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --bf16 \
 --reuse_cache \
 --trim_logits \
---fp8
 ```
-`--fp8` is required to enable quantization in fp8.
 
 
 ### Using Habana Flash Attention
