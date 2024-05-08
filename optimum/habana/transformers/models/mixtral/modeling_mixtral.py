@@ -367,7 +367,7 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     # router_logits: (batch * sequence_length, n_experts)
     router_logits = self.gate(hidden_states)
 
-    if is_deepspeed_available():
+    if is_deepspeed_available() and (not self.training):
         from deepspeed import comm as dist
 
         if dist.is_initialized():

@@ -41,6 +41,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mixtral-8x7B-v0.1", 39.26845661768185),
             ("meta-llama/Llama-2-7b-hf", 0.0),
             ("meta-llama/Llama-2-70b-hf", 0.0),
+            ("microsoft/phi-2", 254.08932787178165),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 36.77314954096159),
