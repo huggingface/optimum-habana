@@ -44,35 +44,47 @@ TEST_IMGS = [
         'pie_chart.png'
     ]
 
-# TODO: Keep/use with tensorboard for validation?
 def plot_images_with_metadata(images, metadata):
     num_images = len(images)
     fig, axes = plt.subplots(nrows=num_images, ncols=1, figsize=(5, 5 * num_images))
 
     for i, (img_path, metadata) in enumerate(zip(images, metadata)):
-        img = Image.open(urlopen(DATASET_URL + img_path))
-        ax = axes[i]
+        img = Image.open(urlopen(img_path))
+        if isinstance(axes, list):
+            ax = axes[i]
+        else:
+            ax = axes
         ax.imshow(img)
         ax.axis('off')
         ax.set_title(f"{metadata['filename']}\n{metadata['top_probs']}", fontsize=14)
 
     plt.tight_layout()
-    plt.savefig('foo.png')
+    plt.savefig('figure.png')
 
 
-def run_qa(model, preprocess, tokenizer, template, device):
-    context_length = 256
-    model = model.to(device)
-    model.eval()
-    images = torch.stack([preprocess(Image.open(urlopen(DATASET_URL + img))) for img in TEST_IMGS]).to(device)
-    texts = tokenizer([template + l for l in LABELS], context_length=context_length).to(device)
+def run_qa(model, images, texts, device):
     with torch.no_grad():
         image_features, text_features, logit_scale = model(images, texts)
-
         logits = (logit_scale * image_features @ text_features.t()).detach().softmax(dim=-1)
         sorted_indices = torch.argsort(logits, dim=-1, descending=True)
     return sorted_indices, logits
 
+def postprocess(args, sorted_indices, logits, topk):
+    logits = logits.float().cpu().numpy()
+    sorted_indices = sorted_indices.int().cpu().numpy()
+    metadata_list = []
+    for i, img in enumerate(args.image_path):
+        img_name = img.split('/')[-1]
+
+        top_probs = []
+        topk  = len(args.labels) if topk == -1 else topk
+        for j in range(topk):
+            jth_index = sorted_indices[i][j]
+            top_probs.append(f"{args.labels[jth_index]}: {logits[i][jth_index] * 100:.1f}")
+
+        metadata = {'filename': img_name, 'top_probs': '\n'.join(top_probs)}
+        metadata_list.append(metadata)
+    return metadata_list
 
 def main():
     parser = argparse.ArgumentParser()
@@ -85,37 +97,50 @@ def main():
     )
     parser.add_argument(
         "--image_path",
-        default=None,
+        default=[DATASET_URL + img for img in TEST_IMGS],
         type=str,
         nargs="*",
-        help='[Untested] Path to image as input. Can be a single string (eg: --image_path "URL1"), or a list of space-separated strings (eg: --image_path "URL1" "URL2")',
+        help='Path to image as input. Can be a single string (eg: --image_path "URL1"), or a list of space-separated strings (eg: --image_path "URL1" "URL2")',
     )
     parser.add_argument(
         "--topk",
         default=1,
         type=int,
-        help="topk num",
+        help="topk num. Provides top K probabilities for the labels provided.",
     )
     parser.add_argument(
-        "--question",
-        default="this is a photo of ",
+        "--prompt",
+        default="this is a picture of ",
+        type=str,
+        help='Prompt for classification. It should be a string seperated by comma. (eg: --prompt "a photo of ")',
+    )
+    parser.add_argument(
+        "--labels",
+        default=LABELS,
         type=str,
         nargs="*",
-        help='[Untested] question as input. Can be a single string (eg: --question "Q1"), or a list of space-separated strings (eg: --question "Q1" "Q2")',
+        help='Labels for classification (eg: --labels "LABEL1"), or a list of space-separated strings (eg: --labels "LABEL1" "LABEL2")',
     )
     parser.add_argument(
         "--use_hpu_graphs",
         action="store_true",
-        help="[Untested] Whether to use HPU graphs or not. Using HPU graphs should give better latencies.",
+        help="Whether to use HPU graphs or not. Using HPU graphs should give better latencies.",
     )
     parser.add_argument(
         "--bf16",
         action="store_true",
         help="Whether to perform in bf16 precision.",
     )
-    parser.add_argument("--batch_size", type=int, default=1, help="[Untested] Input batch size.")
+    parser.add_argument("--batch_size", type=int, default=1, help="[Not implemented] Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=10, help="Number of inference iterations for benchmarking.")
+    parser.add_argument("--plot_images",action="store_true", help="Plot images with metadata for verification")
+    parser.add_argument(
+        "--print_result",
+        action="store_true",
+        help="Whether to print the zero shot classification results.",
+    )
+
     args = parser.parse_args()
 
     adapt_transformers_to_gaudi()
@@ -129,42 +154,43 @@ def main():
     model, preprocess = create_model_from_pretrained(f"hf-hub:{args.model_name_or_path}", precision=precision)
     tokenizer = get_tokenizer(f"hf-hub:{args.model_name_or_path}")
 
-    template = 'this is a photo of '
-
     device = torch.device('hpu') if torch.hpu.is_available() else torch.device('cpu')
     device_type = "hpu" if torch.hpu.is_available() else "cpu"
-    # warm up
+
+    # Initialize model
+    context_length = 256
+    if args.use_hpu_graphs:
+        from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+        model = wrap_in_hpu_graph(model)
+    model = model.to(device)
+    model.eval()
+    images = torch.stack([preprocess(Image.open(urlopen(img))) for img in args.image_path]).to(device)
+    texts = tokenizer([args.prompt + l for l in args.labels], context_length=context_length).to(device)
+
+    # Warm up
     logger.info("Running warmup")
     for i in range(args.warmup):
         with torch.autocast(device_type=device_type, dtype=dtype, enabled=True):
-            _, _ = run_qa(model, preprocess, tokenizer, template, device=device)
+            _, _ = run_qa(model, images, texts, device=device)
+
     logger.info("Running inference")
     start = time.time()
     for i in range(args.n_iterations):
         logits = None
         with torch.autocast(device_type=device_type, dtype=dtype, enabled=True):
-            sorted_indices, logits = run_qa(model, preprocess, tokenizer, template, device=device)
-
-        # TODO: exclude? Post Processing
-        logits = logits.float().cpu().numpy()
-        sorted_indices = sorted_indices.int().cpu().numpy()
-        metadata_list = []
-        for i, img in enumerate(TEST_IMGS):
-            img_name = img.split('/')[-1]
-
-            top_probs = []
-            args.topk  = len(LABELS) if args.topk == -1 else args.topk
-            for j in range(args.topk):
-                jth_index = sorted_indices[i][j]
-                top_probs.append(f"{LABELS[jth_index]}: {logits[i][jth_index] * 100:.1f}")
-
-            metadata = {'filename': img_name, 'top_probs': '\n'.join(top_probs)}
-            metadata_list.append(metadata)
+            sorted_indices, logits = run_qa(model, images, texts, device=device)
     end = time.time()
-    logger.info("Results:")
-    pprint(metadata_list)
+
+    # Results and metrics
+    if args.print_result:
+        metadata_list = postprocess(args, sorted_indices, logits, args.topk)
+        logger.info("Results from the last iteration:")
+        pprint(metadata_list)
     logger.info(f"Inference Time per iteration = {(end-start) * 1000/args.n_iterations:.4}ms")
-    logger.info(f"Throughput = {len(TEST_IMGS)*args.n_iterations/(end-start):.4} images/s")
+    throughput = len(args.image_path)*args.n_iterations/(end-start)
+    logger.info(f"Throughput = {throughput:.4} images/s")
+    if args.plot_images:
+        plot_images_with_metadata(args.image_path, metadata_list)
 
 
 if __name__ == "__main__":
