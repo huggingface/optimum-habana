@@ -312,7 +312,7 @@ def main():
         "eta": args.eta,
         "output_type": args.output_type,
         "profiling_warmup_steps": args.profiling_warmup_steps,
-        "profiling_steps": args.profiling_steps
+        "profiling_steps": args.profiling_steps,
     }
 
     # Generate images
