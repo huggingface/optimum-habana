@@ -126,6 +126,23 @@ python text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion-2 \
     --ldm3d
 ```
+Here is how to generate images and depth maps with two prompts on two HPUs:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 2 text_to_image_generation.py \
+    --model_name_or_path "Intel/ldm3d-4c" \
+    --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
+    --num_images_per_prompt 10 \
+    --batch_size 2 \
+    --height 768 \
+    --width 768 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion-2 \
+    --ldm3d \
+    --distributed
+```
 
 > There are three different checkpoints for LDM3D:
 > - use [original checkpoint](https://huggingface.co/Intel/ldm3d) to generate outputs from the paper
@@ -190,7 +207,7 @@ python text_to_image_generation.py \
     --bf16
 ```
 
-Here is how to distributed generate SDXL images with two prompts on two HPUs:
+Here is how to generate SDXL images with two prompts on two HPUs:
 ```bash
 python ../gaudi_spawn.py \
     --world_size 2 text_to_image_generation.py \
