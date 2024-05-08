@@ -136,8 +136,8 @@ from .persimmon import (
 from .phi import (
     GaudiPhiAttention,
     GaudiPhiDecoderLayer,
-    GaudiPhiModel,
     GaudiPhiForCausalLM,
+    GaudiPhiModel,
 )
 from .qwen2 import (
     GaudiQwen2DecoderLayer,

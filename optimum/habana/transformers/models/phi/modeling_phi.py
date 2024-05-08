@@ -31,10 +31,9 @@ from transformers.models.phi.configuration_phi import PhiConfig
 from transformers.models.phi.modeling_phi import (
     PhiAttention,
     PhiDecoderLayer,
-    PhiModel,
     PhiForCausalLM,
+    PhiModel,
     apply_rotary_pos_emb,
-    repeat_kv
 )
 from transformers.utils import logging
 
