@@ -96,6 +96,13 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
+def setup_inference(args, model):
+    import habana_frameworks.torch.core as htcore
+
+    print("Initializing inference mode")
+    htcore.hpu_initialize(model, mark_only_scales_as_const=True)
+    return model
+
 def setup_const_serialization(const_serialization_path):
     import uuid
 
@@ -132,7 +139,7 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.fp8:
+        if args.quant_config:
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -386,7 +393,7 @@ def initialize_model(args, logger):
     set_seed(args.seed)
     get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     use_deepspeed = args.world_size > 0
-    if use_deepspeed or args.bf16 or args.fp8:
+    if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
@@ -413,13 +420,8 @@ def initialize_model(args, logger):
 
     if args.const_serialization_path:
         setup_const_serialization(args.const_serialization_path)
-    if args.fp8:
-        import habana_frameworks.torch.core as htcore
-
-        print("Initializing inference mode")
-        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
-        if const_marking == "True":
-            htcore.hpu_initialize(model)
+    if args.quant_config:
+        model = setup_inference(args, model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
