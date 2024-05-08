@@ -13,8 +13,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import argparse
 import functools
+import json
 import logging
+import sys
 
 import torch
 from datasets import load_dataset
@@ -33,7 +36,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.10.0")
+check_optimum_habana_min_version("1.11.0")
 
 
 logging.basicConfig(
@@ -45,11 +48,33 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def tokenize_protein(example, protein_tokenizer=None, padding=None):
+def parse_args(args):
+    parser = argparse.ArgumentParser(description="Simple example of protST zero shot evaluation.")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="output dir",
+    )
+    parser.add_argument(
+        "--max_seq_length",
+        type=int,
+        default=1024,
+        help="The maximum total input sequence length after tokenization. Sequences longer "
+        "than this will be truncated, sequences shorter will be padded.",
+    )
+    parser.add_argument(
+        "--bf16", action="store_true", help="Whether to perform zero shot evaluation in bf16 precision."
+    )
+
+    return parser.parse_args(args)
+
+
+def tokenize_protein(example, protein_tokenizer=None, max_seq_length=None):
     protein_seqs = example["prot_seq"]
 
     protein_inputs = protein_tokenizer(
-        protein_seqs, padding="max_length", truncation=True, add_special_tokens=True, max_length=1024
+        protein_seqs, padding="max_length", truncation=True, add_special_tokens=True, max_length=max_seq_length
     )
     example["protein_input_ids"] = protein_inputs.input_ids
     example["protein_attention_mask"] = protein_inputs.attention_mask
@@ -97,15 +122,18 @@ def zero_shot_eval(logger, device, test_dataset, target_field, protein_model, lo
     preds = torch.cat(preds, dim=0)
     targets = torch.tensor(targets, dtype=torch.long, device=device)
     accuracy = (preds.argmax(dim=-1) == targets).float().mean().item()
-    logger.warning("Zero-shot accuracy: %.6f" % accuracy)
+    logger.info("Zero-shot accuracy: %.6f" % accuracy)
+    return accuracy
 
 
-if __name__ == "__main__":
+def main(args):
+    args = parse_args(args)
     adapt_transformers_to_gaudi()
 
     device = torch.device("hpu")
+    model_dtype = torch.bfloat16 if args.bf16 else None
     protst_model = AutoModel.from_pretrained(
-        "mila-intel/ProtST-esm1b", trust_remote_code=True, torch_dtype=torch.bfloat16
+        "mila-intel/ProtST-esm1b", trust_remote_code=True, torch_dtype=model_dtype
     ).to(device)
     protein_model = protst_model.protein_model
     text_model = protst_model.text_model
@@ -123,7 +151,9 @@ if __name__ == "__main__":
     text_tokenizer = AutoTokenizer.from_pretrained("microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract")
 
     raw_datasets = load_dataset("mila-intel/ProtST-SubcellularLocalization", split="test")
-    func_tokenize_protein = functools.partial(tokenize_protein, protein_tokenizer=protein_tokenizer, padding=False)
+    func_tokenize_protein = functools.partial(
+        tokenize_protein, protein_tokenizer=protein_tokenizer, max_seq_length=args.max_seq_length
+    )
     test_dataset = raw_datasets.map(
         func_tokenize_protein,
         batched=False,
@@ -135,4 +165,12 @@ if __name__ == "__main__":
 
     text_tokenizer.encode(labels[0], max_length=128, truncation=True, add_special_tokens=False)
     label_feature = label_embedding(labels, text_tokenizer, text_model, device)
-    zero_shot_eval(logger, device, test_dataset, "localization", protein_model, logit_scale, label_feature)
+    accuracy = zero_shot_eval(logger, device, test_dataset, "localization", protein_model, logit_scale, label_feature)
+    if args.output_dir is not None:
+        metrics = {"accuracy": accuracy}
+        with open(f"{args.output_dir}/accuracy_metrics.json", mode="w") as file:
+            json.dump(metrics, file)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

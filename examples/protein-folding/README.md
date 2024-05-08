@@ -38,7 +38,7 @@ The predicted protein structure will be stored in save-hpu.pdb file. We can use 
 Here we show how to run zero shot evaluation of protein ST model on HPU:
 
 ```bash
-python run_zero_shot_eval.py
+python run_zero_shot_eval.py --bf16 --max_seq_length 1024
 ```
 ## Multi-HPU finetune for sequence classification task
 
