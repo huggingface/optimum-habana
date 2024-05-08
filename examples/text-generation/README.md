@@ -379,7 +379,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
 --bf16
 ```
 
-Here is an example to quantize the model based on previous measurements for Mixtral-8x7B with 1 card:
+Here is an example to quantize the model based on previous measurements for phi-2 with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.py \
 --model_name_or_path microsoft/phi-2 \

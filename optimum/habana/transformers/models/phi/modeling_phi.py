@@ -46,19 +46,6 @@ from ...modeling_attn_mask_utils import (
 logger = logging.get_logger(__name__)
 
 
-def update(prev, cur, dim, idx):
-    orig_cur = cur
-    if prev.shape == cur.shape:
-        # Initialize
-        prev.copy_(cur)
-        return orig_cur
-    assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
-    if idx is not None:
-        return prev.index_copy_(dim, idx - 1, cur)
-    else:
-        return torch.cat((prev, cur), dim=dim)
-
-
 def gaudi_phi_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
