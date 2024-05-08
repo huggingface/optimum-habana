@@ -308,11 +308,20 @@ class ExampleTestMeta(type):
 
             # The ESMFold example has no arguments, so we can execute it right away
             if self.EXAMPLE_NAME in ["run_esmfold", "run_zero_shot_eval"]:
-                p = subprocess.Popen(["python3", example_script])
+                p = subprocess.Popen(["python3", example_script], stderr=subprocess.PIPE)
                 return_code = p.wait()
 
                 # Ensure the run finished without any issue
                 self.assertEqual(return_code, 0)
+                if self.EXAMPLE_NAME == "run_zero_shot_eval":
+                    out = p.stderr.readlines()
+                    for line in out:
+                        if b"accuracy" in line:
+                            reg = re.compile("Zero-shot accuracy: (?P<accuracy>.+)")
+                            match = reg.search(line.decode("utf-8"))
+                            if match:
+                                accuracy = float(match.groupdict().get("accuracy"))
+                                self.assertTrue(accuracy > 0.43)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
                 if os.environ.get("DATA_CACHE", None) is None:
