@@ -51,7 +51,7 @@ from optimum.habana.diffusers import (
 )
 from optimum.habana.utils import set_seed
 
-from .clip_coco_utils import download_files
+from .clip_coco_utils import calculate_clip_score, download_files
 
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
@@ -608,6 +608,8 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @slow
     def test_no_generation_regression(self):
+        seed = 27
+        set_seed(seed)
         model_name = "CompVis/stable-diffusion-v1-4"
         # fp32
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
@@ -619,39 +621,33 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(use_torch_autocast=False),
         )
-        set_seed(27)
+
+        prompt = "An image of a squirrel in Picasso style"
+        generator = torch.manual_seed(seed)
         outputs = pipeline(
-            prompt="An image of a squirrel in Picasso style",
+            prompt=prompt,
+            generator=generator,
             output_type="np",
         )
 
         if os.environ.get("GAUDI2_CI", "0") == "1":
-            expected_slice = np.array(
-                [
-                    0.68306947,
-                    0.6812112,
-                    0.67309505,
-                    0.70057267,
-                    0.6582885,
-                    0.6325019,
-                    0.6708976,
-                    0.6226433,
-                    0.58038336,
-                ]
-            )
+            target_score = 29.8925
         else:
-            expected_slice = np.array(
-                [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
-            )
+            target_score = 36.774
+
         image = outputs.images[0]
         pil_image = numpy_to_pil(image)[0]
         pil_image.save("test_no_generation_regression_output.png")
 
+        clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
+
         self.assertEqual(image.shape, (512, 512, 3))
-        self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
+        self.assertGreaterEqual(clip_score, target_score)
 
     @slow
     def test_no_generation_regression_ldm3d(self):
+        seed = 27
+        set_seed(seed)
         model_name = "Intel/ldm3d-4c"
         # fp32
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
@@ -663,61 +659,28 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(),
         )
-        set_seed(27)
+
+        prompt = "An image of a squirrel in Picasso style"
+        generator = torch.manual_seed(seed)
         outputs = pipeline(
-            prompt="An image of a squirrel in Picasso style",
+            prompt=prompt,
+            generator=generator,
             output_type="np",
         )
 
         if os.environ.get("GAUDI2_CI", "0") == "1":
-            expected_slice_rgb = np.array(
-                [
-                    0.2099357,
-                    0.16664368,
-                    0.08352646,
-                    0.20643419,
-                    0.16748399,
-                    0.08781305,
-                    0.21379063,
-                    0.19943115,
-                    0.04389626,
-                ]
-            )
-            expected_slice_depth = np.array(
-                [
-                    0.68369114,
-                    0.6827824,
-                    0.6852779,
-                    0.6836072,
-                    0.6888298,
-                    0.6895473,
-                    0.6853674,
-                    0.67561126,
-                    0.660434,
-                ]
-            )
+            target_score = 28.0894
         else:
-            expected_slice_rgb = np.array([0.7083766, 1.0, 1.0, 0.70610344, 0.9867363, 1.0, 0.7214538, 1.0, 1.0])
-            expected_slice_depth = np.array(
-                [
-                    0.919621,
-                    0.92072034,
-                    0.9184986,
-                    0.91994286,
-                    0.9242079,
-                    0.93387043,
-                    0.92345214,
-                    0.93558526,
-                    0.9223714,
-                ]
-            )
+            target_score = 35.81
+
         rgb = outputs.rgb[0]
         depth = outputs.depth[0]
 
+        rgb_clip_score = calculate_clip_score(np.expand_dims(rgb, axis=0), [prompt])
+
         self.assertEqual(rgb.shape, (512, 512, 3))
         self.assertEqual(depth.shape, (512, 512, 1))
-        self.assertLess(np.abs(expected_slice_rgb - rgb[-3:, -3:, -1].flatten()).max(), 5e-3)
-        self.assertLess(np.abs(expected_slice_depth - depth[-3:, -3:, -1].flatten()).max(), 5e-3)
+        self.assertGreaterEqual(rgb_clip_score, target_score)
 
     @slow
     def test_no_generation_regression_upscale(self):

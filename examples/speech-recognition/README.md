@@ -219,6 +219,7 @@ python run_speech_recognition_seq2seq.py \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
     --dataset_config_name="hi" \
     --language="hindi" \
+    --task="transcribe" \
     --train_split_name="train+validation" \
     --eval_split_name="test" \
     --gaudi_config_name="Habana/whisper" \
@@ -235,11 +236,9 @@ python run_speech_recognition_seq2seq.py \
     --save_steps="1000" \
     --generation_max_length="225" \
     --preprocessing_num_workers="1" \
-    --length_column_name="input_length" \
     --max_duration_in_seconds="30" \
     --text_column_name="sentence" \
     --freeze_feature_encoder="False" \
-    --group_by_length \
     --bf16 \
     --overwrite_output_dir \
     --do_train \
@@ -252,7 +251,8 @@ python run_speech_recognition_seq2seq.py \
     --throughput_warmup_steps 3
 ```
 
-If training on a different language, you should be sure to change the `language` and `dataset_config_name` arguments.
+If training on a different language, you should be sure to change the `language` argument. The `language` and `task` arguments should be omitted for English speech recognition.
+
 
 ### Multi HPU Whisper Training with Seq2Seq
 The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
@@ -263,6 +263,7 @@ python ../gaudi_spawn.py \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
     --dataset_config_name="hi" \
     --language="hindi" \
+    --task="transcribe" \
     --train_split_name="train+validation" \
     --eval_split_name="test" \
     --gaudi_config_name="Habana/whisper" \
@@ -274,11 +275,9 @@ python ../gaudi_spawn.py \
     --learning_rate="1e-5" \
     --generation_max_length="225" \
     --preprocessing_num_workers="1" \
-    --length_column_name="input_length" \
     --max_duration_in_seconds="30" \
     --text_column_name="sentence" \
     --freeze_feature_encoder="False" \
-    --group_by_length \
     --bf16 \
     --overwrite_output_dir \
     --do_train \
@@ -302,17 +301,16 @@ python run_speech_recognition_seq2seq.py \
     --dataset_name="mozilla-foundation/common_voice_11_0" \
     --dataset_config_name="hi" \
     --language="hindi" \
+    --task="transcribe" \
     --eval_split_name="test" \
     --gaudi_config_name="Habana/whisper" \
     --output_dir="./results/whisper-small-clean" \
     --per_device_eval_batch_size="32" \
     --generation_max_length="225" \
     --preprocessing_num_workers="1" \
-    --length_column_name="input_length" \
     --max_duration_in_seconds="30" \
     --text_column_name="sentence" \
     --freeze_feature_encoder="False" \
-    --group_by_length \
     --bf16 \
     --overwrite_output_dir \
     --do_eval \
