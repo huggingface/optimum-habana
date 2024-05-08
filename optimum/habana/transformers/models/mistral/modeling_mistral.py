@@ -71,6 +71,8 @@ except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
+logger = logging.get_logger(__name__)
+
 
 class KVCache(torch.nn.Module):
     def __init__(self):
@@ -121,9 +123,6 @@ class Matmul(torch.nn.Module):
         return torch.matmul(x, y)
 
 
-logger = logging.get_logger(__name__)
-
-
 # Copied from transformers.models.llama.modeling_llama.repeat_kv
 def gaudi_mistral_repeat_kv(
     query_states: torch.Tensor,
@@ -157,15 +156,6 @@ def gaudi_mistral_repeat_kv(
         attention_mask = attention_mask.unsqueeze(1)
 
     return query_states, key_states, value_states, attention_mask
-
-
-def update_sincos_cache(self, seq_len):
-    # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
-    # This helps in avoiding creation of these caches during actual model forward pass and
-    # reduce memory consumption and improve performance.
-    if seq_len > self.max_position_embeddings:
-        self.max_position_embeddings = seq_len
-        _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
 
 
 def gaudi_mistral_rmsnorm_forward(self, hidden_states):
@@ -274,7 +264,6 @@ class GaudiMistralAttention(MistralAttention):
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
         attn_softmax_bf16: Optional[bool] = False,
-        use_fused_rope: Optional[bool] = True,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
@@ -315,9 +304,7 @@ class GaudiMistralAttention(MistralAttention):
             else:
                 kv_seq_len += kv_shape
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(
-            query_states, key_states, cos, sin, position_ids, use_fused_rope=use_fused_rope
-        )
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
 
         if use_cache:
             # reuse k, v, self_attention
@@ -334,6 +321,8 @@ class GaudiMistralAttention(MistralAttention):
                     past_key_value = (past_key, past_value)
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                 value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+                if token_idx is None:
+                    past_key_value = (key_states, value_states)
 
             if cache_idx is not None and q_len == 1:
                 key_states = key_states[:, :, :cache_idx, :]
@@ -364,13 +353,6 @@ class GaudiMistralAttention(MistralAttention):
                         attn_output = FusedSDPA.apply(
                             query_states, key_states, value_states, attention_mask, 0.0, False, None
                         )
-        elif FusedSDPA and not self.training and q_len == key_states.size(-2) and q_len > 8192:
-            # support long sequences exceeding 8192
-            # for shorter sequences, do not use FusedSDPA(due to perf degradation)
-            import habana_frameworks.torch.hpu as ht
-
-            with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                attn_output = FusedSDPA.apply(query_states, key_states, value_states, attention_mask, 0.0, False, None)
         else:
             # repeat k/v heads if n_kv_heads < n_heads
             query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
@@ -425,7 +407,7 @@ class GaudiMistralAttention(MistralAttention):
 
 class GaudiMistralDecoderLayer(MistralDecoderLayer):
     def __init__(self, config: MistralConfig, layer_idx: int):
-        super().__init__(config, layer_idx)
+        super(MistralDecoderLayer, self).__init__()
         self.hidden_size = config.hidden_size
 
         self.self_attn = GaudiMistralAttention(config, layer_idx)
@@ -455,7 +437,6 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
         attn_softmax_bf16: Optional[bool] = False,
-        use_fused_rope: Optional[bool] = True,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
@@ -482,7 +463,6 @@ class GaudiMistralDecoderLayer(MistralDecoderLayer):
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
             attn_softmax_bf16=attn_softmax_bf16,
-            use_fused_rope=use_fused_rope,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
@@ -529,7 +509,6 @@ class GaudiMistralModel(MistralModel):
         reuse_cache: Optional[bool] = False,
         cache_idx: Optional[int] = None,
         attn_softmax_bf16: Optional[bool] = False,
-        use_fused_rope: Optional[bool] = True,
         lazy_mode: Optional[bool] = True,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -569,16 +548,11 @@ class GaudiMistralModel(MistralModel):
         past_key_values_length = 0
         use_legacy_cache = True
         use_new_cache = False
-        if past_key_values is not None and use_cache:
-            if reuse_cache:
-                # past_seen_tokens = past_key_values[0][0][2]
-                pass
-            else:
-                if use_new_cache:
-                    use_legacy_cache = not isinstance(past_key_values, Cache)
-                    if use_legacy_cache:
-                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                    past_key_values_length = past_key_values.get_usable_length(seq_length)
+        if past_key_values is not None and use_cache and not reuse_cache and use_new_cache:
+            use_legacy_cache = not isinstance(past_key_values, Cache)
+            if use_legacy_cache:
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            past_key_values_length = past_key_values.get_usable_length(seq_length)
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -644,7 +618,6 @@ class GaudiMistralModel(MistralModel):
                     False,
                     cache_idx,
                     attn_softmax_bf16,
-                    use_fused_rope,
                     use_flash_attention,
                     flash_attention_recompute,
                     flash_attention_causal_mask,
@@ -661,7 +634,6 @@ class GaudiMistralModel(MistralModel):
                     reuse_cache=reuse_cache,
                     cache_idx=cache_idx,
                     attn_softmax_bf16=attn_softmax_bf16,
-                    use_fused_rope=use_fused_rope,
                     use_flash_attention=use_flash_attention,
                     flash_attention_recompute=flash_attention_recompute,
                     flash_attention_causal_mask=flash_attention_causal_mask,
@@ -725,7 +697,6 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         trim_logits: Optional[bool] = False,
         cache_idx: Optional[int] = None,
         attn_softmax_bf16: Optional[bool] = False,
-        use_fused_rope: Optional[bool] = True,
         lazy_mode: Optional[bool] = True,
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
@@ -743,6 +714,10 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        if self.generation_config.use_fused_rope is False:
+            global has_fused_rope
+            has_fused_rope = False
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
@@ -758,7 +733,6 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
             attn_softmax_bf16=attn_softmax_bf16,
-            use_fused_rope=use_fused_rope,
             lazy_mode=lazy_mode,
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
@@ -882,8 +856,8 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         return model_inputs
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids, use_fused_rope=True):
-    if q.device.type == "hpu" and has_fused_rope and use_fused_rope:
+def apply_customized_rope(q, k, cos, sin, position_ids):
+    if q.device.type == "hpu" and has_fused_rope:
         # TODO: remove `.clone()` when SynapseAI v1.15 is released
         if k.dtype == torch.bfloat16:
             return FusedRoPE.apply(
