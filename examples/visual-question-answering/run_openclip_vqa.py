@@ -158,14 +158,13 @@ def main():
     device_type = "hpu" if torch.hpu.is_available() else "cpu"
 
     # Initialize model
-    context_length = 256
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
         model = wrap_in_hpu_graph(model)
     model = model.to(device)
     model.eval()
-    images = torch.stack([preprocess(Image.open(urlopen(img))) for img in args.image_path]).to(device)
-    texts = tokenizer([args.prompt + l for l in args.labels], context_length=context_length).to(device)
+    images = torch.stack([preprocess(Image.open(urlopen(img)))for img in args.image_path]).to(device)
+    texts = tokenizer([args.prompt + l for l in args.labels]).to(device)
 
     # Warm up
     logger.info("Running warmup")
