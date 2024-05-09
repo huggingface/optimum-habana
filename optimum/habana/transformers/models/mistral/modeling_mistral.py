@@ -131,7 +131,6 @@ class Matmul(torch.nn.Module):
         return torch.matmul(x, y)
 
 
-# Copied from transformers.models.llama.modeling_llama.repeat_kv
 def gaudi_mistral_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
