@@ -68,13 +68,12 @@ python ../gaudi_spawn.py \
     --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
     --num_images_per_prompt 20 \
-    --batch_size 8 \
+    --batch_size 4 \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
     --bf16 \
-    --seed 92 \
     --distributed
 ```
 
