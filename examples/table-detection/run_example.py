@@ -17,8 +17,6 @@
 
 import argparse
 import os
-import time
-from os.path import isfile
 
 import habana_frameworks.torch as ht
 import torch
@@ -100,7 +98,9 @@ def main():
         outputs, threshold=0.9, target_sizes=target_sizes
     )[0]
 
-    for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+    for score, label, box in zip(
+        results["scores"], results["labels"], results["boxes"]
+    ):
         box = box.tolist()
         print(
             f"Detected {model.config.id2label[label.item()]} with confidence {score.item():.5f} at location {box}"
