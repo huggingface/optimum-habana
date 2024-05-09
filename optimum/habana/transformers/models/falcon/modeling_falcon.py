@@ -143,6 +143,16 @@ class Softmax(nn.Module):
         return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
 
 
+#  FusedScaledDotProductAttention
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
+
+    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
+        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
+
+
 class Matmul(nn.Module):
     def __init__(self):
         super().__init__()
@@ -241,7 +251,7 @@ class GaudiFalconAttention(FalconAttention):
     - replace F.scaled_dot_product_attention with Habana torch's version for BF16
     - use ScaledDotProductAttention for FP8 quantization
     - add new arg reuse_cache
-    - add new args use_flash_attention
+    - add new args use_flash_attentiong
     - add new arg flash_attention_recompute
     - add new arg flash_attention_causal_mask
     """
@@ -251,6 +261,8 @@ class GaudiFalconAttention(FalconAttention):
 
         if os.getenv("QUANT_CONFIG", ""):
             self.sdpa = ScaledDotProductAttention(config)
+        else:
+            self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
 
         self.k_cache = KVCache()
         self.v_cache = KVCache()
