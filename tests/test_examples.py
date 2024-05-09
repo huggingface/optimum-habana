@@ -76,9 +76,12 @@ def _get_supported_models_for_script(
     """
 
     def is_valid_model_type(model_type: str) -> bool:
-        # llama_guard is not a model type in Transformers so CONFIG_MAPPING wouldn't find it
         true_model_type = "llama" if model_type == "llama_guard" else model_type
-        in_task_mapping = CONFIG_MAPPING[true_model_type] in task_mapping
+        if model_type == "protst":
+            in_task_mapping = True
+        else:
+            # llama_guard is not a model type in Transformers so CONFIG_MAPPING wouldn't find it
+            in_task_mapping = CONFIG_MAPPING[true_model_type] in task_mapping
         in_valid_models_for_task = model_type in valid_models_for_task
         if in_task_mapping and in_valid_models_for_task:
             return True
@@ -170,6 +173,11 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_CAUSAL_LM_MAPPING,
         ["llama"],
     ),
+    "run_sequence_classification": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        ["protst"],
+    ),
 }
 
 
@@ -199,9 +207,12 @@ class ExampleTestMeta(type):
 
         if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
             return False
-        elif ("sft" in example_name or "dpo" in example_name or "prompt_tuning" in example_name) and os.environ.get(
-            "GAUDI2_CI", "0"
-        ) == "0":
+        elif (
+            "sft" in example_name
+            or "dpo" in example_name
+            or "prompt_tuning" in example_name
+            or example_name == "run_sequence_classification"
+        ) and os.environ.get("GAUDI2_CI", "0") == "0":
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -248,7 +259,7 @@ class ExampleTestMeta(type):
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
-                if example_name in ["run_esmfold", "run_lora_clm"]:
+                if example_name in ["run_esmfold", "run_lora_clm", "run_zero_shot_eval"]:
                     attrs[f"test_{example_name}_{distribution}"] = cls._create_test(None, None, None, None, None)
                     attrs["EXAMPLE_NAME"] = example_name
                     return super().__new__(cls, name, bases, attrs)
@@ -302,9 +313,27 @@ class ExampleTestMeta(type):
             if self.EXAMPLE_NAME == "run_esmfold":
                 p = subprocess.Popen(["python3", example_script])
                 return_code = p.wait()
-
                 # Ensure the run finished without any issue
                 self.assertEqual(return_code, 0)
+                return
+            elif self.EXAMPLE_NAME == "run_zero_shot_eval":
+                with TemporaryDirectory() as tmp_dir:
+                    cmd_line = f"""
+                        python3
+                        {example_script}
+                        --output_dir {tmp_dir}
+                        --bf16
+                        --max_seq_length 1024
+                    """.split()
+                    p = subprocess.Popen(cmd_line)
+                    return_code = p.wait()
+                    # Ensure the run finished without any issue
+                    self.assertEqual(return_code, 0)
+                    # Assess accuracy
+                    with open(Path(tmp_dir) / "accuracy_metrics.json") as fp:
+                        results = json.load(fp)
+                        baseline = 0.43 if os.environ.get("GAUDI2_CI", "0") == "1" else 0.42
+                        self.assertGreaterEqual(results["accuracy"], baseline)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
                 if os.environ.get("DATA_CACHE", None) is None:
@@ -661,6 +690,10 @@ class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, 
     pass
 
 
+class ProteinFoldingExampleTester2(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_zero_shot_eval"):
+    pass
+
+
 class MultiCardCausalLanguageModelingLORAExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
 ):
@@ -698,6 +731,13 @@ class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, ex
 class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="dpo", multi_card=True):
     TASK_NAME = "trl-dpo"
     DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardProteinFoldingClassificationTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_sequence_classification", multi_card=True
+):
+    TASK_NAME = "prost-sequence-classification"
+    DATASET_NAME = "mila-intel/ProtST-BinaryLocalization"
 
 
 class MultiCardCausalLanguageModelingPromptTuningExampleTester(
