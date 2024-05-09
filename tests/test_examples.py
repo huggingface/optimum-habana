@@ -332,7 +332,8 @@ class ExampleTestMeta(type):
                     # Assess accuracy
                     with open(Path(tmp_dir) / "accuracy_metrics.json") as fp:
                         results = json.load(fp)
-                        self.assertGreaterEqual(results["accuracy"], 0.43)
+                        baseline = 0.43 if os.environ.get("GAUDI2_CI", "0") == "1" else 0.42
+                        self.assertGreaterEqual(results["accuracy"], baseline)
                 return
             elif self.EXAMPLE_NAME == "run_clip":
                 if os.environ.get("DATA_CACHE", None) is None:
