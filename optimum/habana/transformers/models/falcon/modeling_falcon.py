@@ -241,6 +241,9 @@ class GaudiFalconAttention(FalconAttention):
     - replace F.scaled_dot_product_attention with Habana torch's version for BF16
     - use ScaledDotProductAttention for FP8 quantization
     - add new arg reuse_cache
+    - add new args use_flash_attention
+    - add new arg flash_attention_recompute
+    - add new arg flash_attention_causal_mask
     """
 
     def __init__(self, config: FalconConfig):
@@ -287,6 +290,9 @@ class GaudiFalconAttention(FalconAttention):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
         **kwargs,
     ):
         if "padding_mask" in kwargs:
@@ -373,17 +379,28 @@ class GaudiFalconAttention(FalconAttention):
                         attn_output = self.sdpa(
                             query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal=False
                         )
-                    else:
-                        with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
-                            attn_output = FusedSDPA.apply(
-                                query_layer,
-                                key_layer,
-                                value_layer,
-                                attention_mask,
-                                0.0,
-                                # The query_length > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case query_length == 1.
-                                self.is_causal and attention_mask is None and query_length > 1,
-                            )
+                    else:  # use_flash_attention
+                        if query_length == 1:
+                            # next token
+                            use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                            with sdp_kernel(enable_recompute=use_recompute):
+                                attn_output = self.fused_scaled_dot_product_attention(
+                                    query_layer, key_layer, value_layer, attention_mask, 0.0, False, None
+                                )
+                        else:
+                            # first token
+                            if flash_attention_causal_mask:
+                                # causal masking on first token requires inputs to be of the same lenght
+                                with sdp_kernel(enable_recompute=flash_attention_recompute):
+                                    attn_output = self.fused_scaled_dot_product_attention(
+                                        query_layer, key_layer, value_layer, attention_mask, None, 0.0, True, None
+                                    )
+                            else:
+                                with sdp_kernel(enable_recompute=flash_attention_recompute):
+                                    attn_output = self.fused_scaled_dot_product_attention(
+                                        query_layer, key_layer, value_layer, attention_mask, 0.0, False, None
+                                    )
+
                 else:
                     # Workaround util scaled_dot_product_attention support broadcast.
                     if self.training is True and query_layer.shape != key_layer.shape:
@@ -513,6 +530,9 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
     - add new args token_idx and position_ids
     - add token_idx and position_ids into attention inputs
     - add new args reuse_cache
+    - add new args use_flash_attention
+    - add new arg flash_attention_recompute
+    - add new arg flash_attention_causal_mask
     """
 
     def __init__(self, config: FalconConfig):
@@ -538,6 +558,9 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
         **kwargs,
     ):
         if "padding_mask" in kwargs:
@@ -563,6 +586,9 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
             **kwargs,
         )
 
@@ -611,6 +637,9 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
     ):
         if self.config.new_decoder_architecture:
             attention_layernorm_out = self.ln_attn(hidden_states)
@@ -632,6 +661,9 @@ class GaudiFalconDecoderLayer(FalconDecoderLayer):
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
         )
 
         return attn_outputs, present, attn_scores, attention_layernorm_out, mlp_layernorm_out
@@ -644,6 +676,9 @@ class GaudiFalconModel(FalconModel):
     - add new args token_idx and position_ids
     - add token_idx and position_ids into decoder inputs
     - add new arg reuse_cache
+    - add new args use_flash_attention
+    - add new arg flash_attention_recompute
+    - add new arg flash_attention_causal_mask
     """
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
@@ -669,6 +704,9 @@ class GaudiFalconModel(FalconModel):
         token_idx: Optional[torch.Tensor] = None,
         reuse_cache: Optional[bool] = False,
         cache_idx: int = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
     ) -> Union[Tuple[torch.Tensor, ...], BaseModelOutputWithPastAndCrossAttentions]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -788,6 +826,10 @@ class GaudiFalconModel(FalconModel):
 
         htcore.mark_step()
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
+            if not self.training and (
+                torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1
+            ):
+                htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -803,6 +845,9 @@ class GaudiFalconModel(FalconModel):
                     use_cache,
                     output_attentions,
                     None,
+                    use_flash_attention,
+                    flash_attention_recompute,
+                    flash_attention_causal_mask,
                 )
             else:
                 outputs = block(
@@ -817,6 +862,9 @@ class GaudiFalconModel(FalconModel):
                     token_idx=token_idx,
                     reuse_cache=reuse_cache,
                     cache_idx=cache_idx,
+                    use_flash_attention=use_flash_attention,
+                    flash_attention_recompute=flash_attention_recompute,
+                    flash_attention_causal_mask=flash_attention_causal_mask,
                 )
 
             hidden_states = outputs[0]
@@ -852,6 +900,9 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
     - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
     - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
     - add new args reuse_cache
+    - add use_flash_attention
+    - add flash_attention_recompute
+    - add flash_attention_causal_mask
     """
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
@@ -934,6 +985,9 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
         reuse_cache: Optional[bool] = False,
         trim_logits: Optional[bool] = False,
         cache_idx: int = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
     ) -> Union[Tuple[torch.Tensor], CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -957,6 +1011,9 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             token_idx=token_idx,
             reuse_cache=reuse_cache,
             cache_idx=cache_idx,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
         )
         hidden_states = transformer_outputs[0]
 
