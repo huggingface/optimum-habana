@@ -24,8 +24,8 @@ from huggingface_hub import hf_hub_download
 from PIL import Image
 from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 
-from optimum.habana.transformers.modeling_utils import \
-    adapt_transformers_to_gaudi
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 adapt_transformers_to_gaudi()
 
@@ -72,15 +72,11 @@ def main():
     if os.path.isfile(args.filename):
         file_path = args.filename
     else:
-        file_path = hf_hub_download(
-            repo_id=args.dataset_name, repo_type="dataset", filename=args.filename
-        )
+        file_path = hf_hub_download(repo_id=args.dataset_name, repo_type="dataset", filename=args.filename)
     image = Image.open(file_path).convert("RGB")
 
     image_processor = AutoImageProcessor.from_pretrained(args.model_name_or_path)
-    model = TableTransformerForObjectDetection.from_pretrained(
-        args.model_name_or_path
-    ).to("hpu")
+    model = TableTransformerForObjectDetection.from_pretrained(args.model_name_or_path).to("hpu")
     if args.use_hpu_graphs:
         model = ht.hpu.wrap_in_hpu_graph(model)
 
@@ -88,23 +84,15 @@ def main():
     target_sizes = torch.tensor([image.size[::-1]])
 
     # Forward
-    with torch.no_grad(), torch.autocast(
-        device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16
-    ):
+    with torch.no_grad(), torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16):
         outputs = model(**inputs)
     torch.hpu.synchronize()
 
-    results = image_processor.post_process_object_detection(
-        outputs, threshold=0.9, target_sizes=target_sizes
-    )[0]
+    results = image_processor.post_process_object_detection(outputs, threshold=0.9, target_sizes=target_sizes)[0]
 
-    for score, label, box in zip(
-        results["scores"], results["labels"], results["boxes"]
-    ):
+    for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
         box = box.tolist()
-        print(
-            f"Detected {model.config.id2label[label.item()]} with confidence {score.item():.5f} at location {box}"
-        )
+        print(f"Detected {model.config.id2label[label.item()]} with confidence {score.item():.5f} at location {box}")
 
 
 if __name__ == "__main__":
