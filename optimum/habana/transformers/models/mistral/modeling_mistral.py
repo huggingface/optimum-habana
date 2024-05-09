@@ -19,6 +19,7 @@
 # limitations under the License.
 """PyTorch Mistral model."""
 
+import os
 import math
 from typing import List, Optional, Tuple, Union
 
@@ -114,6 +115,13 @@ class KVCache(torch.nn.Module):
     def forward(self, cur, dim, idx):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
+
+    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
+        return  self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
 
 class Matmul(torch.nn.Module):
     def __init__(self):
@@ -188,10 +196,11 @@ class GaudiMistralAttention(MistralAttention):
         self.v_cache = KVCache()
         self.matmul_qk = Matmul()
         self.matmul_av = Matmul()
+        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
         self._init_rope()
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
-        self.block_size = 1024
+
 
     def _init_rope(self):
         """
@@ -335,11 +344,11 @@ class GaudiMistralAttention(MistralAttention):
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
-
             if q_len == 1:
                 # next token
-                with ht.sdp_kernel(enable_recompute=False):
-                    attn_output = FusedSDPA.apply(
+                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                with ht.sdp_kernel(enable_recompute=use_recompute):#False):
+                    attn_output = self.fused_scaled_dot_product_attention(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
             else:
@@ -347,10 +356,10 @@ class GaudiMistralAttention(MistralAttention):
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
+                        attn_output = self.fused_scaled_dot_product_attention(query_states, key_states, value_states, None, 0.0, True, None)
                 else:
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = FusedSDPA.apply(
+                        attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, attention_mask, 0.0, False, None
                         )
         else:
@@ -493,6 +502,10 @@ class GaudiMistralModel(MistralModel):
 
     def reorder_kv_cache(self, beam_idx: torch.LongTensor):
         return tuple(layer.reorder_kv_cache(beam_idx) for layer in self.layers)
+
+    def update_sincos_cache(self, seq_len):
+        for layer in self.layers:
+            layer.update_sincos_cache(seq_len)
 
     def forward(
         self,
