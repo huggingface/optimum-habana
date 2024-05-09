@@ -59,6 +59,9 @@ ACCURACY_PERF_FACTOR = 0.99
 TIME_PERF_FACTOR = 1.05
 
 
+IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
+
+
 def _get_supported_models_for_script(
     models_to_test: Dict[str, List[Tuple[str]]],
     task_mapping: Dict[str, str],
@@ -205,27 +208,27 @@ class ExampleTestMeta(type):
             "meta-llama/LlamaGuard-7b",
         ]
 
-        if fsdp and os.environ.get("GAUDI2_CI", "0") == "0":
+        if fsdp and not IS_GAUDI2:
             return False
         elif (
             "sft" in example_name
             or "dpo" in example_name
             or "prompt_tuning" in example_name
             or example_name == "run_sequence_classification"
-        ) and os.environ.get("GAUDI2_CI", "0") == "0":
+        ) and not IS_GAUDI2:
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
             return True
-        elif "gpt-neox" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+        elif "gpt-neox" in model_name and IS_GAUDI2 and deepspeed:
             # GPT-NeoX is tested only on Gaudi2 and with DeepSpeed
             return True
-        elif "flan-t5" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+        elif "flan-t5" in model_name and IS_GAUDI2 and deepspeed:
             # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
             return True
-        elif "CodeLlama" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and deepspeed:
+        elif "CodeLlama" in model_name and IS_GAUDI2 and deepspeed:
             # CodeLlama is tested only on Gaudi2 and with DeepSpeed
             return True
         elif model_name == "albert-xxlarge-v1":
@@ -236,15 +239,15 @@ class ExampleTestMeta(type):
             return True
         elif "wav2vec2-large" in model_name and example_name == "run_speech_recognition_ctc":
             return True
-        elif "bridgetower" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
+        elif "bridgetower" in model_name and IS_GAUDI2:
             return True
-        elif "falcon" in model_name and os.environ.get("GAUDI2_CI", "0") == "1" and not fsdp:
+        elif "falcon" in model_name and IS_GAUDI2 and not fsdp:
             return True
-        elif "bloom" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "0":
+        elif "bloom" in model_name and deepspeed and not IS_GAUDI2:
             return True
-        elif "LlamaGuard" in model_name and deepspeed and os.environ.get("GAUDI2_CI", "0") == "1":
+        elif "LlamaGuard" in model_name and deepspeed and IS_GAUDI2:
             return True
-        elif "ast-finetuned-speech-commands-v2" in model_name and os.environ.get("GAUDI2_CI", "0") == "1":
+        elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
             return True
 
         return False
@@ -350,7 +353,7 @@ class ExampleTestMeta(type):
                 ".json"
             )
             with path_to_baseline.open("r") as json_file:
-                device = "gaudi2" if os.environ.get("GAUDI2_CI", "0") == "1" else "gaudi"
+                device = "gaudi2" if IS_GAUDI2 else "gaudi"
                 baseline = json.load(json_file)[device]
                 if isinstance(self.TASK_NAME, list):
                     for key in self.TASK_NAME:
