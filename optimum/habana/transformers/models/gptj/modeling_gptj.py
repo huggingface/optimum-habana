@@ -1,6 +1,5 @@
 from typing import Optional, Tuple, Union
 
-import habana_frameworks.torch.core as htcore
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -208,18 +207,18 @@ class GaudiGPTJAttention(GPTJAttention):
         key = key.permute(0, 2, 1, 3).contiguous()
         query = query.permute(0, 2, 1, 3).contiguous()
 
-        # if layer_past is not None:
-        #     past_key = layer_past[0]
-        #     past_value = layer_past[1]
+        if layer_past is not None and not reuse_cache:
+            past_key = layer_past[0]
+            past_value = layer_past[1]
 
-        #     if token_idx is not None:
-        #         past_key.index_copy_(2, token_idx - 1, key)
-        #         past_value.index_copy_(2, token_idx - 1, value)
-        #         key = past_key
-        #         value = past_value
-        #     else:
-        #         key = torch.cat([past_key, key], dim=-2)
-        #         value = torch.cat([past_value, value], dim=-2)
+            if token_idx is not None:
+                past_key.index_copy_(2, token_idx - 1, key)
+                past_value.index_copy_(2, token_idx - 1, value)
+                key = past_key
+                value = past_value
+            else:
+                key = torch.cat([past_key, key], dim=-2)
+                value = torch.cat([past_value, value], dim=-2)
 
         if use_cache is True and token_idx is not None:
             if reuse_cache:
@@ -234,6 +233,7 @@ class GaudiGPTJAttention(GPTJAttention):
                 key = self.k_cache.update(layer_past[0], key, 2, token_idx, self.inp_seq_len)
                 value = self.v_cache.update(layer_past[1], value, 2, token_idx, self.inp_seq_len)
                 present = layer_past
+
             if cache_idx is not None and q_len == 1:
                 key = key[:, :, :cache_idx, :]
                 value = value[:, :, :cache_idx, :]
@@ -445,11 +445,11 @@ class GaudiGPTJModel(GPTJModel):
         if past_key_values is None:
             past_length = 0
             past_key_values = tuple([None] * len(self.h))
-        elif use_cache:
-            if reuse_cache:
-                past_length = past_key_values[0][0][0]
         else:
-            past_length = past_key_values[0][0].size(-2)
+            if reuse_cache:
+                past_length = past_key_values[0][0][-2]
+            else:
+                past_length = past_key_values[0][0].size(-2)
 
         if position_ids is None:
             position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
@@ -505,8 +505,6 @@ class GaudiGPTJModel(GPTJModel):
         all_self_attentions = () if output_attentions else None
         all_hidden_states = () if output_hidden_states else None
 
-        htcore.mark_step()
-
         # replace original `_get_embed_positions` method and sin cos calculation in the attn block here to improve perf
         rotary_dim = self.config.rotary_dim
         embed_dim = self.config.hidden_size
@@ -534,7 +532,7 @@ class GaudiGPTJModel(GPTJModel):
                     attention_mask = attention_mask.to(hidden_states.device)
                 if isinstance(head_mask, torch.Tensor):
                     head_mask = head_mask.to(hidden_states.device)
-            htcore.mark_step()
+
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -819,7 +817,9 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
+        reuse_cache = kwargs.get("reuse_cache")
         token_type_ids = kwargs.get("token_type_ids", None)
+        attention_mask = kwargs.get("attention_mask", None)
         # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
@@ -841,8 +841,11 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
                     token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
                 else:
                     token_type_ids = token_type_ids[:, -input_ids.shape[1] :]
+        elif reuse_cache and token_idx is not None:
+            # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
 
-        attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
 
         if attention_mask is not None and position_ids is None:
@@ -869,7 +872,7 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
                 "attention_mask": attention_mask,
                 "token_type_ids": token_type_ids,
                 "token_idx": token_idx,
-                "reuse_cache": kwargs.get("reuse_cache"),
+                "reuse_cache": reuse_cache,
                 "cache_idx": kwargs.get("cache_idx"),
             }
         )
