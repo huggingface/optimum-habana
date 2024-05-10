@@ -1,4 +1,5 @@
 
+
 # coding=utf-8
 # Copyright 2018 Google T5 Authors and HuggingFace Inc. team.
 #
@@ -1039,6 +1040,11 @@ class T5EncoderOnlyModelTest(ModelTesterMixin, unittest.TestCase):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_model(*config_and_inputs)
 
+    @unittest.skipIf(torch_device == "cpu", "Cant do half precision")
+    def test_model_fp16_forward(self):
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_model_fp16_forward(*config_and_inputs)
+
 
 def use_task_specific_params(model, task):
     model.config.update(model.config.task_specific_params[task])
@@ -1549,4 +1555,56 @@ class T5ModelIntegrationTests(unittest.TestCase):
             " up to four years in prison.  Her next court appearance is scheduled for May 18."
         )
         article = "summarize: " + article.strip()
-        t5_tokenizer = AutoTokenizer.from_pretrained("flax-c
+        t5_tokenizer = AutoTokenizer.from_pretrained("flax-community/t5-base-cnn-dm")
+        t5_model = T5ForConditionalGeneration.from_pretrained("flax-community/t5-base-cnn-dm").to(torch_device)
+        input_ids = t5_tokenizer(
+            article, add_special_tokens=False, truncation=True, max_length=512, return_tensors="pt"
+        ).input_ids.to(torch_device)
+
+        outputs = t5_model.generate(input_ids, penalty_alpha=0.5, top_k=5, max_length=64)
+        generated_text = t5_tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
+        self.assertListEqual(
+            generated_text,
+            [
+                "Liana Barrientos has been married 10 times, nine of them in the Bronx. Her husbands filed for "
+                "permanent residence after the marriages, prosecutors say."
+            ],
+        )
+
+
+@require_torch
+class TestAsymmetricT5(unittest.TestCase):
+    def build_model_and_check_forward_pass(self, **kwargs):
+        tester = T5ModelTester(self, **kwargs)
+        config, *inputs = tester.prepare_config_and_inputs()
+        (
+            input_ids,
+            decoder_input_ids,
+            attention_mask,
+            decoder_attention_mask,
+            lm_labels,
+        ) = inputs
+        model = T5ForConditionalGeneration(config=config).to(torch_device).eval()
+        outputs = model(
+            input_ids=input_ids,
+            decoder_input_ids=decoder_input_ids,
+            decoder_attention_mask=decoder_attention_mask,
+            labels=lm_labels,
+        )
+        # outputs = model(*inputs)
+        assert len(outputs) == 4
+        assert outputs["logits"].size() == (tester.batch_size, tester.decoder_seq_length, tester.vocab_size)
+        assert outputs["loss"].size() == ()
+        return model
+
+    def test_small_decoder(self):
+        # num_hidden_layers is passed to T5Config as num_layers
+        model = self.build_model_and_check_forward_pass(decoder_layers=1, num_hidden_layers=2)
+        assert len(model.encoder.block) == 2
+        assert len(model.decoder.block) == 1
+
+    def test_defaulting_to_symmetry(self):
+        # num_hidden_layers is passed to T5Config as num_layers
+        model = self.build_model_and_check_forward_pass(num_hidden_layers=2)
+        assert len(model.decoder.block) == len(model.encoder.block) == 2
