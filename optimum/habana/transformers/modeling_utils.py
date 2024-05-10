@@ -214,12 +214,12 @@ def adapt_transformers_to_gaudi():
         GaudiGenerationMixin._prepare_decoder_attention_mask
     )
     transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
-    transformers.generation.GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
-    transformers.generation.GenerationMixin.sample = GaudiGenerationMixin.sample
-    transformers.generation.GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
-    transformers.generation.GenerationMixin.beam_sample = GaudiGenerationMixin.beam_sample
-    transformers.generation.GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
-    transformers.generation.GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
+    transformers.generation.GenerationMixin._greedy_search = GaudiGenerationMixin._greedy_search
+    transformers.generation.GenerationMixin._sample = GaudiGenerationMixin._sample
+    transformers.generation.GenerationMixin._beam_search = GaudiGenerationMixin._beam_search
+    transformers.generation.GenerationMixin._beam_sample = GaudiGenerationMixin._beam_sample
+    transformers.generation.GenerationMixin._group_beam_search = GaudiGenerationMixin._group_beam_search
+    transformers.generation.GenerationMixin._constrained_beam_search = GaudiGenerationMixin._constrained_beam_search
     transformers.generation.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call

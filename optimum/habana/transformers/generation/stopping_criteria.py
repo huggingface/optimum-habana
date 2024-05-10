@@ -22,10 +22,12 @@ from optimum.utils import logging
 logger = logging.get_logger(__name__)
 
 
-def gaudi_MaxLengthCriteria_call(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+def gaudi_MaxLengthCriteria_call(
+    self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+) -> torch.BoolTensor:
     token_idx = kwargs.get("token_idx", None)
     if token_idx is not None:
-        return token_idx >= self.max_length
+        is_done = token_idx >= self.max_length
     else:
         cur_len = input_ids.shape[-1]
         is_done = cur_len >= self.max_length
@@ -35,12 +37,15 @@ def gaudi_MaxLengthCriteria_call(self, input_ids: torch.LongTensor, scores: torc
                 f"maximum length ({self.max_position_embeddings}). Depending on the model, you may observe "
                 "exceptions, performance degradation, or nothing at all."
             )
-        return is_done
+    return torch.full((input_ids.shape[0],), is_done, device=input_ids.device, dtype=torch.bool)
 
 
-def gaudi_MaxNewTokensCriteria_call(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+def gaudi_MaxNewTokensCriteria_call(
+    self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+) -> torch.BoolTensor:
     token_idx = kwargs.get("token_idx", None)
     if token_idx is not None:
-        return token_idx >= self.max_length
+        is_done = token_idx >= self.max_length
     else:
-        return input_ids.shape[-1] >= self.max_length
+        is_done = input_ids.shape[-1] >= self.max_length
+    return torch.full((input_ids.shape[0],), is_done, device=input_ids.device, dtype=torch.bool)
