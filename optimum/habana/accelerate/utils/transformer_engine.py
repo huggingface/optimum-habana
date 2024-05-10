@@ -14,9 +14,6 @@
 # limitations under the License.
 
 import torch
-from peft.tuners.lora.layer import Linear as PEFTLinear
-
-from optimum.habana.peft.layer import LoRALinear
 
 
 te = None
@@ -57,6 +54,9 @@ def convert_model(model, to_transformer_engine=True, _convert_linear=True):
     """
     if te is None:
         raise ImportError("Using `convert_model` requires transformer_engine to be installed.")
+    from peft.tuners.lora.layer import Linear as PEFTLinear
+
+    from optimum.habana.peft.layer import LoRALinear
 
     for name, module in model.named_children():
         if type(module) == PEFTLinear and to_transformer_engine and _convert_linear:
