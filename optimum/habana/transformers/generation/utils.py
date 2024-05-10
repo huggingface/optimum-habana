@@ -839,8 +839,9 @@ class GaudiGenerationMixin(GenerationMixin):
             not generation_config.bucket_internal
             and generation_config.bucket_size > 0
             and (
-                generation_config.get_generation_mode(assistant_model) == GenerationMode.GREEDY_SEARCH
-                or generation_config.get_generation_mode(assistant_model) == GenerationMode.BEAM_SEARCH
+                self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
+                or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
+                or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.CONTRASTIVE_SEARCH
             )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
@@ -1436,6 +1437,12 @@ class GaudiGenerationMixin(GenerationMixin):
         Generates sequences of token ids for models with a language modeling head using **contrastive search** and can
         be used for text-decoder, text-to-text, speech-to-text, and vision-to-text models.
 
+        Adapted from https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/generation/utils.py#L1789
+
+        The changes are:
+        - support lazy mode and HPU graphs on Gaudi
+        - support static shapes and bucketing
+
         <Tip warning={true}>
 
         In most cases, you do not need to call [`~generation.GenerationMixin._contrastive_search`] directly. Use
@@ -1580,10 +1587,11 @@ class GaudiGenerationMixin(GenerationMixin):
         if not bucket_internal:
             if bucket_size >= 0:
                 inc = iter(incrementor(bucket_size, prompt_len))
-            if bucket_size > 0:  # TODO: Why is this needed given above statement?
+            if bucket_size > 0:
                 assert "position_ids" not in model_kwargs, "Untested path"
 
         token_idx = model_kwargs.get("token_idx", None)
+        top_k_ids = None
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
@@ -1689,7 +1697,18 @@ class GaudiGenerationMixin(GenerationMixin):
                 processed_logit_for_next_step = logits_warper(input_ids, processed_logit_for_next_step)
 
             next_probs = nn.functional.softmax(processed_logit_for_next_step, dim=-1)
-            top_k_probs, top_k_ids = torch.topk(next_probs, dim=-1, k=top_k)
+
+            if token_idx is not None:
+                if top_k_ids is None:
+                    top_k_ids = torch.full(
+                        (batch_size, top_k, input_ids.shape[-1]),
+                        pad_token_id,
+                        dtype=torch.int64
+                    ).to(input_ids.device)
+                top_k_probs, top_k_prob_ids = torch.topk(next_probs, dim=-1, k=top_k)
+                top_k_ids[:, :, token_idx - 1] = top_k_prob_ids
+            else:
+                top_k_probs, top_k_ids = torch.topk(next_probs, dim=-1, k=top_k)
 
             # Store scores, attentions and hidden_states when required
             if return_dict_in_generate:
@@ -1728,13 +1747,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 all_outputs = []
                 for i in range(top_k):
                     # compute the candidate tokens by the language model and collect their hidden_states
-                    next_model_inputs = self.prepare_inputs_for_generation(top_k_ids[:, i].view(-1, 1), **model_kwargs)
                     if token_idx is not None:
-                        # Reset inputs to top_k_ids for static shapes to override selection by token_idx
-                        if self.config.is_encoder_decoder:
-                            next_model_inputs["decoder_input_ids"] = top_k_ids[:, i].view(-1, 1)
-                        else:
-                            next_model_inputs["input_ids"] = top_k_ids[:, i].view(-1, 1)
+                        next_model_inputs = self.prepare_inputs_for_generation(top_k_ids[:, i, :].view(-1, input_ids.shape[-1]), **model_kwargs)
+                    else:
+                        next_model_inputs = self.prepare_inputs_for_generation(top_k_ids[:, i].view(-1, 1), **model_kwargs)
 
                     outputs = self(
                         **next_model_inputs,
@@ -1748,13 +1764,10 @@ class GaudiGenerationMixin(GenerationMixin):
             else:
                 # compute the candidate tokens by the language model and collect their hidden_states
                 # assembles top_k_ids into batch of size k
-                next_model_inputs = self.prepare_inputs_for_generation(top_k_ids.view(-1, 1), **model_kwargs)
                 if token_idx is not None:
-                    # Reset inputs to top_k_ids for static shapes to override selection by token_idx
-                    if self.config.is_encoder_decoder:
-                        next_model_inputs["decoder_input_ids"] = top_k_ids.view(-1, 1)
-                    else:
-                        next_model_inputs["input_ids"] = top_k_ids.view(-1, 1)
+                    next_model_inputs = self.prepare_inputs_for_generation(top_k_ids.view(-1, input_ids.shape[-1]), **model_kwargs)
+                else:
+                    next_model_inputs = self.prepare_inputs_for_generation(top_k_ids.view(-1, 1), **model_kwargs)
 
                 outputs = self(
                     **next_model_inputs,
@@ -1784,7 +1797,10 @@ class GaudiGenerationMixin(GenerationMixin):
             # prepare for the next step: (1) next token_id; (2) past_key_values; (3) last_hidden_states for computing
             # the degeneration penalty; (4) logits for selecting next top-k candidates; (5) selected tokens scores
             # (model confidence minus degeneration penalty); (6) decoder hidden_states
-            next_tokens = top_k_ids[range(len(top_k_ids)), selected_idx]
+            if token_idx is not None:
+                next_tokens = top_k_ids[range(len(top_k_ids)), selected_idx, token_idx - 1]
+            else:
+                next_tokens = top_k_ids[range(len(top_k_ids)), selected_idx]
             next_hidden = torch.stack(torch.split(next_hidden.squeeze(dim=1), top_k))
             next_hidden = next_hidden[range(batch_size), selected_idx, :]
             last_hidden_states = torch.cat([last_hidden_states, next_hidden.unsqueeze(1)], dim=1)
@@ -1796,15 +1812,14 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # generate past_key_values cache of only the selected token
             if sequential:
-                next_model_input = self.prepare_inputs_for_generation(
-                    top_k_ids[:, selected_idx].view(-1, 1), **model_kwargs
-                )
                 if token_idx is not None:
-                    # Reset inputs to top_k_ids for static shapes to override selection by token_idx
-                    if self.config.is_encoder_decoder:
-                        next_model_input["decoder_input_ids"] =top_k_ids[:, selected_idx].view(-1, 1)
-                    else:
-                        next_model_input["input_ids"] = top_k_ids[:, selected_idx].view(-1, 1)
+                    next_model_input = self.prepare_inputs_for_generation(
+                        top_k_ids[:, selected_idx, :].view(-1, input_ids.shape[-1]), **model_kwargs
+                    )
+                else:
+                    next_model_input = self.prepare_inputs_for_generation(
+                        top_k_ids[:, selected_idx].view(-1, 1), **model_kwargs
+                    )
 
                 selected_outputs = self(
                     **next_model_input,
