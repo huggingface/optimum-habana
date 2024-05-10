@@ -161,39 +161,6 @@ class Matmul(nn.Module):
         return torch.matmul(*args, **kwargs)
 
 
-# ScaledDotProductAttention is based on torch.nn.functional.scaled_dot_product_attention
-class ScaledDotProductAttention(nn.Module):
-    def __init__(self, config: FalconConfig):
-        super().__init__()
-        self.head_dim = config.hidden_size // config.num_attention_heads
-        self.bmm1 = Matmul()
-        self.bmm2 = Matmul()
-        self.softmax = Softmax()
-
-    def forward(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
-        L, S = query.size(-2), key.size(-2)
-        scale_factor = 1 / math.sqrt(self.head_dim)
-        invAttnHead = torch.tensor(scale_factor, dtype=torch.float32).to("hpu")
-
-        if is_causal:
-            assert attn_mask is None
-            attn_bias = torch.zeros(L, S, dtype=query.dtype)
-            temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
-            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
-            attn_bias.to(query.dtype)
-
-        if attn_mask is not None:
-            if attn_mask.dtype == torch.bool:
-                attn_mask.masked_fill_(attn_mask.logical_not(), float("-inf"))
-
-        attn_weight = self.bmm1(query, key.transpose(-2, -1))
-
-        attn_weight += attn_mask
-        attn_weight = self.softmax(attn_weight, dim=-1, invAttnHead=invAttnHead)
-        attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
-        return self.bmm2(attn_weight, value)
-
-
 def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
     cur = cur.to(dtype=prev.dtype)
@@ -259,9 +226,7 @@ class GaudiFalconAttention(FalconAttention):
     def __init__(self, config: FalconConfig):
         super().__init__(config)
 
-        if os.getenv("QUANT_CONFIG", ""):
-            self.sdpa = ScaledDotProductAttention(config)
-        else:
+        if FusedSDPA:
             self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
 
         self.k_cache = KVCache()
@@ -386,32 +351,35 @@ class GaudiFalconAttention(FalconAttention):
                 # It is unclear why neither dropout nor head_mask is applied here (while it is with alibi).
                 attn_output = attention_scores @ value_layer
             else:
-                if FusedSDPA:
-                    if os.getenv("QUANT_CONFIG", ""):
-                        attn_output = self.sdpa(
-                            query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal=False
-                        )
-                    else:  # use_flash_attention
-                        if query_length == 1:
-                            # next token
-                            use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
-                            with sdp_kernel(enable_recompute=use_recompute):
+                if use_flash_attention and FusedSDPA:
+                    '''
+                    if query_length == 1:
+                        # next token
+                        use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                        with sdp_kernel(enable_recompute=use_recompute):
+                            attn_output = self.fused_scaled_dot_product_attention(
+                                query_layer, key_layer, value_layer, attention_mask, 0.0, False, None
+                            )
+                    else:
+                        # first token
+                        if flash_attention_causal_mask:
+                            # causal masking on first token requires inputs to be of the same lenght
+                            with sdp_kernel(enable_recompute=flash_attention_recompute):
+                                attn_output = self.fused_scaled_dot_product_attention(
+                                    query_layer, key_layer, value_layer, attention_mask, None, 0.0, True, None
+                                )
+                        else:
+                            with sdp_kernel(enable_recompute=flash_attention_recompute):
                                 attn_output = self.fused_scaled_dot_product_attention(
                                     query_layer, key_layer, value_layer, attention_mask, 0.0, False, None
                                 )
-                        else:
-                            # first token
-                            if flash_attention_causal_mask:
-                                # causal masking on first token requires inputs to be of the same lenght
-                                with sdp_kernel(enable_recompute=flash_attention_recompute):
-                                    attn_output = self.fused_scaled_dot_product_attention(
-                                        query_layer, key_layer, value_layer, attention_mask, None, 0.0, True, None
-                                    )
-                            else:
-                                with sdp_kernel(enable_recompute=flash_attention_recompute):
-                                    attn_output = self.fused_scaled_dot_product_attention(
-                                        query_layer, key_layer, value_layer, attention_mask, 0.0, False, None
-                                    )
+                    '''
+                    enable_recompute = (os.getenv("QUANT_CONFIG", "") != "") if query_length == 1 else flash_attention_recompute
+                    is_causal = query_length != 1 and flash_attention_causal_mask
+                    attn_mask = None if is_causal else attention_mask
+                    import pdb; pdb.set_trace()
+                    with sdp_kernel(enable_recompute=enable_recompute):
+                        attn_output = self.fused_scaled_dot_product_attention(query_layer, key_layer, value_layer, attn_mask, 0.0, is_causal, None)
 
                 else:
                     # Workaround util scaled_dot_product_attention support broadcast.
@@ -446,6 +414,7 @@ class GaudiFalconAttention(FalconAttention):
         else:
             if self._use_sdpa and not output_attentions and head_mask is None:
                 if FusedSDPA:
+                    # TODO needs to be turned into a module for quantization
                     with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
                         attn_output = FusedSDPA.apply(
                             query_layer,
