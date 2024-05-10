@@ -392,10 +392,10 @@ python3 run_lora_clm.py \
     --fp8 True \
     --output_dir ./model_lora_mistral \
     --num_train_epochs 3 \
-    --per_device_train_batch_size 4 \
+    --per_device_train_batch_size 8 \
     --evaluation_strategy "no" \
     --save_strategy "no" \
-    --learning_rate 1e-4 \
+    --learning_rate 4e-4 \
     --warmup_ratio  0.03 \
     --lr_scheduler_type "constant" \
     --max_grad_norm  0.3 \
@@ -412,8 +412,7 @@ python3 run_lora_clm.py \
     --max_seq_length 512 \
     --low_cpu_mem_usage True \
     --validation_split_percentage 4 \
-    --adam_epsilon 1e-08 \
-    --use_hpu_graphs_for_training
+    --adam_epsilon 1e-08
 ```
 - Single-card finetuning of Falcon-40B:
 ```bash
