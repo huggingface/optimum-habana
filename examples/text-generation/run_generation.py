@@ -26,7 +26,7 @@ import os
 import time
 from itertools import cycle
 from pathlib import Path
-
+import pdb
 import torch
 from utils import adjust_batch, count_hpu_graphs, initialize_model
 
@@ -90,6 +90,12 @@ def setup_parser(parser):
         default=None,
         type=str,
         help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
+    )
+    parser.add_argument(
+        "--use_cache",
+        default=None,
+        type=bool,
+        help="",
     )
     parser.add_argument(
         "--do_sample",
@@ -220,7 +226,11 @@ def setup_parser(parser):
         action="store_true",
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
-
+    parser.add_argument(
+        "--assistant_model",
+        default=None,
+        help="Path to or name of the assistant model to use for assisted decoding.",
+    )
     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--use_flash_attention",
@@ -293,7 +303,7 @@ def main():
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
-
+    #Get stats for custom input prompts
     if args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:
@@ -356,6 +366,8 @@ def main():
                 input_sentences.append(input_sentences[i % len(input_sentences)])
         elif args.batch_size < len(input_sentences):
             input_sentences = input_sentences[: args.batch_size]
+        if args.batch_size != 1 and args.assistant_model is not None:
+            raise ValueError("Assisted decoding requires batch_size = 1")
 
         def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
