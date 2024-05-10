@@ -93,8 +93,8 @@ python run_generation.py \
 
 ### Run Speculative Sampling on Gaudi
 
-If you want to generate a sequence of text from a prompt of your choice using assisted decoding, you can use the following command to run:
-For example:
+If you want to generate a sequence of text from a prompt of your choice using assisted decoding, you can use the following command as an example:
+
 ```
 python run_generation.py \
 --model_name_or_path gpt2 \
