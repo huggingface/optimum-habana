@@ -20,6 +20,7 @@
 
 """PyTorch Mixtral model."""
 
+import contextlib
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -71,6 +72,13 @@ try:
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
+
+try:
+    from habana_frameworks.torch.hpu import sdp_kernel
+
+    SDPContext = True
+except ImportError:
+    SDPContext = False
 
 logger = logging.get_logger(__name__)
 
@@ -182,6 +190,33 @@ class KVCache(torch.nn.Module):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
+class GaudiMixtralAttentionLongSequence:
+    @staticmethod
+    def forward(q, k, v, mask, causal, q_block_size):
+        """
+        Support long sequence at prompt phase
+        """
+        q_len = q.size(-2)
+        q_tiles = (q_len // q_block_size) if (q_len % q_block_size == 0) else math.ceil(q_len / q_block_size)
+        q_padding = q_tiles * q_block_size - q_len
+        q = F.pad(q, (0, 0, 0, q_padding), "constant", 0)
+        if mask is not None:
+            mask = F.pad(mask, (0, 0, 0, q_padding), "constant", -10000.0)
+        attn_output = torch.zeros_like(q)
+
+        for i in range(q_tiles):
+            s, e = i * q_block_size, (i + 1) * q_block_size
+            row_q = q[:, :, s:e, :]
+            row_mask = mask[:, :, s:e, :]
+            row_o = attn_output[:, :, s:e, :]
+            row_o.fill_(FusedSDPA.apply(row_q, k, v, row_mask, 0.0, causal, None))
+
+        if q_padding != 0:
+            attn_output = attn_output[:, :, :-q_padding, :]
+
+        return attn_output
+
+
 class GaudiMixtralAttention(MixtralAttention):
     def __init__(self, config: MixtralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -190,6 +225,7 @@ class GaudiMixtralAttention(MixtralAttention):
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+        self.block_size = 1024
 
     def _init_rope(self):
         """
@@ -313,17 +349,22 @@ class GaudiMixtralAttention(MixtralAttention):
             past_key_value = None
 
         if FusedSDPA:
-            import habana_frameworks.torch.hpu as ht
-
-            if q_len == 1:
-                # next token
-                with ht.sdp_kernel(enable_recompute=False):
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                    )
+            # support long sequences exceeding 8192
+            if not self.training and q_len == key_states.size(-2) and q_len > 8192:
+                htcore.mark_step()
+                attn_output = GaudiMixtralAttentionLongSequence.forward(
+                    query_states,
+                    key_states,
+                    value_states,
+                    attention_mask,
+                    False,
+                    self.block_size,
+                )
+                htcore.mark_step()
             else:
-                # first token
-                with ht.sdp_kernel(enable_recompute=False):  # inference: flash_attention_recompute = False
+                with sdp_kernel(
+                    enable_recompute=flash_attention_recompute
+                ) if SDPContext else contextlib.nullcontext():
                     attn_output = FusedSDPA.apply(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
@@ -367,7 +408,7 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
     # router_logits: (batch * sequence_length, n_experts)
     router_logits = self.gate(hidden_states)
 
-    if is_deepspeed_available():
+    if is_deepspeed_available() and (not self.training):
         from deepspeed import comm as dist
 
         if dist.is_initialized():
@@ -401,6 +442,9 @@ def gaudi_mixtral_block_sparse_moe_forward(self, hidden_states: torch.Tensor) ->
             expert_layer(current_state_static).reshape(-1, sequence_length, hidden_dim) * padded_weight
         )
         final_hidden_states += current_hidden_states_static
+        # support long sequences exceeding 8192
+        if not self.training and sequence_length > 8192:
+            htcore.mark_step()
 
     return final_hidden_states, router_logits
 
@@ -441,7 +485,6 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
 
-        htcore.mark_step()
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -460,14 +503,12 @@ class GaudiMixtralDecoderLayer(MixtralDecoderLayer):
             cache_idx=cache_idx,
         )
         hidden_states = residual + hidden_states
-        htcore.mark_step()
 
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states, router_logits = self.block_sparse_moe(hidden_states)
         hidden_states = residual + hidden_states
-        htcore.mark_step()
 
         outputs = (hidden_states,)
 
@@ -649,6 +690,8 @@ class GaudiMixtralModel(MixtralModel):
 
             if output_router_logits:
                 all_router_logits += (layer_outputs[-1],)
+
+            htcore.mark_step()
 
         hidden_states = self.norm(hidden_states)
 
