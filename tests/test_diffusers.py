@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 from io import BytesIO
 from pathlib import Path
+from typing import Union
 from unittest import TestCase, skipUnless
 
 import numpy as np
@@ -1879,6 +1880,20 @@ class TrainControlNet(TestCase):
             self.assertEqual(image.shape, (512, 512, 3))
 
 
+def install_requirements(requirements_filename: Union[str, os.PathLike]):
+    """
+    Installs the necessary requirements to run the example if the provided file exists, otherwise does nothing.
+    """
+
+    if not Path(requirements_filename).exists():
+        return
+
+    cmd_line = f"pip install -r {requirements_filename}".split()
+    p = subprocess.Popen(cmd_line)
+    return_code = p.wait()
+    assert return_code == 0
+
+
 class DreamBooth(TestCase):
     def _test_dreambooth(self, extra_config, train_text_encoder=False):
         path_to_script = (
@@ -1888,6 +1903,7 @@ class DreamBooth(TestCase):
             / "training"
             / "train_dreambooth.py"
         )
+        install_requirements(path_to_script.parent / "requirements.txt")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -1974,6 +1990,8 @@ class DreamBoothLoRASDXL(TestCase):
             / "training"
             / "train_dreambooth_lora_sdxl.py"
         )
+        install_requirements(path_to_script.parent / "requirements.txt")
+
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 python3
