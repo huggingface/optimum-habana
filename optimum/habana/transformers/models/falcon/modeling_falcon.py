@@ -218,7 +218,7 @@ class GaudiFalconAttention(FalconAttention):
     - replace F.scaled_dot_product_attention with Habana torch's version for BF16
     - use ScaledDotProductAttention for FP8 quantization
     - add new arg reuse_cache
-    - add new args use_flash_attentiong
+    - add new args use_flash_attention
     - add new arg flash_attention_recompute
     - add new arg flash_attention_causal_mask
     """
@@ -342,7 +342,7 @@ class GaudiFalconAttention(FalconAttention):
         else:
             kv_length = present[0][-2] if reuse_cache else present[0].shape[-2]
 
-        if alibi is None:
+        if alibi is None:  # inference case
             if output_attentions:
                 attention_scores = query_layer @ key_layer.transpose(-1, -2)
                 attention_scores /= math.sqrt(self.head_dim)
@@ -352,7 +352,7 @@ class GaudiFalconAttention(FalconAttention):
                 attn_output = attention_scores @ value_layer
             else:
                 if use_flash_attention and FusedSDPA:
-                    '''
+                    """
                     if query_length == 1:
                         # next token
                         use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
@@ -373,13 +373,20 @@ class GaudiFalconAttention(FalconAttention):
                                 attn_output = self.fused_scaled_dot_product_attention(
                                     query_layer, key_layer, value_layer, attention_mask, 0.0, False, None
                                 )
-                    '''
-                    enable_recompute = (os.getenv("QUANT_CONFIG", "") != "") if query_length == 1 else flash_attention_recompute
+                    """
+                    # For inference prefill, enable_recompute is flash_attention_recompute
+                    # For inference decode, enable_recompute is true for fp8 and false for bf16
+                    enable_recompute = (
+                        (os.getenv("QUANT_CONFIG", "") != "") if query_length == 1 else flash_attention_recompute
+                    )
+                    # For inference prefill, is_causal based on flash_attention_causal_mask, for decode, is_caisal is false
                     is_causal = query_length != 1 and flash_attention_causal_mask
                     attn_mask = None if is_causal else attention_mask
-                    import pdb; pdb.set_trace()
+
                     with sdp_kernel(enable_recompute=enable_recompute):
-                        attn_output = self.fused_scaled_dot_product_attention(query_layer, key_layer, value_layer, attn_mask, 0.0, is_causal, None)
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_layer, key_layer, value_layer, attn_mask, 0.0, is_causal, None
+                        )
 
                 else:
                     # Workaround util scaled_dot_product_attention support broadcast.
@@ -805,12 +812,12 @@ class GaudiFalconModel(FalconModel):
         # head_mask has shape n_layer x batch x num_heads x N x N
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
-        htcore.mark_step()
+        # htcore.mark_step()
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
-            if not self.training and (
-                torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1
-            ):
-                htcore.mark_step()
+            # if not self.training and (
+            #    torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1
+            # ):
+            # htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -947,6 +954,9 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             "token_idx": token_idx,
             "reuse_cache": reuse_cache,
             "cache_idx": kwargs.get("cache_idx"),
+            "use_flash_attention": kwargs.get("use_flash_attention"),
+            "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
+            "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
         }
 
     def forward(
