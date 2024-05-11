@@ -56,12 +56,16 @@ from .models import (
     GaudiMixtralAttention,
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
+    GaudiMixtralModel,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     GaudiPersimmonForCausalLM,
+    GaudiPhiAttention,
+    GaudiPhiDecoderLayer,
     GaudiPhiForCausalLM,
+    GaudiPhiModel,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
     GaudiStableLmForCausalLM,
@@ -120,7 +124,6 @@ from .models import (
     gaudi_llama_rmsnorm_forward,
     gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_sparse_moe_forward,
-    gaudi_mixtral_model_forward,
     gaudi_mixtral_rmsnorm_forward,
     gaudi_mpt_attention_forward,
     gaudi_mpt_block_forward,
@@ -132,9 +135,6 @@ from .models import (
     gaudi_persimmon_attention_forward,
     gaudi_persimmon_decoder_layer_forward,
     gaudi_persimmon_model_forward,
-    gaudi_phi_attention_forward,
-    gaudi_phi_decoder_layer_forward,
-    gaudi_phi_model_forward,
     gaudi_qwen2_attention_forward,
     gaudi_qwen2_model_forward,
     gaudi_rot_matmul,
@@ -366,9 +366,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for phi on Gaudi
     transformers.models.phi.modeling_phi.PhiForCausalLM = GaudiPhiForCausalLM
-    transformers.models.phi.modeling_phi.PhiAttention.forward = gaudi_phi_attention_forward
-    transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
-    transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
+    transformers.models.phi.modeling_phi.PhiAttention = GaudiPhiAttention
+    transformers.models.phi.modeling_phi.PhiDecoderLayer = GaudiPhiDecoderLayer
+    transformers.models.phi.modeling_phi.PhiModel = GaudiPhiModel
 
     # Optimization for gemma on Gaudi
     transformers.models.gemma.modeling_gemma.GemmaForCausalLM = GaudiGemmaForCausalLM
@@ -392,7 +392,7 @@ def adapt_transformers_to_gaudi():
     # Optimization for mixtral on Gaudi
     transformers.models.mixtral.modeling_mixtral.MixtralAttention = GaudiMixtralAttention
     transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM = GaudiMixtralForCausalLM
-    transformers.models.mixtral.modeling_mixtral.MixtralModel.forward = gaudi_mixtral_model_forward
+    transformers.models.mixtral.modeling_mixtral.MixtralModel = GaudiMixtralModel
     transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock.forward = gaudi_mixtral_block_sparse_moe_forward
     transformers.models.mixtral.modeling_mixtral.MixtralDecoderLayer = GaudiMixtralDecoderLayer
     transformers.models.mixtral.modeling_mixtral.MixtralRMSNorm.forward = gaudi_mixtral_rmsnorm_forward
