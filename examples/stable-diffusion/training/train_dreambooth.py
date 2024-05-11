@@ -15,7 +15,7 @@
 """
 Training script for DreamBooth to Text-to-Image Diffusion Models
 Adapted from the following source:
-https://github.com/huggingface/peft/blob/main/examples/stable_diffusion/train_dreambooth.py
+https://github.com/huggingface/peft/blob/608a90ded9985ee1c5912d738082bb1fd618902b/examples/stable_diffusion/train_dreambooth.py
 """
 
 import argparse
