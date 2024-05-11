@@ -79,7 +79,7 @@ def main():
     elif args.batch_size < text_bs:
         text = text[: args.batch_size]
 
-    if args.bf16 and "mms-tts-eng" not in args.model_name_or_path:
+    if args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float32
@@ -108,14 +108,14 @@ def main():
     if generator.model.can_generate():
         generate_kwargs = {"lazy_mode": True, "ignore_eos": False, "hpu_graphs": args.use_hpu_graphs}
 
-    with torch.autocast("hpu", torch.bfloat16, enabled=args.bf16), torch.no_grad(), torch.inference_mode():
+    with torch.autocast("hpu", torch.bfloat16, enabled=args.bf16), torch.inference_mode():
         # warm up
         for i in range(args.warmup):
             if generator.model.config.model_type == "speecht5":
                 # SpeechT5 forces a dropout with training=True, which may zero out some elements randomly.
                 # A random dropout may need different lengths of spectrograms to fit probability thresholds,
                 # which violates the HPU static shape, so we have to fix the seed here.
-                set_seed(555)
+                set_seed(args.seed)
             generator(text, batch_size=args.batch_size, forward_params=forward_params, generate_kwargs=generate_kwargs)
 
         start = time.time()
@@ -124,7 +124,7 @@ def main():
                 # SpeechT5 forces a dropout with training=True, which may zero out some elements randomly.
                 # A random dropout may need different lengths of spectrograms to fit probability thresholds,
                 # which violates the HPU static shape, so we have to fix the seed here.
-                set_seed(555)
+                set_seed(args.seed)
             speech = generator(
                 text, batch_size=args.batch_size, forward_params=forward_params, generate_kwargs=generate_kwargs
             )

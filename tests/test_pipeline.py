@@ -14,12 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest import TestCase
-
 import numpy as np
-import packaging.version
+import pytest
 import torch
-import transformers
 from datasets import load_dataset
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 from transformers import pipeline
@@ -27,8 +24,23 @@ from transformers import pipeline
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 
-class GaudiPipelineTester(TestCase):
-    def _test_image_to_text(self, model, expected_result):
+MODELS_TO_TEST = {
+    "text-to-speech": [
+        ("microsoft/speecht5_tts", 16000),
+        # add the test in transformer 4.40
+        # ("facebook/hf-seamless-m4t-medium", 16000),
+        ("facebook/mms-tts-eng", 16000),
+    ],
+    "image-to-text": [
+        ("Salesforce/blip-image-captioning-base", "a soccer player is playing a game on the app"),
+        ("nlpconnect/vit-gpt2-image-captioning", "a soccer game with a player jumping to catch"),
+    ],
+}
+
+
+class TestGaudiPipeline:
+    @pytest.mark.parametrize("model, expected_result", MODELS_TO_TEST["image-to-text"])
+    def test_image_to_text(self, model, expected_result):
         adapt_transformers_to_gaudi()
         MODEL_DTYPE_LIST = [torch.bfloat16, torch.float32]
         generate_kwargs = {
@@ -48,9 +60,10 @@ class GaudiPipelineTester(TestCase):
             generator.model = wrap_in_hpu_graph(generator.model)
             for i in range(3):
                 output = generator(image, generate_kwargs=generate_kwargs)
-            self.assertTrue(output[0]["generated_text"].startswith(expected_result))
+            assert output[0]["generated_text"].startswith(expected_result)
 
-    def _test_text_to_speech(self, model, expected_sample_rate):
+    @pytest.mark.parametrize("model, expected_sample_rate", MODELS_TO_TEST["text-to-speech"])
+    def test_text_to_speech(self, model, expected_sample_rate):
         adapt_transformers_to_gaudi()
         MODEL_DTYPE_LIST = [torch.bfloat16, torch.float32]
         text = "hello, the dog is cooler"
@@ -79,31 +92,5 @@ class GaudiPipelineTester(TestCase):
             ), torch.no_grad(), torch.inference_mode():
                 for i in range(3):
                     output = generator(text, forward_params=forward_params, generate_kwargs=generate_kwargs)
-            self.assertTrue(isinstance(output["audio"], np.ndarray))
-            self.assertEqual(output["sampling_rate"], expected_sample_rate)
-
-    def test_image_to_text_blip(self):
-        model = "Salesforce/blip-image-captioning-base"
-        expected_result = "a soccer player is playing a game on the app"
-        self._test_image_to_text(model, expected_result)
-
-    def test_image_to_text_vit(self):
-        model = "nlpconnect/vit-gpt2-image-captioning"
-        expected_result = "a soccer game with a player jumping to catch"
-        self._test_image_to_text(model, expected_result)
-
-    def test_text_to_speech_speecht5(self):
-        model = "microsoft/speecht5_tts"
-        expected_result = 16000
-        self._test_text_to_speech(model, expected_result)
-
-    def test_text_to_speech_m4t(self):
-        model = "facebook/hf-seamless-m4t-medium"
-        expected_result = 16000
-        if packaging.version.parse(transformers.__version__) >= packaging.version.parse("4.40.0"):
-            self._test_text_to_speech(model, expected_result)
-
-    def test_text_to_speech_mms(self):
-        model = "facebook/mms-tts-eng"
-        expected_result = 16000
-        self._test_text_to_speech(model, expected_result)
+            assert isinstance(output["audio"], np.ndarray)
+            assert output["sampling_rate"] == expected_sample_rate
