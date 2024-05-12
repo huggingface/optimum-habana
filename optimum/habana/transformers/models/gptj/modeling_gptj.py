@@ -1,5 +1,6 @@
 from typing import Optional, Tuple, Union
 
+import habana_frameworks.torch.core as htcore
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -520,6 +521,7 @@ class GaudiGPTJModel(GPTJModel):
         sin = sin.contiguous()
         cos = cos.contiguous()
 
+        htcore.mark_step()
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
             # Model parallel
             if self.model_parallel:
@@ -532,7 +534,7 @@ class GaudiGPTJModel(GPTJModel):
                     attention_mask = attention_mask.to(hidden_states.device)
                 if isinstance(head_mask, torch.Tensor):
                     head_mask = head_mask.to(hidden_states.device)
-
+            htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
