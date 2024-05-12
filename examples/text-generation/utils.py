@@ -160,17 +160,27 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
     if args.disk_offload:
         from accelerate import infer_auto_device_map, init_empty_weights
+
         config = AutoConfig.from_pretrained(args.model_name_or_path)
         with init_empty_weights():
             model = AutoModelForCausalLM.from_config(config)
         max_memory = {"cpu": "10GiB"}
         device_map = infer_auto_device_map(model, max_memory=max_memory, dtype=model_dtype)
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, device_map=device_map, offload_folder="/tmp/offload_folder/", offload_state_dict=True, torch_dtype=model_dtype, **model_kwargs)  
-    else: 
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path,
+            device_map=device_map,
+            offload_folder="/tmp/offload_folder/",
+            offload_state_dict=True,
+            torch_dtype=model_dtype,
+            **model_kwargs,
+        )
+    else:
         if args.peft_model is not None:
             model = peft_model(args, model_dtype, logger, **model_kwargs)
         else:
-            model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+            model = AutoModelForCausalLM.from_pretrained(
+                args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+            )
     if args.quant_config:
         import habana_quantization_toolkit
 
