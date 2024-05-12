@@ -168,7 +168,6 @@ def _test_text_generation(
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
             )
-            command.insert(-2, "--fp8")
             command.insert(-2, "--warmup 1")
             command.insert(-2, "--n_iterations 2")
             if "Llama-2" in model_name:
