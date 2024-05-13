@@ -60,7 +60,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.38.0")
+check_min_version("4.37.0")
 check_optimum_habana_min_version("1.10.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
@@ -108,7 +108,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
+                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
                 "execute code present on the Hub on your local machine."
             )
@@ -377,10 +377,6 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
     )
-    if config.model_type == "llama":
-        if tokenizer.pad_token is None:
-            tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-        tokenizer.cls_token = tokenizer.bos_token
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -400,7 +396,7 @@ def main():
         )
 
     # Preprocessing the datasets.
-    # Preprocessing is slightly different for training and evaluation.
+    # Preprocessing is slighlty different for training and evaluation.
     if training_args.do_train:
         column_names = raw_datasets["train"].column_names
     elif training_args.do_eval:
@@ -648,14 +644,6 @@ def main():
 
         references = [{"id": str(ex["id"]), "answers": ex[answer_column_name]} for ex in examples]
         return EvalPrediction(predictions=formatted_predictions, label_ids=references)
-
-    if data_args.version_2_with_negative:
-        accepted_best_metrics = ("exact", "f1", "HasAns_exact", "HasAns_f1")
-    else:
-        accepted_best_metrics = ("exact_match", "f1")
-
-    if training_args.load_best_model_at_end and training_args.metric_for_best_model not in accepted_best_metrics:
-        warnings.warn(f"--metric_for_best_model should be set to one of {accepted_best_metrics}")
 
     metric = evaluate.load(
         "squad_v2" if data_args.version_2_with_negative else "squad", cache_dir=model_args.cache_dir

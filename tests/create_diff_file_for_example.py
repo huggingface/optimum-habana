@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tool to create or update a diff file between transformers and optimum examples."""
+""" Tool to create or update a diff file between transformers and optimum examples. """
 
 import re
 import subprocess

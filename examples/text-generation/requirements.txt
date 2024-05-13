@@ -1,3 +1,2 @@
 datasets
 peft
-git+https://github.com/astachowiczhabana/transformers@v4.38-release#egg=transformers

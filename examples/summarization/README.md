@@ -250,3 +250,6 @@ python run_summarization.py \
     --pad_to_max_length \
     --num_beams 1
 ```
+
+
+Only `--num_beams 1` is supported for BART.

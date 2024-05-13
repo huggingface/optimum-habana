@@ -1,0 +1,21 @@
+1. train_text_to_image_sdxl.py
+On top of https://github.com/huggingface/diffusers/blob/v0.25.1/examples/text_to_image/train_text_to_image_sdxl.py
+Added,
+- image_save_dir change
+- logging change
+- throughput calculation
+
+2. train_text_to_image_sdxl_bf16.py
+Has the input change same as hpu script
+
+3. How to run 1x
+- copy default_config_1x.yaml to ~/.cache/huggingface/accelerate inside of the docker
+- run_fp16.sh
+
+4. How to run 8x
+- copy default_config_8x.yaml to ~/.cache/huggingface/accelerate inside of the docker
+- run_fp16.sh
+
+5. To run bf16
+- run 'accelerate config' and change the data type
+- change '--pretrained_vae_model_name_or_path' to 'stabilityai/sdxl-vae'

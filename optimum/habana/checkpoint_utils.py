@@ -22,12 +22,12 @@ def get_repo_root(model_name_or_path, local_rank=-1, token=None):
                 print("Offline mode: forcing local_files_only=True")
 
         # Only download PyTorch weights by default
-        if any(
+        if any(".bin" in filename for filename in list_repo_files(model_name_or_path, token=token)):
+            allow_patterns = ["*.bin"]
+        elif any(
             ".safetensors" in filename for filename in list_repo_files(model_name_or_path, token=token)
         ):  # Some models like Falcon-180b are in only safetensors format
             allow_patterns = ["*.safetensors"]
-        elif any(".bin" in filename for filename in list_repo_files(model_name_or_path, token=token)):
-            allow_patterns = ["*.bin"]
 
         # Download only on first process
         if local_rank in [-1, 0]:

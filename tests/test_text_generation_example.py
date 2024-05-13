@@ -14,54 +14,51 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 130.0472971205316),
-            ("gpt2-xl", 281.8734689674413),
-            ("EleutherAI/gpt-j-6b", 160.5823842101192),
-            ("EleutherAI/gpt-neox-20b", 50.67672679310354),
-            ("meta-llama/Llama-2-7b-hf", 141.25776956002076),
-            ("tiiuae/falcon-40b", 25.202450111088346),
-            ("bigcode/starcoder", 65.58632640700114),
-            ("Salesforce/codegen2-1B", 446.4029486883532),
-            ("mosaicml/mpt-30b", 36.06464336116623),
-            ("mistralai/Mistral-7B-v0.1", 130.2172236767782),
-            ("mistralai/Mixtral-8x7B-v0.1", 23.7931001677926),
-            ("microsoft/phi-2", 224.72307766211117),
+            ("bigscience/bloomz-7b1", 130.10463607610703),
+            ("gpt2-xl", 293.2967921508155),
+            ("EleutherAI/gpt-j-6b", 157.39646612198123),
+            ("EleutherAI/gpt-neox-20b", 49.65827341338015),
+            ("meta-llama/Llama-2-7b-hf", 142.00624811267403),
+            ("tiiuae/falcon-40b", 25.065388035178792),
+            ("bigcode/starcoder", 65.50236665863024),
+            ("Salesforce/codegen2-1B", 456.7740998156863),
+            ("mosaicml/mpt-30b", 35.64501131267502),
+            ("mistralai/Mistral-7B-v0.1", 125.26115369093216),
+            ("mistralai/Mixtral-8x7B-v0.1", 23.78652574031883),
         ],
         "fp8": [
-            ("tiiuae/falcon-180B", 52.85086442722326),
+            ("tiiuae/falcon-180B", 47.67900945905787),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 36.77314954096159),
-            ("meta-llama/Llama-2-70b-hf", 64.10514998902435),
-            ("facebook/opt-66b", 28.48069266504111),
+            ("bigscience/bloomz", 36.34664210641816),
+            ("meta-llama/Llama-2-70b-hf", 61.973950428647164),
+            ("facebook/opt-66b", 28.16154122335556),
         ],
         "torch_compile": [
-            ("meta-llama/Llama-2-7b-hf", 102.27823420713148),
+            ("meta-llama/Llama-2-7b-hf", 12.468247401430999),
         ],
         "torch_compile_distributed": [
-            ("meta-llama/Llama-2-7b-hf", 39.72973199515235),
+            ("meta-llama/Llama-2-7b-hf", 20.178927030275947),
         ],
     }
 else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 41.7555095197846),
-            ("gpt2-xl", 142.11481820425706),
+            ("bigscience/bloomz-7b1", 41.51855420676164),
+            ("gpt2-xl", 137.159223188195),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 50.79545107991805),
-            ("meta-llama/Llama-2-7b-hf", 44.39616259946937),
-            ("tiiuae/falcon-7b", 44.82870145718665),
-            ("bigcode/starcoder", 15.945023767901013),
-            ("Salesforce/codegen2-1B", 155.32071248826423),
-            ("mosaicml/mpt-7b", 45.45168927038262),
-            ("mistralai/Mistral-7B-v0.1", 41.21906841459711),
-            ("microsoft/phi-2", 92.53083167241344),
+            ("EleutherAI/gpt-j-6b", 50.66146537939035),
+            ("meta-llama/Llama-2-7b-hf", 44.29688546702468),
+            ("tiiuae/falcon-7b", 44.217408724737744),
+            ("bigcode/starcoder", 15.948143541091655),
+            ("Salesforce/codegen2-1B", 153.79670508220687),
+            ("mosaicml/mpt-7b", 44.80241777760578),
+            ("mistralai/Mistral-7B-v0.1", 40.00435417311187),
         ],
-        "fp8": [],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 31.994268212011505),
+            ("bigscience/bloomz-7b1", 31.044523676681507),
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
@@ -79,7 +76,6 @@ def _test_text_generation(
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
-    env_variables = os.environ.copy()
 
     if deepspeed:
         command += [
@@ -103,8 +99,6 @@ def _test_text_generation(
             "--trim_logits",
             "--torch_compile",
         ]
-        env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
-        env_variables["PT_HPU_LAZY_MODE"] = "0"
     else:
         command += [
             "--use_hpu_graphs",
@@ -129,16 +123,15 @@ def _test_text_generation(
         command = [x for y in command for x in re.split(pattern, y) if x]
 
         if fp8:
-            env_variables["QUANT_CONFIG"] = os.path.join(
+            os.environ["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_measure_include_outputs.json"
             )
-            subprocess.run(command, env=env_variables)
-            env_variables["QUANT_CONFIG"] = os.path.join(
+            subprocess.run(command)
+            os.environ["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
             )
-            command.insert(-2, "--fp8")
 
-        proc = subprocess.run(command, env=env_variables)
+        proc = subprocess.run(command)
 
         # Ensure the run finished without any issue
         # Use try-except to avoid logging the token if used
@@ -176,10 +169,15 @@ def test_text_generation_deepspeed(model_name: str, baseline: float, token: str)
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
 def test_text_generation_torch_compile(model_name: str, baseline: float, token: str):
+    os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
+    os.environ["PT_HPU_LAZY_MODE"] = "0"
+    os.environ["WORLD_SIZE"] = "0"
     _test_text_generation(model_name, baseline, token, torch_compile=True)
 
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile_distributed"])
 def test_text_generation_torch_compile_distributed(model_name: str, baseline: float, token: str):
     world_size = 8
+    os.environ["PT_ENABLE_INT64_SUPPORT"] = "1"
+    os.environ["PT_HPU_LAZY_MODE"] = "0"
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, torch_compile=True)

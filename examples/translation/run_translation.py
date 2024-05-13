@@ -63,7 +63,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.38.0")
+check_min_version("4.37.0")
 check_optimum_habana_min_version("1.10.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
@@ -125,7 +125,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
+                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option"
                 "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
                 "execute code present on the Hub on your local machine."
             )
@@ -503,19 +503,6 @@ def main():
     # Get the language codes for input/target.
     source_lang = data_args.source_lang.split("_")[0]
     target_lang = data_args.target_lang.split("_")[0]
-
-    # Check whether the source target length fits in the model, if it has absolute positional embeddings
-    if (
-        hasattr(model.config, "max_position_embeddings")
-        and not hasattr(model.config, "relative_attention_max_distance")
-        and model.config.max_position_embeddings < data_args.max_source_length
-    ):
-        raise ValueError(
-            f"`--max_source_length` is set to {data_args.max_source_length}, but the model only has"
-            f" {model.config.max_position_embeddings} position encodings. Consider either reducing"
-            f" `--max_source_length` to {model.config.max_position_embeddings} or using a model with larger position "
-            "embeddings"
-        )
 
     # Temporarily set max_target_length for training.
     max_target_length = data_args.max_target_length
