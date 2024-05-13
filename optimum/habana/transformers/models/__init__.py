@@ -48,7 +48,6 @@ from .falcon import (
     GaudiFalconForCausalLM,
     GaudiFalconMLP,
     GaudiFalconModel,
-    gaudi_falcon_attention_split_heads,
     gaudi_falcon_linear_forward,
 )
 from .gemma import (

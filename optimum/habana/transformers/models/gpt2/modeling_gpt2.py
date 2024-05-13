@@ -300,8 +300,6 @@ def gaudi_gpt2_forward(
 
     # GPT2Attention mask.
     if attention_mask is not None:
-        if batch_size <= 0:
-            raise ValueError("batch_size has to be defined and > 0")
         attention_mask = attention_mask.view(batch_size, -1)
         # We create a 3D attention mask from a 2D tensor mask.
         # Sizes are [batch_size, 1, 1, to_seq_length]

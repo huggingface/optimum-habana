@@ -100,7 +100,6 @@ from .models import (
     gaudi_conv1d_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
-    gaudi_falcon_attention_split_heads,
     gaudi_falcon_linear_forward,
     gaudi_gemma_attention_forward,
     gaudi_gemma_model_forward,
@@ -336,7 +335,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.falcon.modeling_falcon.FalconMLP = GaudiFalconMLP
     transformers.models.falcon.modeling_falcon.FalconModel = GaudiFalconModel
     transformers.models.falcon.modeling_falcon.FalconDecoderLayer = GaudiFalconDecoderLayer
-    transformers.models.falcon.modeling_falcon.FalconAttention._split_heads = gaudi_falcon_attention_split_heads
     transformers.models.falcon.modeling_falcon.FalconLinear.forward = gaudi_falcon_linear_forward
 
     # Optimization for t5 on Gaudi

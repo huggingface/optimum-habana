@@ -43,6 +43,10 @@ def gaudi_stablelm_attention_forward(
     key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
     value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
+    if self.qk_layernorm:
+        query_states = self.q_layernorm(query_states)
+        key_states = self.k_layernorm(key_states)
+
     kv_seq_len = key_states.shape[-2]
     if past_key_value is not None:
         if self.layer_idx is None:
@@ -151,7 +155,7 @@ def gaudi_stablelm_decoder_layer_forward(
     hidden_states = self.input_layernorm(hidden_states)
 
     # Self Attention
-    hidden_states, self_attn_weights, present_key_value = self.self_attn(
+    self_attn_output, self_attn_weights, present_key_value = self.self_attn(
         hidden_states=hidden_states,
         attention_mask=attention_mask,
         position_ids=position_ids,
@@ -160,15 +164,22 @@ def gaudi_stablelm_decoder_layer_forward(
         use_cache=use_cache,
         token_idx=token_idx,
     )
-    hidden_states = residual + hidden_states
 
-    # Fully Connected
-    residual = hidden_states
-    hidden_states = self.post_attention_layernorm(hidden_states)
-    hidden_states = self.mlp(hidden_states)
-
-    hidden_states = self.dropout(hidden_states)
-    hidden_states = hidden_states + residual
+    # copied from transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer.forward
+    if self.use_parallel_residual:
+        # x = x + attn(ln1(x)) + mlp(ln1(x))
+        # Fully Connected
+        mlp_output = self.mlp(hidden_states)
+        mlp_output = self.dropout(mlp_output)
+        hidden_states = residual + self_attn_output + mlp_output
+    else:
+        # x = x + attn(ln1(x))
+        # x = x + mlp(ln2(x))
+        residual = residual + self_attn_output
+        # Fully Connected
+        mlp_output = self.mlp(self.post_attention_layernorm(residual))
+        mlp_output = self.dropout(mlp_output)
+        hidden_states = residual + mlp_output
 
     outputs = (hidden_states,)
 
