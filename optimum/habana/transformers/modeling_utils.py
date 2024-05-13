@@ -21,6 +21,7 @@ from .generation import (
     GaudiGenerationMixin,
     gaudi_MaxLengthCriteria_call,
     gaudi_MaxNewTokensCriteria_call,
+    gaudi_StoppingCriteriaList_call,
 )
 from .models import (
     GaudiBloomForCausalLM,
@@ -35,6 +36,7 @@ from .models import (
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
     GaudiGPT2Attention,
+    GaudiGPT2Block,
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
     GaudiGPTJAttention,
@@ -105,7 +107,6 @@ from .models import (
     gaudi_gemma_model_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
-    gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
     gaudi_gpt_bigcode_attention_forward,
     gaudi_gpt_bigcode_block_forward,
@@ -212,6 +213,10 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._prepare_decoder_attention_mask = (
         GaudiGenerationMixin._prepare_decoder_attention_mask
     )
+    transformers.generation.GenerationMixin._prepare_generation_config = (
+        GaudiGenerationMixin._prepare_generation_config
+    )
+    transformers.generation.GenerationMixin._prepare_generated_length = GaudiGenerationMixin._prepare_generated_length
     transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
     transformers.generation.GenerationMixin._greedy_search = GaudiGenerationMixin._greedy_search
     transformers.generation.GenerationMixin._sample = GaudiGenerationMixin._sample
@@ -223,6 +228,7 @@ def adapt_transformers_to_gaudi():
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
     transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
+    transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
 
     # Optimization for BLOOM generation on Gaudi
     transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
@@ -273,7 +279,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
     transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
     transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
-    transformers.models.gpt2.modeling_gpt2.GPT2Block.forward = gaudi_gpt2_block_forward
+    transformers.models.gpt2.modeling_gpt2.GPT2Block = GaudiGPT2Block
     models_with_tracing_support.extend((GaudiGPT2Attention, GaudiGPT2LMHeadModel))
 
     # Optimization for EsmFold on Gaudi

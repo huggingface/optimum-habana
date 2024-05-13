@@ -81,10 +81,12 @@ if is_torch_available():
     import transformers.optimization
     from torch import nn
     from torch.utils.data import IterableDataset
-    from transformers import EarlyStoppingCallback, GPT2Config, GPT2LMHeadModel, PreTrainedModel, TrainerState
+    from transformers import EarlyStoppingCallback, GPT2Config, PreTrainedModel, TrainerState
     from transformers.modeling_utils import unwrap_model
 
     from optimum.habana import GaudiTrainer
+    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+    from optimum.habana.transformers.models.gpt2 import GaudiGPT2LMHeadModel
 
     if is_safetensors_available():
         import safetensors.torch
@@ -99,6 +101,9 @@ PATH_SAMPLE_TEXT = f"{get_tests_dir()}/fixtures/sample_text.txt"
 
 
 _run_safe_loading_tests_ = parse_flag_from_env("SAFE_LOADING_TESTS", default=False)
+
+
+adapt_transformers_to_gaudi()
 
 
 def safe_loading_test(test_case):
@@ -727,8 +732,10 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             lr_scheduler_kwargs=extra_kwargs,
             learning_rate=0.2,
             warmup_steps=num_warmup_steps,
+            use_habana=True,
+            use_lazy_mode=True,
         )
-        trainer = GaudiTrainer(model, args, train_dataset=train_dataset)
+        trainer = GaudiTrainer(model, gaudi_config=get_gaudi_config(), args=args, train_dataset=train_dataset)
         trainer.create_optimizer_and_scheduler(num_training_steps=num_steps)
 
         # Checking that the scheduler was created
@@ -904,7 +911,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
     def test_evaluation_with_keys_to_drop(self):
         config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-        tiny_gpt2 = GPT2LMHeadModel(config)
+        tiny_gpt2 = GaudiGPT2LMHeadModel(config)
         x = torch.randint(0, 100, (128,))
         eval_dataset = RepeatDataset(x)
         args = GaudiTrainingArguments("./test", use_habana=True, use_lazy_mode=True)
@@ -992,7 +999,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
     def test_logging_inf_nan_filter(self):
         config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-        tiny_gpt2 = GPT2LMHeadModel(config)
+        tiny_gpt2 = GaudiGPT2LMHeadModel(config)
         x = torch.randint(0, 100, (128,))
         train_dataset = RepeatDataset(x)
 
@@ -2233,6 +2240,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 _ = RegressionGaudiTrainingArguments(
                     output_dir=tmp_dir,
                     accelerator_config=AcceleratorConfig,
+                    use_habana=True,
+                    use_lazy_mode=True,
                 )
             self.assertTrue("Tried passing in a callable to `accelerator_config`" in str(context.exception))
 
@@ -2251,6 +2260,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             with self.assertRaises(NotImplementedError) as context:
                 _ = CustomTrainingArguments(
                     output_dir=tmp_dir,
+                    use_habana=True,
+                    use_lazy_mode=True,
                 )
             self.assertTrue("Tried passing in a callable to `accelerator_config`" in str(context.exception))
 
@@ -2779,10 +2790,15 @@ class HyperParameterSearchBackendsTest(unittest.TestCase):
 class OptimizerAndModelInspectionTest(unittest.TestCase):
     def test_get_num_trainable_parameters(self):
         model = nn.Sequential(nn.Linear(128, 64), nn.Linear(64, 32))
+        args = GaudiTrainingArguments(
+            output_dir="tmp_trainer",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
         # in_features * out_features + bias
         layer_1 = 128 * 64 + 64
         layer_2 = 64 * 32 + 32
-        trainer = GaudiTrainer(model=model)
+        trainer = GaudiTrainer(model=model, gaudi_config=get_gaudi_config(), args=args)
         self.assertEqual(trainer.get_num_trainable_parameters(), layer_1 + layer_2)
         # Freeze the last layer
         for param in model[-1].parameters():
@@ -2791,7 +2807,12 @@ class OptimizerAndModelInspectionTest(unittest.TestCase):
 
     def test_get_learning_rates(self):
         model = nn.Sequential(nn.Linear(128, 64))
-        trainer = GaudiTrainer(model=model)
+        args = GaudiTrainingArguments(
+            output_dir="tmp_trainer",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(model=model, gaudi_config=get_gaudi_config(), args=args)
         with self.assertRaises(ValueError):
             trainer.get_learning_rates()
         trainer.create_optimizer()
@@ -2799,7 +2820,12 @@ class OptimizerAndModelInspectionTest(unittest.TestCase):
 
     def test_get_optimizer_group(self):
         model = nn.Sequential(nn.Linear(128, 64))
-        trainer = GaudiTrainer(model=model)
+        args = GaudiTrainingArguments(
+            output_dir="tmp_trainer",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(model=model, gaudi_config=get_gaudi_config(), args=args)
         # ValueError is raised if optimizer is None
         with self.assertRaises(ValueError):
             trainer.get_optimizer_group()

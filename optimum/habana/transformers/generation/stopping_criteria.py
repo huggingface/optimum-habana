@@ -37,7 +37,8 @@ def gaudi_MaxLengthCriteria_call(
                 f"maximum length ({self.max_position_embeddings}). Depending on the model, you may observe "
                 "exceptions, performance degradation, or nothing at all."
             )
-    return torch.full((input_ids.shape[0],), is_done, device=input_ids.device, dtype=torch.bool)
+    is_done = 1 if is_done else 0
+    return torch.full((input_ids.shape[0],), is_done, device=input_ids.device, dtype=torch.int8)
 
 
 def gaudi_MaxNewTokensCriteria_call(
@@ -48,4 +49,14 @@ def gaudi_MaxNewTokensCriteria_call(
         is_done = token_idx >= self.max_length
     else:
         is_done = input_ids.shape[-1] >= self.max_length
-    return torch.full((input_ids.shape[0],), is_done, device=input_ids.device, dtype=torch.bool)
+    is_done = 1 if is_done else 0
+    return torch.full((input_ids.shape[0],), is_done, device=input_ids.device, dtype=torch.int8)
+
+
+def gaudi_StoppingCriteriaList_call(
+    self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+) -> torch.BoolTensor:
+    is_done = torch.full((input_ids.shape[0],), 0, device=input_ids.device, dtype=torch.int8)
+    for criteria in self:
+        is_done = is_done | criteria(input_ids, scores, **kwargs)
+    return is_done

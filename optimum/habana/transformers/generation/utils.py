@@ -27,7 +27,7 @@ from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, Co
 from transformers.generation.candidate_generator import CandidateGenerator
 from transformers.generation.logits_process import LogitsProcessorList
 from transformers.generation.stopping_criteria import (
-    EosTokenCriteria,
+    # EosTokenCriteria,
     StoppingCriteriaList,
     validate_stopping_criteria,
 )
@@ -1480,24 +1480,24 @@ class GaudiGenerationMixin(GenerationMixin):
             )
             stopping_criteria = validate_stopping_criteria(stopping_criteria, max_length)
         pad_token_id = pad_token_id if pad_token_id is not None else self.generation_config.pad_token_id
-        if eos_token_id is not None:
-            logger.warning_once(
-                "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
-                " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
-                " Otherwise make sure to set `model.generation_config.eos_token_id`",
-                FutureWarning,
-            )
-            stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
-        else:
-            # TODO remove when the method is totally private
-            # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
-            eos_token_id = [
-                criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
-            ]
-            eos_token_id = eos_token_id[0] if eos_token_id else None
-            if eos_token_id is None and self.generation_config.eos_token_id is not None:
-                eos_token_id = self.generation_config.eos_token_id
-                stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+        # if eos_token_id is not None:
+        #     logger.warning_once(
+        #         "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
+        #         " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
+        #         " Otherwise make sure to set `model.generation_config.eos_token_id`",
+        #         FutureWarning,
+        #     )
+        #     stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+        # else:
+        #     # TODO remove when the method is totally private
+        #     # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
+        #     eos_token_id = [
+        #         criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
+        #     ]
+        #     eos_token_id = eos_token_id[0] if eos_token_id else None
+        #     if eos_token_id is None and self.generation_config.eos_token_id is not None:
+        #         eos_token_id = self.generation_config.eos_token_id
+        #         stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
 
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
@@ -1667,7 +1667,7 @@ class GaudiGenerationMixin(GenerationMixin):
             cur_len = cur_len + 1
 
             if ignore_eos:
-                this_peer_finished = stopping_criteria(input_ids, scores, token_idx=cur_len).min() == 0
+                this_peer_finished = stopping_criteria(input_ids, scores, token_idx=cur_len).min() == 1
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids, scores, token_idx=cur_len)
                 this_peer_finished = unfinished_sequences.max() == 0
@@ -1864,24 +1864,24 @@ class GaudiGenerationMixin(GenerationMixin):
             stopping_criteria = validate_stopping_criteria(stopping_criteria, max_length)
         logits_warper = logits_warper if logits_warper is not None else LogitsProcessorList()
         pad_token_id = pad_token_id if pad_token_id is not None else self.generation_config.pad_token_id
-        if eos_token_id is not None:
-            logger.warning_once(
-                "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
-                " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
-                " Otherwise make sure to set `model.generation_config.eos_token_id`",
-                FutureWarning,
-            )
-            stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
-        else:
-            # TODO remove when the method is totally private
-            # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
-            eos_token_id = [
-                criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
-            ]
-            eos_token_id = eos_token_id[0] if eos_token_id else None
-            if eos_token_id is None and self.generation_config.eos_token_id is not None:
-                eos_token_id = self.generation_config.eos_token_id
-                stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+        # if eos_token_id is not None:
+        #     logger.warning_once(
+        #         "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
+        #         " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
+        #         " Otherwise make sure to set `model.generation_config.eos_token_id`",
+        #         FutureWarning,
+        #     )
+        #     stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+        # else:
+        #     # TODO remove when the method is totally private
+        #     # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
+        #     eos_token_id = [
+        #         criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
+        #     ]
+        #     eos_token_id = eos_token_id[0] if eos_token_id else None
+        #     if eos_token_id is None and self.generation_config.eos_token_id is not None:
+        #         eos_token_id = self.generation_config.eos_token_id
+        #         stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
 
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
@@ -2241,24 +2241,24 @@ class GaudiGenerationMixin(GenerationMixin):
         if len(stopping_criteria) == 0:
             warnings.warn("You don't have defined any stopping_criteria, this will likely loop forever", UserWarning)
         pad_token_id = pad_token_id if pad_token_id is not None else self.generation_config.pad_token_id
-        if eos_token_id is not None:
-            logger.warning_once(
-                "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
-                " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
-                " Otherwise make sure to set `model.generation_config.eos_token_id`",
-                FutureWarning,
-            )
-            stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
-        else:
-            # TODO remove when the method is totally private and beam scorer refactored
-            # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
-            eos_token_id = [
-                criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
-            ]
-            eos_token_id = eos_token_id[0] if eos_token_id else None
-            if eos_token_id is None and self.generation_config.eos_token_id is not None:
-                eos_token_id = self.generation_config.eos_token_id
-                stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+        # if eos_token_id is not None:
+        #     logger.warning_once(
+        #         "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
+        #         " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
+        #         " Otherwise make sure to set `model.generation_config.eos_token_id`",
+        #         FutureWarning,
+        #     )
+        #     stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+        # else:
+        #     # TODO remove when the method is totally private and beam scorer refactored
+        #     # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
+        #     eos_token_id = [
+        #         criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
+        #     ]
+        #     eos_token_id = eos_token_id[0] if eos_token_id else None
+        #     if eos_token_id is None and self.generation_config.eos_token_id is not None:
+        #         eos_token_id = self.generation_config.eos_token_id
+        #         stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
 
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
@@ -3146,24 +3146,24 @@ class GaudiGenerationMixin(GenerationMixin):
         if len(stopping_criteria) == 0:
             warnings.warn("You don't have defined any stopping_criteria, this will likely loop forever", UserWarning)
         pad_token_id = pad_token_id if pad_token_id is not None else self.generation_config.pad_token_id
-        if eos_token_id is not None:
-            logger.warning_once(
-                "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
-                " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
-                " Otherwise make sure to set `model.generation_config.eos_token_id`",
-                FutureWarning,
-            )
-            stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
-        else:
-            # TODO remove when the method is totally private and beam scorer refactored
-            # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
-            eos_token_id = [
-                criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
-            ]
-            eos_token_id = eos_token_id[0] if eos_token_id else None
-            if eos_token_id is None and self.generation_config.eos_token_id is not None:
-                eos_token_id = self.generation_config.eos_token_id
-                stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+        # if eos_token_id is not None:
+        #     logger.warning_once(
+        #         "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
+        #         " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
+        #         " Otherwise make sure to set `model.generation_config.eos_token_id`",
+        #         FutureWarning,
+        #     )
+        #     stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+        # else:
+        #     # TODO remove when the method is totally private and beam scorer refactored
+        #     # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
+        #     eos_token_id = [
+        #         criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
+        #     ]
+        #     eos_token_id = eos_token_id[0] if eos_token_id else None
+        #     if eos_token_id is None and self.generation_config.eos_token_id is not None:
+        #         eos_token_id = self.generation_config.eos_token_id
+        #         stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
 
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
