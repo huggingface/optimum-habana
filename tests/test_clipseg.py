@@ -82,7 +82,7 @@ class GaudiClipSegTester(TestCase):
         self.assertEqual(len(probs), 3)
         self.assertEqual(probs.argmax(), expected_scores.argmax())
 
-    def test_no_latency_regression_bf16(self):
+    def test_no_latency_regression_autocast(self):
         warmup = 3
         iterations = 20
 
