@@ -57,7 +57,7 @@ class GaudiClipSegTester(TestCase):
         self.assertEqual(len(probs), 3)
         self.assertLess(np.abs(probs - expected_scores).max(), 0.01)
 
-    def test_inference_bf16(self):
+    def test_inference_autocast(self):
         model, processor = self.prepare_model_and_processor()
         texts, image = self.prepare_data()
         inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt").to("hpu")
