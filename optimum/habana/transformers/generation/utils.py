@@ -1596,6 +1596,10 @@ class GaudiGenerationMixin(GenerationMixin):
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
 
+        if iteration_times is not None:
+            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
+            hb_gen_time.start()
+
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1689,9 +1693,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # degeneration penalty
             if token_idx is not None and self.config.is_encoder_decoder:
                 processed_logit_for_next_step = logits_processor(input_ids[:, :token_idx], logit_for_next_step)
-                processed_logit_for_next_step = logits_warper(
-                    input_ids[:, :token_idx], processed_logit_for_next_step
-                )
+                processed_logit_for_next_step = logits_warper(input_ids[:, :token_idx], processed_logit_for_next_step)
             else:
                 processed_logit_for_next_step = logits_processor(input_ids, logit_for_next_step)
                 processed_logit_for_next_step = logits_warper(input_ids, processed_logit_for_next_step)
@@ -1701,9 +1703,7 @@ class GaudiGenerationMixin(GenerationMixin):
             if token_idx is not None:
                 if top_k_ids is None:
                     top_k_ids = torch.full(
-                        (batch_size, top_k, input_ids.shape[-1]),
-                        pad_token_id,
-                        dtype=torch.int64
+                        (batch_size, top_k, input_ids.shape[-1]), pad_token_id, dtype=torch.int64
                     ).to(input_ids.device)
                 top_k_probs, top_k_prob_ids = torch.topk(next_probs, dim=-1, k=top_k)
                 top_k_ids[:, :, token_idx - 1] = top_k_prob_ids
@@ -1748,9 +1748,13 @@ class GaudiGenerationMixin(GenerationMixin):
                 for i in range(top_k):
                     # compute the candidate tokens by the language model and collect their hidden_states
                     if token_idx is not None:
-                        next_model_inputs = self.prepare_inputs_for_generation(top_k_ids[:, i, :].view(-1, input_ids.shape[-1]), **model_kwargs)
+                        next_model_inputs = self.prepare_inputs_for_generation(
+                            top_k_ids[:, i, :].view(-1, input_ids.shape[-1]), **model_kwargs
+                        )
                     else:
-                        next_model_inputs = self.prepare_inputs_for_generation(top_k_ids[:, i].view(-1, 1), **model_kwargs)
+                        next_model_inputs = self.prepare_inputs_for_generation(
+                            top_k_ids[:, i].view(-1, 1), **model_kwargs
+                        )
 
                     outputs = self(
                         **next_model_inputs,
@@ -1765,7 +1769,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 # compute the candidate tokens by the language model and collect their hidden_states
                 # assembles top_k_ids into batch of size k
                 if token_idx is not None:
-                    next_model_inputs = self.prepare_inputs_for_generation(top_k_ids.view(-1, input_ids.shape[-1]), **model_kwargs)
+                    next_model_inputs = self.prepare_inputs_for_generation(
+                        top_k_ids.view(-1, input_ids.shape[-1]), **model_kwargs
+                    )
                 else:
                     next_model_inputs = self.prepare_inputs_for_generation(top_k_ids.view(-1, 1), **model_kwargs)
 
@@ -1912,6 +1918,9 @@ class GaudiGenerationMixin(GenerationMixin):
             cur_len = cur_len + 1
 
             hb_profer.step()
+
+            if iteration_times is not None:
+                hb_gen_time.step()
 
             # stop if we exceed the maximum length
             if token_idx is not None:
