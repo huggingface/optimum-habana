@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# ClipSeg Examples
+# Object Segmentation Examples
 
 This directory contains an example script that demonstrates using ClipSeg with graph mode.
 
