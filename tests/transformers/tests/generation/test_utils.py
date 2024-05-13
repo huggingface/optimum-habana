@@ -1526,8 +1526,8 @@ class GenerationTesterMixin:
         for model_class in self.all_generative_model_classes:
             # won't fix: FSMT, Reformer, gptbigcode, and speech2text have a different cache variable type (and format).
             if any(
-                    model_name in model_class.__name__.lower()
-                    for model_name in ["fsmt", "reformer", "gptbigcode", "speech2text"]
+                model_name in model_class.__name__.lower()
+                for model_name in ["fsmt", "reformer", "gptbigcode", "speech2text"]
             ):
                 return
 
@@ -1562,7 +1562,6 @@ class GenerationTesterMixin:
             self.assertListEqual(dynamic_output.tolist(), static_output.tolist())
 
         return
-
 
     @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     @slow  # TODO(Joao): remove this. Some models (e.g. data2vec, xcom, roberta) have an error rate between 1 and 10%.
