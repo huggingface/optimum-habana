@@ -13,7 +13,7 @@ limitations under the License.
 
 # Object Segmentation Examples
 
-This directory contains an example script that demonstrates using ClipSeg with graph mode.
+This directory contains an example script that demonstrates how to perform object segmentation on Gaudi with graph mode.
 
 ## Single-HPU inference
 
