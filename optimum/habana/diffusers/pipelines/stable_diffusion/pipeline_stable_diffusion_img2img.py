@@ -74,7 +74,6 @@ def preprocess(image):
         image = torch.cat(image, dim=0)
     return image
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -90,8 +89,8 @@ def retrieve_timesteps(
         scheduler (`SchedulerMixin`):
             The scheduler to get timesteps from.
         num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
-            must be `None`.
+            The number of diffusion steps used when generating samples with a pre-trained model. If used,
+            `timesteps` must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         timesteps (`List[int]`, *optional*):
@@ -110,13 +109,19 @@ def retrieve_timesteps(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
                 f" timestep schedules. Please check whether you are using the correct scheduler."
             )
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
+        scheduler.set_timesteps(timesteps=timesteps, device="cpu", **kwargs)
+        timesteps = scheduler.timesteps.to(device)
         num_inference_steps = len(timesteps)
     else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
+        scheduler.set_timesteps(num_inference_steps, device="cpu", **kwargs)
+        timesteps = scheduler.timesteps.to(device)
+
+    # Handles the case where the scheduler cannot implement reset_timestep_dependent_params()
+    # Example: UniPCMultiStepScheduler used for inference in ControlNet training as it has non-linear accesses to timestep dependent parameter: sigma.
+    if hasattr(scheduler, "reset_timestep_dependent_params") and callable(scheduler.reset_timestep_dependent_params):
+        scheduler.reset_timestep_dependent_params()
     return timesteps, num_inference_steps
+
 
 class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusionImg2ImgPipeline):
     """
@@ -235,8 +240,8 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
         shape = init_latents.shape
         rand_device = "cpu" if device.type == "hpu" else device
         #noise = randn_tensor(shape, generator=generator, device=rand_device, dtype=dtype)
-        noise = torch.rand(shape, generator=generator, device=rand_device, dtype=dtype)
-        noise = noise.to(device)
+        noise = torch.rand(shape, generator=generator, device=rand_device, dtype=dtype) # HPU Patch
+        noise = noise.to(device) # HPU Patch
 
         # get latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
@@ -418,9 +423,15 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
             image = self.image_processor.preprocess(image)
 
             # 5. set timesteps
-            timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
-            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-            latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+            # timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+            # timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+            # latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+
+            timesteps = None  # HPU Patch
+            timesteps, num_inference_steps = retrieve_timesteps(
+                self.scheduler, num_inference_steps, device, timesteps
+            )  # HPU Patch
+            latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)  # HPU Patch
 
             # 6. Prepare latent variables
             latents = self.prepare_latents(
@@ -453,8 +464,7 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
             self._num_timesteps = len(timesteps)
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 #for i, t in enumerate(timesteps):
-                for i in range(num_inference_steps):
-
+                for i in range(num_inference_steps): # HPU Patch
                     t = timesteps[0] # HPU Patch
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0) # HPU Patch
                     
@@ -474,7 +484,7 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                         cross_attention_kwargs=self.cross_attention_kwargs,
                         # added_cond_kwargs=added_cond_kwargs,
                         # return_dict=False,
-                    )[0]
+                    )
 
                     # noise_pred = self.unet(
                     #     latent_model_input,
@@ -511,11 +521,16 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, t, latents)
 
+            
             if not output_type == "latent":
                 image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
                     0
                 ]
-                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+                import pdb; pdb.set_trace()
+                #image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype) # Stuck here
+                image = image.to("cpu")
+                image, has_nsfw_concept = self.run_safety_checker(image, torch.cpu , prompt_embeds.dtype) # Stuck here
+                
             else:
                 image = latents
                 has_nsfw_concept = None
@@ -525,7 +540,8 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
             else:
                 do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-            image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize) # Error may occurs here
+            import pdb; pdb.set_trace()
+            image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
             # Offload all models
             self.maybe_free_model_hooks()
