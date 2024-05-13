@@ -1,3 +1,4 @@
+# This script is based on https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224/blob/main/biomed_clip_example.ipynb
 import argparse
 import logging
 import time
@@ -69,6 +70,7 @@ def run_qa(model, images, texts, device):
         sorted_indices = torch.argsort(logits, dim=-1, descending=True)
     return sorted_indices, logits
 
+
 def postprocess(args, sorted_indices, logits, topk):
     logits = logits.float().cpu().numpy()
     sorted_indices = sorted_indices.int().cpu().numpy()
@@ -85,6 +87,7 @@ def postprocess(args, sorted_indices, logits, topk):
         metadata = {'filename': img_name, 'top_probs': '\n'.join(top_probs)}
         metadata_list.append(metadata)
     return metadata_list
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -112,7 +115,7 @@ def main():
         "--prompt",
         default="this is a picture of ",
         type=str,
-        help='Prompt for classification. It should be a string seperated by comma. (eg: --prompt "a photo of ")',
+        help='Prompt for classification. It should be a string separated by comma. (eg: --prompt "a photo of ")',
     )
     parser.add_argument(
         "--labels",
@@ -131,7 +134,6 @@ def main():
         action="store_true",
         help="Whether to perform in bf16 precision.",
     )
-    parser.add_argument("--batch_size", type=int, default=1, help="[Not implemented] Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=10, help="Number of inference iterations for benchmarking.")
     parser.add_argument("--plot_images",action="store_true", help="Plot images with metadata for verification")
@@ -163,6 +165,7 @@ def main():
         model = wrap_in_hpu_graph(model)
     model = model.to(device)
     model.eval()
+
     images = torch.stack([preprocess(Image.open(urlopen(img)))for img in args.image_path]).to(device)
     texts = tokenizer([args.prompt + l for l in args.labels]).to(device)
 
@@ -181,8 +184,9 @@ def main():
     end = time.time()
 
     # Results and metrics
+    metadata_list = []
+    metadata_list = postprocess(args, sorted_indices, logits, args.topk)
     if args.print_result:
-        metadata_list = postprocess(args, sorted_indices, logits, args.topk)
         logger.info("Results from the last iteration:")
         pprint(metadata_list)
     logger.info(f"Inference Time per iteration = {(end-start) * 1000/args.n_iterations:.4}ms")
