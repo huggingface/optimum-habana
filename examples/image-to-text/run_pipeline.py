@@ -148,6 +148,10 @@ def main():
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
 
+    torch.hpu.synchronize()
+    if args.quant_config:
+        habana_quantization_toolkit.finish_measurements(generator.model)
+
     start = time.perf_counter()
     for i in range(args.n_iterations):
         result = generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
@@ -159,9 +163,6 @@ def main():
     logger.info(
         f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
     )
-    
-    if args.quant_config:
-        habana_quantization_toolkit.finish_measurements(generator.model)
 
     # Store results if necessary
     if args.output_dir is not None:
