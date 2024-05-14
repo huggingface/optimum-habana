@@ -217,6 +217,7 @@ def adapt_transformers_to_gaudi():
         GaudiGenerationMixin._prepare_generation_config
     )
     transformers.generation.GenerationMixin._prepare_generated_length = GaudiGenerationMixin._prepare_generated_length
+    transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
     transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
     transformers.generation.GenerationMixin._greedy_search = GaudiGenerationMixin._greedy_search
     transformers.generation.GenerationMixin._sample = GaudiGenerationMixin._sample
