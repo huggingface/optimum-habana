@@ -49,12 +49,15 @@ from diffusers import (
     DDPMScheduler,
     UNet2DConditionModel,
 )
+from diffusers.loaders import LoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
@@ -65,6 +68,7 @@ from optimum.habana.accelerate import GaudiAccelerator
 from optimum.habana.accelerate.utils.dataclasses import GaudiDistributedType
 from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
+    GaudiEulerAncestralDiscreteScheduler,
     GaudiStableDiffusionXLPipeline,
 )
 from optimum.habana.utils import HabanaProfile, set_seed, to_gb_rounded
@@ -112,6 +116,48 @@ inference: true
 
 This pipeline was finetuned from **{base_model}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompt: {validation_prompt}: \n
 {img_str}
+
+Special VAE used for training: {vae_path}.
+"""
+    with open(os.path.join(repo_folder, "README.md"), "w") as f:
+        f.write(yaml + model_card)
+
+
+def save_model_card_sdxl_lora(
+    repo_id: str,
+    images=None,
+    base_model=str,
+    dataset_name=str,
+    train_text_encoder=False,
+    repo_folder=None,
+    vae_path=None,
+):
+    img_str = ""
+    for i, image in enumerate(images):
+        image.save(os.path.join(repo_folder, f"image_{i}.png"))
+        img_str += f"![img_{i}](./image_{i}.png)\n"
+
+    yaml = f"""
+---
+license: creativeml-openrail-m
+base_model: {base_model}
+dataset: {dataset_name}
+tags:
+- stable-diffusion-xl
+- stable-diffusion-xl-diffusers
+- text-to-image
+- diffusers
+- lora
+inference: true
+---
+    """
+    model_card = f"""
+# LoRA text-to-image fine-tuning - {repo_id}
+
+These are LoRA adaption weights for {base_model}. The weights were fine-tuned on the {dataset_name} dataset. You can find some example images in the following. \n
+{img_str}
+
+LoRA for the text encoder was enabled: {train_text_encoder}.
 
 Special VAE used for training: {vae_path}.
 """
@@ -287,6 +333,11 @@ def parse_args(input_args=None):
         help="whether to randomly flip images horizontally.",
     )
     parser.add_argument(
+        "--train_text_encoder",
+        action="store_true",
+        help="Whether to train the text encoder. If set, the text encoder should be float32 precision.",
+    )
+    parser.add_argument(
         "--train_batch_size",
         type=int,
         default=16,
@@ -423,35 +474,35 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--adam_beta1",
-        type=float,
-        default=0.9,
-        help="The beta1 parameter for the Adam optimizer.",
+	"--adam_beta1",
+	type=float,
+	default=0.9,
+	help="The beta1 parameter for the Adam optimizer.",
     )
     parser.add_argument(
-        "--adam_beta2",
-        type=float,
-        default=0.999,
-        help="The beta2 parameter for the Adam optimizer.",
+	"--adam_beta2",
+	type=float,
+	default=0.999,
+	help="The beta2 parameter for the Adam optimizer.",
     )
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument(
-        "--adam_epsilon",
-        type=float,
-        default=1e-08,
-        help="Epsilon value for the Adam optimizer",
+	"--adam_epsilon",
+	type=float,
+	default=1e-08,
+	help="Epsilon value for the Adam optimizer",
     )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
-        "--push_to_hub",
-        action="store_true",
-        help="Whether or not to push the model to the Hub.",
+	"--push_to_hub",
+	action="store_true",
+	help="Whether or not to push the model to the Hub.",
     )
     parser.add_argument(
-        "--hub_token",
-        type=str,
-        default=None,
-        help="The token to use to push to the Model Hub.",
+	"--hub_token",
+	type=str,
+	default=None,
+	help="The token to use to push to the Model Hub.",
     )
     parser.add_argument(
         "--prediction_type",
@@ -490,10 +541,10 @@ def parse_args(input_args=None):
         help=("Whether to use bf16 mixed precision."),
     )
     parser.add_argument(
-        "--local_rank",
-        type=int,
-        default=-1,
-        help="For distributed training: local_rank",
+	"--local_rank",
+	type=int,
+	default=-1,
+	help="For distributed training: local_rank",
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
     parser.add_argument(
@@ -569,6 +620,26 @@ def parse_args(input_args=None):
         action="store_true",
         help="Checkpoint saving takes a lot of time. Ignore time for checkpoint saving for throughput calculations",
     )
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=4,
+        help=("The dimension of the LoRA update matrices."),
+    )
+    parser.add_argument(
+        "--finetuning_method",
+        type=str,
+        default="default",
+        choices=["default", "lora"],
+        help=("Set the method for fine-tuning." " Choices: ['default', 'lora']."),
+    )
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        default="ddpms",
+        choices=["ddpms", "euler_discrete", "euler_ancestral_discrete"],
+        help="Select noise scheduler." "Choices: [ddpms, euler_discrete, euler_ancestral_discrete]"
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -587,6 +658,18 @@ def parse_args(input_args=None):
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
 
     return args
+
+
+def tokenize_prompt(tokenizer, prompt):
+    text_inputs = tokenizer(
+        prompt,
+        padding="max_length",
+        max_length=tokenizer.model_max_length,
+        truncation=True,
+        return_tensors="pt",
+    )
+    text_input_ids = text_inputs.input_ids
+    return text_input_ids
 
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
@@ -642,6 +725,35 @@ def encode_prompt(
     }
 
 
+# Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
+def encode_prompt_sdxl_lora(text_encoders, tokenizers, prompt, text_input_ids_list=None):
+    prompt_embeds_list = []
+
+    for i, text_encoder in enumerate(text_encoders):
+        if tokenizers is not None:
+            tokenizer = tokenizers[i]
+            text_input_ids = tokenize_prompt(tokenizer, prompt)
+        else:
+            assert text_input_ids_list is not None
+            text_input_ids = text_input_ids_list[i]
+
+        prompt_embeds = text_encoder(
+            text_input_ids.to(text_encoder.device),
+            output_hidden_states=True,
+        )
+
+        # We are only ALWAYS interested in the pooled output of the final text encoder
+        pooled_prompt_embeds = prompt_embeds[0]
+        prompt_embeds = prompt_embeds.hidden_states[-2]
+        bs_embed, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
+        prompt_embeds_list.append(prompt_embeds)
+
+    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
+    pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
+    return prompt_embeds, pooled_prompt_embeds
+
+
 def compute_vae_encodings(pixel_values, vae):
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
     pixel_values = pixel_values.to(vae.device, dtype=vae.dtype)
@@ -695,17 +807,35 @@ def generate_timestep_weights(args, num_timesteps):
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+    if args.finetuning_method == "default":
+        accelerator_project_config = ProjectConfiguration(
+            project_dir=args.output_dir,
+            logging_dir=logging_dir
+        )
 
-    gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
-    gaudi_config.use_torch_autocast = gaudi_config.use_torch_autocast or args.bf16
-    accelerator = GaudiAccelerator(
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision="bf16" if gaudi_config.use_torch_autocast else "no",
-        log_with=args.report_to,
-        project_config=accelerator_project_config,
-        force_autocast=gaudi_config.use_torch_autocast,
-    )
+        gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
+        gaudi_config.use_torch_autocast = gaudi_config.use_torch_autocast or args.bf16
+        accelerator = GaudiAccelerator(
+            gradient_accumulation_steps=args.gradient_accumulation_steps,
+            mixed_precision="bf16" if gaudi_config.use_torch_autocast else "no",
+            log_with=args.report_to,
+            project_config=accelerator_project_config,
+            force_autocast=gaudi_config.use_torch_autocast,
+        )
+    elif args.finetuning_method == "lora":
+        accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+        kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+        gaudi_config = GaudiConfig.from_pretrained(args.gaudi_config_name)
+        accelerator = GaudiAccelerator(
+            gradient_accumulation_steps=args.gradient_accumulation_steps,
+            mixed_precision="bf16" if gaudi_config.use_torch_autocast or args.bf16 else "no",
+            log_with=args.report_to,
+            project_config=accelerator_project_config,
+            kwargs_handlers=[kwargs],
+            force_autocast=gaudi_config.use_torch_autocast or args.bf16,
+        )
+    else:
+        raise ValueError("`--finetuning_method` must be default or lora.")
 
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -767,7 +897,24 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    if args.scheduler == "ddpms":
+        noise_scheduler = DDPMScheduler.from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="scheduler")
+    elif args.scheduler == "euler_discrete":
+        noise_scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="scheduler"
+        )
+    elif args.scheduler == "euler_ancestral_discrete":
+        noise_scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="scheduler"
+        )
+    else:
+        raise ValueError(
+            f"`--scheduler` must be ddpms, euler_discrete or euler_ancestral_discrete"
+        )
 
     # Check for terminal SNR in combination with SNR Gamma
     text_encoder_one = text_encoder_cls_one.from_pretrained(
@@ -957,6 +1104,29 @@ def main(args):
         examples["original_sizes"] = original_sizes
         examples["crop_top_lefts"] = crop_top_lefts
         examples["pixel_values"] = all_images
+
+        if args.finetuning_method == "lora":
+            # We need to tokenize input captions and transform the images.
+            def tokenize_captions(examples, is_train=True):
+                captions = []
+                for caption in examples[caption_column]:
+                    if isinstance(caption, str):
+                        captions.append(caption)
+                    elif isinstance(caption, (list, np.ndarray)):
+                        # take a random caption if there are multiple
+                        captions.append(random.choice(caption) if is_train else caption[0])
+                    else:
+                        raise ValueError(
+                            f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                        )
+                tokens_one = tokenize_prompt(tokenizer_one, captions)
+                tokens_two = tokenize_prompt(tokenizer_two, captions)
+                return tokens_one, tokens_two
+
+            tokens_one, tokens_two = tokenize_captions(examples)
+            examples["input_ids_one"] = tokens_one
+            examples["input_ids_two"] = tokens_two
+
         return examples
 
     with accelerator.main_process_first():
@@ -967,48 +1137,67 @@ def main(args):
             # Set the training transforms
             train_dataset = train_dataset.with_transform(preprocess_train)
 
-    compute_embeddings_fn = functools.partial(
-        encode_prompt,
-        text_encoders=text_encoders,
-        tokenizers=tokenizers,
-        proportion_empty_prompts=args.proportion_empty_prompts,
-        caption_column=args.caption_column,
-    )
+    if args.finetuning_method == "lora":
+        def collate_fn(examples):
+            pixel_values = torch.stack([example["pixel_values"] for example in examples])
+            pixel_values = pixel_values.to(memory_format=torch.contiguous_format).bfloat16()  # float() to bfloat16()
+            original_sizes = [example["original_sizes"] for example in examples]
+            crop_top_lefts = [example["crop_top_lefts"] for example in examples]
+            input_ids_one = torch.stack([example["input_ids_one"] for example in examples])
+            input_ids_two = torch.stack([example["input_ids_two"] for example in examples])
+            return {
+                "pixel_values": pixel_values,
+                "input_ids_one": input_ids_one,
+                "input_ids_two": input_ids_two,
+                "original_sizes": original_sizes,
+                "crop_top_lefts": crop_top_lefts,
+            }
+    else:
+        compute_embeddings_fn = functools.partial(
+            encode_prompt,
+            text_encoders=text_encoders,
+            tokenizers=tokenizers,
+            proportion_empty_prompts=args.proportion_empty_prompts,
+            caption_column=args.caption_column,
+        )
 
-    # TODO : adding crop = (0,0) for now.
-    # If we do random crop, we have to do this in mediapipe
-    def attach_metadata(batch):
-        import imagesize
+        # TODO : adding crop = (0,0) for now.
+        # If we do random crop, we have to do this in mediapipe
+        def attach_metadata(batch):
+            import imagesize
 
-        return {
-            "original_sizes": imagesize.get(batch["image"]),
-            "crop_top_lefts": (0, 0),
-        }
+            return {
+                "original_sizes": imagesize.get(batch["image"]),
+                "crop_top_lefts": (0, 0),
+            }
 
-    with accelerator.main_process_first():
-        from datasets.fingerprint import Hasher
+        with accelerator.main_process_first():
+            from datasets.fingerprint import Hasher
 
-        # fingerprint used by the cache for the other processes to load the result
-        # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
-        new_fingerprint = Hasher.hash(args)
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
-        if len(args.mediapipe) > 0:
-            train_dataset = train_dataset.map(attach_metadata, load_from_cache_file=False)
+            # fingerprint used by the cache for the other processes to load the result
+            # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
+            new_fingerprint = Hasher.hash(args)
+            train_dataset = train_dataset.map(compute_embeddings_fn,
+                                              batched=True,
+                                              new_fingerprint=new_fingerprint
+                                              )
+            if len(args.mediapipe) > 0:
+                train_dataset = train_dataset.map(attach_metadata, load_from_cache_file=False)
 
-    def collate_fn(examples):
-        pixel_values = torch.stack([example["pixel_values"].clone().detach() for example in examples])
-        original_sizes = [example["original_sizes"] for example in examples]
-        crop_top_lefts = [example["crop_top_lefts"] for example in examples]
-        prompt_embeds = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
-        pooled_prompt_embeds = torch.stack([torch.tensor(example["pooled_prompt_embeds"]) for example in examples])
+        def collate_fn(examples):
+            pixel_values = torch.stack([example["pixel_values"].clone().detach() for example in examples])
+            original_sizes = [example["original_sizes"] for example in examples]
+            crop_top_lefts = [example["crop_top_lefts"] for example in examples]
+            prompt_embeds = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
+            pooled_prompt_embeds = torch.stack([torch.tensor(example["pooled_prompt_embeds"]) for example in examples])
 
-        return {
-            "pixel_values": pixel_values,
-            "prompt_embeds": prompt_embeds,
-            "pooled_prompt_embeds": pooled_prompt_embeds,
-            "original_sizes": original_sizes,
-            "crop_top_lefts": crop_top_lefts,
-        }
+            return {
+                "pixel_values": pixel_values,
+                "prompt_embeds": prompt_embeds,
+                "pooled_prompt_embeds": pooled_prompt_embeds,
+                "original_sizes": original_sizes,
+                "crop_top_lefts": crop_top_lefts,
+            }
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -1019,56 +1208,154 @@ def main(args):
         num_workers=args.dataloader_num_workers,
     )
 
-    del text_encoders, tokenizers
-    gc.collect()
-    # Create EMA for the unet.
-    if args.use_ema:
-        ema_unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path,
-            subfolder="unet",
-            revision=args.revision,
-            variant=args.variant,
-        )
-        ema_unet = EMAModel(
-            ema_unet.parameters(),
-            model_cls=UNet2DConditionModel,
-            model_config=ema_unet.config,
-        )
+    if args.finetuning_method == "lora":
+        unet.requires_grad_(False)
 
-    # `accelerate` 0.16.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+        # For mixed precision training we cast all non-trainable weigths to half-precision
+        # as these weights are only used for inference, keeping weights in full precision is not required.
+
+        weight_dtype = torch.float32
+
+        if gaudi_config.use_torch_autocast or args.bf16:
+            weight_dtype = torch.bfloat16
+
+        # Move unet, vae and text_encoder to device and cast to weight_dtype
+        # The VAE is in float32 to avoid NaN losses.
+        unet.to(accelerator.device, dtype=weight_dtype)
+        vae.to(accelerator.device, dtype=weight_dtype)
+        text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+        text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+
+        # now we will add new LoRA weights to the attention layers
+        # Set correct lora layers
+        unet_lora_config = LoraConfig(
+            r=args.rank, init_lora_weights="gaussian", target_modules=["to_k", "to_q", "to_v", "to_out.0"]
+        )
+        unet.add_adapter(unet_lora_config)
+
+        # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
+        # So, instead, we monkey-patch the forward calls of its attention-blocks.
+        if args.train_text_encoder:
+            # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
+            text_lora_config = LoraConfig(
+                r=args.rank, init_lora_weights="gaussian", target_modules=["q_proj", "k_proj", "v_proj", "out_proj"]
+            )
+            text_encoder_one.add_adapter(text_lora_config)
+            text_encoder_two.add_adapter(text_lora_config)
+
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             if accelerator.is_main_process:
-                if args.use_ema:
-                    ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+                # there are only two options here. Either are just the unet attn processor layers
+                # or there are the unet and text encoder atten layers
+                unet_lora_layers_to_save = None
+                text_encoder_one_lora_layers_to_save = None
+                text_encoder_two_lora_layers_to_save = None
 
-                for i, model in enumerate(models):
-                    model.save_pretrained(os.path.join(output_dir, "unet"))
+                for model in models:
+                    if isinstance(model, type(accelerator.unwrap_model(unet))):
+                        unet_lora_layers_to_save = get_peft_model_state_dict(model)
+                    elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
+                        text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                    elif isinstance(model, type(accelerator.unwrap_model(text_encoder_two))):
+                        text_encoder_two_lora_layers_to_save = get_peft_model_state_dict(model)
+                    else:
+                        raise ValueError(f"unexpected save model: {model.__class__}")
 
                     # make sure to pop weight so that corresponding model is not saved again
                     weights.pop()
 
-        def load_model_hook(models, input_dir):
-            if args.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
-                ema_unet.load_state_dict(load_model.state_dict())
-                ema_unet.to(accelerator.device)
-                del load_model
+                GaudiStableDiffusionXLPipeline.save_lora_weights(
+                    output_dir,
+                    unet_lora_layers=unet_lora_layers_to_save,
+                    text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
+                    text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
+                )
 
-            for i in range(len(models)):
-                # pop models so that they are not loaded again
+        def load_model_hook(models, input_dir):
+            unet_ = None
+            text_encoder_one_ = None
+            text_encoder_two_ = None
+
+            while len(models) > 0:
                 model = models.pop()
 
-                # load diffusers style into model
-                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
-                model.register_to_config(**load_model.config)
+                if isinstance(model, type(accelerator.unwrap_model(unet))):
+                    unet_ = model
+                elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
+                    text_encoder_one_ = model
+                elif isinstance(model, type(accelerator.unwrap_model(text_encoder_two))):
+                    text_encoder_two_ = model
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
 
-                model.load_state_dict(load_model.state_dict())
-                del load_model
+            lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
+            LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+
+            text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
+            LoraLoaderMixin.load_lora_into_text_encoder(
+                text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
+            )
+
+            text_encoder_2_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder_2." in k}
+            LoraLoaderMixin.load_lora_into_text_encoder(
+                text_encoder_2_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_
+            )
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
+    else:
+        del text_encoders, tokenizers
+        gc.collect()
+        # Create EMA for the unet.
+        if args.use_ema:
+            ema_unet = UNet2DConditionModel.from_pretrained(
+                args.pretrained_model_name_or_path,
+                subfolder="unet",
+                revision=args.revision,
+                variant=args.variant,
+            )
+            ema_unet = EMAModel(
+                ema_unet.parameters(),
+                model_cls=UNet2DConditionModel,
+                model_config=ema_unet.config,
+            )
+
+        # `accelerate` 0.16.0 will have better support for customized saving
+        if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+            # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+            def save_model_hook(models, weights, output_dir):
+                if accelerator.is_main_process:
+                    if args.use_ema:
+                        ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+
+                    for i, model in enumerate(models):
+                        model.save_pretrained(os.path.join(output_dir, "unet"))
+
+                        # make sure to pop weight so that corresponding model is not saved again
+                        weights.pop()
+
+            def load_model_hook(models, input_dir):
+                if args.use_ema:
+                    load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"),
+                                                          UNet2DConditionModel)
+                    ema_unet.load_state_dict(load_model.state_dict())
+                    ema_unet.to(accelerator.device)
+                    del load_model
+
+                for i in range(len(models)):
+                    # pop models so that they are not loaded again
+                    model = models.pop()
+
+                    # load diffusers style into model
+                    load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+                    model.register_to_config(**load_model.config)
+
+                    model.load_state_dict(load_model.state_dict())
+                    del load_model
+
+            accelerator.register_save_state_pre_hook(save_model_hook)
+            accelerator.register_load_state_pre_hook(load_model_hook)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -1085,10 +1372,15 @@ def main(args):
     )
 
     unet = unet.to("hpu")
-    # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
-    )
+    if args.finetuning_method == "lora" and args.train_text_encoder:
+        unet, text_encoder_one, text_encoder_two, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, text_encoder_one, text_encoder_two, optimizer, train_dataloader, lr_scheduler
+        )
+    else:
+        # Prepare everything with our `accelerator`.
+        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, optimizer, train_dataloader, lr_scheduler
+        )
 
     if len(args.mediapipe) > 0:
         dataloader_params = {
@@ -1183,6 +1475,11 @@ def main(args):
     train_loss = torch.tensor(0, dtype=torch.float, device="hpu")
     checkpoint_time = 0
     for epoch in range(first_epoch, args.num_train_epochs):
+        if args.finetuning_method == "lora":
+            unet.train()
+            if args.train_text_encoder:
+                text_encoder_one.train()
+                text_encoder_two.train()
         train_loss.zero_()
         if hb_profiler:
             hb_profiler.start()
@@ -1190,8 +1487,16 @@ def main(args):
             if t0 is None and global_step == args.throughput_warmup_steps:
                 t0 = time.perf_counter()
             with accelerator.accumulate(unet):
-                # Move compute_vae_encoding here to reflect the transformed image input
-                model_input = compute_vae_encodings(batch["pixel_values"], vae)
+                if args.finetuning_method == "lora":
+                    # Convert images to latent space
+                    pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+                    model_input = vae.encode(pixel_values).latent_dist.sample()
+                    model_input = model_input * vae.config.scaling_factor
+                    model_input = model_input.to(weight_dtype)
+                else:
+                    # Move compute_vae_encoding here to reflect the transformed image input
+                    model_input = compute_vae_encodings(batch["pixel_values"], vae)
+
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
                 if args.noise_offset:
@@ -1205,22 +1510,28 @@ def main(args):
 
                 bsz = model_input.shape[0]
 
-                if args.timestep_bias_strategy == "none":
-                    # Sample a random timestep for each image without bias.
+                if args.finetuning_method == "lora":
                     timesteps = torch.randint(
-                        0,
-                        noise_scheduler.config.num_train_timesteps,
-                        (bsz,),
-                        device=model_input.device,
+                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
                     )
                     timesteps = timesteps.long()
                 else:
-                    # Sample a random timestep for each image, potentially biased by the timestep weights.
-                    # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
-                    weights = generate_timestep_weights(args, noise_scheduler.config.num_train_timesteps).to(
-                        model_input.device
-                    )
-                    timesteps = torch.multinomial(weights, bsz, replacement=True).long()
+                    if args.timestep_bias_strategy == "none":
+                        # Sample a random timestep for each image without bias.
+                        timesteps = torch.randint(
+                            0,
+                            noise_scheduler.config.num_train_timesteps,
+                            (bsz,),
+                            device=model_input.device,
+                        )
+                        timesteps = timesteps.long()
+                    else:
+                        # Sample a random timestep for each image, potentially biased by the timestep weights.
+                        # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
+                        weights = generate_timestep_weights(
+                            args, noise_scheduler.config.num_train_timesteps).to(model_input.device
+                        )
+                        timesteps = torch.multinomial(weights, bsz, replacement=True).long()
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
@@ -1249,8 +1560,17 @@ def main(args):
                 )
                 # Predict the noise residual
                 unet_added_conditions = {"time_ids": add_time_ids}
-                prompt_embeds = batch["prompt_embeds"].to(accelerator.device)
-                pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(accelerator.device)
+                if args.finetuning_method == "lora":
+                    prompt_embeds, pooled_prompt_embeds = encode_prompt_sdxl_lora(
+                        text_encoders=[text_encoder_one, text_encoder_two],
+                        tokenizers=None,
+                        prompt=None,
+                        text_input_ids_list=[batch["input_ids_one"], batch["input_ids_two"]],
+                    )
+                else:
+                    prompt_embeds = batch["prompt_embeds"].to(accelerator.device)
+                    pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(accelerator.device)
+
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
 
                 model_pred = unet(
@@ -1270,7 +1590,7 @@ def main(args):
                     target = noise
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(model_input, noise, timesteps)
-                elif noise_scheduler.config.prediction_type == "sample":
+                elif args.finetuning_method != "lora" and noise_scheduler.config.prediction_type == "sample":
                     # We set the target to latents here, but the model_pred will return the noise sample prediction.
                     target = model_input
                     # We will have to subtract the noise residual from the prediction to get the target sample.
@@ -1306,11 +1626,14 @@ def main(args):
                 htcore.mark_step()
 
                 if accelerator.sync_gradients:
-                    params_to_clip = unet.parameters()
-                    if gaudi_config.use_fused_clip_norm:
-                        fused_clip_norm.clip_norm(params_to_clip)
+                    if args.finetuning_method == "lora":
+                        accelerator.clip_grad_norm_(params_to_optimize, args.max_grad_norm)
                     else:
-                        accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                        params_to_clip = unet.parameters()
+                        if gaudi_config.use_fused_clip_norm:
+                            fused_clip_norm.clip_norm(params_to_clip)
+                        else:
+                            accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                 optimizer.step()
                 lr_scheduler.step()
@@ -1375,40 +1698,60 @@ def main(args):
                 break
 
         hb_profiler.stop()
+
         if accelerator.is_main_process:
             if args.validation_prompt is not None and (epoch + 1) % args.validation_epochs == 0:
                 logger.info(
                     f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                     f" {args.validation_prompt}."
                 )
-                if args.use_ema:
-                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(unet.parameters())
-                    ema_unet.copy_to(unet.parameters())
 
-                # create pipeline
-                vae = AutoencoderKL.from_pretrained(
-                    vae_path,
-                    subfolder=("vae" if args.pretrained_vae_model_name_or_path is None else None),
-                    revision=args.revision,
-                    variant=args.variant,
-                )
-                pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    vae=vae,
-                    unet=unwrap_model(unet),
-                    revision=args.revision,
-                    variant=args.variant,
-                    use_habana=True,
-                    use_hpu_graphs=args.use_hpu_graphs_for_inference,
-                    gaudi_config=args.gaudi_config_name,
-                )
-                if args.prediction_type is not None:
-                    scheduler_args = {"prediction_type": args.prediction_type}
-                    pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-                pipeline.scheduler = GaudiEulerDiscreteScheduler.from_config(pipeline.scheduler.config)
-                pipeline = pipeline.to(accelerator.device)
-                pipeline.set_progress_bar_config(disable=True)
+                if args.finetuning_method == "lora":
+                    # create pipeline
+                    pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        vae=vae,
+                        text_encoder=unwrap_model(text_encoder_one),
+                        text_encoder_2=unwrap_model(text_encoder_two),
+                        unet=accelerator.unwrap_model(unet),
+                        revision=args.revision,
+                        variant=args.variant,
+                        use_habana=True,
+                        use_hpu_graphs=args.use_hpu_graphs_for_inference,
+                        gaudi_config=args.gaudi_config_name,
+                    )
+                    pipeline.scheduler = GaudiEulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+                    pipeline = pipeline.to(accelerator.device)
+                    pipeline.set_progress_bar_config(disable=True)
+                else:
+                    if args.use_ema:
+                        # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                        ema_unet.store(unet.parameters())
+                        ema_unet.copy_to(unet.parameters())
+
+                        # create pipeline
+                    vae = AutoencoderKL.from_pretrained(
+                        vae_path,
+                        subfolder=("vae" if args.pretrained_vae_model_name_or_path is None else None),
+                        revision=args.revision,
+                        variant=args.variant,
+                    )
+                    pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        vae=vae,
+                        unet=unwrap_model(unet),
+                        revision=args.revision,
+                        variant=args.variant,
+                        use_habana=True,
+                        use_hpu_graphs=args.use_hpu_graphs_for_inference,
+                        gaudi_config=args.gaudi_config_name,
+                    )
+                    if args.prediction_type is not None:
+                        scheduler_args = {"prediction_type": args.prediction_type}
+                        pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+                    pipeline.scheduler = GaudiEulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+                    pipeline = pipeline.to(accelerator.device)
+                    pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
                 generator = torch.Generator(device="cpu").manual_seed(args.seed) if args.seed else None
@@ -1457,34 +1800,78 @@ def main(args):
             with open(f"{args.output_dir}/speed_metrics.json", mode="w") as file:
                 json.dump(metrics, file)
 
-        unet = accelerator.unwrap_model(unet)
-        if args.use_ema:
-            ema_unet.copy_to(unet.parameters())
+        if args.finetuning_method == "lora":
+            unet = accelerator.unwrap_model(unet)
 
-        # Serialize pipeline.
-        vae = AutoencoderKL.from_pretrained(
-            vae_path,
-            subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-            revision=args.revision,
-            variant=args.variant,
-            torch_dtype=weight_dtype,
-        )
-        pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=unet,
-            vae=vae,
-            revision=args.revision,
-            variant=args.variant,
-            torch_dtype=weight_dtype,
-            scheduler=noise_scheduler,
-            use_habana=True,
-            use_hpu_graphs=args.use_hpu_graphs_for_inference,
-            gaudi_config=args.gaudi_config_name,
-        )
-        if args.prediction_type is not None:
-            scheduler_args = {"prediction_type": args.prediction_type}
-            pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-        pipeline.save_pretrained(args.output_dir)
+            unet_lora_state_dict = get_peft_model_state_dict(unet)
+
+            if args.train_text_encoder:
+                text_encoder_one = accelerator.unwrap_model(text_encoder_one)
+                text_encoder_two = accelerator.unwrap_model(text_encoder_two)
+
+                text_encoder_lora_layers = get_peft_model_state_dict(text_encoder_one)
+                text_encoder_2_lora_layers = get_peft_model_state_dict(text_encoder_two)
+            else:
+                text_encoder_lora_layers = None
+                text_encoder_2_lora_layers = None
+
+            GaudiStableDiffusionXLPipeline.save_lora_weights(
+                save_directory=args.output_dir,
+                unet_lora_layers=unet_lora_state_dict,
+                text_encoder_lora_layers=text_encoder_lora_layers,
+                text_encoder_2_lora_layers=text_encoder_2_lora_layers,
+            )
+
+            del unet
+            del text_encoder_one
+            del text_encoder_two
+            del text_encoder_lora_layers
+            del text_encoder_2_lora_layers
+
+            pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                vae=vae,
+                revision=args.revision,
+                variant=args.variant,
+                torch_dtype=weight_dtype,
+                scheduler=noise_scheduler,
+                use_habana=True,
+                use_hpu_graphs=args.use_hpu_graphs_for_inference,
+                gaudi_config=args.gaudi_config_name,
+            )
+            pipeline = pipeline.to(accelerator.device)
+
+            # load attention processors
+            pipeline.load_lora_weights(args.output_dir)
+        else:
+            unet = accelerator.unwrap_model(unet)
+            if args.use_ema:
+                ema_unet.copy_to(unet.parameters())
+
+            # Serialize pipeline.
+            vae = AutoencoderKL.from_pretrained(
+                vae_path,
+                subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+                revision=args.revision,
+                variant=args.variant,
+                torch_dtype=weight_dtype,
+            )
+            pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                unet=unet,
+                vae=vae,
+                revision=args.revision,
+                variant=args.variant,
+                torch_dtype=weight_dtype,
+                scheduler=noise_scheduler,
+                use_habana=True,
+                use_hpu_graphs=args.use_hpu_graphs_for_inference,
+                gaudi_config=args.gaudi_config_name,
+            )
+            if args.prediction_type is not None:
+                scheduler_args = {"prediction_type": args.prediction_type}
+                pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+            pipeline.save_pretrained(args.output_dir)
 
         # run inference
         images = []
@@ -1530,15 +1917,26 @@ def main(args):
                     )
 
         if args.push_to_hub:
-            save_model_card(
-                repo_id=repo_id,
-                images=images,
-                validation_prompt=args.validation_prompt,
-                base_model=args.pretrained_model_name_or_path,
-                dataset_name=args.dataset_name,
-                repo_folder=args.output_dir,
-                vae_path=args.pretrained_vae_model_name_or_path,
-            )
+            if args.finetuning_method == "lora":
+                    save_model_card_sdxl_lora(
+                        repo_id=repo_id,
+                        images=images,
+                        base_model=args.pretrained_model_name_or_path,
+                        dataset_name=args.dataset_name,
+                        train_text_encoder=args.train_text_encoder,
+                        repo_folder=args.output_dir,
+                        vae_path=args.pretrained_vae_model_name_or_path,
+                    )
+            else:
+                save_model_card(
+                    repo_id=repo_id,
+                    images=images,
+                    validation_prompt=args.validation_prompt,
+                    base_model=args.pretrained_model_name_or_path,
+                    dataset_name=args.dataset_name,
+                    repo_folder=args.output_dir,
+                    vae_path=args.pretrained_vae_model_name_or_path,
+                )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
