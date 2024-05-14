@@ -14,6 +14,7 @@
 
 import copy
 import time
+import numpy
 from typing import Any, Callable, Dict, List, Optional, Union
 from math import ceil
 
@@ -89,7 +90,7 @@ class GaudiStableDiffusionInpaintPipeline(
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "mask", "masked_image_latents"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "mask", "masked_image_latents"]
 
     def __init__(
         self,
@@ -358,7 +359,6 @@ class GaudiStableDiffusionInpaintPipeline(
 
         callback = kwargs.pop("callback", None)
         callback_steps = kwargs.pop("callback_steps", None)
-
         if callback is not None:
             deprecate(
                 "callback",
@@ -446,6 +446,7 @@ class GaudiStableDiffusionInpaintPipeline(
             timesteps, num_inference_steps = self.get_timesteps(
                 num_inference_steps=num_inference_steps, strength=strength, device=device
             )
+
             # check that number of inference steps is not < 1 - as this doesn't make sense
             if num_inference_steps < 1:
                 raise ValueError(
@@ -557,12 +558,12 @@ class GaudiStableDiffusionInpaintPipeline(
                 ).to(device=device, dtype=latents.dtype)
 
             # 10. Denoising loop
-            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
-            num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, throughput_warmup_steps)
+            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 0)
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
 
             # 11. Split into batches (HPU-specific step)
-            latents_batches, text_embeddings_batches, num_dummy_samples, mask_batches, masked_image_latents_batches = self._split_inputs_into_batches(
+            latents_batches, prompt_embeds_batches, num_dummy_samples, mask_batches, masked_image_latents_batches = self._split_inputs_into_batches(
                 batch_size,
                 latents,
                 prompt_embeds,
@@ -581,26 +582,24 @@ class GaudiStableDiffusionInpaintPipeline(
             for j in self.progress_bar(range(num_batches)):
                 #The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
-                if j == throughput_warmup_steps:
-                    t1 = time.time()
 
                 latents_batch = latents_batches[0]
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
-                text_embeddings_batch = text_embeddings_batches[0]
-                text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
+                prompt_embeds_batch = prompt_embeds_batches[0]
+                prompt_embeds_batches = torch.roll(prompt_embeds_batches, shifts=-1, dims=0)
                 mask_batch = mask_batches[0]
                 mask_batches = torch.roll(mask_batches, shifts=-1, dims=0)
                 masked_image_latents_batch = masked_image_latents_batches[0]
                 masked_image_latents_batches = torch.roll(masked_image_latents_batches, shifts=-1, dims=0)
 
-                for i in range(num_inference_steps):
+                for i in range(len(timesteps)):
                     if self.interrupt:
                         continue
 
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
-                    if i == num_warmup_steps:
+                    if i == throughput_warmup_steps:
                         t1 = time.time()
 
 
@@ -617,13 +616,14 @@ class GaudiStableDiffusionInpaintPipeline(
                     noise_pred = self.unet_hpu(
                         latent_model_input,
                         timestep,
-                        encoder_hidden_states=text_embeddings_batch,
+                        encoder_hidden_states=prompt_embeds_batch,
                         timestep_cond=timestep_cond,
                         cross_attention_kwargs=self.cross_attention_kwargs,
                         added_cond_kwargs=added_cond_kwargs,
                         return_dict=False,
                     )
 
+                    noise_pred.to(torch.float)
                     # perform guidance
                     if self.do_classifier_free_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -648,14 +648,15 @@ class GaudiStableDiffusionInpaintPipeline(
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
-                            callback_kwargs[k] = locals()[k]
+                            k_batch = k + "_batch"
+                            callback_kwargs[k] = locals()[k_batch]
                         callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
 
                         latents_batch = callback_outputs.pop("latents", latents_batch)
-                        text_embeddings_batch = callback_outputs.pop("prompt_embeds", text_embeddings_batch)
-                        negative_prompt_embeds_batch = callback_outputs.pop("negative_prompt_embeds", None)
-                        if negative_prompt_embeds_batch is not None:
-                            text_embeddings_batch = torch.cat([text_embeddings_batch, negative_prompt_embeds_batch])
+                        prompt_embeds_batch = callback_outputs.pop("prompt_embeds", prompt_embeds_batch)
+                        #negative_prompt_embeds_batch = callback_outputs.pop("negative_prompt_embeds", None)
+                        # if negative_prompt_embeds_batch is not None:
+                        #     prompt_embeds_batch = torch.cat([prompt_embeds_batch, negative_prompt_embeds_batch])
 
                         mask_batch = callback_outputs.pop("mask", mask_batch)
                         masked_image_latents_batch = callback_outputs.pop("masked_image_latents", masked_image_latents_batch)
@@ -685,19 +686,6 @@ class GaudiStableDiffusionInpaintPipeline(
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
 
-
-            speed_metrics_prefix = "inpainting"
-            speed_measures = speed_metrics(
-                split=speed_metrics_prefix,
-                start_time=t0,
-                num_samples=num_batches * batch_size
-                if t1 == t0
-                else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
-                start_time_after_warmup=t1,
-            )
-            logger.info(f"Speed metrics: {speed_measures}")
-
             # Remove dummy generations if needed
             if num_dummy_samples > 0:
                 outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
@@ -722,10 +710,18 @@ class GaudiStableDiffusionInpaintPipeline(
                     image = [self.image_processor.apply_overlay(mask_image, original_image, j, crops_coords) for j in image]
 
 
-                if output_type == "pil":
+                if output_type is "pil" and isinstance(image, list) :
                     outputs["images"] += image
+                elif output_type in ["np", "numpy"] and isinstance(image, numpy.ndarray) :
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = numpy.concatenate((outputs["images"], image), axis=0) 
                 else:
-                    outputs["images"] += [*image]
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = torch.cat((outputs["images"], image), 0)
 
                 if has_nsfw_concept is not None:
                     outputs["has_nsfw_concept"] += has_nsfw_concept
@@ -734,6 +730,17 @@ class GaudiStableDiffusionInpaintPipeline(
 
             # Offload all models
             self.maybe_free_model_hooks()
+            speed_metrics_prefix = "inpainting"
+            speed_measures = speed_metrics(
+                split=speed_metrics_prefix,
+                start_time=t0,
+                num_samples=num_batches * batch_size
+                if t1 == t0
+                else (num_batches - throughput_warmup_steps) * batch_size,
+                num_steps=num_batches,
+                start_time_after_warmup=t1,
+            )
+            logger.info(f"Speed metrics: {speed_measures}")
 
             if not return_dict:
                 return (outputs["images"], outputs["has_nsfw_concept"])

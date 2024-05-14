@@ -42,7 +42,7 @@ from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_
 from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
 
 
-#torch_device="hpu"
+torch_device="hpu"
 
 def to_np(tensor):
     if isinstance(tensor, torch.Tensor):
@@ -323,18 +323,11 @@ class PipelineTesterMixin:
 
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
-        init_kwargs = {
-            "use_habana": True,
-            "use_hpu_graphs": True,
-            "gaudi_config": "Habana/stable-diffusion",
-            "bf16_full_eval": True
-        }
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
 
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -344,9 +337,10 @@ class PipelineTesterMixin:
         logger.setLevel(diffusers.logging.INFO)
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.to("cpu")
             pipe.save_pretrained(tmpdir, safe_serialization=False)
             with CaptureLogger(logger) as cap_logger:
-                pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, **init_kwargs)
+                pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, use_habana=True, gaudi_config=tmpdir)
 
             for component in pipe_loaded.components.values():
                 if hasattr(component, "set_default_attn_processor"):
@@ -356,7 +350,6 @@ class PipelineTesterMixin:
                 if name not in pipe_loaded._optional_components:
                     assert name in str(cap_logger)
 
-            pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -449,7 +442,6 @@ class PipelineTesterMixin:
                 batched_input["batch_size"] = batch_size
 
             batched_inputs.append(batched_input)
-
         logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
             output = pipe(**batched_input)
@@ -622,19 +614,12 @@ class PipelineTesterMixin:
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
-        init_kwargs = {
-            "use_habana": True,
-            "use_hpu_graphs": True,
-            "gaudi_config": "Habana/stable-diffusion",
-            "bf16_full_eval": True
-        }
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
-        pipe.to(torch_device)
+
         pipe.set_progress_bar_config(disable=None)
 
         # set all optional components to None
@@ -646,8 +631,9 @@ class PipelineTesterMixin:
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.to("cpu")
             pipe.save_pretrained(tmpdir, safe_serialization=False)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, **init_kwargs)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, gaudi_config=tmpdir, use_habana=True)
             for component in pipe_loaded.components.values():
                 if hasattr(component, "set_default_attn_processor"):
                     component.set_default_attn_processor()
