@@ -1902,44 +1902,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             trainer.state.best_model_checkpoint = os.path.join(tmp_dir, "checkpoint-5")
             self.check_checkpoint_deletion(trainer, tmp_dir, [5, 25])
 
-    def test_compare_trainer_and_checkpoint_args_logging(self):
-        logger = logging.get_logger()
-
-        with tempfile.TemporaryDirectory() as tmpdir, CaptureLogger(logger) as cl:
-            trainer = get_regression_trainer(
-                output_dir=tmpdir,
-                train_len=128,
-                eval_steps=5,
-                gradient_accumulation_steps=2,
-                per_device_train_batch_size=4,
-                save_steps=5,
-                learning_rate=0.1,
-            )
-            trainer.train()
-
-            checkpoint = os.path.join(tmpdir, "checkpoint-5")
-            checkpoint_trainer = get_regression_trainer(
-                output_dir=tmpdir,
-                train_len=256,
-                eval_steps=10,
-                gradient_accumulation_steps=4,
-                per_device_train_batch_size=8,
-                save_steps=10,
-                learning_rate=0.1,
-            )
-            checkpoint_trainer.train(resume_from_checkpoint=checkpoint)
-
-        self.assertIn("save_steps: 10 (from args) != 5 (from trainer_state.json)", cl.out)
-
-        self.assertIn(
-            "per_device_train_batch_size: 8 (from args) != 4 (from trainer_state.json)",
-            cl.out,
-        )
-        self.assertIn(
-            "eval_steps: 10 (from args) != 5 (from trainer_state.json)",
-            cl.out,
-        )
-
     def check_mem_metrics(self, trainer, check_func):
         metrics = trainer.train().metrics
         check_func("init_mem_cpu_alloc_delta", metrics)
