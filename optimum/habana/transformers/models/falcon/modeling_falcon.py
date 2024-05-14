@@ -135,14 +135,6 @@ def gaudi_falcon_attention_split_heads(
         return query, key, value
 
 
-class Softmax(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x, dim=None, invAttnHead=None):
-        return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
-
-
 #  FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
@@ -366,7 +358,7 @@ class GaudiFalconAttention(FalconAttention):
                             # causal masking on first token requires inputs to be of the same lenght
                             with sdp_kernel(enable_recompute=flash_attention_recompute):
                                 attn_output = self.fused_scaled_dot_product_attention(
-                                    query_layer, key_layer, value_layer, attention_mask, None, 0.0, True, None
+                                    query_layer, key_layer, value_layer, None, 0.0, True, None
                                 )
                         else:
                             with sdp_kernel(enable_recompute=flash_attention_recompute):
@@ -382,10 +374,12 @@ class GaudiFalconAttention(FalconAttention):
                     # For inference prefill, is_causal based on flash_attention_causal_mask, for decode, is_caisal is false
                     is_causal = query_length != 1 and flash_attention_causal_mask
                     attn_mask = None if is_causal else attention_mask
+                    #flash_attention_fast_softmax = True
+                    #softmax_mode = 'fast' if flash_attention_fast_softmax else 'None'
 
                     with sdp_kernel(enable_recompute=enable_recompute):
                         attn_output = self.fused_scaled_dot_product_attention(
-                            query_layer, key_layer, value_layer, attn_mask, 0.0, is_causal, None
+                            query_layer, key_layer, value_layer, attn_mask, 0.0, is_causal, None #, softmax_mode
                         )
 
                 else:
