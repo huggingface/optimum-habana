@@ -16,7 +16,7 @@ limitations under the License.
 
 # Visual Question Answering Examples
 
-This directory contains a script that showcases how to use the Transformers pipeline API to run visual question answering task on HPUs.
+The `run_pipeline.py` script showcases how to use the Transformers pipeline API to run visual question answering task on HPUs.
 
 ## Single-HPU inference
 

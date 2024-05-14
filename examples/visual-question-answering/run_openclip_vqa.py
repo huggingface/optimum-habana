@@ -1,13 +1,17 @@
 # This script is based on https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224/blob/main/biomed_clip_example.ipynb
 import argparse
+import json
 import logging
+import os
 import time
+from pathlib import Path
 from pprint import pprint
 from urllib.request import urlopen
 
 import matplotlib.pyplot as plt
+import numpy
 import torch
-from open_clip import create_model_from_pretrained, get_tokenizer  # works on open-clip-torch>=2.23.0, timm>=0.9.8
+from open_clip import create_model_from_pretrained, get_tokenizer
 from PIL import Image
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -45,13 +49,13 @@ TEST_IMGS = [
         'pie_chart.png'
     ]
 
-def plot_images_with_metadata(images, metadata):
+def plot_images_with_metadata(images, metadata, output_dir, plot_name):
     num_images = len(images)
     fig, axes = plt.subplots(nrows=num_images, ncols=1, figsize=(5, 5 * num_images))
 
     for i, (img_path, metadata) in enumerate(zip(images, metadata)):
         img = Image.open(urlopen(img_path))
-        if isinstance(axes, list):
+        if isinstance(axes, list) or isinstance(axes, numpy.ndarray):
             ax = axes[i]
         else:
             ax = axes
@@ -60,7 +64,7 @@ def plot_images_with_metadata(images, metadata):
         ax.set_title(f"{metadata['filename']}\n{metadata['top_probs']}", fontsize=14)
 
     plt.tight_layout()
-    plt.savefig('figure.png')
+    plt.savefig(f'{output_dir}/{plot_name}.png')
 
 
 def run_qa(model, images, texts, device):
@@ -134,9 +138,20 @@ def main():
         action="store_true",
         help="Whether to perform in bf16 precision.",
     )
+    parser.add_argument(
+        "--output_dir",
+        default=os.getcwd(),
+        type=str,
+        help="Output directory to store results in.",
+    )
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=10, help="Number of inference iterations for benchmarking.")
     parser.add_argument("--plot_images",action="store_true", help="Plot images with metadata for verification")
+    parser.add_argument("--plot_name",
+        default="openclip_vqa_plot",
+        type=str,
+        help="Name of the plot generated with the image and corresponding top K results",
+    )
     parser.add_argument(
         "--print_result",
         action="store_true",
@@ -189,11 +204,24 @@ def main():
     if args.print_result:
         logger.info("Results from the last iteration:")
         pprint(metadata_list)
-    logger.info(f"Inference Time per iteration = {(end-start) * 1000/args.n_iterations:.4}ms")
+    inference_time_per_iteration = (end-start) * 1000/args.n_iterations
+    logger.info(f"Inference Time per iteration = {inference_time_per_iteration:.4}ms")
     throughput = len(args.image_path)*args.n_iterations/(end-start)
     logger.info(f"Throughput = {throughput:.4} images/s")
+
+    # Store results if necessary
+    if args.output_dir is not None:
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        results = {
+            "throughput": throughput,
+            "inference time per iteration ": inference_time_per_iteration
+        }
+        with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=4)
     if args.plot_images:
-        plot_images_with_metadata(args.image_path, metadata_list)
+        plot_images_with_metadata(args.image_path, metadata_list, args.output_dir, args.plot_name)
 
 
 if __name__ == "__main__":
