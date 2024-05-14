@@ -17,15 +17,17 @@ import unittest
 from typing import List, Union
 
 from parameterized import parameterized
-from transformers import is_torch_available
-from transformers.testing_utils import require_torch, torch_device
 
-from ..test_modeling_common import ids_tensor
+from transformers import is_torch_available
+from transformers.testing_utils import require_torch
+
+from ..test_modeling_common import ids_tensor, torch_device
 
 
 if is_torch_available():
     import torch
     from torch import nn
+
     from transformers.generation import (
         EncoderNoRepeatNGramLogitsProcessor,
         EncoderRepetitionPenaltyLogitsProcessor,
@@ -51,6 +53,7 @@ if is_torch_available():
         TypicalLogitsWarper,
         UnbatchedClassifierFreeGuidanceLogitsProcessor,
     )
+    from transformers.generation.logits_process import BarkEosPrioritizerLogitsProcessor
 
 
 @require_torch
@@ -607,6 +610,13 @@ class LogitsProcessorTest(unittest.TestCase):
             torch.isinf(filtered_scores).tolist(), [[False, False, True, True, True], [True, True, False, False, True]]
         )
 
+        def empty_prefix_allowed_tokens_fn(batch_id, inputs_ids):
+            return []
+
+        prefix_constrained_logits_proc = PrefixConstrainedLogitsProcessor(empty_prefix_allowed_tokens_fn, 1)
+
+        self.assertRaises(ValueError, prefix_constrained_logits_proc, input_ids, scores.clone())
+
     def test_hamming_diversity(self):
         vocab_size = 4
         num_beams = 2
@@ -689,7 +699,7 @@ class LogitsProcessorTest(unittest.TestCase):
             torch.allclose(
                 scores,
                 torch.tensor(
-                    [[0.0, 0.7, 0.8, 0.0], [0.1, torch.finfo(scores.dtype).max, 0.3, float("-inf")]],
+                    [[0.0, 0.7, 0.8, 0.0], [0.1, torch.finfo(scores.dtype).max, 0.3, torch.finfo(scores.dtype).min]],
                     device=torch_device,
                 ),
                 atol=1e-6,
@@ -715,18 +725,23 @@ class LogitsProcessorTest(unittest.TestCase):
 
         # check that penalty is not applied before start
         scores = self._get_uniform_logits(batch_size, vocab_size)
-        scores_before_start = length_decay_processor(input_ids, scores)
+        scores_before_start = torch.clone(scores)  # clone scores as precessor updates them inplace
+        scores_before_start = length_decay_processor(input_ids, scores_before_start)
         self.assertListEqual(scores_before_start[:, eos_token_id].tolist(), scores[:, eos_token_id].tolist())
 
         # check that penalty is applied after start
         input_ids = ids_tensor((batch_size, 20), vocab_size=vocab_size)
         scores = self._get_uniform_logits(batch_size, vocab_size)
-        scores_after_start = length_decay_processor(input_ids, scores)
-        self.assertTrue(
-            torch.gt(
-                scores_after_start[penalty_start + 1 :, eos_token_id], scores[penalty_start + 1 :, eos_token_id]
-            ).all()
-        )
+        scores_after_start = torch.clone(scores)  # clone scores as precessor updates them inplace
+        scores_after_start = length_decay_processor(input_ids, scores_after_start)
+        self.assertTrue(torch.gt(scores_after_start[:, eos_token_id], scores[:, eos_token_id]).all())
+
+        # check the penalty increases negative scores
+        input_ids = ids_tensor((batch_size, 20), vocab_size=vocab_size)
+        scores = torch.neg(self._get_uniform_logits(batch_size, vocab_size))
+        scores_after_start = torch.clone(scores)  # clone scores as precessor updates them inplace
+        scores_after_start = length_decay_processor(input_ids, scores_after_start)
+        self.assertTrue(torch.gt(scores_after_start[:, eos_token_id], scores[:, eos_token_id]).all())
 
     def test_normalization(self):
         input_ids = None
@@ -793,3 +808,35 @@ class LogitsProcessorTest(unittest.TestCase):
         self.assertAlmostEqual(out[0].item(), res[0].item())
         self.assertAlmostEqual(out[1].item(), res[1].item())
         self.assertAlmostEqual(out[2].item(), res[2].item())
+
+    def test_early_stop_processor(self):
+        input_ids = None
+        eos_token_id = 2
+        min_eos_p = 0.1  ## some small float
+
+        scores = self._get_uniform_logits(2, 4)
+        scores[0][eos_token_id] = -6  ## less than log(min_eos_p)
+
+        esp = BarkEosPrioritizerLogitsProcessor(eos_token_id=eos_token_id, min_eos_p=min_eos_p)
+        actual_scores = esp(input_ids, scores)
+        expected_scores_list = [
+            scores[0].tolist(),
+            [float("-inf"), float("-inf"), scores[0][0], float("-inf")],
+        ]
+        self.assertListEqual(actual_scores.tolist(), expected_scores_list)
+
+    def test_early_stop_processor_multi_eos(self):
+        input_ids = None
+        eos_token_id = [2, 3]
+        min_eos_p = 0.1  ## some small float
+
+        scores = self._get_uniform_logits(2, 4)
+        scores[0][eos_token_id] = -6  ## less than log(min_eos_p)
+
+        esp = BarkEosPrioritizerLogitsProcessor(eos_token_id=eos_token_id, min_eos_p=min_eos_p)
+        actual_scores = esp(input_ids, scores)
+        expected_scores_list = [
+            scores[0].tolist(),
+            [float("-inf"), float("-inf"), scores[0][0], scores[0][0]],
+        ]
+        self.assertListEqual(actual_scores.tolist(), expected_scores_list)
