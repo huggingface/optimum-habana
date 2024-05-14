@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
-from huggingface_hub import HfFolder, delete_repo, list_repo_commits, list_repo_files
+from huggingface_hub import HfFolder, ModelCard, delete_repo, list_repo_commits, list_repo_files
 from parameterized import parameterized
 from pytest import mark
 from requests.exceptions import HTTPError
@@ -44,10 +44,12 @@ from transformers.testing_utils import (
     TOKEN,
     USER,
     CaptureLogger,
+    LoggingLevel,
     TestCasePlus,
     get_gpu_count,
     get_tests_dir,
     is_staging_test,
+    parse_flag_from_env,
     require_optuna,
     require_safetensors,
     require_sentencepiece,
@@ -56,6 +58,7 @@ from transformers.testing_utils import (
     require_torch,
 )
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.trainer_pt_utils import AcceleratorConfig
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend, get_last_checkpoint
 from transformers.training_args import OptimizerNames
 from transformers.utils import (
@@ -86,6 +89,20 @@ if is_torch_available():
 
 
 PATH_SAMPLE_TEXT = f"{get_tests_dir()}/fixtures/sample_text.txt"
+
+
+_run_safe_loading_tests_ = parse_flag_from_env("SAFE_LOADING_TESTS", default=False)
+
+
+def safe_loading_test(test_case):
+    """
+    Decorator marking a test as needing custom bf16 ops.
+    Custom bf16 ops must be declared before `habana_frameworks.torch.core` is imported, which is not possible if some other tests are executed before.
+
+    Such tests are skipped by default. Set the CUSTOM_BF16_OPS environment variable to a truthy value to run them.
+
+    """
+    return unittest.skipUnless(_run_safe_loading_tests_, "test requires SAFE_LOADING_TESTS")(test_case)
 
 
 class RegressionDataset:
@@ -158,8 +175,8 @@ class DynamicShapesDataset:
         np.random.seed(seed)
         sizes = np.random.randint(1, 20, (length // batch_size,))
         # For easy batching, we make every batch_size consecutive samples the same size.
-        self.xs = [np.random.normal(size=(s,)) for s in sizes.repeat(batch_size)]
-        self.ys = [np.random.normal(size=(s,)) for s in sizes.repeat(batch_size)]
+        self.xs = [np.random.normal(size=(s,)).astype(np.float32) for s in sizes.repeat(batch_size)]
+        self.ys = [np.random.normal(size=(s,)).astype(np.float32) for s in sizes.repeat(batch_size)]
 
     def __len__(self):
         return self.length
@@ -547,7 +564,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
 
         np.random.seed(42)
         x = np.random.normal(size=(64,)).astype(np.float32)
-        y = 2.0 * x + 3.0 + np.random.normal(scale=0.1, size=(64,))
+        y = 2.0 * x + 3.0 + np.random.normal(scale=0.1, size=(64,)).astype(np.float32)
         train_dataset = datasets.Dataset.from_dict({"input_x": x, "label": y})
 
         gaudi_config = get_gaudi_config()
@@ -1214,17 +1231,19 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         else:
             self.assertNotIn(log_info_string, cl.out)
 
-        # test with low log_level - lower than info
-        with CaptureLogger(logger) as cl:
-            trainer = get_regression_trainer(log_level="debug")
-            trainer.train()
-        self.assertIn(log_info_string, cl.out)
+        with LoggingLevel(logging.INFO):
+            # test with low log_level - lower than info
+            with CaptureLogger(logger) as cl:
+                trainer = get_regression_trainer(log_level="debug")
+                trainer.train()
+            self.assertIn(log_info_string, cl.out)
 
-        # test with high log_level - should be quiet
-        with CaptureLogger(logger) as cl:
-            trainer = get_regression_trainer(log_level="error")
-            trainer.train()
-        self.assertNotIn(log_info_string, cl.out)
+        with LoggingLevel(logging.INFO):
+            # test with high log_level - should be quiet
+            with CaptureLogger(logger) as cl:
+                trainer = get_regression_trainer(log_level="error")
+                trainer.train()
+            self.assertNotIn(log_info_string, cl.out)
 
     def test_save_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1461,6 +1480,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         trainer.train(resume_from_checkpoint=False)
 
+    @safe_loading_test
     @require_safetensors
     def test_resume_training_with_safe_checkpoint(self):
         # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
@@ -1654,6 +1674,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.check_saved_checkpoints(tmpdir, 5, total, is_pretrained=False)
             self.check_best_model_has_been_loaded(tmpdir, 5, total, trainer, "eval_loss", is_pretrained=False)
 
+    @safe_loading_test
     @require_safetensors
     def test_load_best_model_from_safetensors(self):
         total = int(self.n_epochs * 64 / self.batch_size)
@@ -1896,6 +1917,172 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertListEqual(trainer.optimizer.param_groups[0]["params"], wd_params)
         self.assertListEqual(trainer.optimizer.param_groups[1]["params"], no_wd_params)
 
+    def test_accelerator_config_empty(self):
+        # Checks that a config can be made with the defaults if not passed
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # Leaves one option as something *not* basic
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(output_dir=tmp_dir, use_habana=True)
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, False)
+            self.assertEqual(trainer.accelerator.dispatch_batches, None)
+            self.assertEqual(trainer.accelerator.even_batches, True)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
+
+    def test_accelerator_config_from_dict(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # Leaves all options as something *not* basic
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir,
+                accelerator_config={
+                    "split_batches": True,
+                    "dispatch_batches": True,
+                    "even_batches": False,
+                    "use_seedable_sampler": True,
+                },
+                use_habana=True,
+            )
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.dispatch_batches, True)
+            self.assertEqual(trainer.accelerator.even_batches, False)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
+
+    def test_accelerator_config_from_yaml(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path_file = Path(tmp_dir) / "accelerator_config.json"
+            with open(path_file, "w") as f:
+                accelerator_config = {
+                    "split_batches": True,
+                    "dispatch_batches": True,
+                    "even_batches": False,
+                    "use_seedable_sampler": False,
+                }
+                json.dump(accelerator_config, f)
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # Leaves all options as something *not* basic
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(output_dir=tmp_dir, accelerator_config=path_file, use_habana=True)
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.dispatch_batches, True)
+            self.assertEqual(trainer.accelerator.even_batches, False)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, False)
+
+    def test_accelerator_config_from_dataclass(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        accelerator_config = AcceleratorConfig(
+            split_batches=True, dispatch_batches=True, even_batches=False, use_seedable_sampler=False
+        )
+        config = RegressionModelConfig(a=1.5, b=2.5)
+        model = RegressionPreTrainedModel(config)
+        eval_dataset = SampleIterableDataset()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir, accelerator_config=accelerator_config, use_habana=True
+            )
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.dispatch_batches, True)
+            self.assertEqual(trainer.accelerator.even_batches, False)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, False)
+
+    def test_accelerator_config_from_partial(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # Leaves one option as something *not* basic
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir,
+                accelerator_config={
+                    "split_batches": True,
+                },
+                use_habana=True,
+            )
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.dispatch_batches, None)
+            self.assertEqual(trainer.accelerator.even_batches, True)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
+
+    def test_accelerator_config_from_dict_with_deprecated_args(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        # and maintains the deprecated args if passed in
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # Leaves all options as something *not* basic
+            with self.assertWarns(FutureWarning) as cm:
+                gaudi_config = get_gaudi_config()
+                args = RegressionGaudiTrainingArguments(
+                    output_dir=tmp_dir,
+                    accelerator_config={
+                        "split_batches": True,
+                    },
+                    dispatch_batches=False,
+                    use_habana=True,
+                )
+                self.assertIn("dispatch_batches", str(cm.warnings[0].message))
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.dispatch_batches, False)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            with self.assertWarns(FutureWarning) as cm:
+                args = RegressionGaudiTrainingArguments(
+                    output_dir=tmp_dir,
+                    accelerator_config={
+                        "even_batches": False,
+                    },
+                    split_batches=True,
+                    use_habana=True,
+                )
+                self.assertIn("split_batches", str(cm.warnings[0].message))
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.even_batches, False)
+            self.assertEqual(trainer.accelerator.dispatch_batches, None)
+
+    def test_accelerator_config_only_deprecated_args(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertWarns(FutureWarning) as cm:
+                gaudi_config = get_gaudi_config()
+                args = RegressionGaudiTrainingArguments(
+                    output_dir=tmp_dir,
+                    split_batches=True,
+                    use_habana=True,
+                )
+                self.assertIn("split_batches", str(cm.warnings[0].message))
+                config = RegressionModelConfig(a=1.5, b=2.5)
+                model = RegressionPreTrainedModel(config)
+                eval_dataset = SampleIterableDataset()
+                trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+                self.assertEqual(trainer.accelerator.split_batches, True)
+
     def test_profiling(self):
         # 24 total steps and compilation takes place during the 1st three steps
         trainer = get_regression_trainer(profiling_warmup_steps=3, profiling_steps=21)
@@ -1912,7 +2099,13 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        for model in ["test-trainer", "test-trainer-epoch", "test-trainer-step", "test-trainer-tensorboard"]:
+        for model in [
+            "test-trainer",
+            "test-trainer-epoch",
+            "test-trainer-step",
+            "test-trainer-tensorboard",
+            "test-trainer-tags",
+        ]:
             try:
                 delete_repo(token=cls._token, repo_id=model)
             except HTTPError:
@@ -2042,6 +2235,31 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
                 found_log = True
 
         assert found_log is True, "No tensorboard log found in repo"
+
+    def test_push_to_hub_tags(self):
+        # Checks if `trainer.push_to_hub()` works correctly by adding the desired
+        # tag without having to pass `tags` in `push_to_hub`
+        # see:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(
+                output_dir=os.path.join(tmp_dir, "test-trainer-tags"),
+                push_to_hub=True,
+                hub_token=self._token,
+            )
+
+            trainer.model.add_model_tags(["test-trainer-tags"])
+
+            url = trainer.push_to_hub()
+
+            # Extract repo_name from the url
+            re_search = re.search(ENDPOINT_STAGING + r"/([^/]+/[^/]+)/", url)
+            self.assertTrue(re_search is not None)
+            repo_name = re_search.groups()[0]
+
+            self.assertEqual(repo_name, f"{USER}/test-trainer-tags")
+
+            model_card = ModelCard.load(repo_name)
+            self.assertTrue("test-trainer-tags" in model_card.data.tags)
 
 
 @require_torch

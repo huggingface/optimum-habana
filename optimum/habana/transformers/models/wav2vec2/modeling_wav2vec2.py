@@ -17,7 +17,6 @@
 from typing import Optional, Tuple, Union
 
 import torch
-from habana_frameworks.torch.hpex.kernels import CTCLoss
 from habana_frameworks.torch.hpu import get_device_name
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import (
@@ -25,9 +24,16 @@ from transformers.modeling_outputs import (
     CausalLMOutput,
     Wav2Vec2BaseModelOutput,
 )
+from transformers.models.wav2vec2.modeling_wav2vec2 import _HIDDEN_STATES_START_POSITION
 
 
-ctc_loss_fwd = CTCLoss.apply
+try:
+    from habana_frameworks.torch.hpex.kernels import CTCLoss
+
+    custom_ctc_loss_fwd = CTCLoss.apply
+except ImportError:
+    print("Could not import Custom CTCLoss kernel. This Kernel is available only for SynapseAI >= 1.15.0")
+    custom_ctc_loss_fwd = None
 
 
 def _gaudi_wav2vec2_compute_mask_indices(
@@ -129,7 +135,7 @@ def _gaudi_wav2vec2_compute_mask_indices(
     spec_aug_mask_idxs = spec_aug_mask_idxs + offsets
 
     # ensure that we cannot have indices larger than sequence_length
-    if get_device_name() == "GAUDI":
+    if get_device_name() == "GAUDI" or custom_ctc_loss_fwd is None:
         if spec_aug_mask_idxs.max() > sequence_length - 1:
             spec_aug_mask_idxs[spec_aug_mask_idxs > sequence_length - 1] = sequence_length - 1
     else:
@@ -369,7 +375,23 @@ def gaudi_wav2vec2_encoder_forward(
     )
 
 
-_HIDDEN_STATES_START_POSITION = 2
+def gaudi_wav2vec2_tdnnlayer_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    """
+    Copied from Transformers: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L2290
+    v4.38.2 implementation caused accuracy issue to run pytest Wav2Vec2RobustModelTest.
+    """
+    hidden_states = hidden_states.unsqueeze(1)
+    hidden_states = torch.nn.functional.unfold(
+        hidden_states,
+        (self.kernel_size, self.in_conv_dim),
+        stride=(1, self.in_conv_dim),
+        dilation=(self.dilation, 1),
+    )
+    hidden_states = hidden_states.transpose(1, 2)
+    hidden_states = self.kernel(hidden_states)
+
+    hidden_states = self.activation(hidden_states)
+    return hidden_states
 
 
 def gaudi_wav2vec2forctc_forward(
@@ -381,13 +403,6 @@ def gaudi_wav2vec2forctc_forward(
     return_dict: Optional[bool] = None,
     labels: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, CausalLMOutput]:
-    r"""
-    labels (`torch.LongTensor` of shape `(batch_size, target_length)`, *optional*):
-        Labels for connectionist temporal classification. Note that `target_length` has to be smaller or equal to
-        the sequence length of the output logits. Indices are selected in `[-100, 0, ..., config.vocab_size - 1]`.
-        All labels set to `-100` are ignored (masked), the loss is only computed for labels in `[0, ...,
-        config.vocab_size - 1]`.
-    """
     """
     copied from Transformers https://github.com/huggingface/transformers/blob/e770f0316d2a9b787c9d1440f204fcb65e176682/src/transformers/models/wav2vec2/modeling_wav2vec2.py#L1950
     only differences are (1) attention_mask tensor generation using ones_like is done on HPU, (2) masked_select is not applied on labels to compute flattened_targets to avoid
@@ -421,30 +436,28 @@ def gaudi_wav2vec2forctc_forward(
         target_lengths = labels_mask.sum(-1)
         # ctc_loss doesn't support fp16
         log_probs = torch.nn.functional.log_softmax(logits, dim=-1, dtype=torch.float32).transpose(0, 1)
-        if get_device_name() == "GAUDI":
+        if get_device_name() == "GAUDI" or custom_ctc_loss_fwd is None:
             flattened_targets = labels.masked_select(labels_mask)
-            with torch.backends.cudnn.flags(enabled=False):
-                loss = torch.nn.functional.ctc_loss(
-                    log_probs,
-                    flattened_targets,
-                    input_lengths,
-                    target_lengths,
-                    blank=self.config.pad_token_id,
-                    reduction=self.config.ctc_loss_reduction,
-                    zero_infinity=self.config.ctc_zero_infinity,
-                )
+            loss = torch.nn.functional.ctc_loss(
+                log_probs,
+                flattened_targets,
+                input_lengths,
+                target_lengths,
+                blank=self.config.pad_token_id,
+                reduction=self.config.ctc_loss_reduction,
+                zero_infinity=self.config.ctc_zero_infinity,
+            )
         else:
             flattened_targets = labels
-            with torch.backends.cudnn.flags(enabled=False):
-                loss = ctc_loss_fwd(
-                    log_probs,
-                    flattened_targets,
-                    input_lengths,
-                    target_lengths,
-                    self.config.pad_token_id,
-                    self.config.ctc_loss_reduction,
-                    self.config.ctc_zero_infinity,
-                )
+            loss = custom_ctc_loss_fwd(
+                log_probs,
+                flattened_targets,
+                input_lengths,
+                target_lengths,
+                self.config.pad_token_id,
+                self.config.ctc_loss_reduction,
+                self.config.ctc_zero_infinity,
+            )
 
     if not return_dict:
         output = (logits,) + outputs[_HIDDEN_STATES_START_POSITION:]

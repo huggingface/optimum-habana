@@ -89,8 +89,9 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device="cpu", **kwargs)
         timesteps = scheduler.timesteps.to(device)
 
-    reset_timestep = getattr(scheduler, "reset_timestep_dependent_params", None)
-    if callable(reset_timestep):
+    # Handles the case where the scheduler cannot implement reset_timestep_dependent_params()
+    # Example: UniPCMultiStepScheduler used for inference in ControlNet training as it has non-linear accesses to timestep dependent parameter: sigma.
+    if hasattr(scheduler, "reset_timestep_dependent_params") and callable(scheduler.reset_timestep_dependent_params):
         scheduler.reset_timestep_dependent_params()
     return timesteps, num_inference_steps
 

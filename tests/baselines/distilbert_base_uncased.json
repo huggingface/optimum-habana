@@ -7,20 +7,20 @@
                 "single_card": {
                     "learning_rate": 1e-4,
                     "train_batch_size": 48,
-                    "eval_f1": 84.7137,
-                    "train_runtime": 271.2751,
-                    "train_samples_per_second": 334.792,
+                    "eval_f1": 84.5384,
+                    "train_runtime": 264.3669,
+                    "train_samples_per_second": 344.126,
                     "extra_arguments": [
                         "--max_seq_length 384",
                         "--use_hpu_graphs_for_inference"
                     ]
                 },
                 "multi_card": {
-                    "learning_rate": 3e-4,
+                    "learning_rate": 4e-4,
                     "train_batch_size": 48,
-                    "eval_f1": 82.8831,
-                    "train_runtime": 54.0269,
-                    "train_samples_per_second": 2500.721,
+                    "eval_f1": 83.0667,
+                    "train_runtime": 54.5344,
+                    "train_samples_per_second": 2503.657,
                     "extra_arguments": [
                         "--max_seq_length 384",
                         "--use_hpu_graphs_for_inference"
@@ -37,9 +37,9 @@
                 "single_card": {
                     "learning_rate": 2e-4,
                     "train_batch_size": 64,
-                    "eval_f1": 84.87642669075069,
-                    "train_runtime": 131.655,
-                    "train_samples_per_second": 1377.209,
+                    "eval_f1": 84.5418,
+                    "train_runtime": 108.8333,
+                    "train_samples_per_second": 1676.689,
                     "extra_arguments": [
                         "--max_seq_length 384",
                         "--use_hpu_graphs_for_inference"
@@ -48,9 +48,9 @@
                 "multi_card": {
                     "learning_rate": 3e-4,
                     "train_batch_size": 64,
-                    "eval_f1": 83.27897440376087,
-                    "train_runtime": 25.7792,
-                    "train_samples_per_second": 9951.533,
+                    "eval_f1": 83.2233,
+                    "train_runtime": 24.0441,
+                    "train_samples_per_second": 11144.651,
                     "extra_arguments": [
                         "--max_seq_length 384",
                         "--use_hpu_graphs_for_inference"

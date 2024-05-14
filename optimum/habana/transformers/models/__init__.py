@@ -10,6 +10,17 @@ from .bart import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
 )
+from .blip import (
+    gaudi_BlipForConditionalGeneration_generate,
+    gaudi_BlipForQuestionAnswering_generate,
+    gaudi_BlipTextAttention_forward,
+    gaudi_BlipTextEncoder_forward,
+    gaudi_BlipTextLayer_forward,
+    gaudi_BlipTextLMHead_forward,
+    gaudi_BlipTextLMHead_prepare_inputs_for_generation,
+    gaudi_BlipTextModel_forward,
+    gaudi_BlipTextSelfAttention_forward,
+)
 from .bloom import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
@@ -51,6 +62,7 @@ from .gpt_neox import (
     gaudi_gpt_neox_attention_forward,
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
+    gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
 )
 from .gptj import (
     GaudiGPTJAttention,
@@ -61,9 +73,12 @@ from .gptj import (
 from .llama import (
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
+    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
     GaudiLlamaForCausalLM,
+    GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaMLP,
     GaudiLlamaModel,
+    GaudiLlamaRotaryEmbedding,
     gaudi_llama_rmsnorm_forward,
 )
 from .mistral import (
@@ -101,6 +116,20 @@ from .opt import (
     gaudi_opt_decoder_layer_forward,
     gaudi_opt_model_forward,
 )
+from .phi import (
+    GaudiPhiForCausalLM,
+    gaudi_phi_attention_forward,
+    gaudi_phi_decoder_layer_forward,
+    gaudi_phi_model_forward,
+)
+from .speecht5 import (
+    gaudi_generate_speech,
+    gaudi_SpeechT5Attention_forward,
+    gaudi_SpeechT5Decoder_forward,
+    gaudi_SpeechT5DecoderLayer_forward,
+    gaudi_SpeechT5SpeechDecoderPrenet_forward,
+)
+from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -111,12 +140,12 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .vit import gaudi_vit_self_attention_forward
-from .swin import gaudi_swin_get_attn_mask
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
     _gaudi_wav2vec2_sample_negative_indices,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
+    gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
 )

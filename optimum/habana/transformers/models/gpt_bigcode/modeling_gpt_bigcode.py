@@ -364,6 +364,7 @@ class GaudiGPTBigCodeForCausalLM(GPTBigCodeForCausalLM):
     - when KV cache is enabled, slice next_input_ids from input_ids based on the token_idx
     - when KV cache is enabled, slice next_position_ids from position_ids based on the token_idx
     """
+
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
