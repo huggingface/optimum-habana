@@ -24,6 +24,8 @@ from transformers.testing_utils import require_torch
 from ..test_modeling_common import ids_tensor, torch_device
 
 
+EXPECTED_DEVICE_TYPE = "hpu"
+
 if is_torch_available():
     import torch
     from torch import nn
@@ -81,6 +83,9 @@ class LogitsProcessorTest(unittest.TestCase):
         scores_before_min_length = min_dist_processor(input_ids, scores)
         self.assertFalse(torch.isinf(scores_before_min_length).any())
 
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+        self.assertTrue(scores_before_min_length.device.type == EXPECTED_DEVICE_TYPE)
+
     @parameterized.expand([(0,), ([0, 18],)])
     def test_new_min_length_dist_processor(self, eos_token_id: Union[int, List[int]]):
         vocab_size = 20
@@ -104,6 +109,8 @@ class LogitsProcessorTest(unittest.TestCase):
 
         # check that, for skipping, now prompt length is 5, after that we expect first 5 tokens will be skipped
         self.assertTrue(new_min_dist_processor.prompt_length_to_skip == 5)
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+        self.assertTrue(scores_before_min_length.device.type == EXPECTED_DEVICE_TYPE)
 
         # check that min length is applied at length 2
         input_ids = ids_tensor((batch_size, 2), vocab_size=20)
@@ -112,6 +119,8 @@ class LogitsProcessorTest(unittest.TestCase):
         self.assertListEqual(
             scores_before_min_length[:, eos_token_id].flatten().tolist(), expected_eos_scores_before_min_length
         )
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+        self.assertTrue(scores_before_min_length.device.type == EXPECTED_DEVICE_TYPE)
 
         # check that min new length is applied at length 6 (because it has only 1 new token)
         input_ids = ids_tensor((batch_size, 6), vocab_size=20)
@@ -120,6 +129,8 @@ class LogitsProcessorTest(unittest.TestCase):
         self.assertListEqual(
             scores_before_min_length[:, eos_token_id].flatten().tolist(), expected_eos_scores_before_min_length
         )
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+        self.assertTrue(scores_before_min_length.device.type == EXPECTED_DEVICE_TYPE)
 
         # check that min new length is applied at length 7 (because it has only 2 new tokens)
         input_ids = ids_tensor((batch_size, 7), vocab_size=20)
@@ -128,18 +139,24 @@ class LogitsProcessorTest(unittest.TestCase):
         self.assertListEqual(
             scores_before_min_length[:, eos_token_id].flatten().tolist(), expected_eos_scores_before_min_length
         )
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+        self.assertTrue(scores_before_min_length.device.type == EXPECTED_DEVICE_TYPE)
 
         # check that min new length is not applied anymore at length 8
         input_ids = ids_tensor((batch_size, 8), vocab_size=20)
         scores = self._get_uniform_logits(batch_size, vocab_size)
         scores_before_min_length = new_min_dist_processor(input_ids, scores)
         self.assertFalse(torch.isinf(scores_before_min_length).any())
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+        self.assertTrue(scores_before_min_length.device.type == EXPECTED_DEVICE_TYPE)
 
         # check that min new length is not applied anymore at length 15
         input_ids = ids_tensor((batch_size, 15), vocab_size=20)
         scores = self._get_uniform_logits(batch_size, vocab_size)
         scores_before_min_length = new_min_dist_processor(input_ids, scores)
         self.assertFalse(torch.isinf(scores_before_min_length).any())
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+        self.assertTrue(scores_before_min_length.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_temperature_dist_warper(self):
         input_ids = None
@@ -159,6 +176,9 @@ class LogitsProcessorTest(unittest.TestCase):
 
         warped_prob_sharp = nn.functional.softmax(temp_dist_warper_sharper(input_ids, scores.clone()), dim=-1)
         warped_prob_smooth = nn.functional.softmax(temp_dist_warper_smoother(input_ids, scores.clone()), dim=-1)
+
+        self.assertTrue(warped_prob_sharp.device.type == EXPECTED_DEVICE_TYPE)
+        self.assertTrue(warped_prob_smooth.device.type == EXPECTED_DEVICE_TYPE)
 
         # uniform distribution stays uniform
         self.assertTrue(torch.allclose(probs[0, :], warped_prob_sharp[0, :], atol=1e-3))
@@ -193,6 +213,8 @@ class LogitsProcessorTest(unittest.TestCase):
         self.assertAlmostEqual(scores[1, 0].item(), (1 / vocab_size) / 2)
         self.assertAlmostEqual(scores[1, 5].item(), (4 / vocab_size) / 2)
 
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+
     def test_encoder_repetition_penalty_dist_process(self):
         input_ids = torch.tensor([[0, 1], [5, 0]], device=torch_device, dtype=torch.long)
         vocab_size = 10
@@ -218,6 +240,8 @@ class LogitsProcessorTest(unittest.TestCase):
         self.assertAlmostEqual(scores[0, 2].item(), (1 / vocab_size))
         self.assertAlmostEqual(scores[1, 2].item(), (1 / vocab_size))
 
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+
     def test_top_k_dist_warper(self):
         input_ids = None
         vocab_size = 10
@@ -236,6 +260,7 @@ class LogitsProcessorTest(unittest.TestCase):
         # check that correct tokens are filtered
         self.assertListEqual(torch.isinf(scores[0]).tolist(), 7 * [True] + 3 * [False])
         self.assertListEqual(torch.isinf(scores[1]).tolist(), 2 * [True] + 3 * [False] + 5 * [True])
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
 
         # check special cases
         length = 5
@@ -246,12 +271,14 @@ class LogitsProcessorTest(unittest.TestCase):
         scores = top_k_warp_safety_check(input_ids, logits)
         # uniform dist is not changed
         self.assertListEqual((scores == 0.0).to(torch.long).sum(dim=-1).tolist(), [0, 0])
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
 
         ramp_logits = torch.arange(length, device=torch_device, dtype=torch.float).unsqueeze(0).repeat(batch_size, 1)
         scores = top_k_warp_safety_check(input_ids, ramp_logits)
 
         # min_tokens overwrites k: 3 tokens are kept => 2 tokens are nullified
         self.assertListEqual((scores == 0.0).to(torch.long).sum(dim=-1).tolist(), [2, 2])
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_top_p_dist_warper(self):
         input_ids = None
@@ -272,6 +299,7 @@ class LogitsProcessorTest(unittest.TestCase):
             [[0.3, 0.0, 0.0, 0.5], [0.0, 0.3, 0.3, 0.25]], device=torch_device, dtype=torch.float
         )
         self.assertTrue(torch.allclose(filtered_dist, EXPECTED_FILTERED_DIST, atol=1e-3))
+        self.assertTrue(filtered_dist.device.type == EXPECTED_DEVICE_TYPE)
 
         # check edge cases with negative and extreme logits
         ramp_logits = torch.arange(vocab_size, device=torch_device, dtype=torch.float).unsqueeze(0).repeat(
@@ -287,6 +315,7 @@ class LogitsProcessorTest(unittest.TestCase):
 
         # first batch should keep three tokens, second batch would keep only 1, but due to `min_tokens_to_keep=2` keeps 2.
         self.assertListEqual((filtered_dist != 0.0).to(torch.long).sum(dim=-1).tolist(), [3, 2])
+        self.assertTrue(filtered_dist.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_typical_dist_warper(self):
         input_ids = None
@@ -307,6 +336,7 @@ class LogitsProcessorTest(unittest.TestCase):
             [[0.97, 0.0, 0.0, 0.0], [0.0, 0.2, 0.2, 0.2]], device=torch_device, dtype=torch.float
         )
         self.assertTrue(torch.allclose(filtered_dist, EXPECTED_FILTERED_DIST, atol=1e-3))
+        self.assertTrue(filtered_dist.device.type == EXPECTED_DEVICE_TYPE)
 
         # check special cases
         length = 5
@@ -317,6 +347,7 @@ class LogitsProcessorTest(unittest.TestCase):
         scores = typical_warp_safety_check(input_ids, logits)
         # uniform dist is not changed
         self.assertListEqual((scores == 0.0).to(torch.long).sum(dim=-1).tolist(), [0, 0])
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
 
         # check edge cases with negative and extreme logits
         ramp_logits = torch.arange(vocab_size, device=torch_device, dtype=torch.float).unsqueeze(0).repeat(
@@ -332,6 +363,7 @@ class LogitsProcessorTest(unittest.TestCase):
 
         # first batch should keep two tokens, second batch would keep only 1, but due to `min_tokens_to_keep=2` keeps 2.
         self.assertListEqual((filtered_dist != 0.0).to(torch.long).sum(dim=-1).tolist(), [2, 2])
+        self.assertTrue(filtered_dist.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_epsilon_dist_warper(self):
         input_ids = None
@@ -354,6 +386,7 @@ class LogitsProcessorTest(unittest.TestCase):
             [[0.87, 0, 0, 0], [0.4, 0.299, 0.101, 0.2]], device=torch_device, dtype=torch.float
         )
         self.assertTrue(torch.allclose(filtered_dist, EXPECTED_FILTERED_DIST, atol=1e-3))
+        self.assertTrue(filtered_dist.device.type == EXPECTED_DEVICE_TYPE)
 
         # check edge cases with negative and extreme logits
         ramp_logits = torch.arange(vocab_size, device=torch_device, dtype=torch.float).unsqueeze(0).repeat(
@@ -391,6 +424,7 @@ class LogitsProcessorTest(unittest.TestCase):
             [[0.0, 0.1, 0.8, 0.1], [0.0, 0.0, 0.9, 0.0]], device=torch_device, dtype=torch.float
         )
         self.assertTrue(torch.allclose(filtered_dist, EXPECTED_FILTERED_DIST, atol=1e-3))
+        self.assertTrue(filtered_dist.device.type == EXPECTED_DEVICE_TYPE)
 
         # check edge cases with negative and extreme logits
         ramp_logits = torch.arange(vocab_size, device=torch_device, dtype=torch.float).unsqueeze(0).repeat(
@@ -403,6 +437,7 @@ class LogitsProcessorTest(unittest.TestCase):
         # make sure at least 2 tokens are kept
         eta_warp = EtaLogitsWarper(0.1, min_tokens_to_keep=2, filter_value=0.0)
         filtered_dist = eta_warp(input_ids, ramp_logits)
+        self.assertTrue(filtered_dist.device.type == EXPECTED_DEVICE_TYPE)
 
         # first batch should keep 2 tokens, second batch would keep only 1, but due to `min_tokens_to_keep=2` keeps 2.
         self.assertListEqual((filtered_dist != 0.0).to(torch.long).sum(dim=-1).tolist(), [2, 2])
@@ -422,11 +457,13 @@ class LogitsProcessorTest(unittest.TestCase):
 
         # 2-gram would forbid 2nd and 3rd token (1,2) at 1st batch and 1st token (0) at 2nd batch
         self.assertListEqual(torch.isinf(filtered_scores_2_gram).tolist(), [[False, True, True], [True, False, False]])
+        self.assertTrue(filtered_scores_2_gram.device.type == EXPECTED_DEVICE_TYPE)
 
         # 3-gram would forbid no token at 1st batch and 1st token (0) at 2nd batch
         self.assertListEqual(
             torch.isinf(filtered_scores_3_gram).tolist(), [[False, False, False], [True, False, False]]
         )
+        self.assertTrue(filtered_scores_3_gram.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_encoder_no_repeat_ngram_dist_processor(self):
         vocab_size = 3
@@ -446,11 +483,13 @@ class LogitsProcessorTest(unittest.TestCase):
 
         # 2-gram would forbid 1st and 2nd token at 1st beam and 1st token (0) at 2nd beam
         self.assertListEqual(torch.isinf(filtered_scores_2_gram).tolist(), [[False, True, True], [False, True, False]])
+        self.assertTrue(filtered_scores_2_gram.device.type == EXPECTED_DEVICE_TYPE)
 
         # 3-gram would forbid 1st token at 1st beam and no token at 2nd beam
         self.assertListEqual(
             torch.isinf(filtered_scores_3_gram).tolist(), [[False, True, False], [False, False, False]]
         )
+        self.assertTrue(filtered_scores_3_gram.device.type == EXPECTED_DEVICE_TYPE)
 
         # Batched input
         vocab_size = 3
@@ -514,6 +553,7 @@ class LogitsProcessorTest(unittest.TestCase):
         no_bad_words_dist_proc = NoBadWordsLogitsProcessor(bad_words_ids=[[4]], eos_token_id=eos_token_id)
         filtered_scores = no_bad_words_dist_proc(input_ids, scores.clone())
         self.assertTrue(torch.allclose(scores, filtered_scores, atol=1e-3))
+        self.assertTrue(filtered_scores.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_bias_dist_processor(self):
         vocab_size = 5
@@ -563,12 +603,19 @@ class LogitsProcessorTest(unittest.TestCase):
 
         # no processor list
         scores = min_dist_proc(input_ids, scores)
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
         scores = temp_dist_warp(input_ids, scores)
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
         scores = rep_penalty_proc(input_ids, scores)
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
         scores = top_k_warp(input_ids, scores)
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
         scores = top_p_warp(input_ids, scores)
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
         scores = no_repeat_proc(input_ids, scores)
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
         scores = no_bad_words_dist_proc(input_ids, scores)
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
 
         # with processor list
         processor = LogitsProcessorList(
@@ -633,6 +680,7 @@ class LogitsProcessorTest(unittest.TestCase):
 
         processed_scores = diversity_logits_processor(None, scores, current_tokens, 1)
 
+        self.assertTrue(processed_scores.device.type == EXPECTED_DEVICE_TYPE)
         self.assertTrue(
             torch.allclose(
                 processed_scores[0], torch.tensor([-0.7500, 0.2500, 0.2500, 0.2500], device=torch_device), atol=1e-3
@@ -657,12 +705,14 @@ class LogitsProcessorTest(unittest.TestCase):
         scores = logits_processor(input_ids, scores)
         self.assertTrue(torch.isneginf(scores[:, bos_token_id + 1 :]).all())
         self.assertListEqual(scores[:, bos_token_id].tolist(), 4 * [0])  # score for bos_token_id shold be zero
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
 
         # check that bos_token_id is not forced if current length is greater than 1
         input_ids = ids_tensor((batch_size, 4), vocab_size=20)
         scores = self._get_uniform_logits(batch_size, vocab_size)
         scores = logits_processor(input_ids, scores)
         self.assertFalse(torch.isinf(scores).any())
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_forced_eos_token_logits_processor(self):
         vocab_size = 20
@@ -678,6 +728,7 @@ class LogitsProcessorTest(unittest.TestCase):
         scores = logits_processor(input_ids, scores)
         self.assertTrue(torch.isneginf(scores[:, eos_token_id + 1 :]).all())
         self.assertListEqual(scores[:, eos_token_id].tolist(), 4 * [0])  # score for eos_token_id should be zero
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
 
         # check that eos_token_id is not forced if max_length-1 is not reached
         input_ids = ids_tensor((batch_size, 3), vocab_size=20)
@@ -705,6 +756,7 @@ class LogitsProcessorTest(unittest.TestCase):
                 atol=1e-6,
             )
         )
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_exponential_decay_length_penalty(self):
         vocab_size = 20
@@ -757,6 +809,7 @@ class LogitsProcessorTest(unittest.TestCase):
         self.assertTrue(normalized_scores.sum(dim=-1).allclose(ones))
 
         self.assertTrue(normalized_scores.allclose(scores.softmax(dim=-1)))
+        self.assertTrue(normalized_scores.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_classifier_free_guidance(self):
         class Namespace(dict):
@@ -824,6 +877,7 @@ class LogitsProcessorTest(unittest.TestCase):
             [float("-inf"), float("-inf"), scores[0][0], float("-inf")],
         ]
         self.assertListEqual(actual_scores.tolist(), expected_scores_list)
+        self.assertTrue(actual_scores.device.type == EXPECTED_DEVICE_TYPE)
 
     def test_early_stop_processor_multi_eos(self):
         input_ids = None
@@ -840,3 +894,4 @@ class LogitsProcessorTest(unittest.TestCase):
             [float("-inf"), float("-inf"), scores[0][0], scores[0][0]],
         ]
         self.assertListEqual(actual_scores.tolist(), expected_scores_list)
+        self.assertTrue(actual_scores.device.type == EXPECTED_DEVICE_TYPE)
