@@ -49,7 +49,7 @@ from transformers.utils import ModelOutput
 
 from optimum.utils import logging
 
-from ...utils import HabanaProfile
+from ...utils import HabanaGenerationtime, HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .configuration_utils import GaudiGenerationConfig
 
@@ -77,7 +77,12 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mistral",
     "phi",
     "mixtral",
+    "gemma",
     "blip_text_model",
+    "persimmon",
+    "qwen2",
+    "llava",
+    "stablelm",
 ]
 
 
@@ -346,20 +351,35 @@ class GaudiGenerationMixin(GenerationMixin):
                         assert False, "Unknown case, please handle, or dont use bucketing"
 
                 new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
-                for i in range(len(model_kwargs["past_key_values"])):
-                    tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
-                    for j in range(len(model_kwargs["past_key_values"][i])):
-                        pad_tuple = create_pad_arg(pad_amount, i, j)
-                        # Different models might have different shapes of kv-cache
-                        # create_pad_arg handles them on a per-model basis
-                        # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
-                        # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
-                        assert model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == 0
-                        tmp_lst[j] = torch.nn.functional.pad(
-                            model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
+                if self.config.model_type == "gpt_bigcode" and model_kwargs["past_key_values"][0][0].dim() == 2:
+                    # GPT_BIGCODE's kv cache is list of tensors.
+                    new_kv = [None for i in range(len(model_kwargs["past_key_values"]))]
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        pad = (0, 0, 0, pad_amount)
+                        new_kv[i] = torch.nn.functional.pad(
+                            model_kwargs["past_key_values"][i], pad, value=pad_token_id
                         )
-                    new_kv[i] = tuple(tmp_lst)
-                model_kwargs["past_key_values"] = tuple(new_kv)
+                    model_kwargs["past_key_values"] = list(new_kv)
+                else:
+                    for i in range(len(model_kwargs["past_key_values"])):
+                        tmp_lst = [None for j in range(len(model_kwargs["past_key_values"][i]))]
+                        for j in range(len(model_kwargs["past_key_values"][i])):
+                            pad_tuple = create_pad_arg(pad_amount, i, j)
+                            # Different models might have different shapes of kv-cache
+                            # create_pad_arg handles them on a per-model basis
+                            # This is a necessary (but not sufficient) condition: what ever dimension we are padding, should be a multiple of bucket_size
+                            # This check is added in case we get a new model with a new kv-cache structure, and we attempt to pad some wrong dimension
+                            # in peft case, if there's virtual token. the model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size == num_virtual_token, no need of assert, the pad length of past_key_value should be aligned with input id and attention_mask
+                            num_virtual_tokens = model_kwargs.get("num_virtual_tokens", 0)
+                            assert (
+                                model_kwargs["past_key_values"][i][j].shape[-(len(pad_tuple) // 2)] % bucket_size
+                                == num_virtual_tokens
+                            )
+                            tmp_lst[j] = torch.nn.functional.pad(
+                                model_kwargs["past_key_values"][i][j], pad_tuple, value=pad_token_id
+                            )
+                        new_kv[i] = tuple(tmp_lst)
+                    model_kwargs["past_key_values"] = tuple(new_kv)
 
         if "token_idx" not in model_kwargs:
             model_kwargs["token_idx"] = torch.tensor(params["token_idx"], device=self.device)
@@ -382,6 +402,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hpu_graphs: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
+        iteration_times: Optional[List[float]] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -477,7 +498,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 synced_gpus = True
             else:
                 synced_gpus = False
-
         # 1. Handle `generation_config` and kwargs that might update it, and validate the `.generate()` call
         self._validate_model_class()
         if hpu_graphs and not lazy_mode:
@@ -511,9 +531,12 @@ class GaudiGenerationMixin(GenerationMixin):
         generation_config = copy.deepcopy(generation_config)
         if generation_config.static_shapes is None:
             generation_config.static_shapes = self.config.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
+            if self.config.model_type == "vision-encoder-decoder":
+                generation_config.static_shapes = self.config.decoder.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
         self.generation_config.static_shapes = generation_config.static_shapes
         if generation_config.ignore_eos is None:
             generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode)
+        num_virtual_tokens = kwargs.pop("num_virtual_tokens", 0)
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
         if self.config.model_type == "falcon" and "token_type_ids" in kwargs.keys():
             for key in ["token_type_ids"]:
@@ -586,7 +609,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 "llama",
                 "mistral",
                 "falcon",
-            ], "reuse_cache only supported by llama, mistral and falcon at the moment"
+                "mixtral",
+                "phi",
+            ], "reuse_cache only supported by llama, mistral, falcon, mixtral and phi at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -727,19 +752,22 @@ class GaudiGenerationMixin(GenerationMixin):
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
+        model_kwargs["flash_attention_causal_mask"] = True if generation_config.flash_attention_causal_mask else False
+        model_kwargs["num_virtual_tokens"] = num_virtual_tokens
+
         if not self.config.is_encoder_decoder:
-            calculated_max_length = input_ids.shape[-1]
+            calculated_max_length = input_ids.shape[-1] + num_virtual_tokens
             if not generation_config.static_shapes and generation_config.max_new_tokens is not None:
-                calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens
+                calculated_max_length = input_ids.shape[-1] + generation_config.max_new_tokens + num_virtual_tokens
             if generation_config.use_cache and generation_config.reuse_cache:
                 bs, _ = input_ids.shape
                 if not is_greedy_or_beam_and_bucket:
                     unwrap_deepspeed_model(self).allocate_kv_cache(
-                        bs * generation_config.num_beams, calculated_max_length, token_idx
+                        bs * generation_config.num_beams, calculated_max_length, token_idx + num_virtual_tokens
                     )
                     model_kwargs["kv_cache_len"] = calculated_max_length
 
-            if self.config.model_type in ["llama", "falcon"]:
+            if self.config.model_type in ["llama", "falcon", "mistral"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
@@ -750,7 +778,9 @@ class GaudiGenerationMixin(GenerationMixin):
         # if generation_config.bucket_size <= 0, padding is handled by the generating fn (like greedy_search)
         if generation_config.static_shapes and generation_config.bucket_size > 0:
             assert (
-                generation_mode == GenerationMode.GREEDY_SEARCH or generation_mode == GenerationMode.BEAM_SEARCH
+                generation_mode == GenerationMode.GREEDY_SEARCH
+                or generation_mode == GenerationMode.SAMPLE
+                or generation_mode == GenerationMode.BEAM_SEARCH
             ), "generation_config.bucket_size > 0 supported only for greedy mode"
 
         if streamer is not None and (generation_config.num_beams > 1):
@@ -851,6 +881,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
+                iteration_times=iteration_times,
                 **model_kwargs,
             )
 
@@ -906,6 +937,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
+                iteration_times=iteration_times,
                 **model_kwargs,
             )
 
@@ -1239,6 +1271,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
+        iteration_times: Optional[List[float]] = None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -1410,6 +1443,9 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
+        if iteration_times is not None:
+            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
+            hb_gen_time.start()
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1432,6 +1468,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # prepare model inputs
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -1444,7 +1481,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_hidden_states=output_hidden_states,
                 **hpu_graphs_kwargs,
             )
-
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
 
@@ -1455,7 +1491,16 @@ class GaudiGenerationMixin(GenerationMixin):
                     next_token_logits = outputs.logits[:, token_idx - 1, :]
                     next_tokens_scores = logits_processor(input_ids[:, :token_idx], next_token_logits)
                 else:
-                    next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                    if model_kwargs.get("num_virtual_tokens", 0) > 0:
+                        # for prompt tuning, the output logit shape > model_inputs["input_ids"].shape[-1]
+                        if model_kwargs.get("reuse_cache", False):
+                            output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                        else:
+                            output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                        next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                    else:
+                        next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+
                     next_tokens_scores = logits_processor(input_ids, next_token_logits)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
@@ -1532,7 +1577,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 this_peer_finished = True
 
             hb_profer.step()
-
+            if iteration_times is not None:
+                hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
                 break
 
@@ -1585,6 +1631,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
+        iteration_times: Optional[List[float]] = None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -1766,6 +1813,21 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
+        if iteration_times is not None:
+            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
+            hb_gen_time.start()
+
+        bucket_size = model_kwargs.get("bucket_size", -1)
+        prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
+        bucket_internal = model_kwargs.get("bucket_internal", None)
+        reduce_recompile = model_kwargs.get("reduce_recompile", False)
+
+        prompt_len = input_ids.shape[-1]
+        if not bucket_internal:
+            if bucket_size >= 0:
+                inc = iter(incrementor(bucket_size, prompt_len))
+            if bucket_size > 0:
+                assert "position_ids" not in model_kwargs, "Untested path"
 
         # auto-regressive generation
         while True:
@@ -1782,7 +1844,15 @@ class GaudiGenerationMixin(GenerationMixin):
                 if this_peer_finished_flag.item() == 0.0:
                     break
 
+            if bucket_size > 0 and not bucket_internal:
+                # it will not have been padded if bucket_size > 0
+                params = next(inc)
+                input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
+                    params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
+                )
+
             # prepare model inputs
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -1801,7 +1871,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
             token_idx = model_kwargs.get("token_idx", None)
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                if model_kwargs.get("num_virtual_tokens", 0) > 0:
+                    # for prompt tuning, the output logit shape > model_inputs["input_ids"].shape[-1]
+                    if model_kwargs.get("reuse_cache", False):
+                        output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                    else:
+                        output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                    next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                else:
+                    next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
 
@@ -1853,6 +1931,17 @@ class GaudiGenerationMixin(GenerationMixin):
                 outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
             )
             cur_len = cur_len + 1
+            if bucket_size > 0 and bucket_internal:
+                # Calculate slice idx for kv cache during the decode phase.
+                # Breaking down the kv cache in the attention block helps to reduce computation time.
+                if model_kwargs.get("token_idx_cpu") <= (model_kwargs["kv_cache_len"] // bucket_size) * bucket_size:
+                    idx = (model_kwargs.get("token_idx_cpu") - 1) // bucket_size
+                    if prev_idx != idx:
+                        model_kwargs["cache_idx"] = (idx + 1) * bucket_size
+                        prev_idx = idx
+                else:
+                    model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
+
             # if eos_token was found in one sentence, set sentence to finished
             if not ignore_eos and eos_token_id_tensor is not None:
                 unfinished_sequences = unfinished_sequences.mul(
@@ -1868,7 +1957,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 this_peer_finished = True
 
             hb_profer.step()
-
+            if iteration_times is not None:
+                hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
                 break
 
@@ -2229,6 +2319,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
                 )
 
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             # if sequential is True, split the input to batches of batch_size and run sequentially
@@ -2281,7 +2372,15 @@ class GaudiGenerationMixin(GenerationMixin):
 
             token_idx = model_kwargs.get("token_idx", None)
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                if model_kwargs.get("num_virtual_tokens", 0) > 0:
+                    # for prompt tuning, the output logit shape may > model_inputs["input_ids"].shape[-1]
+                    if model_kwargs.get("reuse_cache", False):
+                        output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                    else:
+                        output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                    next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                else:
+                    next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
 
@@ -2375,7 +2474,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 beam_scores = beam_outputs["next_beam_scores"]
                 beam_next_tokens = beam_outputs["next_beam_tokens"]
                 beam_idx = beam_outputs["next_beam_indices"]
-
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 0, beam_idx)
                 input_ids.index_copy_(
@@ -3009,6 +3107,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 if this_peer_finished_flag.item() == 0.0:
                     break
 
+            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -3024,9 +3123,16 @@ class GaudiGenerationMixin(GenerationMixin):
             if synced_gpus and this_peer_finished:
                 cur_len = cur_len + 1
                 continue  # don't waste resources running the code we don't need
-
             if token_idx is not None and outputs.logits.shape[-2] > 1:
-                next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
+                if model_kwargs.get("num_virtual_tokens", 0) > 0:
+                    # for prompt tuning, the output logit shape > model_inputs["input_ids"].shape[-1]
+                    if model_kwargs.get("reuse_cache", False):
+                        output_idx = torch.tensor(outputs.logits.shape[-2], device=input_ids.device)
+                    else:
+                        output_idx = token_idx + outputs.logits.shape[-2] - input_ids.shape[-1]
+                    next_token_logits = torch.index_select(outputs.logits, -2, output_idx - 1).squeeze(-2)
+                else:
+                    next_token_logits = torch.index_select(outputs.logits, -2, token_idx - 1).squeeze(-2)
             else:
                 next_token_logits = outputs.logits[:, -1, :]
 

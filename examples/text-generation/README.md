@@ -16,7 +16,7 @@ limitations under the License.
 
 # Language generation
 
-Conditional text generation on Habana Gaudi/Gaudi2. You can find more information about it in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom).
+Conditional text generation on Intel® Gaudi® AI Accelerators. You can find more information about it in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom).
 
 
 ## Requirements
@@ -34,7 +34,7 @@ pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 
 ## Usage
 
-In this section, we present how to benchmark a model on Habana Gaudi/Gaudi2 with this script. We also show how to use it to run generation on any dataset from the [Hugging Face Hub](https://huggingface.co/datasets).
+In this section, we present how to benchmark a model on Intel Gaudi AI Accelerators with this script. We also show how to use it to run generation on any dataset from the [Hugging Face Hub](https://huggingface.co/datasets).
 
 To run generation with DeepSpeed-inference, you must launch the script as follows:
 
@@ -215,7 +215,9 @@ python run_generation.py \
 --peft_model goliaro/llama-2-7b-lora-full
 ```
 
+
 ### Using growing bucket optimization
+
 With `--bucket_size`, instead of padding up the kv-cache up to full size before starting, we grow the cache/input in multiples of `bucket_size`. This helps increase throughput and also reduce number of compilations if the dataset has varying prompt lengths.
 
 > For now, it is available only for greedy and beam search generation, and cannot be used with `--reuse_cache`.
@@ -238,9 +240,18 @@ Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For exa
 
 While `--bucket_size` works for any model without model file changes, an even more optimized version of bucketing is supported for certain models like Llama. This can be enabled by setting `--bucket_internal` flag (along with `--bucket_size` to specify the bucket size)
 
+
+### Running with torch.compile
+
+torch.compile is an experimental feature. It has not been validated for all models. To enable torch.compile, please
+set the following environment variables before running the command: `PT_ENABLE_INT64_SUPPORT=1` and `PT_HPU_LAZY_MODE=0`.
+
+You will also need to add `--torch_compile` in your command.
+
+
 ### Running with FP8
 
-Llama2-70b, Llama2-7b,  Mixtral-8x7B, Falcon-7B, Falcon-40B, and Falcon-180B in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -352,7 +363,63 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --trim_logits \
 --fp8
 ```
+
+Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
+
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
+-o acc_phi-2_bs1_measure.txt  \
+--model_name_or_path microsoft/phi-2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--trim_logits \
+--reuse_cache \
+--bf16
+```
+
+Here is an example to quantize the model based on previous measurements for phi-2 with 1 card:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.py \
+--model_name_or_path microsoft/phi-2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--bf16 \
+--trim_logits \
+--reuse_cache \
+--fp8
+```
+
 `--fp8` is required to enable quantization in fp8.
+
+
+### Using Habana Flash Attention
+
+Habana Flash Attention addresses large sequence lengths on prompt stage of inference. Using causal attention mask on prompt stage requires input sequences in batch to be of the same length, but can provide a memory saving, thus enabling higher batch sizes.
+
+Below example uses `flash_attention_recompute` mode in order to reduce memory consumption on prompt stage. Additionally since all sequences in a batch are of the same length it uses `flash_attention_causal_mask` which will further improve performance by taking advantage of specific lower-diagonal shape of inputs to softmax operation.
+
+```bash
+python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
+--use_hpu_graphs \
+--use_kv_cache \
+--reuse_cache \
+--trim_logits \
+--attn_softmax_bf16 \
+--max_input_tokens 31744 \
+--max_new_tokens 1024 \
+--batch_size=12 \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask \
+--book_source
+```
+
+For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html#using-fused-sdpa).
 
 
 ## Language Model Evaluation Harness
@@ -399,6 +466,7 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 --tasks winogrande \
 -o eval.json
 ```
+
 
 ## Text-Generation Pipeline
 

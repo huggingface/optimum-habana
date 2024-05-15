@@ -28,7 +28,7 @@
 > 
 47,48c49,51
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.40.0.dev0")
+< check_min_version("4.41.0.dev0")
 ---
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.38.0")
@@ -100,6 +100,12 @@
 >             padding="max_length",
 >             truncation=True,
 >         )
+383,384c393,394
+<     # freeze the convolutional waveform encoder
+<     if model_args.freeze_feature_encoder:
+---
+>     # freeze the convolutional waveform encoder if supported by model
+>     if hasattr(model, "freeze_feature_encoder") and model_args.freeze_feature_encoder:
 404c414
 <     trainer = Trainer(
 ---
