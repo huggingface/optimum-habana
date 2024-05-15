@@ -44,6 +44,8 @@ fast_tests_diffusers:
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
+	python -m pip install peft==0.10.0
+	python -m pytest tests/test_peft_inference.py
 
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs

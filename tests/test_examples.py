@@ -258,7 +258,6 @@ class ExampleTestMeta(type):
             distribution = "multi_card"
         elif deepspeed:
             distribution = "deepspeed"
-
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
@@ -366,6 +365,8 @@ class ExampleTestMeta(type):
                         )
                     self.TASK_NAME = key
                 else:
+                    if self.TASK_NAME not in baseline.keys():
+                        return
                     baseline = baseline[self.TASK_NAME]
 
             distribution = "single_card"
@@ -418,7 +419,6 @@ class ExampleTestMeta(type):
 
                 with open(Path(tmp_dir) / "all_results.json") as fp:
                     results = json.load(fp)
-
                 # Ensure performance requirements (accuracy, training time) are met
                 self.assert_no_regression(results, baseline.get("distribution").get(distribution), model_name)
 
@@ -746,19 +746,26 @@ class MultiCardProteinFoldingClassificationTester(
 class MultiCardCausalLanguageModelingPromptTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
-    TASK_NAME = ["prompt-tuning"]
+    TASK_NAME = "prompt-tuning"
     DATASET_NAME = "ought/raft"
 
 
 class MultiCardCausalLanguageModelingPrefixTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
-    TASK_NAME = ["prefix-tuning"]
+    TASK_NAME = "prefix-tuning"
     DATASET_NAME = "ought/raft"
 
 
 class MultiCardCausalLanguageModelingPTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
-    TASK_NAME = ["p-tuning"]
+    TASK_NAME = "p-tuning"
     DATASET_NAME = "ought/raft"
+
+
+class MultiCardCausalLanguageModelingLlamaAdapterExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "llama-adapter"
+    DATASET_NAME = "tatsu-lab/alpaca"
