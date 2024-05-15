@@ -15,18 +15,17 @@
 
 # Copied from https://huggingface.co/timm/fastvit_t8.apple_in1k
 
-from transformers import AutoProcessor, CLIPSegForImageSegmentation
-from PIL import Image
-import requests
-import torch
-import habana_frameworks.torch as ht
-import habana_frameworks.torch.core as htcore
-import time
 import argparse
-from torchvision.utils import save_image
+import time
+
+import habana_frameworks.torch as ht
+import requests
 import timm
+import torch
+from PIL import Image
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -65,9 +64,8 @@ if __name__ == "__main__":
 
     adapt_transformers_to_gaudi()
 
-    
     model = timm.create_model(args.model_name_or_path, pretrained=True)
-    model.to('hpu')
+    model.to("hpu")
     model = model.eval()
     data_config = timm.data.resolve_model_data_config(model)
     transforms = timm.data.create_transform(**data_config, is_training=False)
@@ -82,13 +80,13 @@ if __name__ == "__main__":
 
     with torch.no_grad(), autocast:
         for i in range(args.warmup):
-            inputs = transforms(img).unsqueeze(0).to('hpu')
+            inputs = transforms(img).unsqueeze(0).to("hpu")
             outputs = model(inputs)
             torch.hpu.synchronize()
 
         total_model_time = 0
         for i in range(args.n_iterations):
-            inputs = transforms(img).unsqueeze(0).to('hpu')
+            inputs = transforms(img).unsqueeze(0).to("hpu")
             model_start_time = time.time()
             outputs = model(inputs)
             torch.hpu.synchronize()
@@ -97,8 +95,8 @@ if __name__ == "__main__":
 
         if args.print_result:
             top5_probabilities, top5_class_indices = torch.topk(outputs.softmax(dim=1) * 100, k=5)
-            print("top5_class_indices: " + str(top5_class_indices))
+            print("top5_class_indices: " + str(top5_class_indices.to("cpu").numpy()))
 
     print("n_iterations: " + str(args.n_iterations))
-    print("Total latency (ms): " + str(total_model_time*1000))
-    print("Average latency (ms): " + str(total_model_time*1000/args.n_iterations))
+    print("Total latency (ms): " + str(total_model_time * 1000))
+    print("Average latency (ms): " + str(total_model_time * 1000 / args.n_iterations))
