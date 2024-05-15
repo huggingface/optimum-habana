@@ -187,6 +187,11 @@ def setup_parser(parser):
             we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
     )
     parser.add_argument(
+        "--bucket_internal",
+        action="store_true",
+        help="Split kv sequence into buckets in decode phase. It improves throughput when max_new_tokens is large.",
+    )
+    parser.add_argument(
         "--dataset_max_samples",
         default=-1,
         type=int,
@@ -216,11 +221,6 @@ def setup_parser(parser):
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
 
-    parser.add_argument(
-        "--kv_cache_fp8",
-        action="store_true",
-        help="Store kv-cache in float8 when kv-cache is used. Can't use this argument together with QUANT_CONFIG env var",
-    )
     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--use_flash_attention",
@@ -228,13 +228,49 @@ def setup_parser(parser):
         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
     parser.add_argument(
+        "--flash_attention_recompute",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
+    )
+    parser.add_argument(
+        "--flash_attention_causal_mask",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
+    )
+    parser.add_argument(
+        "--book_source",
+        action="store_true",
+        help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
+    )
+    parser.add_argument(
         "--torch_compile",
         action="store_true",
         help="Whether to use torch compiled model or not.",
     )
+    parser.add_argument(
+        "--ignore_eos",
+        default=True,
+        action=argparse.BooleanOptionalAction,
+        help="Whether to ignore eos, set False to disable it",
+    )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
-
+    parser.add_argument(
+        "--const_serialization_path",
+        "--csp",
+        type=str,
+        help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
+    )
+    parser.add_argument(
+        "--disk_offload",
+        action="store_true",
+        help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+    )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
+    )
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -244,10 +280,6 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
-    if args.quant_config and args.kv_cache_fp8:
-        # can't use both quant_config and kv_cache_fp8, since quant_config may trigger kv cache quantization
-        # with habana quantization toolkit
-        raise parser.error("Can't use QUANT_CONFIG env var with kv_cache_fp8 argument")
     return args
 
 
@@ -266,6 +298,45 @@ def main():
         # Benchmark over the prompts below
         if args.prompt:
             input_sentences = args.prompt
+        elif args.book_source:
+
+            def download_book(book_id):
+                import os
+
+                import requests
+
+                url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
+                response = requests.get(url)
+                if response.status_code == 200:
+                    pid = os.getpid()
+                    save_path = f"/tmp/{book_id}_{pid}.txt"
+                    with open(save_path, "wb") as file:
+                        file.write(response.content)
+                    print(f"Book downloaded and saved to: {save_path}")
+                    return save_path
+                else:
+                    print("Failed to download book! Exiting...")
+                    import sys
+
+                    sys.exit()
+
+            def assemble_prompt(prompt_size, book_path):
+                prompt = ""
+                counter = 0
+                book_lines = open(book_path).readlines()
+                for line in book_lines:
+                    for word in line.split():
+                        counter += 1
+                        prompt += word + " "
+                        if counter == prompt_size:
+                            return [prompt] * args.batch_size
+
+            book_ids = [
+                2701,  # Moby Dick; Or, The Whale
+                1513,  # Romeo and Juliet
+                1342,  # Pride and Prejudice
+            ]
+            input_sentences = assemble_prompt(prompt_size=args.max_input_tokens, book_path=download_book(book_ids[0]))
         else:
             input_sentences = [
                 "DeepSpeed is a machine learning framework",
@@ -288,7 +359,7 @@ def main():
 
         def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
-
+            encode_t0 = time.perf_counter()
             # Tokenization
             if args.max_input_tokens > 0:
                 input_tokens = tokenizer.batch_encode_plus(
@@ -300,6 +371,7 @@ def main():
                 )
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+            encode_duration = time.perf_counter() - encode_t0
 
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
@@ -308,7 +380,7 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
-
+            iteration_times = []
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
@@ -316,7 +388,11 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                ignore_eos=args.ignore_eos,
+                iteration_times=iteration_times,
             ).cpu()
+            first_token_time = iteration_times[0] + encode_duration
+            logger.info(f"Time to first token = {first_token_time*1000}ms")
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile
@@ -496,6 +572,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                ignore_eos=args.ignore_eos,
             ).cpu()
             return prompt, outputs
 
@@ -556,6 +633,10 @@ def main():
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.finish_measurements(model)
+    if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
+        import shutil
+
+        shutil.rmtree(args.const_serialization_path)
 
 
 if __name__ == "__main__":

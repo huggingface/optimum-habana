@@ -16,7 +16,7 @@
 import random
 import subprocess
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.14.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.15.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -231,6 +231,21 @@ def get_driver_version():
     return None
 
 
+class HabanaGenerationtime(object):
+    def __init__(self, iteration_times: List[float] = None):
+        self.iteration_times = iteration_times
+        self.start_time = 0
+        self.end_time = 0
+
+    def start(self):
+        self.start_time = time.perf_counter()
+
+    def step(self):
+        self.end_time = time.perf_counter()
+        self.iteration_times.append(self.end_time - self.start_time)
+        self.start_time = self.end_time
+
+
 class HabanaProfile(object):
     """
     HPU profiler only could be run once, so HABANA_PROFILE_ENABLED, a class static variable shared by all the instances of HabanaProfile, is used to control which part will be captured.
@@ -246,7 +261,7 @@ class HabanaProfile(object):
         output_dir: str = "./hpu_profile",
         wait: int = 0,
     ):
-        if active <= 0 or warmup <= 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
+        if active <= 0 or warmup < 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
 
             def noop():
                 pass

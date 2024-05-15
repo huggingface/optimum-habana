@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Finetuning the library models for sequence classification on GLUE."""
+"""Finetuning the library models for sequence classification on GLUE."""
 # You can also adapt this script on your own text classification task. Pointers for this are left as comments.
 
 import logging
@@ -58,7 +58,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.37.0")
+check_min_version("4.38.0")
 check_optimum_habana_min_version("1.10.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/text-classification/requirements.txt")
@@ -230,6 +230,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
     )
+    add_pad_token: bool = field(
+        default=False,
+        metadata={"help": "Will add `pad_token` to tokenizer and model's config as `eos_token` if it's not defined."},
+    )
 
 
 def main():
@@ -325,7 +329,7 @@ def main():
     if data_args.task_name is not None:
         # Downloading and loading a dataset from the hub.
         raw_datasets = load_dataset(
-            "glue",
+            "nyu-mll/glue",
             data_args.task_name,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
@@ -451,6 +455,11 @@ def main():
     else:
         # We will pad later, dynamically at batch creation, to the max sequence length in each batch
         padding = False
+
+    if model_args.add_pad_token:
+        if not model.config.pad_token_id and not tokenizer.pad_token:
+            tokenizer.pad_token = tokenizer.eos_token
+            model.config.pad_token_id = tokenizer.eos_token_id
 
     # Some models have set the order of the labels to use, so let's make sure we do use it.
     label_to_id = None

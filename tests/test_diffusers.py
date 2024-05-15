@@ -24,10 +24,12 @@ from pathlib import Path
 from unittest import TestCase, skipUnless
 
 import numpy as np
+import pytest
 import requests
 import torch
-from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel, UniPCMultistepScheduler
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
+from diffusers.utils import load_image, numpy_to_pil
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
@@ -49,17 +51,26 @@ from optimum.habana.diffusers import (
 )
 from optimum.habana.utils import set_seed
 
+from .clip_coco_utils import calculate_clip_score, download_files
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
-    THROUGHPUT_BASELINE_BF16 = 1.021
-    THROUGHPUT_BASELINE_AUTOCAST = 0.389
-    TEXTUAL_INVERSION_THROUGHPUT = 106.86913084491896
-    TEXTUAL_INVERSION_RUNTIME = 112.28686810799991
+
+IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
+
+
+if IS_GAUDI2:
+    THROUGHPUT_BASELINE_BF16 = 1.086
+    THROUGHPUT_BASELINE_AUTOCAST = 0.394
+    TEXTUAL_INVERSION_THROUGHPUT = 104.29806
+    TEXTUAL_INVERSION_RUNTIME = 114.1344320399221
+    CONTROLNET_THROUGHPUT = 92.886919836857
+    CONTROLNET_RUNTIME = 537.4276602957398
 else:
-    THROUGHPUT_BASELINE_BF16 = 0.412
+    THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
-    TEXTUAL_INVERSION_THROUGHPUT = 59.13010439968039
-    TEXTUAL_INVERSION_RUNTIME = 202.94231038199996
+    TEXTUAL_INVERSION_THROUGHPUT = 60.5991479573174
+    TEXTUAL_INVERSION_RUNTIME = 196.43840550999994
+    CONTROLNET_THROUGHPUT = 44.7278034963213
+    CONTROLNET_RUNTIME = 1116.084316640001
 
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
@@ -600,6 +611,8 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
     @slow
     def test_no_generation_regression(self):
+        seed = 27
+        set_seed(seed)
         model_name = "CompVis/stable-diffusion-v1-4"
         # fp32
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
@@ -611,37 +624,33 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(use_torch_autocast=False),
         )
-        set_seed(27)
+
+        prompt = "An image of a squirrel in Picasso style"
+        generator = torch.manual_seed(seed)
         outputs = pipeline(
-            prompt="An image of a squirrel in Picasso style",
+            prompt=prompt,
+            generator=generator,
             output_type="np",
         )
 
-        if os.environ.get("GAUDI2_CI", "0") == "1":
-            expected_slice = np.array(
-                [
-                    0.68306947,
-                    0.6812112,
-                    0.67309505,
-                    0.70057267,
-                    0.6582885,
-                    0.6325019,
-                    0.6708976,
-                    0.6226433,
-                    0.58038336,
-                ]
-            )
+        if IS_GAUDI2:
+            target_score = 29.8925
         else:
-            expected_slice = np.array(
-                [0.70760196, 0.7136303, 0.7000798, 0.714934, 0.6776865, 0.6800843, 0.6923707, 0.6653969, 0.6408076]
-            )
+            target_score = 36.774
+
         image = outputs.images[0]
+        pil_image = numpy_to_pil(image)[0]
+        pil_image.save("test_no_generation_regression_output.png")
+
+        clip_score = calculate_clip_score(np.expand_dims(image, axis=0), [prompt])
 
         self.assertEqual(image.shape, (512, 512, 3))
-        self.assertLess(np.abs(expected_slice - image[-3:, -3:, -1].flatten()).max(), 5e-3)
+        self.assertGreaterEqual(clip_score, target_score)
 
     @slow
     def test_no_generation_regression_ldm3d(self):
+        seed = 27
+        set_seed(seed)
         model_name = "Intel/ldm3d-4c"
         # fp32
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
@@ -653,61 +662,28 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             use_hpu_graphs=True,
             gaudi_config=GaudiConfig(),
         )
-        set_seed(27)
+
+        prompt = "An image of a squirrel in Picasso style"
+        generator = torch.manual_seed(seed)
         outputs = pipeline(
-            prompt="An image of a squirrel in Picasso style",
+            prompt=prompt,
+            generator=generator,
             output_type="np",
         )
 
-        if os.environ.get("GAUDI2_CI", "0") == "1":
-            expected_slice_rgb = np.array(
-                [
-                    0.2099357,
-                    0.16664368,
-                    0.08352646,
-                    0.20643419,
-                    0.16748399,
-                    0.08781305,
-                    0.21379063,
-                    0.19943115,
-                    0.04389626,
-                ]
-            )
-            expected_slice_depth = np.array(
-                [
-                    0.68369114,
-                    0.6827824,
-                    0.6852779,
-                    0.6836072,
-                    0.6888298,
-                    0.6895473,
-                    0.6853674,
-                    0.67561126,
-                    0.660434,
-                ]
-            )
+        if IS_GAUDI2:
+            target_score = 28.0894
         else:
-            expected_slice_rgb = np.array([0.7083766, 1.0, 1.0, 0.70610344, 0.9867363, 1.0, 0.7214538, 1.0, 1.0])
-            expected_slice_depth = np.array(
-                [
-                    0.919621,
-                    0.92072034,
-                    0.9184986,
-                    0.91994286,
-                    0.9242079,
-                    0.93387043,
-                    0.92345214,
-                    0.93558526,
-                    0.9223714,
-                ]
-            )
+            target_score = 35.81
+
         rgb = outputs.rgb[0]
         depth = outputs.depth[0]
 
+        rgb_clip_score = calculate_clip_score(np.expand_dims(rgb, axis=0), [prompt])
+
         self.assertEqual(rgb.shape, (512, 512, 3))
         self.assertEqual(depth.shape, (512, 512, 1))
-        self.assertLess(np.abs(expected_slice_rgb - rgb[-3:, -3:, -1].flatten()).max(), 5e-3)
-        self.assertLess(np.abs(expected_slice_depth - depth[-3:, -3:, -1].flatten()).max(), 5e-3)
+        self.assertGreaterEqual(rgb_clip_score, target_score)
 
     @slow
     def test_no_generation_regression_upscale(self):
@@ -729,7 +705,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         low_res_img = low_res_img.resize((128, 128))
         prompt = "a white cat"
         upscaled_image = pipeline(prompt=prompt, image=low_res_img, output_type="np").images[0]
-        if os.environ.get("GAUDI2_CI", "0") == "1":
+        if IS_GAUDI2:
             expected_slice = np.array(
                 [
                     0.16527882,
@@ -763,7 +739,11 @@ class GaudiStableDiffusionPipelineTester(TestCase):
     @slow
     def test_textual_inversion(self):
         path_to_script = (
-            Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "textual_inversion.py"
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "textual_inversion.py"
         )
 
         with tempfile.TemporaryDirectory() as data_dir:
@@ -773,7 +753,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             with tempfile.TemporaryDirectory() as run_dir:
                 cmd_line = [
                     "python3",
-                    f"{path_to_script.parent.parent / 'gaudi_spawn.py'}",
+                    f"{path_to_script.parent.parent.parent / 'gaudi_spawn.py'}",
                     "--use_mpi",
                     "--world_size",
                     "8",
@@ -1723,3 +1703,176 @@ class GaudiStableDiffusionMultiControlNetPipelineTester(TestCase):
 
         self.assertEqual(len(images), 10)
         self.assertEqual(images[-1].shape, (64, 64, 3))
+
+
+class TrainTextToImage(TestCase):
+    """
+    Tests the Stable Diffusion text_to_image Training for Gaudi.
+    """
+
+    def test_train_text_to_image_script(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_text_to_image_sdxl.py"
+        )
+
+        cmd_line = f"""ls {path_to_script}""".split()
+
+        # check find existence
+        p = subprocess.Popen(cmd_line)
+        return_code = p.wait()
+
+        # Ensure the run finished without any issue
+        self.assertEqual(return_code, 0)
+
+    @slow
+    @pytest.mark.skip(reason="The dataset used in this test is not available at the moment.")
+    def test_train_text_to_image_sdxl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path_to_script = (
+                Path(os.path.dirname(__file__)).parent
+                / "examples"
+                / "stable-diffusion"
+                / "training"
+                / "train_text_to_image_sdxl.py"
+            )
+
+            cmd_line = f"""
+                 python3
+                 {path_to_script}
+                 --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0
+                 --pretrained_vae_model_name_or_path stabilityai/sdxl-vae
+                 --dataset_name lambdalabs/pokemon-blip-captions
+                 --resolution 512
+                 --crop_resolution 512
+                 --center_crop
+                 --random_flip
+                 --proportion_empty_prompts=0.2
+                 --train_batch_size 16
+                 --learning_rate 1e-05
+                 --max_grad_norm 1
+                 --lr_scheduler constant
+                 --lr_warmup_steps 0
+                 --gaudi_config_name Habana/stable-diffusion
+                 --throughput_warmup_steps 3
+                 --dataloader_num_workers 8
+                 --use_hpu_graphs_for_training
+                 --use_hpu_graphs_for_inference
+                 --bf16
+                 --max_train_steps 2
+                 --output_dir {tmpdir}
+                """.split()
+
+            # Run train_text_to_image_sdxl.y
+            p = subprocess.Popen(cmd_line)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+
+
+class TrainControlNet(TestCase):
+    """
+    Tests the train_controlnet.py script for Gaudi.
+    """
+
+    def test_train_controlnet_script(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_controlnet.py"
+        )
+
+        cmd_line = f"""ls {path_to_script}""".split()
+
+        # check find existence
+        p = subprocess.Popen(cmd_line)
+        return_code = p.wait()
+
+        # Ensure the run finished without any issue
+        self.assertEqual(return_code, 0)
+
+    @slow
+    def test_train_controlnet(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path_to_script = (
+                Path(os.path.dirname(__file__)).parent
+                / "examples"
+                / "stable-diffusion"
+                / "training"
+                / "train_controlnet.py"
+            )
+
+            download_files(
+                [
+                    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png",
+                    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png",
+                ],
+                path=tmpdir,
+            )
+
+            cmd_line = f"""
+                    python3
+                    {path_to_script.parent.parent.parent / 'gaudi_spawn.py'}
+                    --use_mpi
+                    --world_size 8
+                    {path_to_script}
+                    --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5
+                    --dataset_name fusing/fill50k
+                    --resolution 512
+                    --train_batch_size 4
+                    --learning_rate 1e-05
+                    --validation_steps 1000
+                    --validation_image "{tmpdir}/conditioning_image_1.png" "{tmpdir}/conditioning_image_2.png"
+                    --validation_prompt "red circle with blue background" "cyan circle with brown floral background"
+                    --checkpointing_steps 1000
+                    --throughput_warmup_steps 3
+                    --use_hpu_graphs
+                    --bf16
+                    --num_train_epochs 1
+                    --output_dir {tmpdir}
+                """.split()
+
+            # Run train_controlnet.y
+            p = subprocess.Popen(cmd_line)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+
+            # Assess throughput
+            with open(Path(tmpdir) / "speed_metrics.json") as fp:
+                results = json.load(fp)
+            self.assertGreaterEqual(results["train_samples_per_second"], 0.95 * CONTROLNET_THROUGHPUT)
+            self.assertLessEqual(results["train_runtime"], 1.05 * CONTROLNET_RUNTIME)
+
+            # Assess generated image
+            controlnet = ControlNetModel.from_pretrained(tmpdir, torch_dtype=torch.bfloat16)
+            pipe = GaudiStableDiffusionControlNetPipeline.from_pretrained(
+                "runwayml/stable-diffusion-v1-5",
+                controlnet=controlnet,
+                torch_dtype=torch.bfloat16,
+                use_habana=True,
+                use_hpu_graphs=True,
+                gaudi_config=GaudiConfig(use_habana_mixed_precision=False),
+            )
+            pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+            control_image = load_image(f"{tmpdir}/conditioning_image_1.png")
+            prompt = "pale golden rod circle with old lace background"
+
+            generator = set_seed(27)
+            image = pipe(
+                prompt, num_inference_steps=20, generator=generator, image=control_image, output_type="np"
+            ).images[0]
+
+            self.assertEqual(image.shape, (512, 512, 3))

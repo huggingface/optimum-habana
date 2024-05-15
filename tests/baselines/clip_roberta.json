@@ -7,8 +7,8 @@
                 "multi_card": {
                     "learning_rate": 5e-5,
                     "train_batch_size": 64,
-                    "train_runtime": 304.18,
-                    "train_samples_per_second": 2582.676,
+                    "train_runtime": 314.7726,
+                    "train_samples_per_second": 2560.999,
                     "extra_arguments": [
                         "--data_dir $PWD/",
                         "--dataset_config_name 2017",
@@ -34,8 +34,8 @@
                 "multi_card": {
                     "learning_rate": 5e-5,
                     "train_batch_size": 512,
-                    "train_runtime": 107.7326,
-                    "train_samples_per_second": 9125.619,
+                    "train_runtime": 63.36,
+                    "train_samples_per_second": 18434.069,
                     "extra_arguments": [
                         "--data_dir $PWD/",
                         "--dataset_config_name 2017",
@@ -48,7 +48,8 @@
                         "--use_hpu_graphs_for_training",
                         "--use_hpu_graphs_for_inference",
                         "--dataloader_num_workers 16",
-                        "--distribution_strategy fast_ddp"
+                        "--distribution_strategy fast_ddp",
+                        "--mediapipe_dataloader"
                     ]
                 }
             }

@@ -254,6 +254,10 @@ class GenerationTesterMixin:
         attention_mask = None
         return encoder_outputs, input_ids, attention_mask
 
+    @staticmethod
+    def _get_static_shapes():
+        return False
+
     def _greedy_generate(
         self,
         model,
@@ -277,7 +281,7 @@ class GenerationTesterMixin:
 
         kwargs = {}
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
-
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -337,6 +341,7 @@ class GenerationTesterMixin:
         torch.manual_seed(0)
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         self._update_default_model_kwargs(model_kwargs)
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=True,
@@ -406,6 +411,7 @@ class GenerationTesterMixin:
     ):
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         self._update_default_model_kwargs(model_kwargs)
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -603,6 +609,7 @@ class GenerationTesterMixin:
     ):
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         self._update_default_model_kwargs(model_kwargs)
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -679,6 +686,7 @@ class GenerationTesterMixin:
         kwargs = {}
         model_kwargs = {"attention_mask": attention_mask} if attention_mask is not None else {}
         self._update_default_model_kwargs(model_kwargs)
+        model.generation_config.static_shapes = self._get_static_shapes()
         output_generate = model.generate(
             input_ids,
             do_sample=False,
@@ -1514,6 +1522,7 @@ class GenerationTesterMixin:
 
         return
 
+    @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     @slow  # TODO(Joao): remove this. Some models (e.g. data2vec, xcom, roberta) have an error rate between 1 and 10%.
     def test_assisted_decoding_matches_greedy_search(self):
         # This test ensures that the assisted generation does not introduce output changes over greedy search.
@@ -1586,6 +1595,7 @@ class GenerationTesterMixin:
                         for output in (output_greedy, output_assisted):
                             self._check_outputs(output, input_ids, model.config, use_cache=True)
 
+    @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     def test_assisted_decoding_sample(self):
         # In this test we don't check assisted vs non-assisted output -- seeded assisted decoding with sample will not
         # match sample for the same seed, as the forward pass does not return the exact same logits (due to matmul with

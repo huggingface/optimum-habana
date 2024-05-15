@@ -18,16 +18,16 @@
 <     Trainer,
 <     TrainingArguments,
 49,50d44
-<     is_torch_tpu_available,
+<     is_torch_xla_available,
 <     set_seed,
 56a51,52
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 58,59d53
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.38.0.dev0")
+< check_min_version("4.41.0.dev0")
 61c55,61
-< require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
+< require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
@@ -38,10 +38,10 @@
 > 
 64a65,70
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.37.0")
+> check_min_version("4.38.0")
 > check_optimum_habana_min_version("1.10.0")
 > 
-> require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
+> require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 > 
 80c86,87
 <                 "The model checkpoint for weights initialization. Don't set if you want to train a model from scratch."
@@ -103,9 +103,9 @@
 598a630
 >         gaudi_config=gaudi_config,
 605,608c637,638
-<         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
+<         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_xla_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
-<         if training_args.do_eval and not is_torch_tpu_available()
+<         if training_args.do_eval and not is_torch_xla_available()
 <         else None,
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,

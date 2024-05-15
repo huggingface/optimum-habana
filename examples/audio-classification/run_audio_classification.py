@@ -47,7 +47,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.37.0")
+check_min_version("4.38.0")
 check_optimum_habana_min_version("1.10.0")
 
 require_version("datasets>=1.14.0", "To fix: pip install -r examples/pytorch/audio-classification/requirements.txt")
@@ -390,8 +390,8 @@ def main():
         ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
     )
 
-    # freeze the convolutional waveform encoder
-    if model_args.freeze_feature_encoder:
+    # freeze the convolutional waveform encoder if supported by model
+    if hasattr(model, "freeze_feature_encoder") and model_args.freeze_feature_encoder:
         model.freeze_feature_encoder()
 
     if training_args.do_train:

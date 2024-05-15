@@ -7,9 +7,9 @@
                 "deepspeed": {
                     "learning_rate": 1e-4,
                     "train_batch_size": 22,
-                    "eval_rougeLsum": 0.0,
-                    "train_runtime": 90.2563,
-                    "train_samples_per_second": 27.175,
+                    "eval_rougeLsum": 0.1429,
+                    "train_runtime": 89.486,
+                    "train_samples_per_second": 27.299,
                     "extra_arguments": [
                         "--max_steps 10",
                         "--max_eval_samples 880",
