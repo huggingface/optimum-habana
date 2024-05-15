@@ -133,10 +133,10 @@ from .persimmon import (
     gaudi_persimmon_model_forward,
 )
 from .phi import (
+    GaudiPhiAttention,
     GaudiPhiDecoderLayer,
     GaudiPhiForCausalLM,
-    gaudi_phi_attention_forward,
-    gaudi_phi_model_forward,
+    GaudiPhiModel,
 )
 from .qwen2 import (
     GaudiQwen2DecoderLayer,

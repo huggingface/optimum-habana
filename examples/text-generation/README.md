@@ -251,7 +251,7 @@ You will also need to add `--torch_compile` in your command.
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, and Falcon-180B in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -363,6 +363,36 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --trim_logits \
 --fp8
 ```
+
+Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
+
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
+-o acc_phi-2_bs1_measure.txt  \
+--model_name_or_path microsoft/phi-2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--trim_logits \
+--reuse_cache \
+--bf16
+```
+
+Here is an example to quantize the model based on previous measurements for phi-2 with 1 card:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.py \
+--model_name_or_path microsoft/phi-2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--bf16 \
+--trim_logits \
+--reuse_cache \
+--fp8
+```
+
 `--fp8` is required to enable quantization in fp8.
 
 
