@@ -72,8 +72,8 @@ from .gpt_neox import (
 )
 from .gptj import (
     GaudiGPTJAttention,
+    GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
-    gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
 )
 from .llama import (
@@ -133,9 +133,9 @@ from .persimmon import (
     gaudi_persimmon_model_forward,
 )
 from .phi import (
+    GaudiPhiDecoderLayer,
     GaudiPhiForCausalLM,
     gaudi_phi_attention_forward,
-    gaudi_phi_decoder_layer_forward,
     gaudi_phi_model_forward,
 )
 from .qwen2 import (
@@ -151,9 +151,9 @@ from .speecht5 import (
     gaudi_SpeechT5DecoderLayer_forward,
 )
 from .stablelm import (
+    GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
     gaudi_stablelm_attention_forward,
-    gaudi_stablelm_decoder_layer_forward,
     gaudi_stablelm_model_forward,
 )
 from .swin import gaudi_swin_get_attn_mask

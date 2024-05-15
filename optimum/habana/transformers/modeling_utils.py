@@ -40,6 +40,7 @@ from .models import (
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
     GaudiGPTJAttention,
+    GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
     GaudiLlamaAttention,
@@ -64,9 +65,11 @@ from .models import (
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     GaudiPersimmonForCausalLM,
+    GaudiPhiDecoderLayer,
     GaudiPhiForCausalLM,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
+    GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
     MistralConfig,
     MixtralConfig,
@@ -115,7 +118,6 @@ from .models import (
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
-    gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
@@ -133,7 +135,6 @@ from .models import (
     gaudi_persimmon_decoder_layer_forward,
     gaudi_persimmon_model_forward,
     gaudi_phi_attention_forward,
-    gaudi_phi_decoder_layer_forward,
     gaudi_phi_model_forward,
     gaudi_qwen2_attention_forward,
     gaudi_qwen2_model_forward,
@@ -143,7 +144,6 @@ from .models import (
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_stablelm_attention_forward,
-    gaudi_stablelm_decoder_layer_forward,
     gaudi_stablelm_model_forward,
     gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
@@ -300,7 +300,7 @@ def adapt_transformers_to_gaudi():
     # Optimization for GPTJ on Gaudi
     transformers.models.gptj.modeling_gptj.GPTJAttention = GaudiGPTJAttention
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
-    transformers.models.gptj.modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
+    transformers.models.gptj.modeling_gptj.GPTJBlock = GaudiGPTJBlock
     transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
 
     # Optimization for GPTBigCode on Gaudi
@@ -372,7 +372,7 @@ def adapt_transformers_to_gaudi():
     # Optimization for phi on Gaudi
     transformers.models.phi.modeling_phi.PhiForCausalLM = GaudiPhiForCausalLM
     transformers.models.phi.modeling_phi.PhiAttention.forward = gaudi_phi_attention_forward
-    transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
+    transformers.models.phi.modeling_phi.PhiDecoderLayer = GaudiPhiDecoderLayer
     transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
 
     # Optimization for gemma on Gaudi
@@ -427,7 +427,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.stablelm.modeling_stablelm.StableLmForCausalLM = GaudiStableLmForCausalLM
     transformers.models.stablelm.modeling_stablelm.StableLmModel.forward = gaudi_stablelm_model_forward
     transformers.models.stablelm.modeling_stablelm.StableLmAttention.forward = gaudi_stablelm_attention_forward
-    transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer.forward = gaudi_stablelm_decoder_layer_forward
+    transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer = GaudiStableLmDecoderLayer
 
     transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation
 

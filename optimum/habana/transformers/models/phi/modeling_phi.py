@@ -27,7 +27,8 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.phi.modeling_phi import PhiForCausalLM, apply_rotary_pos_emb, repeat_kv
+from transformers.models.phi.configuration_phi import PhiConfig
+from transformers.models.phi.modeling_phi import PhiAttention, PhiForCausalLM, PhiMLP, apply_rotary_pos_emb, repeat_kv
 from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
@@ -158,50 +159,58 @@ def gaudi_phi_attention_forward(
     return attn_output, attn_weights, past_key_value
 
 
-def gaudi_phi_decoder_layer_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    output_attentions: Optional[bool] = False,
-    use_cache: Optional[bool] = False,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
-    token_idx: Optional[torch.Tensor] = None,
-    **kwargs,
-) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-    """
-    Copied from PhiDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/phi/modeling_phi.py
-    The only differences are:
-    - add new args token_idx
-    """
+class GaudiPhiDecoderLayer(torch.nn.Module):
+    def __init__(self, config: PhiConfig, layer_idx: int):
+        super().__init__()
+        self.self_attn = PhiAttention(config, layer_idx=layer_idx)
+        self.mlp = PhiMLP(config)
+        self.input_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.resid_dropout = torch.nn.Dropout(config.resid_pdrop)
 
-    residual = hidden_states
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        token_idx: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        """
+        Copied from PhiDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.37.1/src/transformers/models/phi/modeling_phi.py
+        The only differences are:
+        - add new args token_idx
+        """
 
-    hidden_states = self.input_layernorm(hidden_states)
+        residual = hidden_states
 
-    # Self Attention
-    attn_outputs, self_attn_weights, present_key_value = self.self_attn(
-        hidden_states=hidden_states,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        past_key_value=past_key_value,
-        output_attentions=output_attentions,
-        use_cache=use_cache,
-        token_idx=token_idx,
-    )
-    attn_outputs = self.resid_dropout(attn_outputs)
+        hidden_states = self.input_layernorm(hidden_states)
 
-    feed_forward_hidden_states = self.resid_dropout(self.mlp(hidden_states))
-    hidden_states = attn_outputs + feed_forward_hidden_states + residual
-    outputs = (hidden_states,)
+        # Self Attention
+        attn_outputs, self_attn_weights, present_key_value = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            token_idx=token_idx,
+        )
+        attn_outputs = self.resid_dropout(attn_outputs)
 
-    if output_attentions:
-        outputs += (self_attn_weights,)
+        feed_forward_hidden_states = self.resid_dropout(self.mlp(hidden_states))
+        hidden_states = attn_outputs + feed_forward_hidden_states + residual
+        outputs = (hidden_states,)
 
-    if use_cache:
-        outputs += (present_key_value,)
+        if output_attentions:
+            outputs += (self_attn_weights,)
 
-    return outputs
+        if use_cache:
+            outputs += (present_key_value,)
+
+        return outputs
 
 
 def gaudi_phi_model_forward(
