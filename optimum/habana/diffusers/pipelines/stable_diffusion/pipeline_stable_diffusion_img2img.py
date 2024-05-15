@@ -24,9 +24,9 @@ import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines import StableDiffusionImg2ImgPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker, StableDiffusionPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import BaseOutput
+from diffusers.utils import BaseOutput, deprecate
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from optimum.utils import logging
@@ -35,6 +35,7 @@ from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import speed_metrics
 from ..pipeline_utils import GaudiDiffusionPipeline
 from .pipeline_stable_diffusion import GaudiStableDiffusionPipeline
+from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)
@@ -187,6 +188,8 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
         )
         self.to(self._device)
 
+        torch.manual_seed = 0 # Debug
+
 
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
@@ -237,10 +240,14 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
         else:
             init_latents = torch.cat([init_latents], dim=0)
 
+        # HPU Debug
+        generator = torch.Generator("cpu") # debug
+        generator.manual_seed(1) # debug
+
         shape = init_latents.shape
         rand_device = "cpu" if device.type == "hpu" else device
         #noise = randn_tensor(shape, generator=generator, device=rand_device, dtype=dtype)
-        noise = torch.rand(shape, generator=generator, device=rand_device, dtype=dtype) # HPU Patch
+        noise = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype) # HPU Patch
         noise = noise.to(device) # HPU Patch
 
         # get latents
@@ -423,15 +430,14 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
             image = self.image_processor.preprocess(image)
 
             # 5. set timesteps
-            # timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
-            # timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-            # latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+            timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+            timesteps = timesteps.to("hpu") #HPU Patch
+            latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-            timesteps = None  # HPU Patch
-            timesteps, num_inference_steps = retrieve_timesteps(
-                self.scheduler, num_inference_steps, device, timesteps
-            )  # HPU Patch
-            latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)  # HPU Patch
+            #timesteps = None  # HPU Patch
+            #timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)  # HPU Patch
+            #latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)  # HPU Patch
 
             # 6. Prepare latent variables
             latents = self.prepare_latents(
@@ -504,6 +510,10 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                     # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0] # Problem
 
+                    # HPU Patch
+                    if not self.use_hpu_graphs:
+                        self.htcore.mark_step()
+
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
@@ -521,15 +531,11 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, t, latents)
 
-            
             if not output_type == "latent":
                 image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
                     0
                 ]
-                import pdb; pdb.set_trace()
-                #image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype) # Stuck here
-                image = image.to("cpu")
-                image, has_nsfw_concept = self.run_safety_checker(image, torch.cpu , prompt_embeds.dtype) # Stuck here
+                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
                 
             else:
                 image = latents
@@ -540,7 +546,6 @@ class GaudiStableDiffusionImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusio
             else:
                 do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-            import pdb; pdb.set_trace()
             image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
             # Offload all models
