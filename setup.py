@@ -45,6 +45,7 @@ TESTS_REQUIRE = [
     "optuna",
     "sentencepiece",
     "datasets",
+    "timm",
     "safetensors",
 ]
 
