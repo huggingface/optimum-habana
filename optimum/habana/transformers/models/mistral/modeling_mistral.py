@@ -133,7 +133,8 @@ class Matmul(torch.nn.Module):
     def forward(self, x, y):
         return torch.matmul(x, y)
 
-#Copy from GaudiMixtralAttentionLongSequence
+
+# Copy from GaudiMixtralAttentionLongSequence
 class GaudiMistralAttentionLongSequence:
     @staticmethod
     def forward(q, k, v, mask, causal, q_block_size):
@@ -159,6 +160,7 @@ class GaudiMistralAttentionLongSequence:
             attn_output = attn_output[:, :, :-q_padding, :]
 
         return attn_output
+
 
 def gaudi_mistral_repeat_kv(
     query_states: torch.Tensor,
@@ -371,8 +373,8 @@ class GaudiMistralAttention(MistralAttention):
             past_key_value = None
 
         import habana_frameworks.torch.hpu as ht
-        if FusedSDPA and use_flash_attention:
 
+        if FusedSDPA and use_flash_attention:
             if q_len == 1:
                 # next token
                 use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
@@ -394,16 +396,16 @@ class GaudiMistralAttention(MistralAttention):
                             query_states, key_states, value_states, attention_mask, 0.0, False, None
                         )
         if FusedSDPA and not self.training and q_len == key_states.size(-2) and q_len > 8192:
-                htcore.mark_step()
-                attn_output = GaudiMistralAttentionLongSequence.forward(
-                    query_states,
-                    key_states,
-                    value_states,
-                    attention_mask,
-                    False,
-                    self.block_size,
-                )
-                htcore.mark_step()
+            htcore.mark_step()
+            attn_output = GaudiMistralAttentionLongSequence.forward(
+                query_states,
+                key_states,
+                value_states,
+                attention_mask,
+                False,
+                self.block_size,
+            )
+            htcore.mark_step()
         else:
             # repeat k/v heads if n_kv_heads < n_heads
             query_states, key_states, value_states, attention_mask = gaudi_mistral_repeat_kv(
