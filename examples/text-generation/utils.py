@@ -38,7 +38,12 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import (
+    check_habana_frameworks_version,
+    check_optimum_habana_min_version,
+    get_habana_frameworks_version,
+    set_seed,
+)
 
 
 def adjust_batch(batch, size):
@@ -100,6 +105,7 @@ def setup_distributed(args):
 
 def setup_inference(args, model):
     import habana_frameworks.torch.core as htcore
+
     habana_version = get_habana_frameworks_version()
 
     print("Initializing inference mode")
@@ -111,6 +117,7 @@ def setup_inference(args, model):
         if const_marking == "True":
             htcore.hpu_initialize(model)
     return model
+
 
 def setup_const_serialization(const_serialization_path):
     import uuid
