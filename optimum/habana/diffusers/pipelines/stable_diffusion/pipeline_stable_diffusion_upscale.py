@@ -452,7 +452,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
                 noise_level_batch = noise_level_batches[0]
                 noise_level_batches = torch.roll(noise_level_batches, shifts=-1, dims=0)
 
-                for i in range(num_inference_steps):
+                for i in range(len(timesteps)):
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
