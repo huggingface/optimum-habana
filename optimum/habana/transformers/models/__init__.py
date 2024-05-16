@@ -88,6 +88,10 @@ from .llama import (
     gaudi_llama_rmsnorm_forward,
 )
 from .llava import GaudiLlavaForConditionalGeneration
+from .mamba import (
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+)
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
@@ -178,9 +182,4 @@ from .wav2vec2 import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
-)
-from .mamba import  (
-    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
-    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
-    gaudi_MambaMixer_slow_forward,
 )

@@ -123,6 +123,8 @@ from .models import (
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
@@ -159,9 +161,6 @@ from .models import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
-    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
-    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
-    gaudi_MambaMixer_slow_forward,
 )
 
 
@@ -443,6 +442,9 @@ def adapt_transformers_to_gaudi():
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
 
     # Optimization for mamaba on Gaudi
-    transformers.models.mamba.modeling_mamba.MambaForCausalLM.prepare_inputs_for_generation = gaudi_MambaForCausalLM_prepare_inputs_for_generation
-    transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = gaudi_MambaForCausalLM_update_model_kwargs_for_generation
-    transformers.models.mamba.modeling_mamba.MambaMixer.slow_forward = gaudi_MambaMixer_slow_forward
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM.prepare_inputs_for_generation = (
+        gaudi_MambaForCausalLM_prepare_inputs_for_generation
+    )
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
+        gaudi_MambaForCausalLM_update_model_kwargs_for_generation
+    )
