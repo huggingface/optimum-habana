@@ -29,6 +29,8 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import check_min_version
 
+from optimum.habana.utils import get_habana_frameworks_version
+
 from optimum.habana.checkpoint_utils import (
     get_ds_injection_policy,
     get_repo_root,
@@ -98,9 +100,16 @@ def setup_distributed(args):
 
 def setup_inference(args, model):
     import habana_frameworks.torch.core as htcore
+    habana_version = get_habana_frameworks_version()
 
     print("Initializing inference mode")
-    htcore.hpu_initialize(model, mark_only_scales_as_const=True)
+    # Keeping the if-else here for back compat. TODO remove later
+    if habana_version.major >= 1 and habana_version.minor >= 16:
+        htcore.hpu_initialize(model, mark_only_scales_as_const=True)
+    else:
+        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
+        if const_marking == "True":
+            htcore.hpu_initialize(model)
     return model
 
 def setup_const_serialization(const_serialization_path):
