@@ -395,7 +395,7 @@ class GaudiMistralAttention(MistralAttention):
                         attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, attention_mask, 0.0, False, None
                         )
-        if FusedSDPA and not self.training and q_len == key_states.size(-2) and q_len > 8192:
+        elif FusedSDPA and not self.training and q_len == key_states.size(-2) and q_len > 8192:
             htcore.mark_step()
             attn_output = GaudiMistralAttentionLongSequence.forward(
                 query_states,
