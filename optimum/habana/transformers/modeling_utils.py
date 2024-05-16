@@ -159,6 +159,9 @@ from .models import (
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
     gaudi_wav2vec2forctc_forward,
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+    gaudi_MambaMixer_slow_forward,
 )
 
 
@@ -438,3 +441,8 @@ def adapt_transformers_to_gaudi():
 
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
+
+    # Optimization for mamaba on Gaudi
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM.prepare_inputs_for_generation = gaudi_MambaForCausalLM_prepare_inputs_for_generation
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = gaudi_MambaForCausalLM_update_model_kwargs_for_generation
+    transformers.models.mamba.modeling_mamba.MambaMixer.slow_forward = gaudi_MambaMixer_slow_forward
