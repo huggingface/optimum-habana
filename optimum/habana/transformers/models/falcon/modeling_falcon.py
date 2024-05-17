@@ -142,7 +142,6 @@ class ModuleFusedSDPA(torch.nn.Module):
         self._hpu_kernel_fsdpa = fusedSDPA
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
-        import pdb; pdb.set_trace() # this pdb doesnt hit. ??
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
 
 
@@ -375,8 +374,8 @@ class GaudiFalconAttention(FalconAttention):
                     # For inference prefill, is_causal based on flash_attention_causal_mask, for decode, is_caisal is false
                     is_causal = query_length != 1 and flash_attention_causal_mask
                     attn_mask = None if is_causal else attention_mask
-                    flash_attention_fast_softmax = True # TODO pass tis along
-                    softmax_mode = 'fast' if flash_attention_fast_softmax else 'None'
+                    flash_attention_fast_softmax = True  # TODO pass tis along
+                    softmax_mode = "fast" if flash_attention_fast_softmax else "None"
 
                     with sdp_kernel(enable_recompute=enable_recompute):
                         attn_output = self.fused_scaled_dot_product_attention(
