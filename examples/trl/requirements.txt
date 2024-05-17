@@ -1,4 +1,4 @@
-trl == 0.7.8
+trl == 0.8.6
 peft == 0.6.2
 datasets
 wandb
