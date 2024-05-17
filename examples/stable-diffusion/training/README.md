@@ -316,12 +316,12 @@ Prior-preservation is used to avoid overfitting and language-drift. Refer to the
 According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases. The `num_class_images` flag sets the number of images to generate with the class prompt. You can place existing images in `class_data_dir`, and the training script will generate any additional images so that `num_class_images` are present in `class_data_dir` during training time.
 
 ### PEFT model finetune
-we provide example for dreambooth to use lora/lokr/loha/oft to finetune unet or text encoder.
+We provide example for dreambooth to use lora/lokr/loha/oft to finetune unet or text encoder.
 
 **___Note: When using peft method we can use a much higher learning rate compared to vanilla dreambooth. Here we
 use *1e-4* instead of the usual *5e-6*.___**
 
-launch the multi-card training using:
+Launch the multi-card training using:
 ```bash
 
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
@@ -352,8 +352,8 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
   lora --unet_r 8 --unet_alpha 8
 
 ```
-similar command could be applied to loha, lokr, oft.
-you could check each adapter specific args by "--help", like we could use following command to check oft specific args.
+Similar command could be applied to loha, lokr, oft.
+You could check each adapter specific args by "--help", like you could use following command to check oft specific args.
 
 ```bash
 python3 train_dreambooth.py oft --help
@@ -364,7 +364,7 @@ python3 train_dreambooth.py oft --help
 there's error like "cpu fallback is not supported during hpu graph capturing"___**
 
 
-you could use text_to_image_generation.py to generate pic using the peft adapter like
+You could use text_to_image_generation.py to generate picture using the peft adapter like
 
 ```bash
 python ../text_to_image_generation.py \
@@ -381,8 +381,8 @@ python ../text_to_image_generation.py \
 ```
 
 ### DreamBooth training example for Stable Diffusion XL
-we could use the dog images as example as well.
-we can launch training using:
+You could use the dog images as example as well.
+You can launch training using:
 ```bash
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export INSTANCE_DIR="dog"
@@ -412,7 +412,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_sdxl.
 
 ```
 
-you could use text_to_image_generation.py to generate pic using the peft adapter like
+You could use text_to_image_generation.py to generate picture using the peft adapter like
 
 ```bash
 python ../text_to_image_generation.py \
