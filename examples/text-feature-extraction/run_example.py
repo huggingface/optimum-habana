@@ -23,8 +23,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 
-from optimum.habana.transformers.modeling_utils import \
-    adapt_transformers_to_gaudi
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 adapt_transformers_to_gaudi()
 
@@ -104,39 +104,27 @@ def main():
     if args.use_hpu_graphs:
         model = ht.hpu.wrap_in_hpu_graph(model)
     input_texts = [args.source_sentence] + args.input_texts
-    batch_dict = tokenizer(
-        input_texts, max_length=512, padding=True, truncation=True, return_tensors="pt"
-    ).to("hpu")
+    batch_dict = tokenizer(input_texts, max_length=512, padding=True, truncation=True, return_tensors="pt").to("hpu")
 
     if args.warmup:
         logger.info(f"Initializing warmup for {args.warmup} iterations")
-        with torch.autocast(
-            device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16
-        ), torch.no_grad():
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16), torch.no_grad():
             for _ in tqdm(range(args.warmup), leave=False):
                 model(**batch_dict)
         torch.hpu.synchronize()
 
     start_time = time.time()
-    with torch.autocast(
-        device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16
-    ), torch.no_grad():
+    with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=args.bf16), torch.no_grad():
         for _ in tqdm(range(args.n_iterations), leave=False):
             outputs = model(**batch_dict)
-            embeddings = average_pool(
-                outputs.last_hidden_state, batch_dict["attention_mask"]
-            )
+            embeddings = average_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
     torch.hpu.synchronize()
     end_time = time.time()
     logger.info(f"Total time: {end_time - start_time:.5f} s")
-    logger.info(
-        f"Average time per batch: {(end_time - start_time) * 1000 / args.n_iterations:.5f} ms"
-    )
+    logger.info(f"Average time per batch: {(end_time - start_time) * 1000 / args.n_iterations:.5f} ms")
     embeddings = F.normalize(embeddings, p=2, dim=1)
     scores = (embeddings[:1] @ embeddings[1:].T) * 100
-    logger.info(
-        f"Scores for input texts relating to the source sentence: {scores.tolist()}"
-    )
+    logger.info(f"Scores for input texts relating to the source sentence: {scores.tolist()}")
 
 
 if __name__ == "__main__":

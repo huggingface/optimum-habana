@@ -1,8 +1,7 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-from transformers.models.bert.modeling_bert import \
-    BaseModelOutputWithPoolingAndCrossAttentions
+from transformers.models.bert.modeling_bert import BaseModelOutputWithPoolingAndCrossAttentions
 
 
 # Copied from https://github.com/huggingface/transformers/blob/15c74a28294fe9082b81b24efe58df16fed79a9e/src/transformers/models/bert/modeling_bert.py
@@ -44,19 +43,11 @@ def gaudi_BertModel_forward(
         If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
         `past_key_values`).
     """
-    output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
-    )
+    output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
+        output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
     )
-    return_dict = (
-        return_dict if return_dict is not None else self.config.use_return_dict
-    )
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     if self.config.is_decoder:
         use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -64,9 +55,7 @@ def gaudi_BertModel_forward(
         use_cache = False
 
     if input_ids is not None and inputs_embeds is not None:
-        raise ValueError(
-            "You cannot specify both input_ids and inputs_embeds at the same time"
-        )
+        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
     elif input_ids is not None:
         self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
         input_shape = input_ids.size()
@@ -79,35 +68,23 @@ def gaudi_BertModel_forward(
     device = input_ids.device if input_ids is not None else inputs_embeds.device
 
     # past_key_values_length
-    past_key_values_length = (
-        past_key_values[0][0].shape[2] if past_key_values is not None else 0
-    )
+    past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
     if attention_mask is None:
-        attention_mask = torch.ones(
-            ((batch_size, seq_length + past_key_values_length)), device=device
-        )
+        attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
 
     if token_type_ids is None:
         if hasattr(self.embeddings, "token_type_ids"):
             buffered_token_type_ids = self.embeddings.token_type_ids[:, :seq_length]
-            buffered_token_type_ids_expanded = buffered_token_type_ids.expand(
-                batch_size, seq_length
-            )
+            buffered_token_type_ids_expanded = buffered_token_type_ids.expand(batch_size, seq_length)
             token_type_ids = buffered_token_type_ids_expanded
         else:
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
     # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
     # ourselves in which case we just need to make it broadcastable to all heads.
-    dtype = (
-        torch.hpu.get_autocast_hpu_dtype()
-        if torch.hpu.is_autocast_hpu_enabled()
-        else self.dtype
-    )
-    extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(
-        attention_mask, input_shape, dtype=dtype
-    )
+    dtype = torch.hpu.get_autocast_hpu_dtype() if torch.hpu.is_autocast_hpu_enabled() else self.dtype
+    extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, dtype=dtype)
 
     # If a 2D or 3D attention mask is provided for the cross-attention
     # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
@@ -116,9 +93,7 @@ def gaudi_BertModel_forward(
         encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
         if encoder_attention_mask is None:
             encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
-        encoder_extended_attention_mask = self.invert_attention_mask(
-            encoder_attention_mask
-        )
+        encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
     else:
         encoder_extended_attention_mask = None
 

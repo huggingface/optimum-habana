@@ -22,8 +22,8 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModel, AutoTokenizer
 
-from optimum.habana.transformers.modeling_utils import \
-    adapt_transformers_to_gaudi
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 adapt_transformers_to_gaudi()
 LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE = 0.68102
@@ -45,20 +45,15 @@ def average_pool(last_hidden_states: torch.Tensor, attention_mask: torch.Tensor)
 
 
 def embeddings(outputs, batch_dict):
-    return F.normalize(
-        average_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
-    )
+    return F.normalize(average_pool(outputs.last_hidden_state, batch_dict["attention_mask"]))
 
 
 def scores(embeddings):
     return (embeddings[:1] @ embeddings[1:].T) * 100
 
 
-
 def get_batch_dict():
-    return TOKENIZER(
-        INPUT_TEXTS, max_length=512, padding=True, truncation=True, return_tensors="pt"
-    )
+    return TOKENIZER(INPUT_TEXTS, max_length=512, padding=True, truncation=True, return_tensors="pt")
 
 
 @pytest.fixture(scope="module")
@@ -104,7 +99,7 @@ class GaudiFeatureExtractionTester(TestCase):
         batch_dict = get_batch_dict()
         with torch.autocast(device_type="hpu", dtype=torch.bfloat16), torch.no_grad():
             outputs = self.model_hpu(**batch_dict)
-            embeddings_hpu_bf16 = embeddings(outputs,batch_dict)
+            embeddings_hpu_bf16 = embeddings(outputs, batch_dict)
         scores_hpu_bf16 = scores(embeddings_hpu_bf16)
         self.assertTrue(torch.allclose(scores_hpu_bf16, self.scores_hpu_default, rtol=1e-2))
 
@@ -131,6 +126,5 @@ class GaudiFeatureExtractionTester(TestCase):
                 embeddings(outputs, batch_dict)
         torch.hpu.synchronize()
         end_time = time.time()
-        time_per_iter = (end_time - start_time) * 1000 / test_iters # time in ms
+        time_per_iter = (end_time - start_time) * 1000 / test_iters  # time in ms
         self.assertLess(time_per_iter, 1.05 * LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE)
-
