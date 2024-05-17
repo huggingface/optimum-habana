@@ -37,7 +37,7 @@ For the following cases, an example of a Gaudi configuration file is given
 This example code fine-tunes BERT on the SQuAD1.1 dataset.
 
 ```bash
-python run_qa.py \
+PT_HPU_LAZY_MODE=0 python run_qa.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --dataset_name squad \
@@ -51,8 +51,9 @@ python run_qa.py \
   --doc_stride 128 \
   --output_dir /tmp/squad/ \
   --use_habana \
-  --use_lazy_mode \
-  --use_hpu_graphs_for_inference \
+  --torch_compile_backend hpu_backend \
+  --torch_compile \
+  --use_lazy_mode false \
   --throughput_warmup_steps 3 \
   --bf16
 ```
@@ -63,7 +64,7 @@ python run_qa.py \
 Here is how you would fine-tune the BERT large model (with whole word masking) on the SQuAD dataset using the `run_qa` script, with 8 HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_qa.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
     --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
@@ -78,8 +79,9 @@ python ../gaudi_spawn.py \
     --doc_stride 128 \
     --output_dir /tmp/squad_output/ \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
+    --use_lazy_mode false \
     --throughput_warmup_steps 3 \
     --bf16
 ```
