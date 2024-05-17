@@ -12,15 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from math import ceil
 import time
-import numpy as np
-import PIL.Image
-import torch
+from math import ceil
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import numpy
+import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLInpaintPipeline
@@ -29,7 +26,7 @@ from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpain
     retrieve_timesteps,
 )
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import BaseOutput, deprecate, logging, replace_example_docstring
+from diffusers.utils import deprecate, logging, replace_example_docstring
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -38,9 +35,9 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from ..pipeline_utils import GaudiDiffusionPipeline
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import speed_metrics
+from ..pipeline_utils import GaudiDiffusionPipeline
 from .pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipelineOutput
 
 
@@ -501,8 +498,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 num_prompts = prompt_embeds.shape[0]
 
             num_batches = ceil((num_images_per_prompt * num_prompts) / batch_size)
-            
-            #logger.info(
+
             logger.info(
                 f"{num_prompts} prompt(s) received, {num_images_per_prompt} generation(s) per prompt,"
                 f" {batch_size} sample(s) per batch, {num_batches} total batch(es)."
@@ -723,7 +719,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 factor = 2 if self.do_classifier_free_guidance else 1
                 image_embed_batches, _ = self._split_and_cat_tensors(batch_size*factor, image_embeds[i])
                 image_embeds[i] = image_embed_batches[0]# Every batch has the same data, so use the data of index 0
-            image_latents_batches, _ = self._split_and_cat_tensors(batch_size, image_latents) 
+            image_latents_batches, _ = self._split_and_cat_tensors(batch_size, image_latents)
 
             # 12. Denoising loop
             num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -922,7 +918,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 if padding_mask_crop is not None:
                     image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
 
-                if output_type is "pil" and isinstance(image, list) :
+                if output_type == "pil" and isinstance(image, list) :
                     outputs["images"] += image
                 elif output_type in ["np", "numpy"] and isinstance(image, numpy.ndarray) :
                     if len(outputs["images"]) == 0:

@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import time
-import numpy
-from typing import Any, Callable, Dict, List, Optional, Union
 from math import ceil
+from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy
 import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
@@ -141,7 +140,7 @@ class GaudiStableDiffusionInpaintPipeline(
             negative_prompt_embeds_batches = list(torch.split(negative_prompt_embeds, batch_size))
         mask_batches = list(torch.split(mask, batch_size))
         masked_image_latents_batches = list(torch.split(masked_image_latents, batch_size))
-        
+
         # If the last batch has less samples than batch_size, pad it with dummy samples
         num_dummy_samples = 0
         if latents_batches[-1].shape[0] < batch_size:
@@ -162,7 +161,7 @@ class GaudiStableDiffusionInpaintPipeline(
                     torch.zeros_like(negative_prompt_embeds_batches[-1][0][None, :]) for _ in range(num_dummy_samples)
                 )
                 negative_prompt_embeds_batches[-1] = torch.vstack(sequence_to_stack)
-            
+
             if mask_batches[-1].shape[0] < batch_size:
                 num_dummy_samples = batch_size - mask_batches[-1].shape[0]
                 # Pad mask_batches
@@ -709,13 +708,13 @@ class GaudiStableDiffusionInpaintPipeline(
                     image = [self.image_processor.apply_overlay(mask_image, original_image, j, crops_coords) for j in image]
 
 
-                if output_type is "pil" and isinstance(image, list) :
+                if output_type == "pil" and isinstance(image, list) :
                     outputs["images"] += image
                 elif output_type in ["np", "numpy"] and isinstance(image, numpy.ndarray) :
                     if len(outputs["images"]) == 0:
                         outputs["images"] = image
                     else:
-                        outputs["images"] = numpy.concatenate((outputs["images"], image), axis=0) 
+                        outputs["images"] = numpy.concatenate((outputs["images"], image), axis=0)
                 else:
                     if len(outputs["images"]) == 0:
                         outputs["images"] = image

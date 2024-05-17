@@ -20,9 +20,8 @@ Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelin
 - Modified the get_dummy_components to add the Gaudi pipeline parameters: use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval
 - added test_stable_diffusion_xl_inpaint_no_throughput_regression
 """
-import os
-import time
 import copy
+import os
 import random
 import unittest
 

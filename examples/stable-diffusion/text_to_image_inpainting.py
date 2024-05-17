@@ -28,13 +28,14 @@ import PIL
 import requests
 import torch
 
-from optimum.habana.diffusers import AutoPipelineForInpainting
-from optimum.habana.utils import set_seed
 from optimum.habana.diffusers import (
+    AutoPipelineForInpainting,
     GaudiDDIMScheduler,
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
 )
+from optimum.habana.utils import set_seed
+
 
 logger = logging.getLogger(__name__)
 
