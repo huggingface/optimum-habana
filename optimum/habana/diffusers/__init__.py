@@ -1,4 +1,5 @@
 from .pipelines.controlnet.pipeline_controlnet import GaudiStableDiffusionControlNetPipeline
+from .pipelines.controlnet.pipeline_controlnet_sd_xl import GaudiStableDiffusionXLControlNetPipeline
 from .pipelines.pipeline_utils import GaudiDiffusionPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
 from .pipelines.stable_diffusion.pipeline_stable_diffusion_ldm3d import GaudiStableDiffusionLDM3DPipeline
