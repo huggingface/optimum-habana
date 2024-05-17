@@ -106,7 +106,7 @@ def main():
     input_texts = [args.source_sentence] + args.input_texts
     batch_dict = tokenizer(
         input_texts, max_length=512, padding=True, truncation=True, return_tensors="pt"
-    )
+    ).to("hpu")
 
     if args.warmup:
         logger.info(f"Initializing warmup for {args.warmup} iterations")
