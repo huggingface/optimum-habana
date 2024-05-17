@@ -622,7 +622,6 @@ class GaudiStableDiffusionInpaintPipeline(
                         added_cond_kwargs=added_cond_kwargs,
                         return_dict=False,
                     )
-
                     noise_pred.to(torch.float)
                     # perform guidance
                     if self.do_classifier_free_guidance:
