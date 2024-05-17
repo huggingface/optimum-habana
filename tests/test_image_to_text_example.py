@@ -15,9 +15,11 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "bf16": [
             ("llava-hf/llava-1.5-7b-hf", 1, 87.2901500056982),
+            ("llava-hf/llava-1.5-13b-hf", 1, 54.41252589197953),
         ],
         "fp8": [
             ("llava-hf/llava-1.5-7b-hf", 1, 123.00953973789325),
+            ("llava-hf/llava-1.5-13b-hf", 1, 82.81132373492122),
         ],
     }
 else:

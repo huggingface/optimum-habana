@@ -31,3 +31,26 @@ Models that have been validated:
   - [nlpconnect/vit-gpt2-image-captioning](https://huggingface.co/nlpconnect/vit-gpt2-image-captioning)
   - [Salesforce/blip-image-captioning-large](https://huggingface.co/Salesforce/blip-image-captioning-large)
   - [Salesforce/blip-image-captioning-base](https://huggingface.co/Salesforce/blip-image-captioning-base)
+
+## Single-HPU FP8 inference
+
+2-steps run:  
+1) Measuring Model
+```bash
+QUANT_CONFIG="<full-parent-path>/optimum-habana/examples/image-to-text/quantization_config/maxabs_measure.json" python3 run_pipeline.py \
+    --model_name_or_path llava-hf/llava-1.5-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --bf16 \
+    --quant_config
+```
+
+2) Quantization Model Inference
+```bash
+QUANT_CONFIG="<full-parent-path>/optimum-habana/examples/image-to-text/quantization_config/maxabs_quant.json" python3 run_pipeline.py \
+    --model_name_or_path llava-hf/llava-1.5-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --bf16 \
+    --quant_config
+```
