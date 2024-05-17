@@ -757,10 +757,6 @@ def main():
             )
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
-        if training_args.torch_compile:
-            from optimum.habana.peft.layer import GaudiLoraLayerLinearForward
-
-            tuners.lora.layer.Linear.forward = GaudiLoraLayerLinearForward
         lora_model = get_peft_model(model, peft_config)
         if training_args.bf16 and finetune_args.peft_type != "ia3":
             lora_model = lora_model.to(torch.bfloat16)
