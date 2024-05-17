@@ -30,7 +30,11 @@ import torch
 
 from optimum.habana.diffusers import AutoPipelineForInpainting
 from optimum.habana.utils import set_seed
-
+from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiEulerAncestralDiscreteScheduler,
+    GaudiEulerDiscreteScheduler,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +116,20 @@ def main():
         ),
     )
     parser.add_argument(
+        "--scheduler",
+        default="ddim",
+        choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
+        type=str,
+        help="Name of scheduler",
+    )
+    parser.add_argument(
+        "--timestep_spacing",
+        default="linspace",
+        choices=["linspace", "leading", "trailing"],
+        type=str,
+        help="The way the timesteps should be scaled.",
+    )
+    parser.add_argument(
         "--output_type",
         type=str,
         choices=["pil", "np"],
@@ -173,8 +191,22 @@ def main():
     init_image = download_image(img_url).resize((512, 512))
     mask_image = download_image(mask_url).resize((512, 512))
 
+    # Initialize the scheduler and the generation pipeline
+    kwargs = {"timestep_spacing": args.timestep_spacing}
+    if args.scheduler == "euler_discrete":
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    elif args.scheduler == "euler_ancestral_discrete":
+        scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    else:
+        scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler", **kwargs)
+
 
     init_kwargs = {
+        "scheduler": scheduler,
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
