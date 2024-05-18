@@ -31,7 +31,6 @@ from diffusers import (
     AutoencoderKL,
     DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
-    HeunDiscreteScheduler,
     LCMScheduler,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
@@ -50,8 +49,8 @@ from transformers import (
 
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
-    GaudiEulerDiscreteScheduler,
     GaudiEulerAncestralDiscreteScheduler,
+    GaudiEulerDiscreteScheduler,
     GaudiStableDiffusionXLInpaintPipeline,
 )
 from optimum.habana.utils import set_seed
