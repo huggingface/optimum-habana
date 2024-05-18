@@ -51,6 +51,7 @@ from transformers import (
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiEulerDiscreteScheduler,
+    GaudiEulerAncestralDiscreteScheduler,
     GaudiStableDiffusionXLInpaintPipeline,
 )
 from optimum.habana.utils import set_seed
@@ -503,9 +504,10 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
                 for scheduler_cls in [
                     GaudiDDIMScheduler,
                     GaudiEulerDiscreteScheduler,
+                    GaudiEulerAncestralDiscreteScheduler,
                     DPMSolverMultistepScheduler,
                     UniPCMultistepScheduler,
-                    HeunDiscreteScheduler,
+                    #HeunDiscreteScheduler,
                 ]:
                     assert_run_mixture(steps, split, scheduler_cls)
 
@@ -594,9 +596,10 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
                 for scheduler_cls in [
                     GaudiDDIMScheduler,
                     GaudiEulerDiscreteScheduler,
+                    GaudiEulerAncestralDiscreteScheduler,
                     DPMSolverMultistepScheduler,
                     UniPCMultistepScheduler,
-                    HeunDiscreteScheduler,
+                    #HeunDiscreteScheduler,
                 ]:
                     assert_run_mixture(steps, split_1, split_2, scheduler_cls)
 

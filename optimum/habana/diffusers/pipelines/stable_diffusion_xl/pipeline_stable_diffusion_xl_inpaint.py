@@ -615,7 +615,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
             mask, masked_image_latents = self.prepare_mask_latents(
                 mask,
                 masked_image,
-                num_prompts * num_images_per_prompt,
+                batch_size,
                 height,
                 width,
                 prompt_embeds.dtype,
@@ -676,9 +676,10 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 dtype=prompt_embeds.dtype,
                 text_encoder_projection_dim=text_encoder_projection_dim,
             )
-            add_time_ids = add_time_ids.repeat(num_prompts * num_images_per_prompt, 1)
+            add_time_ids = add_time_ids.repeat(batch_size, 1)
             if self.do_classifier_free_guidance:
-                add_neg_time_ids = add_neg_time_ids.repeat(num_prompts * num_images_per_prompt, 1)
+                add_neg_time_ids = add_neg_time_ids.repeat(batch_size, 1)
+                add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
 
             prompt_embeds = prompt_embeds.to(device)
             add_time_ids = add_time_ids.to(device)
@@ -688,7 +689,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 image_embeds = self.prepare_ip_adapter_image_embeds(
                     ip_adapter_image,
                     device,
-                    num_prompts * num_images_per_prompt,
+                    batch_size,
                 )
 
             # 11 Split into batches (HPU-specific step)
@@ -706,19 +707,8 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 negative_pooled_prompt_embeds,
                 self.do_classifier_free_guidance
             )
-            add_time_ids_batches, _ = self._split_and_cat_tensors(
-                batch_size,
-                add_time_ids,
-                add_neg_time_ids,
-                self.do_classifier_free_guidance
-            )
             mask_batches, _ = self._split_and_cat_tensors(batch_size, mask)
             masked_image_latents_batches, _ = self._split_and_cat_tensors(batch_size, masked_image_latents)
-            image_embeds_batches = None
-            for i in range(len(image_embeds)):
-                factor = 2 if self.do_classifier_free_guidance else 1
-                image_embed_batches, _ = self._split_and_cat_tensors(batch_size*factor, image_embeds[i])
-                image_embeds[i] = image_embed_batches[0]# Every batch has the same data, so use the data of index 0
             image_latents_batches, _ = self._split_and_cat_tensors(batch_size, image_latents)
 
             # 12. Denoising loop
@@ -772,16 +762,13 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 prompt_embeds_batches = torch.roll(prompt_embeds_batches, shifts=-1, dims=0)
                 add_text_embeds_batch = add_text_embeds_batches[0]
                 add_text_embeds_batches = torch.roll(add_text_embeds_batches, shifts=-1, dims=0)
-                add_time_ids_batch = add_time_ids_batches[0]
-                add_time_ids_batches = torch.roll(add_time_ids_batches, shifts=-1, dims=0)
+                add_time_ids_batch = add_time_ids
                 mask_batch = mask_batches[0]
                 mask_batches = torch.roll(mask_batches, shifts=-1, dims=0)
                 if masked_image_latents_batches is not None:
                     masked_image_latents_batch = masked_image_latents_batches[0]
                     masked_image_latents_batches = torch.roll(masked_image_latents_batches, shifts=-1, dims=0)
-                if image_embeds_batches is not None:
-                    image_embeds_batch = image_embeds_batches[0]
-                    image_embeds_batches = torch.roll(image_embeds_batches, shifts=-1, dims=0)
+
                 if image_latents_batches is not None:
                     image_latents_batch = image_latents_batches[0]
                     image_latents_batches = torch.roll(image_latents_batches, shifts=-1, dims=0)
@@ -799,10 +786,8 @@ class GaudiStableDiffusionXLInpaintPipeline(
 
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
-
                     # concat latents, mask, masked_image_latents in the channel dimension
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                     mask_batch_input = torch.cat([mask_batch] * 2) if self.do_classifier_free_guidance else mask_batch
@@ -814,7 +799,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                     # predict the noise residual
                     added_cond_kwargs = {"text_embeds": add_text_embeds_batch, "time_ids": add_time_ids_batch}
                     if ip_adapter_image is not None:
-                        added_cond_kwargs["image_embeds"] = image_embeds_batch
+                        added_cond_kwargs["image_embeds"] = image_embeds
 
                     noise_pred = self.unet_hpu(
                         latent_model_input,
