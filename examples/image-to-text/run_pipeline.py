@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
+import os
 import argparse
 import json
 import logging
@@ -69,7 +70,6 @@ def main():
         action="store_true",
         help="Whether to perform generation in bf16 precision.",
     )
-    parser.add_argument("--quant_config", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--output_dir",
         default=None,
@@ -87,6 +87,9 @@ def main():
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     args = parser.parse_args()
+
+    # set args.quant_config with env variable if it is set
+    args.quant_config = os.getenv("QUANT_CONFIG", "")
 
     adapt_transformers_to_gaudi()
 
@@ -112,7 +115,7 @@ def main():
     for image_path in image_paths:
         images.append(PIL.Image.open(requests.get(image_path, stream=True, timeout=3000).raw))
 
-    if args.bf16 or args.quant_config:
+    if args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float32
