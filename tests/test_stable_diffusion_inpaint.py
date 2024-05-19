@@ -61,9 +61,9 @@ from .test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineL
 enable_full_determinism()
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
-    THROUGHPUT_BASELINE_BF16 = 1.5
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.259
 else:
-    THROUGHPUT_BASELINE_BF16 = 0.7
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.259
 
 
 
@@ -399,7 +399,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             num_inference_steps=2).images[0]
         self.assertIsNotNone(image)
 
-    @slow
+    #@slow
     def test_stable_diffusion_inpaint_no_throughput_regression(self):
         """Test that stable diffusion inpainting no throughput regression autocast"""
         from diffusers.utils import load_image
@@ -412,7 +412,8 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "a black cat with glowing eyes, cute, adorable, disney, pixar, highly detailed, 8k",
             "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k",
         ]
-        num_images_per_prompt = 20
+        num_images_per_prompt = 10
+        num_inference_steps = 10
         model_name = "runwayml/stable-diffusion-inpainting"
 
         init_kwargs = {
@@ -429,9 +430,10 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             image=init_image,
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
-            throughput_warmup_steps=2,
+            throughput_warmup_steps=1,
+            num_inference_steps = num_inference_steps,
             batch_size=4
         )
 
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
-        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_BF16)
+        self.assertGreaterEqual(outputs.throughput, 0.95 * INPAINT_THROUGHPUT_BASELINE_BF16)

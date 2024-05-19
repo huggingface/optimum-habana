@@ -773,6 +773,10 @@ class GaudiStableDiffusionXLInpaintPipeline(
                     image_latents_batch = image_latents_batches[0]
                     image_latents_batches = torch.roll(image_latents_batches, shifts=-1, dims=0)
 
+                if j == throughput_warmup_steps:
+                    t1 = time.time()
+
+
                 #If use the diffuser's scheduler of non-Gaudi version, the timesteps need to reset every batch in order to avoid index overflow of timesteps.
                 if j > 0 and "Gaudi" not in self.scheduler.__class__.__name__:
                     self.scheduler._init_step_index(timesteps[0])
@@ -780,9 +784,6 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 for i, _ in enumerate(timesteps):
                     if self.interrupt:
                         continue
-
-                    if i == throughput_warmup_steps:
-                        t1 = time.time()
 
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)

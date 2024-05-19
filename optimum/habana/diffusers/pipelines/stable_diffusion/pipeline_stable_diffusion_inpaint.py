@@ -590,6 +590,10 @@ class GaudiStableDiffusionInpaintPipeline(
                 mask_batches = torch.roll(mask_batches, shifts=-1, dims=0)
                 masked_image_latents_batch = masked_image_latents_batches[0]
                 masked_image_latents_batches = torch.roll(masked_image_latents_batches, shifts=-1, dims=0)
+                if j == throughput_warmup_steps:
+                    t1 = time.time()
+
+
 
                 for i in range(len(timesteps)):
                     if self.interrupt:
@@ -597,10 +601,6 @@ class GaudiStableDiffusionInpaintPipeline(
 
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-
-                    if i == throughput_warmup_steps:
-                        t1 = time.time()
-
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch

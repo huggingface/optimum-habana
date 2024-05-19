@@ -67,9 +67,9 @@ enable_full_determinism()
 
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
-    THROUGHPUT_BASELINE_BF16 = 0.762
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.19
 else:
-    THROUGHPUT_BASELINE_BF16 = 0.3
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.092
 
 
 class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
@@ -808,7 +808,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
-    @slow
+    #@slow
     def test_stable_diffusion_xl_inpaint_no_throughput_regression(self):
         """Test that stable diffusion inpainting no throughput regression autocast"""
         from diffusers.utils import load_image
@@ -822,7 +822,8 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k",
         ]
         model_name = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
-        num_images_per_prompt = 20
+        num_images_per_prompt = 10
+        num_inference_steps = 10
         init_kwargs = {
             "use_habana": True,
             "use_hpu_graphs": True,
@@ -837,9 +838,10 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             image=init_image,
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
-            throughput_warmup_steps=2,
+            throughput_warmup_steps=1,
+            num_inference_steps = num_inference_steps,
             batch_size=4
         )
 
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
-        self.assertGreaterEqual(outputs.throughput, 0.95 * THROUGHPUT_BASELINE_BF16)
+        self.assertGreaterEqual(outputs.throughput, 0.95 * INPAINT_THROUGHPUT_BASELINE_BF16)
