@@ -75,13 +75,13 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         self.options = options
         self._device = args.device
         self.model_inputs = {"use_cache": self.options.use_cache}
-        if self.model.config.model_type in ["llama", "falcon"]:
+        if self.model.config.model_type in ["llama", "mistral", "falcon", "phi", "mixtral"]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type == "llama":
+        if self.model.config.model_type in ["llama", "mistral"]:
             self.model_inputs.update(
                 {
                     "attn_softmax_bf16": self.options.attn_softmax_bf16,
@@ -152,7 +152,8 @@ def main():
     model, tokenizer, generation_config = initialize_model(args, logger)
 
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
-    lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
+    with torch.no_grad():
+        lm = HabanaModelAdapter(tokenizer, model, args, generation_config)
 
     eval_start = time.perf_counter()
     results = lm_eval.evaluator.evaluate(lm, lm_tasks, limit=args.limit_iters)

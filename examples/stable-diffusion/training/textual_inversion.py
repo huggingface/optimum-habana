@@ -513,6 +513,7 @@ class TextualInversionDataset(Dataset):
         self.flip_p = flip_p
 
         self.image_paths = [os.path.join(self.data_root, file_path) for file_path in os.listdir(self.data_root)]
+        self.image_paths = [file for file in self.image_paths[:] if os.path.isfile(file)]
 
         self.num_images = len(self.image_paths)
         self._length = self.num_images

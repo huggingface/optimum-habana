@@ -173,6 +173,7 @@ class GaudiAcceleratorState(AcceleratorState):
                 if mixed_precision is None
                 else mixed_precision.lower()
             )
+            self.is_fp8_enabled = mixed_precision == "fp8"
             self.dynamo_plugin = dynamo_plugin
             # deepspeed handles mixed_precision using deepspeed_config
             self._mixed_precision = (

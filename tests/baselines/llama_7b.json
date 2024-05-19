@@ -160,6 +160,84 @@
                     ]
                 }
             }
+        },
+        "prompt-tuning": {
+            "num_train_epochs": 20,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 16.5,
+                    "train_samples_per_second": 63.161,
+                    "perplexity": 1.224,
+                    "extra_arguments": [
+                        "--num_virtual_tokens 8",
+                        "--max_seq_length 64",
+                        "--logging_steps 1",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--peft_type prompt_tuning",
+                        "--max_seq_length 64",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 1"
+                    ]
+                }
+            }
+        },
+        "prefix-tuning": {
+            "num_train_epochs": 20,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 16.5,
+                    "train_samples_per_second": 63.161,
+                    "perplexity": 1.224,
+                    "extra_arguments": [
+                        "--num_virtual_tokens 8",
+                        "--max_seq_length 64",
+                        "--logging_steps 1",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--peft_type prompt_tuning",
+                        "--max_seq_length 64",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 1"
+                    ]
+                }
+            }
+        },
+        "p-tuning": {
+            "num_train_epochs": 20,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 16.5,
+                    "train_samples_per_second": 63.161,
+                    "perplexity": 1.224,
+                    "extra_arguments": [
+                        "--num_virtual_tokens 8",
+                        "--max_seq_length 64",
+                        "--logging_steps 1",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--peft_type prompt_tuning",
+                        "--max_seq_length 64",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 1"
+                    ]
+                }
+            }
         }
     }
 }
