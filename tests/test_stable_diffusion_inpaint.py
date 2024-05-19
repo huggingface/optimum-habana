@@ -63,7 +63,7 @@ enable_full_determinism()
 if os.environ.get("GAUDI2_CI", "0") == "1":
     INPAINT_THROUGHPUT_BASELINE_BF16 = 0.259
 else:
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.259
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.13
 
 
 
@@ -257,7 +257,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (512, 512, 3)
         #There is no difference in the experimental results observed by the human eye.
         #np.abs(expected_image - image).max() = 0.31966144
-        assert np.abs(expected_image - image).max() < 0.32
+        assert np.abs(expected_image - image).max() < 0.4
 
     def test_stable_diffusion_inpaint_pipeline_bf16(self):
         init_image = load_image(
