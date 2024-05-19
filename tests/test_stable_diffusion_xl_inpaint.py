@@ -808,7 +808,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
-    #@slow
+    @slow
     def test_stable_diffusion_xl_inpaint_no_throughput_regression(self):
         """Test that stable diffusion inpainting no throughput regression autocast"""
         from diffusers.utils import load_image

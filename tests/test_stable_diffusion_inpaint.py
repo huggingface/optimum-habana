@@ -396,7 +396,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             num_inference_steps=2).images[0]
         self.assertIsNotNone(image)
 
-    #@slow
+    @slow
     def test_stable_diffusion_inpaint_no_throughput_regression(self):
         """Test that stable diffusion inpainting no throughput regression autocast"""
         from diffusers.utils import load_image
