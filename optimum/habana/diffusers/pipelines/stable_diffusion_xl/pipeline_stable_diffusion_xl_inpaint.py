@@ -890,6 +890,18 @@ class GaudiStableDiffusionXLInpaintPipeline(
             if num_dummy_samples > 0:
                 outputs["images"][-1] = outputs["images"][-1][:-num_dummy_samples]
 
+            speed_metrics_prefix = "inpainting"
+            speed_measures = speed_metrics(
+                split=speed_metrics_prefix,
+                start_time=t0,
+                num_samples=num_batches * batch_size
+                if t1 == t0
+                else (num_batches - throughput_warmup_steps) * batch_size,
+                num_steps=num_batches,
+                start_time_after_warmup=t1,
+            )
+            logger.info(f"Speed metrics: {speed_measures}")
+
             # Process generated images
             for i, image in enumerate(outputs["images"][:]):
                 if i == 0:
@@ -920,19 +932,6 @@ class GaudiStableDiffusionXLInpaintPipeline(
 
             # Offload all models
             self.maybe_free_model_hooks()
-            speed_metrics_prefix = "inpainting"
-            speed_measures = speed_metrics(
-                split=speed_metrics_prefix,
-                start_time=t0,
-                num_samples=num_batches * batch_size
-                if t1 == t0
-                else (num_batches - throughput_warmup_steps) * batch_size,
-                num_steps=num_batches,
-                start_time_after_warmup=t1,
-            )
-            logger.info(f"Speed metrics: {speed_measures}")
-
-
             if not return_dict:
                 return (outputs["images"],)
 

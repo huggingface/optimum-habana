@@ -67,9 +67,9 @@ enable_full_determinism()
 
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.386
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.84
 else:
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.16
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.5
 
 
 class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
