@@ -118,7 +118,7 @@ def main():
     )
     parser.add_argument(
         "--scheduler",
-        default="ddim",
+        default=None,
         choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
         type=str,
         help="Name of scheduler",
@@ -202,17 +202,20 @@ def main():
         scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
             args.model_name_or_path, subfolder="scheduler", **kwargs
         )
-    else:
+    elif args.scheduler == "dimm":
         scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler", **kwargs)
-
+    else:
+        #Use the default scheduler of pretrained model
+        scheduler = None
 
     init_kwargs = {
-        "scheduler": scheduler,
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
         "torch_dtype": torch.bfloat16 if args.bf16 else None
     }
+    if scheduler is not None:
+        init_kwargs["scheduler"] = scheduler
 
     pipe = AutoPipelineForInpainting.from_pretrained(
         args.model_name_or_path,

@@ -61,9 +61,9 @@ from .test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineL
 enable_full_determinism()
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.259
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.372
 else:
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.13
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.18
 
 
 
@@ -430,7 +430,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             image=init_image,
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
-            throughput_warmup_steps=1,
+            throughput_warmup_steps=2,
             num_inference_steps = num_inference_steps,
             batch_size=4
         )
