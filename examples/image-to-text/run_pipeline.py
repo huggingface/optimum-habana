@@ -13,10 +13,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
-import os
 import argparse
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -122,6 +122,7 @@ def main():
 
     if args.quant_config:
         import habana_frameworks.torch.core as htcore
+
         htcore.hpu_set_env()
 
     generator = pipeline(
@@ -143,6 +144,7 @@ def main():
 
     if args.quant_config:
         import habana_quantization_toolkit
+
         habana_quantization_toolkit.prep_model(generator.model)
 
         htcore.hpu_initialize(generator.model)

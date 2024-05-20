@@ -16,5 +16,3 @@ class GaudiCLIPVisionEmbeddings(CLIPVisionEmbeddings):
         embeddings = torch.cat([class_embeds, patch_embeds], dim=1)
         embeddings = embeddings + self.position_embedding(self.position_ids)
         return embeddings
-
-

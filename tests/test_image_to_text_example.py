@@ -73,7 +73,7 @@ def _test_image_to_text(
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "image-to-text/quantization_config/maxabs_quant.json"
             )
-        
+
         proc = subprocess.run(command, env=env_variables)
 
         # Ensure the run finished without any issue
@@ -95,6 +95,7 @@ def _test_image_to_text(
 @pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["bf16"])
 def test_image_to_text_bf16(model_name: str, baseline: float, batch_size: int, token: str):
     _test_image_to_text(model_name, baseline, token, batch_size)
+
 
 @pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["fp8"])
 def test_image_to_text_fp8(model_name: str, baseline: float, batch_size: int, token: str):
