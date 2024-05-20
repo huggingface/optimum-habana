@@ -145,12 +145,54 @@ class ModuleFusedSDPA(torch.nn.Module):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
 
 
+class Softmax(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, dim=None, invAttnHead=None):
+        return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
+
+
 class Matmul(nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, *args, **kwargs):
         return torch.matmul(*args, **kwargs)
+
+
+# ScaledDotProductAttention is based on torch.nn.functional.scaled_dot_product_attention
+class ScaledDotProductAttention(nn.Module):
+    def __init__(self, config: FalconConfig):
+        super().__init__()
+        self.head_dim = config.hidden_size // config.num_attention_heads
+        self.bmm1 = Matmul()
+        self.bmm2 = Matmul()
+        self.softmax = Softmax()
+
+    def forward(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
+        L, S = query.size(-2), key.size(-2)
+        scale_factor = 1 / math.sqrt(self.head_dim)
+        invAttnHead = torch.tensor(scale_factor, dtype=torch.float32).to("hpu")
+
+        if is_causal:
+            assert attn_mask is None
+            attn_bias = torch.zeros(L, S, dtype=query.dtype)
+            temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+            attn_bias.to(query.dtype)
+
+        if attn_mask is not None:
+            if attn_mask.dtype == torch.bool:
+                attn_mask.masked_fill_(attn_mask.logical_not(), float("-inf"))
+
+        attn_weight = self.bmm1(query, key.transpose(-2, -1))
+
+        attn_weight += attn_mask
+        attn_weight = self.softmax(attn_weight, dim=-1, invAttnHead=invAttnHead)
+        attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+        return self.bmm2(attn_weight, value)
+
 
 
 def update(prev, cur, dim, idx, inp_seq_len):
@@ -218,8 +260,22 @@ class GaudiFalconAttention(FalconAttention):
     def __init__(self, config: FalconConfig):
         super().__init__(config)
 
-        if FusedSDPA:
-            self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
+        '''
+        Choice of SDPA:
+        There are these variables: use_flash_attention and datatype (bf16/fp8)
+        datatype is determined by presence of QUANT_CONFIG env var, presence of which indicates fp8
+        1. use_flash_attention, fp8: use ModuleFusedSDPA. most optimal
+        2. use_flash_attention, bf16: use FusedSDPA
+        3. not use_flash_attention, fp8: Use ScaledDotProductAttention, along with QUANT_CONFIG. This is the case before this PR
+        4. not use_flash_attention, bf16: F.scaled_dot_product_attention. Slowest option
+        '''
+        self.is_fp8 = os.getenv("QUANT_CONFIG", "") != ""
+
+        # In the constructor we do not know which one we will need later in the forward, so creating both
+        # TODO, Does this affect memory usage?
+        if self.is_fp8:
+            self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA)
+        self.unfused_scaled_dot_product_attention = ScaledDotProductAttention(config)
 
         self.k_cache = KVCache()
         self.v_cache = KVCache()
@@ -343,59 +399,50 @@ class GaudiFalconAttention(FalconAttention):
                 # It is unclear why neither dropout nor head_mask is applied here (while it is with alibi).
                 attn_output = attention_scores @ value_layer
             else:
-                if use_flash_attention and FusedSDPA:
-                    """
-                    if query_length == 1:
-                        # next token
-                        use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
-                        with sdp_kernel(enable_recompute=use_recompute):
+                if use_flash_attention:
+                    is_causal = self.is_causal and query_length > 1 and flash_attention_causal_mask
+                    if self.is_fp8:
+                        #is_causal = query_length > 1 and flash_attention_causal_mask
+                        attn_mask = None if is_causal else attention_mask
+                        flash_attention_fast_softmax = True  # TODO pass this along
+                        softmax_mode = "fast" if flash_attention_fast_softmax else "None"
+                        enable_recompute = self.is_fp8 if query_length == 1 else flash_attention_recompute
+                        with sdp_kernel(enable_recompute=enable_recompute):
                             attn_output = self.fused_scaled_dot_product_attention(
-                                query_layer, key_layer, value_layer, attention_mask, 0.0, False, None
+                                query_layer, key_layer, value_layer, attn_mask, 0.0, is_causal, None, softmax_mode
                             )
                     else:
-                        # first token
-                        if flash_attention_causal_mask:
-                            # causal masking on first token requires inputs to be of the same lenght
-                            with sdp_kernel(enable_recompute=flash_attention_recompute):
-                                attn_output = self.fused_scaled_dot_product_attention(
-                                    query_layer, key_layer, value_layer, None, 0.0, True, None
-                                )
-                        else:
-                            with sdp_kernel(enable_recompute=flash_attention_recompute):
-                                attn_output = self.fused_scaled_dot_product_attention(
-                                    query_layer, key_layer, value_layer, attention_mask, 0.0, False, None
-                                )
-                    """
-                    # For inference prefill, enable_recompute is flash_attention_recompute
-                    # For inference decode, enable_recompute is true for fp8 and false for bf16
-                    enable_recompute = (
-                        (os.getenv("QUANT_CONFIG", "") != "") if query_length == 1 else flash_attention_recompute
-                    )
-                    # For inference prefill, is_causal based on flash_attention_causal_mask, for decode, is_caisal is false
-                    is_causal = query_length != 1 and flash_attention_causal_mask
-                    attn_mask = None if is_causal else attention_mask
-                    flash_attention_fast_softmax = True  # TODO pass tis along
-                    softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-
-                    with sdp_kernel(enable_recompute=enable_recompute):
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_layer, key_layer, value_layer, attn_mask, 0.0, is_causal, None, softmax_mode
+                        # TODO very similar to the fp8 case above, could be merged.
+                        with sdp_kernel(enable_recompute=flash_attention_recompute) if SDPContext else contextlib.nullcontext():
+                            attn_output = FusedSDPA.apply(
+                                query_layer,
+                                key_layer,
+                                value_layer,
+                                attention_mask,
+                                0.0,
+                                # The query_length > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case query_length == 1.
+                                is_causal and attention_mask is None,
+                            )
+                else:
+                    if self.is_fp8:
+                        attn_output = self.unfused_scaled_dot_product_attention(
+                            query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal=False
+                        )
+                    else:
+                        # Workaround util scaled_dot_product_attention support broadcast.
+                        if self.training is True and query_layer.shape != key_layer.shape:
+                            key_layer = torch.broadcast_to(key_layer, query_layer.shape)
+                            value_layer = torch.broadcast_to(value_layer, query_layer.shape)
+                        attn_output = F.scaled_dot_product_attention(
+                            query_layer,
+                            key_layer,
+                            value_layer,
+                            attention_mask,
+                            0.0,
+                            # The query_length > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case query_length == 1.
+                            is_causal=self.is_causal and attention_mask is None and query_length > 1,
                         )
 
-                else:
-                    # Workaround util scaled_dot_product_attention support broadcast.
-                    if self.training is True and query_layer.shape != key_layer.shape:
-                        key_layer = torch.broadcast_to(key_layer, query_layer.shape)
-                        value_layer = torch.broadcast_to(value_layer, query_layer.shape)
-                    attn_output = F.scaled_dot_product_attention(
-                        query_layer,
-                        key_layer,
-                        value_layer,
-                        attention_mask,
-                        0.0,
-                        # The query_length > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case query_length == 1.
-                        is_causal=self.is_causal and attention_mask is None and query_length > 1,
-                    )
                 # Performance improvement for HPU
                 if self.training is True and htcore:
                     htcore.mark_step()
@@ -981,6 +1028,12 @@ class GaudiFalconForCausalLM(FalconForCausalLM):
             are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        if use_flash_attention:
+            assert FusedSDPA, "Set use_flash_attention True, but cannot find FusedSDPA. Please import it as from habana_frameworks.torch.hpex.kernels import FusedSDPA or set use_flash_attention to False (at the expense of a possible performance degradation)"
+        if flash_attention_recompute:
+            assert use_flash_attention, "flash_attention_recompute is set, but use_flash_attention is not"
+        if flash_attention_causal_mask:
+            assert use_flash_attention, "flash_attention_causal_mask is set, but use_flash_attention is not"
 
         transformer_outputs = self.transformer(
             input_ids,

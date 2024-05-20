@@ -746,6 +746,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # prepare for allocate kv cache
         model_kwargs["reuse_cache"] = generation_config.reuse_cache
+
         # determine whether flash attention needs to be used
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
