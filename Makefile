@@ -78,6 +78,9 @@ slow_tests_trl: test_installs
 	python -m pip install peft==0.7.0
 	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
 
+slow_tests_object_segmentation: test_installs
+	python -m pytest tests/test_object_segmentation.py
+
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs
 	python -m pytest tests/test_examples_match_transformers.py
