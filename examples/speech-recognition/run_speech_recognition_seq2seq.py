@@ -327,7 +327,7 @@ def main():
     gaudi_config = GaudiConfig.from_pretrained(
         training_args.gaudi_config_name,
         cache_dir=model_args.cache_dir,
-        token=data_args.token,
+        token=model_args.token,
     )
 
     # Log on each process the small summary:
