@@ -1,17 +1,17 @@
 18d17
 < 
-33a33
+32a32
 > import transformers
-34a35
+33a34
 > from habana_dataloader_trainer import HabanaDataloaderTrainer
-39,40d39
+38,39d38
 < 
 < import transformers
-46,48d44
+45,47d43
 <     Trainer,
 <     TrainingArguments,
 <     set_seed,
-53a50,60
+52a49,59
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
@@ -23,41 +23,41 @@
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 > 
-57,58c64,66
+56,57c63,65
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.41.0.dev0")
+< check_min_version("4.42.0.dev0")
 ---
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.38.0")
 > check_optimum_habana_min_version("1.10.0")
-188a197,199
+181a190,192
 >     mediapipe_dataloader: bool = field(
 >         default=False, metadata={"help": "Turn on MediaPipe hardware-based accelerated data loading."}
 >     )
-247c258
+240c251
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-284a296,302
+268a280,286
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         revision=model_args.model_revision,
->         use_auth_token=True if model_args.use_auth_token else None,
+>         token=model_args.token,
 >     )
 > 
-285a304
+269a288
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-287,288c306,308
+271,272c290,292
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-435d454
+419d438
 <     image_transformations = torch.jit.script(image_transformations)
-482,483c501,509
+466,467c485,493
 <         # Transform images on the fly as doing it on the whole dataset takes too much time.
 <         train_dataset.set_transform(transform_images)
 ---
@@ -70,7 +70,7 @@
 >         else:
 >             # Transform images on the fly as doing it on the whole dataset takes too much time.
 >             train_dataset.set_transform(transform_images)
-505,506c531,539
+489,490c515,523
 <         # Transform images on the fly as doing it on the whole dataset takes too much time.
 <         eval_dataset.set_transform(transform_images)
 ---
@@ -83,7 +83,7 @@
 >         else:
 >             # Transform images on the fly as doing it on the whole dataset takes too much time.
 >             eval_dataset.set_transform(transform_images)
-529a563,571
+513a547,555
 >         if data_args.mediapipe_dataloader:
 >             test_dataset.image_mean = image_processor.image_mean
 >             test_dataset.image_std = image_processor.image_std
@@ -93,10 +93,10 @@
 >         else:
 >             # Transform images on the fly as doing it on the whole dataset takes too much time.
 >             test_dataset.set_transform(transform_images)
-532c574,575
+516c558,559
 <     trainer = Trainer(
 ---
 >     trainer_cls = HabanaDataloaderTrainer if data_args.mediapipe_dataloader else GaudiTrainer
 >     trainer = trainer_cls(
-533a577
+517a561
 >         gaudi_config=gaudi_config,
