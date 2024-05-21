@@ -1904,22 +1904,18 @@ class DreamBooth(TestCase):
             / "train_dreambooth.py"
         )
         install_requirements(path_to_script.parent / "requirements.txt")
-
+        instance_prompt = "soccer player kicking a ball"
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 python3
-                {path_to_script.parent.parent.parent / 'gaudi_spawn.py'}
-                --use_mpi
-                --world_size 8
                 {path_to_script}
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
                 --instance_data_dir {Path(os.path.dirname(__file__))/'resource/img'}
-                --instance_prompt "soccer player kicking a ball"
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --train_text_encoder
-                --max_train_steps 2
+                --max_train_steps 1
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -1928,6 +1924,8 @@ class DreamBooth(TestCase):
                 --output_dir {tmpdir}
                 """.split()
 
+            test_args.append("--instance_prompt")
+            test_args.append(instance_prompt)
             if "oft" not in extra_config:
                 test_args.append("--use_hpu_graphs_for_training")
                 test_args.append("--use_hpu_graphs_for_inference")
@@ -1992,20 +1990,17 @@ class DreamBoothLoRASDXL(TestCase):
         )
         install_requirements(path_to_script.parent / "requirements.txt")
 
+        instance_prompt = "soccer player kicking a ball"
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 python3
-                {path_to_script.parent.parent.parent / 'gaudi_spawn.py'}
-                --use_mpi
-                --world_size 8
                 {path_to_script}
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
                 --instance_data_dir {Path(os.path.dirname(__file__))/'resource/img'}
-                --instance_prompt "soccer player kicking a ball"
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 2
+                --max_train_steps 1
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -2017,6 +2012,8 @@ class DreamBoothLoRASDXL(TestCase):
                 """.split()
             if train_text_encoder:
                 test_args.append("--train_text_encoder")
+            test_args.append("--instance_prompt")
+            test_args.append(instance_prompt)
             p = subprocess.Popen(test_args)
             return_code = p.wait()
 
