@@ -31,7 +31,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
+from ....utils import speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -437,11 +437,17 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
 
             # 10. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+            use_warmup_inference_steps = (
+                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+            )
+
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
                 if j == throughput_warmup_steps:
                     t1 = time.time()
+                if use_warmup_inference_steps:
+                    t0_inf = time.time()
 
                 latents_batch = latents_batches[0]
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
@@ -453,6 +459,10 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
                 noise_level_batches = torch.roll(noise_level_batches, shifts=-1, dims=0)
 
                 for i in range(num_inference_steps):
+                    if use_warmup_inference_steps and i == throughput_warmup_steps:
+                        t1_inf = time.time()
+                        t1 += t1_inf - t0_inf
+
                     timestep = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
@@ -494,6 +504,11 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, timestep, latents_batch)
 
+                if use_warmup_inference_steps:
+                    t1 = warmup_inference_steps_time_adjustment(
+                        t1, t1_inf, num_inference_steps, throughput_warmup_steps
+                    )
+
                 if not output_type == "latent":
                     # 8. Post-processing
                     # make sure the VAE is in float32 mode, as it overflows in bfloat16
@@ -524,7 +539,7 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
                 split=speed_metrics_prefix,
                 start_time=t0,
                 num_samples=num_batches * batch_size
-                if t1 == t0
+                if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
                 num_steps=num_batches,
                 start_time_after_warmup=t1,

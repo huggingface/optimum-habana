@@ -104,6 +104,15 @@ class ScriptArguments:
     seed: Optional[int] = field(
         default=0, metadata={"help": "Random seed that will be set at the beginning of training."}
     )
+    token: str = field(
+        default=None,
+        metadata={
+            "help": (
+                "The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+                "generated when running `huggingface-cli login` (stored in `~/.huggingface`)."
+            )
+        },
+    )
 
 
 parser = HfArgumentParser(ScriptArguments)
@@ -148,7 +157,7 @@ training_args = GaudiTrainingArguments(
 
 # Load the value-head model and tokenizer.
 tokenizer_name = script_args.tokenizer_name if script_args.tokenizer_name is not None else script_args.model_name
-tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_auth_token=True)
+tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, token=script_args.token)
 tokenizer.pad_token = tokenizer.eos_token
 
 peft_config = LoraConfig(

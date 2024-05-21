@@ -1,18 +1,18 @@
-30a31
+29a30
 > import transformers
-33,34d33
+32,33d32
 < 
 < import transformers
-41,42d39
+40,41d38
 <     Seq2SeqTrainingArguments,
 <     set_seed,
-47a45,46
+46a44,45
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
-49,50d47
+48,49d46
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.41.0.dev0")
-52c49,55
+< check_min_version("4.42.0.dev0")
+51c48,54
 < require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 ---
 > try:
@@ -22,41 +22,41 @@
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 > 
-55a59,64
+54a58,63
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.38.0")
 > check_optimum_habana_min_version("1.10.0")
 > 
 > require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/question-answering/requirements.txt")
 > 
-185c194
+178c187
 <                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on TPU)."
 ---
 >                 " batching to the maximum length in the batch (which can be faster on GPU but will be slower on HPU)."
-285c294
+278c287
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiSeq2SeqTrainingArguments))
-323a333,339
+307a317,323
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         revision=model_args.model_revision,
->         use_auth_token=True if model_args.use_auth_token else None,
+>         token=model_args.token,
 >     )
 > 
-324a341
+308a325
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-326,327c343,345
+310,311c327,329
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-676a695
+660a679
 >         gaudi_config=gaudi_config,
-750,754d768
+734,738d752
 < 
 < 
 < def _mp_fn(index):
