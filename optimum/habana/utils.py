@@ -117,6 +117,33 @@ def speed_metrics(
     return result
 
 
+def warmup_inference_steps_time_adjustment(
+    start_time_after_warmup, start_time_after_inference_steps_warmup, num_inference_steps, warmup_steps
+):
+    """
+    Adjust start time after warmup to account for warmup inference steps.
+
+    When warmup is applied to multiple inference steps within a single sample generation we need to account for
+    skipped inference steps time to estimate "per sample generation time".  This function computes the average
+    inference time per step and adjusts the start time after warmup accordingly.
+
+    Args:
+        start_time_after_warmup: time after warmup steps have been performed
+        start_time_after_inference_steps_warmup: time after warmup inference steps have been performed
+        num_inference_steps: total number of inference steps per sample generation
+        warmup_steps: number of warmup steps
+
+    Returns:
+        [float]: adjusted start time after warmup which accounts for warmup inference steps based on average non-warmup steps time
+    """
+    if num_inference_steps > warmup_steps:
+        avg_time_per_inference_step = (time.time() - start_time_after_inference_steps_warmup) / (
+            num_inference_steps - warmup_steps
+        )
+        start_time_after_warmup -= avg_time_per_inference_step * warmup_steps
+    return start_time_after_warmup
+
+
 def to_gb_rounded(mem: float) -> float:
     """
     Rounds and converts to GB.
