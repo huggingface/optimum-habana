@@ -290,6 +290,10 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config == "" and args.disk_offload:
+        logger.warning(
+            "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
+        )
     return args
 
 
@@ -499,7 +503,7 @@ def main():
         from datasets import load_dataset
         from torch.utils.data import DataLoader
 
-        assert args.simulate_dyn_prompt == "", "Both dataset_name and simulate_dyn_prompt are set"
+        assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
         raw_dataset = load_dataset(args.dataset_name)
         if "test" in raw_dataset:

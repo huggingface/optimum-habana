@@ -1183,12 +1183,16 @@ class GaudiTrainer(Trainer):
             if is_accelerate_available() and self.accelerator.distributed_type == GaudiDistributedType.DEEPSPEED:
                 grad_norm = model.get_global_grad_norm()
             else:
-                if _grad_norm is not None and self.accelerator.distributed_type != GaudiDistributedType.FSDP:
-                    grad_norm = _grad_norm.item() if _grad_norm.size() == torch.Size([1]) else _grad_norm.tolist()
+                if (
+                    _grad_norm is not None
+                    and self.accelerator.distributed_type != GaudiDistributedType.FSDP
+                    and _grad_norm.size() == torch.Size([1])
+                ):
+                    grad_norm = _grad_norm.item()
                 else:
                     grad_norm = None
 
-            if grad_norm is not None and not isinstance(grad_norm, list):
+            if grad_norm is not None:
                 logs["grad_norm"] = grad_norm
             logs["learning_rate"] = self._get_learning_rate()
 
