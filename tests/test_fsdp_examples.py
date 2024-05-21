@@ -123,6 +123,8 @@ def _test_fsdp(
             "--low_cpu_mem_usage True",
             "--attn_softmax_bf16 True",
             "--num_train_epochs 3",
+            "--use_flash_attention True",
+            "--flash_attention_causal_mask True",
             f"--token {token.value}",
         ]
 
