@@ -471,7 +471,7 @@ class GaudiGenerationMixin(GenerationMixin):
         return generation_config
 
     def _prepare_generation_config(
-        self, generation_config: GaudiGenerationConfig, lazy_mode: bool, **kwargs: Dict
+        self, generation_config: GaudiGenerationConfig, **kwargs: Dict
     ) -> Tuple[GaudiGenerationConfig, Dict]:
         """
         Copied from https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/generation/utils.py#L1230
@@ -530,7 +530,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     )
             self.generation_config.static_shapes = generation_config.static_shapes
             if generation_config.ignore_eos is None:
-                generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode)
+                generation_config.ignore_eos = kwargs.get("ignore_eos", kwargs.get("lazy_mode", None))
                 self.generation_config.ignore_eos = generation_config.ignore_eos
             model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
             if self.config.model_type == "falcon" and "token_type_ids" in kwargs.keys():
@@ -654,7 +654,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "`hpu_graphs` is True but `lazy_mode` is False. HPU graphs require `lazy_mode` to be set to True."
             )
         num_virtual_tokens = kwargs.pop("num_virtual_tokens", 0)
-        generation_config, model_kwargs = self._prepare_generation_config(generation_config, lazy_mode, **kwargs)
+        generation_config, model_kwargs = self._prepare_generation_config(generation_config, **kwargs)
         self._validate_model_kwargs(model_kwargs.copy())
 
         # 2. Set generation parameters if not already defined
