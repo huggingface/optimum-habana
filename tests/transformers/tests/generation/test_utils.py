@@ -1540,7 +1540,7 @@ class GenerationTesterMixin:
             config.use_cache = True
             config.is_decoder = True
 
-            # test output equality of low versus high memory
+            # test output equality of dynamic vs. static shapes
             model = model_class(config).to(torch_device).eval()
             model.generation_config.static_shapes = False
             dynamic_output = model.generate(
