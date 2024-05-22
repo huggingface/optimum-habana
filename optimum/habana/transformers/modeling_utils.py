@@ -62,7 +62,10 @@ from .models import (
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
     GaudiPersimmonForCausalLM,
+    GaudiPhiAttention,
+    GaudiPhiDecoderLayer,
     GaudiPhiForCausalLM,
+    GaudiPhiModel,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
     GaudiStableLmForCausalLM,
@@ -132,9 +135,6 @@ from .models import (
     gaudi_persimmon_attention_forward,
     gaudi_persimmon_decoder_layer_forward,
     gaudi_persimmon_model_forward,
-    gaudi_phi_attention_forward,
-    gaudi_phi_decoder_layer_forward,
-    gaudi_phi_model_forward,
     gaudi_qwen2_attention_forward,
     gaudi_qwen2_model_forward,
     gaudi_rot_matmul,
@@ -366,9 +366,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for phi on Gaudi
     transformers.models.phi.modeling_phi.PhiForCausalLM = GaudiPhiForCausalLM
-    transformers.models.phi.modeling_phi.PhiAttention.forward = gaudi_phi_attention_forward
-    transformers.models.phi.modeling_phi.PhiDecoderLayer.forward = gaudi_phi_decoder_layer_forward
-    transformers.models.phi.modeling_phi.PhiModel.forward = gaudi_phi_model_forward
+    transformers.models.phi.modeling_phi.PhiAttention = GaudiPhiAttention
+    transformers.models.phi.modeling_phi.PhiDecoderLayer = GaudiPhiDecoderLayer
+    transformers.models.phi.modeling_phi.PhiModel = GaudiPhiModel
 
     # Optimization for gemma on Gaudi
     transformers.models.gemma.modeling_gemma.GemmaForCausalLM = GaudiGemmaForCausalLM

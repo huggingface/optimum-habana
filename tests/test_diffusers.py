@@ -54,7 +54,10 @@ from optimum.habana.utils import set_seed
 from .clip_coco_utils import calculate_clip_score, download_files
 
 
-if os.environ.get("GAUDI2_CI", "0") == "1":
+IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
+
+
+if IS_GAUDI2:
     THROUGHPUT_BASELINE_BF16 = 1.086
     THROUGHPUT_BASELINE_AUTOCAST = 0.394
     TEXTUAL_INVERSION_THROUGHPUT = 104.29806
@@ -630,7 +633,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             output_type="np",
         )
 
-        if os.environ.get("GAUDI2_CI", "0") == "1":
+        if IS_GAUDI2:
             target_score = 29.8925
         else:
             target_score = 36.774
@@ -668,7 +671,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
             output_type="np",
         )
 
-        if os.environ.get("GAUDI2_CI", "0") == "1":
+        if IS_GAUDI2:
             target_score = 28.0894
         else:
             target_score = 35.81
@@ -702,7 +705,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         low_res_img = low_res_img.resize((128, 128))
         prompt = "a white cat"
         upscaled_image = pipeline(prompt=prompt, image=low_res_img, output_type="np").images[0]
-        if os.environ.get("GAUDI2_CI", "0") == "1":
+        if IS_GAUDI2:
             expected_slice = np.array(
                 [
                     0.16527882,
