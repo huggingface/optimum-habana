@@ -743,6 +743,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             # In encoder_decoder models, Inputs are already padded
+            assert generation_config.ignore_eos, "For gaudi we pad input_ids with EOS, so this option isnt available for now"
 
             if not self.config.is_encoder_decoder:
                 # only pad if bucket_size < -1. If we are bucketing (bucket_size > 0), then that is taken care in greedy_search()

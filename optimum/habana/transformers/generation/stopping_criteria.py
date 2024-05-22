@@ -56,7 +56,6 @@ def gaudi_MaxTimeCriteria_call(self, input_ids: torch.LongTensor, scores: torch.
     return time.time() - self.initial_timestamp > self.max_time
     
 def gaudi_EosTokenCriteria_call(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-    assert False, "For gaudi we pad input_ids with EOS, so EOS might showup. So this option isnt available for now"
     self.eos_token_id = self.eos_token_id.to(input_ids.device)
     is_done = torch.isin(input_ids[:, -1], self.eos_token_id)
     return torch.all(is_done).item()
