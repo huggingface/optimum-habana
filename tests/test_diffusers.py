@@ -2013,6 +2013,7 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
 
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
+    @slow
     def test_stable_video_diffusion_no_throughput_regression_bf16(self):
         image_url = (
             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png"
