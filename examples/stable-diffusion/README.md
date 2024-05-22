@@ -276,3 +276,47 @@ python text_to_image_generation.py \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2
 ```
+
+# Stable Video Diffusion Examples
+
+Stable Video Diffusion (SVD) was unveiled in [Stable Video Diffusion Announcement](https://stability.ai/news/stable-video-diffusion-open-ai-video-model)
+by the Stability AI team. Stable Video Diffusion XT version (SVD-XT) is tuned to generate 25 frames of video from a single image.
+
+## Image-to-video Generation
+
+Script `image_to_video_generation.py` showcases how to perform image-to-video generation using Stable Video Diffusion on Intel Gaudi.
+
+### Single Image Prompt
+
+Here is how to generate video with one image prompt:
+```bash
+python image_to_video_generation.py \
+    --model_name_or_path "stabilityai/stable-video-diffusion-img2vid-xt" \
+    --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png" \
+    --num_videos_per_prompt 1 \
+    --video_save_dir /tmp/stable_video_diffusion_xt \
+    --save_frames_as_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+### Multiple Image Prompts
+
+Here is how to generate videos with several image prompts:
+```bash
+python image_to_video_generation.py \
+    --model_name_or_path "stabilityai/stable-video-diffusion-img2vid-xt" \
+    --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png" \
+                 "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png" \
+                 "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png" \
+                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png" \
+    --num_videos_per_prompt 1 \
+    --video_save_dir /tmp/stable_video_diffusion_xt \
+    --save_frames_as_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
