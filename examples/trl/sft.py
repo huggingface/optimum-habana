@@ -45,6 +45,16 @@ class ScriptArguments:
         metadata={"help": "Target modules for the LoRA method."},
     )
 
+    token: str = field(
+        default=None,
+        metadata={
+            "help": (
+                "The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+                "generated when running `huggingface-cli login` (stored in `~/.huggingface`)."
+            )
+        },
+    )
+
 
 parser = HfArgumentParser((ScriptArguments, GaudiTrainingArguments))
 script_args, training_args = parser.parse_args_into_dataclasses()
@@ -90,7 +100,7 @@ def create_datasets(tokenizer, args, seed=None):
         args.dataset_name,
         data_dir=args.subset,
         split=args.split,
-        use_auth_token=True,
+        token=script_args.token,
         num_proc=args.num_workers if not args.streaming else None,
         streaming=args.streaming,
     )
@@ -138,7 +148,7 @@ base_model = AutoModelForCausalLM.from_pretrained(
     script_args.model_name_or_path,
     low_cpu_mem_usage=low_cpu_mem_usage,
     torch_dtype=torch.bfloat16,
-    use_auth_token=True,
+    token=script_args.token,
 )
 base_model.config.use_cache = False
 

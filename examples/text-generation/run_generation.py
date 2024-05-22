@@ -247,12 +247,6 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to use torch compiled model or not.",
     )
-    parser.add_argument(
-        "--ignore_eos",
-        default=True,
-        action=argparse.BooleanOptionalAction,
-        help="Whether to ignore eos, set False to disable it",
-    )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
     parser.add_argument(
@@ -280,6 +274,10 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config == "" and args.disk_offload:
+        logger.warning(
+            "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
+        )
     return args
 
 
@@ -388,7 +386,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
-                ignore_eos=args.ignore_eos,
+                ignore_eos=True,
                 iteration_times=iteration_times,
             ).cpu()
             first_token_time = iteration_times[0] + encode_duration
@@ -487,7 +485,7 @@ def main():
         from datasets import load_dataset
         from torch.utils.data import DataLoader
 
-        assert args.simulate_dyn_prompt == "", "Both dataset_name and simulate_dyn_prompt are set"
+        assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
         raw_dataset = load_dataset(args.dataset_name)
         if "test" in raw_dataset:
@@ -572,7 +570,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
-                ignore_eos=args.ignore_eos,
+                ignore_eos=True,
             ).cpu()
             return prompt, outputs
 

@@ -21,6 +21,8 @@ from .generation import (
     GaudiGenerationMixin,
     gaudi_MaxLengthCriteria_call,
     gaudi_MaxNewTokensCriteria_call,
+    gaudi_MaxTimeCriteria_call,
+    gaudi_EosTokenCriteria_call,
     gaudi_StoppingCriteriaList_call,
 )
 from .models import (
@@ -229,6 +231,8 @@ def adapt_transformers_to_gaudi():
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
     transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
+    transformers.generation.MaxTimeCriteria.__call__ = gaudi_MaxTimeCriteria_call
+    transformers.generation.EosTokenCriteria.__call__ = gaudi_EosTokenCriteria_call
     transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
 
     # Optimization for BLOOM generation on Gaudi

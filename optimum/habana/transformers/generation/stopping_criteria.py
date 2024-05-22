@@ -15,19 +15,21 @@
 # limitations under the License.
 
 import torch
-
+import time
 from optimum.utils import logging
 
 
 logger = logging.get_logger(__name__)
 
+# Instead of returning a tensor describing status of completeness of each sentence
+# we only return a single boolean describing the state of the batch 
 
 def gaudi_MaxLengthCriteria_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-) -> torch.BoolTensor:
+) -> bool:
     token_idx = kwargs.get("token_idx", None)
     if token_idx is not None:
-        is_done = token_idx >= self.max_length
+        return token_idx >= self.max_length
     else:
         cur_len = input_ids.shape[-1]
         is_done = cur_len >= self.max_length
@@ -37,26 +39,34 @@ def gaudi_MaxLengthCriteria_call(
                 f"maximum length ({self.max_position_embeddings}). Depending on the model, you may observe "
                 "exceptions, performance degradation, or nothing at all."
             )
-    is_done = 1 if is_done else 0
-    return torch.full((input_ids.shape[0],), is_done, device=input_ids.device, dtype=torch.int8)
+        return is_done
 
 
 def gaudi_MaxNewTokensCriteria_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-) -> torch.BoolTensor:
+) -> bool:
     token_idx = kwargs.get("token_idx", None)
     if token_idx is not None:
-        is_done = token_idx >= self.max_length
+        return token_idx >= self.max_length
     else:
-        is_done = input_ids.shape[-1] >= self.max_length
-    is_done = 1 if is_done else 0
-    return torch.full((input_ids.shape[0],), is_done, device=input_ids.device, dtype=torch.int8)
+        return input_ids.shape[-1] >= self.max_length
 
+
+def gaudi_MaxTimeCriteria_call(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+    return time.time() - self.initial_timestamp > self.max_time
+    
+def gaudi_EosTokenCriteria_call(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+    assert False, "For gaudi we pad input_ids with EOS, so EOS might showup. So this option isnt available for now"
+    self.eos_token_id = self.eos_token_id.to(input_ids.device)
+    is_done = torch.isin(input_ids[:, -1], self.eos_token_id)
+    return torch.all(is_done).item()
 
 def gaudi_StoppingCriteriaList_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-) -> torch.BoolTensor:
-    is_done = torch.full((input_ids.shape[0],), 0, device=input_ids.device, dtype=torch.int8)
+) -> bool:
+    is_done = False
     for criteria in self:
         is_done = is_done | criteria(input_ids, scores, **kwargs)
     return is_done
+
+

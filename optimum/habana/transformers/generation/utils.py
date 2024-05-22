@@ -1697,11 +1697,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
             cur_len = cur_len + 1
 
-            if ignore_eos:
-                this_peer_finished = stopping_criteria(input_ids, scores, token_idx=cur_len).min() == 1
-            else:
-                unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids, scores, token_idx=cur_len)
-                this_peer_finished = unfinished_sequences.max() == 0
+            this_peer_finished = stopping_criteria(input_ids, scores, token_idx=cur_len)
 
             hb_profer.step()
             if iteration_times is not None:
@@ -2082,11 +2078,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
-            if ignore_eos:
-                this_peer_finished = stopping_criteria(input_ids, scores, token_idx=cur_len).min() == 0
-            else:
-                unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids, scores, token_idx=cur_len)
-                this_peer_finished = unfinished_sequences.max() == 0
+            this_peer_finished = stopping_criteria(input_ids, scores, token_idx=cur_len)
 
             hb_profer.step()
             if iteration_times is not None:
