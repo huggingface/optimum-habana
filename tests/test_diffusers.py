@@ -2014,7 +2014,9 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
     def test_stable_video_diffusion_no_throughput_regression_bf16(self):
-        image_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png"
+        image_url = (
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png"
+        )
         model_name = "stabilityai/stable-video-diffusion-img2vid-xt"
         scheduler = GaudiEulerDiscreteScheduler.from_pretrained(model_name, subfolder="scheduler")
 
