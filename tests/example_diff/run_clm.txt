@@ -9,24 +9,24 @@
 ---
 > Training the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
-36,37d34
+35,36d33
 < from datasets import load_dataset
 < 
-38a36
+37a35
 > from datasets import load_dataset
-46,47d43
+45,46d42
 <     Trainer,
 <     TrainingArguments,
-49,50d44
+48,49d43
 <     is_torch_xla_available,
 <     set_seed,
-56a51,52
+55a50,51
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-58,59d53
+57,58d52
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.41.0.dev0")
-61c55,61
+< check_min_version("4.42.0.dev0")
+60c54,60
 < require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 ---
 > try:
@@ -36,19 +36,19 @@
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 > 
-64a65,70
+63a64,69
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.38.0")
 > check_optimum_habana_min_version("1.10.0")
 > 
 > require_version("datasets>=2.14.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
 > 
-80c86,87
+79c85,86
 <                 "The model checkpoint for weights initialization. Don't set if you want to train a model from scratch."
 ---
 >                 "The model checkpoint for weights initialization. Don't set it if you want to train a model from"
 >                 " scratch."
-149a157,165
+142a150,158
 >     use_cache: bool = field(
 >         default=True,
 >         metadata={
@@ -58,51 +58,59 @@
 >             )
 >         },
 >     )
-155c171
+148c164
 <                 "set True will benefit LLM loading time and RAM consumption."
 ---
 >                 "Setting it to True will benefit LLM loading time and RAM consumption."
-202c218,219
+195c211,212
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
 > 
 >     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
-228a246,248
+221a239,241
 >     save_last_ckpt: bool = field(
 >         default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
 >     )
-250c270
+243c263
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-288a309,315
+272a293,299
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         revision=model_args.model_revision,
->         use_auth_token=True if model_args.use_auth_token else None,
+>         token=model_args.token,
 >     )
 > 
-289a317
+273a301
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-291,292c319,321
+275,276c303,305
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-403a433
+387a417
 >         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
-499a530
+483a514
 > 
-597c628
+547a579,582
+> 
+>         def tensor_mapper(x):
+>             return {i: torch.tensor(x[i], dtype=torch.int32) for i in x}
+> 
+550a586,587
+>         if training_args.resume_from_checkpoint is not None and training_args.resume_from_checkpoint != "":
+>             train_dataset = train_dataset.map(tensor_mapper)
+581c618
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-598a630
+582a620
 >         gaudi_config=gaudi_config,
-605,608c637,638
+589,592c627,628
 <         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_xla_available() else None,
 <         preprocess_logits_for_metrics=preprocess_logits_for_metrics
 <         if training_args.do_eval and not is_torch_xla_available()
@@ -110,12 +118,12 @@
 ---
 >         compute_metrics=compute_metrics if training_args.do_eval else None,
 >         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-619c649,650
+603c639,640
 <         trainer.save_model()  # Saves the tokenizer too for easy upload
 ---
 >         if data_args.save_last_ckpt:
 >             trainer.save_model()  # Saves the tokenizer too for easy upload
-623,626c654,660
+607,610c644,650
 <         max_train_samples = (
 <             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 <         )
@@ -128,9 +136,9 @@
 >                 data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-635d668
+619d658
 < 
-638,639c671,676
+622,623c661,666
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 ---
@@ -140,7 +148,7 @@
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 > 
-662,666d698
+646,650d688
 < 
 < 
 < def _mp_fn(index):
