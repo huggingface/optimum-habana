@@ -115,6 +115,13 @@ def incrementor(bucket_size, prompt_len):
             "need_expansion": need_expansion,
         }
 
+def get_final_stopping_crit(x):
+    if type(x) == type(True):
+        return x
+    elif torch.is_tensor(x):
+        return all(x)
+    else:
+        assert False
 
 class GaudiGenerationMixin(GenerationMixin):
     """
@@ -2660,9 +2667,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     and num_eos_tokens >= num_beams_tensor
                 ):
                     break
-                elif stopping_criteria(input_ids, scores, token_idx=cur_len):
+                elif get_final_stopping_crit(stopping_criteria(input_ids, scores, token_idx=cur_len)):
                     break
-            elif all(stopping_criteria(input_ids, scores)) or (beam_scorer.is_done and not lazy_mode):
+            elif get_final_stopping_crit(stopping_criteria(input_ids, scores)) or (beam_scorer.is_done and not lazy_mode):
                 this_peer_finished = True
         hb_profer.stop()
 
@@ -3383,7 +3390,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hb_profer.step()
 
-            if constrained_beam_scorer.is_done or stopping_criteria(input_ids, scores, token_idx=cur_len):
+            if constrained_beam_scorer.is_done or get_final_stopping_crit(stopping_criteria(input_ids, scores, token_idx=cur_len)):
                 this_peer_finished = True
 
         hb_profer.stop()
