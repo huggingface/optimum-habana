@@ -23,6 +23,13 @@ This folder contains two examples:
 
 Such models can be used for natural language image search and potentially zero-shot image classification.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Download COCO dataset (2017)
 This example uses COCO dataset (2017) through a custom dataset script, which requires users to manually download the
 COCO dataset before training.
