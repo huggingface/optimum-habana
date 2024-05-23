@@ -359,6 +359,20 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --trim_logits \
 ```
 
+Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
+
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
+-o acc_phi-2_bs1_measure.txt  \
+--model_name_or_path microsoft/phi-2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--trim_logits \
+--reuse_cache \
+--bf16
+
 Here is an example to quantize the model based on previous measurements for phi-2 with 1 card:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.py \
