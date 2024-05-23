@@ -181,6 +181,30 @@ def get_torch_compiled_model(model):
     return model
 
 
+def setup_quantization(model, args):
+    if os.getenv("USE_INC", ""):
+        from neural_compressor.torch import FP8QuantConfig, convert, prepare
+        config = FP8QuantConfig.from_json_file(args.quant_config)
+        if config.calibrate:
+            model = prepare(model, config)
+        elif config.quantize:
+            model = convert(model, config)
+    else:
+        import habana_quantization_toolkit
+        habana_quantization_toolkit.prep_model(model)
+
+    return model
+
+
+def finalize_quantization(model):
+    if os.getenv("USE_INC", ""):
+        from neural_compressor.torch import finalize_calibration
+        finalize_calibration(model)
+    else:
+        import habana_quantization_toolkit
+        habana_quantization_toolkit.finish_measurements(model)
+
+
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
     if args.assistant_model is None:
@@ -215,11 +239,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
                 args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
             )
     if args.quant_config:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.prep_model(model)
-        if args.assistant_model is not None:
-            habana_quantization_toolkit.quantize_model(assistant_model)
+        model = setup_quantization(model, args)
 
     model = model.eval().to(args.device)
     if args.assistant_model is not None:
@@ -314,11 +334,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         patch_scoped_linear_all_reduce(model)
 
     if args.quant_config:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.prep_model(model)
-        if args.assistant_model is not None:
-            habana_quantization_toolkit.prep_model(assistant_model)
+        model = setup_quantization(model, args)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
