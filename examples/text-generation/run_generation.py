@@ -42,6 +42,22 @@ logger = logging.getLogger(__name__)
 
 
 def setup_parser(parser):
+    class StoreTrueFalseAction(argparse.Action):
+        def __call__(self, parser, namespace, values, option_string=None):
+            if isinstance(values, bool) or values is None:
+                # Flag passed without any value -> set to True
+                setattr(namespace, self.dest, True)
+            else:
+                # Flag passed with value -> pattern match and set accordingly
+                value_str = values.lower()
+                if value_str in ('true', '1', 'yes'):
+                    setattr(namespace, self.dest, True)
+                elif value_str in ('false', '0', 'no'):
+                    setattr(namespace, self.dest, False)
+                else:
+                    raise ValueError(f"Invalid value for {option_string}: {values}")
+
+
     # Arguments management
     parser.add_argument("--device", "-d", type=str, choices=["hpu"], help="Device to run", default="hpu")
     parser.add_argument(
@@ -235,23 +251,34 @@ def setup_parser(parser):
 
     parser.add_argument(
         "--use_flash_attention",
-        action="store_true",
-        help="Whether to enable Habana Flash Attention, provided that the model supports it.",
+        nargs='?',
+        const=True,
+        default=False,
+        action=StoreTrueFalseAction,
+        help="Whether to enable Habana Flash Attention, provided that the model supports it."
     )
     parser.add_argument(
         "--flash_attention_recompute",
-        action="store_true",
-        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
+        nargs='?',
+        const=True,
+        default=False,
+        action=StoreTrueFalseAction,
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption."
     )
     parser.add_argument(
         "--flash_attention_causal_mask",
-        action="store_true",
-        help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
+        nargs='?',
+        const=True,
+        default=False,
+        action=StoreTrueFalseAction,
+        help="Whether to enable Habana Flash Attention in causal mode on first token generation."
     )
     parser.add_argument(
         "--flash_attention_fast_softmax",
-        action="store_true",
-        help="Whether to enable Habana Flash Attention in fast softmax mode.",
+        nargs='?',
+        const=None,  # Default value handled post-parsing
+        action=StoreTrueFalseAction,
+        help="Whether to enable Habana Flash Attention in fast softmax mode."
     )
     parser.add_argument(
         "--book_source",
@@ -302,6 +329,9 @@ def setup_parser(parser):
 
     if not args.use_hpu_graphs:
         args.limit_hpu_graphs = False
+
+    if args.flash_attention_fast_softmax is None:
+        args.flash_attention_fast_softmax = args.use_flash_attention
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
     if args.quant_config == "" and args.disk_offload:
