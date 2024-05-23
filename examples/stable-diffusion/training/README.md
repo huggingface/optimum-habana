@@ -261,7 +261,7 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
 
 
 ## DreamBooth
-DreamBooth is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject. The train_dreambooth.py script shows how to implement the training procedure and adapt it for stable diffusion.
+DreamBooth is a method to personalize text-to-image models like Stable Diffusion given just a few (3~5) images of a subject. The `train_dreambooth.py` script shows how to implement the training procedure and adapt it for Stable Diffusion.
 
 ### Dog toy example
 
