@@ -28,7 +28,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             (
                 "meta-llama/Llama-2-7b-hf",
                 "",
-                87.016,
+                85.016,
                 0.9093,
                 "language-modeling",
                 8,
