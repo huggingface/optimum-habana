@@ -282,7 +282,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_kv_cache \
 --reuse_cache \
 --bf16 \
---batch_size 1 \
+--batch_size 1
 ```
 
 Alternatively, here is another example to quantize the model based on previous measurements for LLama2-70b:
@@ -299,7 +299,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --batch_size 277 \
 --max_new_tokens 2048 \
 --max_input_tokens 2048 \
---limit_hpu_graphs \
+--limit_hpu_graphs
 ```
 
 Here is an example to measure the tensor quantization statistics on Mixtral-8x7B with 1 card:
@@ -325,7 +325,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generati
 --bucket_size 128 \
 --max_new_tokens 2048 \
 --batch_size 16 \
---bf16 \
+--bf16
 ```
 
 Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
@@ -356,7 +356,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --batch_size 110 \
 --bf16 \
 --reuse_cache \
---trim_logits \
+--trim_logits
 ```
 
 Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
