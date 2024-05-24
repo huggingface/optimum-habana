@@ -121,7 +121,7 @@ def get_final_stopping_crit(x):
     elif torch.is_tensor(x):
         return all(x)
     else:
-        assert False
+        raise TypeError(f"The stopping criteria should be either a boolean or a torch.tensor but got {type(x)}.")
 
 class GaudiGenerationMixin(GenerationMixin):
     """
