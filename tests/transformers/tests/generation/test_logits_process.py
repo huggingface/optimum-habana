@@ -62,6 +62,35 @@ class LogitsProcessorTest(unittest.TestCase):
         scores = torch.ones((batch_size, length), device=torch_device, dtype=torch.float) / length
         return scores
 
+    def test_logits_processor_expected_device(self):
+        EXPECTED_DEVICE_TYPE = "hpu"
+        batch_size = 4
+        sequence_length = 10
+        vocab_size = 15
+        eos_token_id = 0
+        min_eos_p = 0.1  ## some small float
+
+        # dummy input_ids and scores
+        input_ids = ids_tensor((batch_size, sequence_length), vocab_size)
+        scores = self._get_uniform_logits(batch_size, vocab_size)
+
+        processors = [
+            MinLengthLogitsProcessor(min_length=10, eos_token_id=eos_token_id),
+            TemperatureLogitsWarper(temperature=0.5),
+            RepetitionPenaltyLogitsProcessor(penalty=2.0),
+            TopKLogitsWarper(3),
+            TopPLogitsWarper(0.8),
+            NoRepeatNGramLogitsProcessor(2),
+            NoBadWordsLogitsProcessor(bad_words_ids=[[1]], eos_token_id=eos_token_id),
+            BarkEosPrioritizerLogitsProcessor(eos_token_id=eos_token_id, min_eos_p=min_eos_p),
+        ]
+
+        scores = self._get_uniform_logits(batch_size, vocab_size)
+        self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+        for processor in processors:
+            scores = processor(input_ids, scores)
+            self.assertTrue(scores.device.type == EXPECTED_DEVICE_TYPE)
+
     def test_min_length_dist_processor(self):
         vocab_size = 20
         batch_size = 4
@@ -548,7 +577,7 @@ class LogitsProcessorTest(unittest.TestCase):
 
         # check edge case
         no_bad_words_dist_proc = NoBadWordsLogitsProcessor(bad_words_ids=[[4]], eos_token_id=eos_token_id)
-        filtered_scores = no_bad_words_dist_proc(input_ids, scores.clone())        
+        filtered_scores = no_bad_words_dist_proc(input_ids, scores.clone())
         self.assertTrue(torch.allclose(scores, filtered_scores, atol=1e-3))
 
     def test_bias_dist_processor(self):
