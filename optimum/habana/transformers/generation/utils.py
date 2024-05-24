@@ -116,7 +116,7 @@ def incrementor(bucket_size, prompt_len):
         }
 
 def get_final_stopping_crit(x):
-    if type(x) == type(True):
+    if isinstance(x, bool):
         return x
     elif torch.is_tensor(x):
         return all(x)
