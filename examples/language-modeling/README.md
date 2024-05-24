@@ -22,6 +22,13 @@ GPT-2 is trained or fine-tuned using a causal language modeling (CLM) loss while
 The following examples will run on datasets hosted on our [hub](https://huggingface.co/datasets) or with your own
 text files for training and validation. We give examples of both below.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## GPT2/GPT-J/GPT-NeoX and causal language modeling
 
 The following examples fine-tune GPT-2, GPT-J-6B and GPT-NeoX-20B on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before the tokenization). The loss here is the one of causal language modeling.
