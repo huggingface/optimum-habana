@@ -230,6 +230,12 @@ python ../gaudi_spawn.py \
 ```
 
 
+### Training in torch.compile mode 
+RoBERTa-Large model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command,  
+a) Set the following environment variables `PT_HPU_LAZY_MODE=0` and `PT_ENABLE_INT64_SUPPORT=1`.
+b) Run the above commands with `--model_name_or_path roberta-large`, `--use_lazy_mode False` and add `--torch_compile`, `--torch_compile_backend hpu_backend` and remove `--use_hpu_graphs_for_inference` flags.
+
+
 ## Pretraining
 
 You can easily train a model from scratch by replacing `--model_name_or_path my_model_name` by `--config_name my_model_name --tokenizer_name my_model_name`.
@@ -386,7 +392,36 @@ python3 run_lora_clm.py \
     --validation_split_percentage 4 \
     --adam_epsilon 1e-08
 ```
-
+- Single-card finetuning of Mistral-7B-Instruct-v0.2 with fp8:
+```bash
+python3 run_lora_clm.py \
+    --model_name_or_path mistralai/Mistral-7B-Instruct-v0.2\
+    --dataset_name tatsu-lab/alpaca \
+    --fp8 True \
+    --output_dir ./model_lora_mistral \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 8 \
+    --evaluation_strategy "no" \
+    --save_strategy "no" \
+    --learning_rate 4e-4 \
+    --warmup_ratio  0.03 \
+    --lr_scheduler_type "constant" \
+    --max_grad_norm  0.3 \
+    --logging_steps 1 \
+    --do_train \
+    --use_habana \
+    --use_lazy_mode \
+    --throughput_warmup_steps 5 \
+    --lora_rank=8 \
+    --lora_target_modules "v_proj" "q_proj" \
+    --lora_alpha=16 \
+    --lora_dropout=0.05 \
+    --dataset_concatenation \
+    --max_seq_length 512 \
+    --low_cpu_mem_usage True \
+    --validation_split_percentage 4 \
+    --adam_epsilon 1e-08
+```
 - Single-card finetuning of Falcon-40B:
 ```bash
 LOWER_LIST=ops_bf16.txt python3 run_lora_clm.py \
