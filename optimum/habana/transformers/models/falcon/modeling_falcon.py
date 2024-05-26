@@ -89,7 +89,9 @@ def gaudi_falcon_linear_forward(self, input: torch.Tensor) -> torch.Tensor:
 
 
 def gaudi_falcon_attention_split_heads(
-    self, fused_qkv: torch.Tensor
+    self,
+    fused_qkv: torch.Tensor,
+    use_flash_attention: Optional[bool] = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Copied from FalconAttention._split_heads https://github.com/huggingface/transformers/blob/v4.33.2/src/transformers/models/falcon/modeling_falcon.py
@@ -113,9 +115,9 @@ def gaudi_falcon_attention_split_heads(
         query = torch.index_select(qkv, 3, index=torch.arange(d3, device=qkv.device))
         key = torch.index_select(qkv, 3, index=torch.tensor([d3], device=qkv.device))
         value = torch.index_select(qkv, 3, index=torch.tensor([d3 + 1], device=qkv.device))
-
-        key = torch.broadcast_to(key, query.shape)
-        value = torch.broadcast_to(value, query.shape)
+        if not use_flash_attention:
+            key = torch.broadcast_to(key, query.shape)
+            value = torch.broadcast_to(value, query.shape)
 
         query, key, value = [x.flatten(2, 3) for x in (query, key, value)]
         return query, key, value
@@ -194,7 +196,6 @@ class ScaledDotProductAttention(nn.Module):
         return self.bmm2(attn_weight, value)
 
 
-
 def update(prev, cur, dim, idx, inp_seq_len):
     orig_cur = cur
     cur = cur.to(dtype=prev.dtype)
@@ -260,7 +261,7 @@ class GaudiFalconAttention(FalconAttention):
     def __init__(self, config: FalconConfig):
         super().__init__(config)
 
-        '''
+        """
         Choice of SDPA:
         There are these variables: use_flash_attention and datatype (bf16/fp8)
         datatype is determined by presence of QUANT_CONFIG env var, presence of which indicates fp8
@@ -268,7 +269,7 @@ class GaudiFalconAttention(FalconAttention):
         2. use_flash_attention, bf16: use FusedSDPA
         3. not use_flash_attention, fp8: Use ScaledDotProductAttention, along with QUANT_CONFIG. This is the case before this PR
         4. not use_flash_attention, bf16: F.scaled_dot_product_attention. Slowest option
-        '''
+        """
         self.is_fp8 = os.getenv("QUANT_CONFIG", "") != ""
 
         # In the constructor we do not know which one we will need later in the forward, so creating both
@@ -284,7 +285,7 @@ class GaudiFalconAttention(FalconAttention):
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         if self.config.new_decoder_architecture:
-            cache_shape = (batch_size, self.num_heads, max_seq_len, self.head_dim)
+            cache_shape = (batch_size, self.num_kv_heads, max_seq_len, self.head_dim)
         else:
             cache_shape = (batch_size, 1, max_seq_len, self.head_dim)
         device = self.query_key_value.weight.device
@@ -324,10 +325,9 @@ class GaudiFalconAttention(FalconAttention):
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
-
         fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
         # 3 x [batch_size, seq_length, num_heads, head_dim]
-        (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
+        (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv, use_flash_attention)
 
         batch_size, query_length, _, _ = query_layer.shape
 
@@ -402,7 +402,6 @@ class GaudiFalconAttention(FalconAttention):
                 if use_flash_attention:
                     is_causal = self.is_causal and query_length > 1 and flash_attention_causal_mask
                     if self.is_fp8:
-                        #is_causal = query_length > 1 and flash_attention_causal_mask
                         attn_mask = None if is_causal else attention_mask
                         flash_attention_fast_softmax = True  # TODO pass this along
                         softmax_mode = "fast" if flash_attention_fast_softmax else "None"
@@ -413,7 +412,9 @@ class GaudiFalconAttention(FalconAttention):
                             )
                     else:
                         # TODO very similar to the fp8 case above, could be merged.
-                        with sdp_kernel(enable_recompute=flash_attention_recompute) if SDPContext else contextlib.nullcontext():
+                        with sdp_kernel(
+                            enable_recompute=flash_attention_recompute
+                        ) if SDPContext else contextlib.nullcontext():
                             attn_output = FusedSDPA.apply(
                                 query_layer,
                                 key_layer,
