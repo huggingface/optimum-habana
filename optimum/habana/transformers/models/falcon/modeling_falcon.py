@@ -91,7 +91,7 @@ def gaudi_falcon_linear_forward(self, input: torch.Tensor) -> torch.Tensor:
 def gaudi_falcon_attention_split_heads(
     self,
     fused_qkv: torch.Tensor,
-    use_flash_attention: Optional[bool] = False,
+    broadcast: Optional[bool] = True,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Copied from FalconAttention._split_heads https://github.com/huggingface/transformers/blob/v4.33.2/src/transformers/models/falcon/modeling_falcon.py
@@ -115,7 +115,8 @@ def gaudi_falcon_attention_split_heads(
         query = torch.index_select(qkv, 3, index=torch.arange(d3, device=qkv.device))
         key = torch.index_select(qkv, 3, index=torch.tensor([d3], device=qkv.device))
         value = torch.index_select(qkv, 3, index=torch.tensor([d3 + 1], device=qkv.device))
-        if not use_flash_attention:
+
+        if broadcast:
             key = torch.broadcast_to(key, query.shape)
             value = torch.broadcast_to(value, query.shape)
 
@@ -171,6 +172,41 @@ class ScaledDotProductAttention(nn.Module):
         self.bmm1 = Matmul()
         self.bmm2 = Matmul()
         self.softmax = Softmax()
+        self.num_key_value_groups = config.num_attention_heads // config.num_kv_heads
+
+    def repeat_kv(
+        self,
+        query_states: torch.Tensor,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        attention_mask: torch.Tensor,
+        n_rep: int,
+    ):
+        """
+        Copied from repeat_kv: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+        The only differences are:
+            - Append num_key_value_heads == 1 check as kv states can be broadcasted during matmuls so need to expand and reshape them.
+            - Add new args query_states, key_states, value_states and attention_mask and update the logic for expansion.
+        The query states go from (batch, num_heads, seqlen, head_dim) to (batch, num_key_value_heads, n_rep, seqlen, head_dim)
+        The key/value states go from (batch, num_key_value_heads, seqlen, head_dim) to (batch, num_key_value_heads, 1, seqlen, head_dim)
+        """
+        batch, num_key_value_heads, kv_len, head_dim = key_states.shape
+        if n_rep == 1 or num_key_value_heads == 1:
+            return query_states, key_states, value_states, attention_mask
+
+        new_kv_shape = (batch, num_key_value_heads, 1, kv_len, head_dim)
+        key_states = key_states.reshape(new_kv_shape)
+        value_states = value_states.reshape(new_kv_shape)
+
+        batch, _, q_len, head_dim = query_states.shape
+        new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
+        query_states = query_states.reshape(new_q_shape)
+
+        if attention_mask is not None:
+            # Add groups dim and set to 1
+            attention_mask = attention_mask.unsqueeze(1)
+
+        return query_states, key_states, value_states, attention_mask
 
     def forward(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
         L, S = query.size(-2), key.size(-2)
@@ -188,12 +224,14 @@ class ScaledDotProductAttention(nn.Module):
             if attn_mask.dtype == torch.bool:
                 attn_mask.masked_fill_(attn_mask.logical_not(), float("-inf"))
 
-        attn_weight = self.bmm1(query, key.transpose(-2, -1))
+        query, key, value, attn_mask = self.repeat_kv(query, key, value, attn_mask, self.num_key_value_groups)
 
+        attn_weight = self.bmm1(query, key.transpose(-2, -1))
         attn_weight += attn_mask
         attn_weight = self.softmax(attn_weight, dim=-1, invAttnHead=invAttnHead)
         attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
-        return self.bmm2(attn_weight, value)
+        attn_output = self.bmm2(attn_weight, value)
+        return attn_output
 
 
 def update(prev, cur, dim, idx, inp_seq_len):
@@ -327,7 +365,9 @@ class GaudiFalconAttention(FalconAttention):
             )
         fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
         # 3 x [batch_size, seq_length, num_heads, head_dim]
-        (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv, use_flash_attention)
+        (query_layer, key_layer, value_layer) = self._split_heads(
+            fused_qkv, not use_flash_attention and not self.is_fp8
+        )
 
         batch_size, query_length, _, _ = query_layer.shape
 
