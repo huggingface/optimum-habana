@@ -115,6 +115,7 @@ def incrementor(bucket_size, prompt_len):
             "need_expansion": need_expansion,
         }
 
+
 def get_final_stopping_criteria(x):
     if isinstance(x, bool):
         return x
@@ -122,6 +123,7 @@ def get_final_stopping_criteria(x):
         return all(x)
     else:
         raise TypeError(f"The stopping criteria should be either a boolean or a torch.tensor but got {type(x)}.")
+
 
 class GaudiGenerationMixin(GenerationMixin):
     """
@@ -751,7 +753,7 @@ class GaudiGenerationMixin(GenerationMixin):
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             # In encoder_decoder models, Inputs are already padded
             if generation_config.pad_token_id == generation_config.eos_token_id:
-                assert generation_config.ignore_eos, f"For gaudi we pad input_ids with pad_token_id( = {generation_config.pad_token_id}). which is eauql to the eos_token_id token for this model, so this option (ignore_eos=False) isnt available. Try setting --ignore_eos"
+                assert generation_config.ignore_eos, f"For Gaudi, we pad input_ids with pad_token_id (= {generation_config.pad_token_id}), which is equal to eos_token_id for this model, so this option (ignore_eos=False) isn't available. Try setting `--ignore_eos`."
 
             if not self.config.is_encoder_decoder:
                 # only pad if bucket_size < -1. If we are bucketing (bucket_size > 0), then that is taken care in greedy_search()
@@ -1707,9 +1709,13 @@ class GaudiGenerationMixin(GenerationMixin):
             cur_len = cur_len + 1
 
             if ignore_eos:
-                this_peer_finished = stopping_criteria(input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id)
+                this_peer_finished = stopping_criteria(
+                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                )
             else:
-                unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id)
+                unfinished_sequences = unfinished_sequences & ~stopping_criteria(
+                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                )
                 this_peer_finished = unfinished_sequences.max() == 0
 
             hb_profer.step()
@@ -2092,9 +2098,13 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
             if ignore_eos:
-                this_peer_finished = stopping_criteria(input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id)
+                this_peer_finished = stopping_criteria(
+                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                )
             else:
-                unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id)
+                unfinished_sequences = unfinished_sequences & ~stopping_criteria(
+                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                )
                 this_peer_finished = unfinished_sequences.max() == 0
 
             hb_profer.step()
@@ -2670,7 +2680,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     break
                 elif get_final_stopping_criteria(stopping_criteria(input_ids, scores, token_idx=cur_len)):
                     break
-            elif get_final_stopping_criteria(stopping_criteria(input_ids, scores)) or (beam_scorer.is_done and not lazy_mode):
+            elif get_final_stopping_criteria(stopping_criteria(input_ids, scores)) or (
+                beam_scorer.is_done and not lazy_mode
+            ):
                 this_peer_finished = True
         hb_profer.stop()
 
@@ -3391,7 +3403,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hb_profer.step()
 
-            if constrained_beam_scorer.is_done or get_final_stopping_criteria(stopping_criteria(input_ids, scores, token_idx=cur_len)):
+            if constrained_beam_scorer.is_done or get_final_stopping_criteria(
+                stopping_criteria(input_ids, scores, token_idx=cur_len)
+            ):
                 this_peer_finished = True
 
         hb_profer.stop()

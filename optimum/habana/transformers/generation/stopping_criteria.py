@@ -14,10 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import time
-from optimum.utils import logging
 from typing import Union
+
+import torch
+
+from optimum.utils import logging
+
 
 logger = logging.get_logger(__name__)
 
@@ -25,8 +28,10 @@ logger = logging.get_logger(__name__)
 # we only return a single boolean describing the state of the batch
 # only when needs_tensor_output says so, we return array of booleans
 
+
 def create_return_const_tensor(input_ids, is_done):
     return torch.full((input_ids.shape[0],), 1 if is_done else 0, device=input_ids.device, dtype=torch.uint8)
+
 
 def gaudi_MaxLengthCriteria_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
@@ -59,20 +64,26 @@ def gaudi_MaxNewTokensCriteria_call(
         return create_return_const_tensor(input_ids, is_done)
 
 
-def gaudi_MaxTimeCriteria_call(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> Union[torch.BoolTensor, bool]:
+def gaudi_MaxTimeCriteria_call(
+    self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+) -> Union[torch.BoolTensor, bool]:
     is_done = time.time() - self.initial_timestamp > self.max_time
     if kwargs["needs_tensor_output"]:
         return create_return_const_tensor(input_ids, is_done)
     else:
         return is_done
-    
-def gaudi_EosTokenCriteria_call(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> Union[torch.BoolTensor, bool]:
+
+
+def gaudi_EosTokenCriteria_call(
+    self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+) -> Union[torch.BoolTensor, bool]:
     self.eos_token_id = self.eos_token_id.to(input_ids.device)
     is_done = torch.isin(input_ids[:, -1], self.eos_token_id)
     if kwargs["needs_tensor_output"]:
         return is_done.byte()
     else:
         return torch.all(is_done).item()
+
 
 def needs_tensor_output(token_idx, ignore_eos, eos_token_id) -> bool:
     if token_idx is None:
@@ -81,13 +92,18 @@ def needs_tensor_output(token_idx, ignore_eos, eos_token_id) -> bool:
         # token_idx is present, so we have static shapes, so using single boolean
         False
 
+
 def gaudi_StoppingCriteriaList_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
 ) -> Union[torch.BoolTensor, bool]:
-    kwargs["needs_tensor_output"] = needs_tensor_output(kwargs.get("token_idx",None), kwargs.get("ignore_eos",True), kwargs.get("eos_token_id",None))
-    is_done = torch.full((input_ids.shape[0],), 0, device=input_ids.device, dtype=torch.int8) if kwargs["out_type_tensor"] else False
+    kwargs["needs_tensor_output"] = needs_tensor_output(
+        kwargs.get("token_idx", None), kwargs.get("ignore_eos", True), kwargs.get("eos_token_id", None)
+    )
+    is_done = (
+        torch.full((input_ids.shape[0],), 0, device=input_ids.device, dtype=torch.int8)
+        if kwargs["out_type_tensor"]
+        else False
+    )
     for criteria in self:
         is_done = is_done | criteria(input_ids, scores, **kwargs)
     return is_done
-
-

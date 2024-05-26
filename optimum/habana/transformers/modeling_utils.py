@@ -19,10 +19,10 @@ import transformers.utils.fx
 from .generation import (
     GaudiGenerationConfig,
     GaudiGenerationMixin,
+    gaudi_EosTokenCriteria_call,
     gaudi_MaxLengthCriteria_call,
     gaudi_MaxNewTokensCriteria_call,
     gaudi_MaxTimeCriteria_call,
-    gaudi_EosTokenCriteria_call,
     gaudi_StoppingCriteriaList_call,
 )
 from .models import (
