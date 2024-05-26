@@ -105,7 +105,7 @@ def setup_inference(args, model):
 
 def setup_const_serialization(const_serialization_path):
     import uuid
-    const_serialization_path = os.path.join(const_serialization_path  + uuid.uuid4().hex)
+    const_serialization_path = os.path.join(const_serialization_path + uuid.uuid4().hex)
     os.makedirs(const_serialization_path)
     from habana_frameworks.torch.hpu import enable_const_section_serialization
     print("Serializing const params to {}".format(const_serialization_path))
