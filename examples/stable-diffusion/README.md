@@ -346,7 +346,7 @@ python image_to_image_generation.py \
     --batch_size 4 \
     --guidance_scale 7.5 \
     --num_inference_steps 10 \
-    --image_save_dir /workspace/wangyi/stable_diffusion_images \
+    --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
@@ -363,7 +363,7 @@ python image_to_image_generation.py \
     --src_image_path "https://github.com/SHI-Labs/Versatile-Diffusion/blob/master/assets/demo/reg_example/ghibli.jpg?raw=true" \
     --num_images_per_prompt 20 \
     --batch_size 4 \
-    --image_save_dir /workspace/wangyi/stable_diffusion_images \
+    --image_save_dir /tmp/stable_diffusion_images \
     --guidance_scale 3 \
     --use_habana \
     --use_hpu_graphs \
