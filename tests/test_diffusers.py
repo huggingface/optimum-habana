@@ -2187,9 +2187,9 @@ class GaudiStableDiffusionInstructPix2PixPipelineTests(TestCase):
         inputs["image"] = image.repeat(2, 1, 1, 1)
 
         image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[-1, -3:, -3:, -1]
 
-        self.assertEqual(image.shape, (1, 32, 32, 3))
+        self.assertEqual(image.shape, (2, 32, 32, 3))
         expected_slice = np.array([0.5812, 0.5748, 0.5222, 0.5908, 0.5695, 0.7174, 0.6804, 0.5523, 0.5579])
 
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
