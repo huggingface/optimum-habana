@@ -20,6 +20,12 @@ The following examples showcase how to fine-tune `Wav2Vec2` for audio classifica
 
 Speech recognition models that have been pretrained in an unsupervised fashion on audio data alone, *e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html), have shown to require only very little annotated data to yield good performance on speech classification datasets.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
 
 ## Single-HPU
 

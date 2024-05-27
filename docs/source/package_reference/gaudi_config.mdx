@@ -41,7 +41,7 @@ gaudi_config = GaudiConfig.from_pretrained(
     gaudi_config_name,
     cache_dir=model_args.cache_dir,
     revision=model_args.model_revision,
-    use_auth_token=True if model_args.use_auth_token else None,
+    token=model_args.token,
 )
 ```
 and pass it to the trainer with the `gaudi_config` argument.
