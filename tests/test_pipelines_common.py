@@ -19,6 +19,7 @@ Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelin
 - Remove test_multi_vae testcase.
 - Modified the get_dummy_components to add the Gaudi pipeline parameters: use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval
 """
+
 import contextlib
 import gc
 import inspect
@@ -42,7 +43,8 @@ from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_
 from diffusers.utils.testing_utils import CaptureLogger, require_torch
 
 
-torch_device="hpu"
+torch_device = "hpu"
+
 
 def to_np(tensor):
     if isinstance(tensor, torch.Tensor):
@@ -180,6 +182,7 @@ class PipelineLatentTesterMixin:
 
         max_diff = np.abs(out - out_latents_inputs).max()
         self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
+
 
 @require_torch
 class PipelineKarrasSchedulerTesterMixin:
@@ -523,7 +526,7 @@ class PipelineTesterMixin:
     def test_components_function(self):
         init_components = self.get_dummy_components()
 
-        #init_components = {k: v for k, v in init_components.items() if not isinstance(v, (str, int, float))}
+        # init_components = {k: v for k, v in init_components.items() if not isinstance(v, (str, int, float))}
 
         pipe = self.pipeline_class(**init_components)
         init_components.pop("use_habana")
@@ -725,7 +728,7 @@ class PipelineTesterMixin:
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
-        #pipe.to(torch_device)
+        # pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator_device = "cpu"

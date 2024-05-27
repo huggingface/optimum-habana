@@ -11,7 +11,6 @@
 Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/pipeline_params.py
 """
 
-
 TEXT_TO_IMAGE_PARAMS = frozenset(
     [
         "prompt",

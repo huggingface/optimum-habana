@@ -71,10 +71,8 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-class GaudiStableDiffusionXLInpaintPipeline(
-    GaudiDiffusionPipeline,
-    StableDiffusionXLInpaintPipeline
-):
+
+class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffusionXLInpaintPipeline):
     r"""
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py#L149
     - Two `mark_step()` were added to add support for lazy mode
@@ -137,7 +135,14 @@ class GaudiStableDiffusionXLInpaintPipeline(
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
     """
 
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "add_time_ids", "add_text_embeds", "mask", "masked_image_latents"]
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+        "add_time_ids",
+        "add_text_embeds",
+        "mask",
+        "masked_image_latents",
+    ]
 
     def __init__(
         self,
@@ -184,7 +189,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
         self.to(self._device)
 
     @classmethod
-    def _split_and_cat_tensors(cls, batch_size, input_a, input_b=None, do_classifier_free_guidance = True):
+    def _split_and_cat_tensors(cls, batch_size, input_a, input_b=None, do_classifier_free_guidance=True):
         if input_a is None:
             return None, 0
 
@@ -209,12 +214,10 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 input_b_batches[-1] = torch.vstack(sequence_to_stack)
 
         if input_b is not None and do_classifier_free_guidance:
-             # For classifier free guidance, we need to do two forward passes.
+            # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            for i, (input_b_batch, input_a_batch) in enumerate(
-                zip(input_b_batches, input_a_batches[:])
-            ):
+            for i, (input_b_batch, input_a_batch) in enumerate(zip(input_b_batches, input_a_batches[:])):
                 input_a_batches[i] = torch.cat([input_b_batch, input_a_batch])
 
         input_a_batches = torch.stack(input_a_batches)
@@ -506,7 +509,6 @@ class GaudiStableDiffusionXLInpaintPipeline(
             if num_batches < 3:
                 logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
 
-
             device = self._execution_device
             # 3. Encode input prompt
             text_encoder_lora_scale = (
@@ -629,7 +631,10 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 # default case for runwayml/stable-diffusion-inpainting
                 num_channels_mask = mask.shape[1]
                 num_channels_masked_image = masked_image_latents.shape[1]
-                if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
+                if (
+                    num_channels_latents + num_channels_mask + num_channels_masked_image
+                    != self.unet.config.in_channels
+                ):
                     raise ValueError(
                         f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                         f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
@@ -695,17 +700,11 @@ class GaudiStableDiffusionXLInpaintPipeline(
             # 11 Split into batches (HPU-specific step)
             latents_batches, num_dummy_samples = self._split_and_cat_tensors(batch_size, latents)
             prompt_embeds_batches, _ = self._split_and_cat_tensors(
-                batch_size,
-                prompt_embeds,
-                negative_prompt_embeds,
-                self.do_classifier_free_guidance
+                batch_size, prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
             )
             noise_batches, _ = self._split_and_cat_tensors(batch_size, noise)
             add_text_embeds_batches, _ = self._split_and_cat_tensors(
-                batch_size,
-                add_text_embeds,
-                negative_pooled_prompt_embeds,
-                self.do_classifier_free_guidance
+                batch_size, add_text_embeds, negative_pooled_prompt_embeds, self.do_classifier_free_guidance
             )
             mask_batches, _ = self._split_and_cat_tensors(batch_size, mask)
             masked_image_latents_batches, _ = self._split_and_cat_tensors(batch_size, masked_image_latents)
@@ -752,7 +751,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
             t0 = time.time()
             t1 = t0
             for j in self.progress_bar(range(num_batches)):
-                #The throughput is calculated from the 3rd iteration
+                # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
                 latents_batch = latents_batches[0]
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
@@ -776,8 +775,7 @@ class GaudiStableDiffusionXLInpaintPipeline(
                 if j == throughput_warmup_steps:
                     t1 = time.time()
 
-
-                #If use the diffuser's scheduler of non-Gaudi version, the timesteps need to reset every batch in order to avoid index overflow of timesteps.
+                # If use the diffuser's scheduler of non-Gaudi version, the timesteps need to reset every batch in order to avoid index overflow of timesteps.
                 if j > 0 and "Gaudi" not in self.scheduler.__class__.__name__:
                     self.scheduler._init_step_index(timesteps[0])
 
@@ -788,14 +786,22 @@ class GaudiStableDiffusionXLInpaintPipeline(
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    latent_model_input = (
+                        torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    )
                     # concat latents, mask, masked_image_latents in the channel dimension
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                     mask_batch_input = torch.cat([mask_batch] * 2) if self.do_classifier_free_guidance else mask_batch
 
                     if num_channels_unet == 9:
-                        masked_image_latents_batch_input = torch.cat([masked_image_latents_batch] * 2) if self.do_classifier_free_guidance else masked_image_latents_batch
-                        latent_model_input = torch.cat([latent_model_input, mask_batch_input, masked_image_latents_batch_input], dim=1)
+                        masked_image_latents_batch_input = (
+                            torch.cat([masked_image_latents_batch] * 2)
+                            if self.do_classifier_free_guidance
+                            else masked_image_latents_batch
+                        )
+                        latent_model_input = torch.cat(
+                            [latent_model_input, mask_batch_input, masked_image_latents_batch_input], dim=1
+                        )
 
                     # predict the noise residual
                     added_cond_kwargs = {"text_embeds": add_text_embeds_batch, "time_ids": add_time_ids_batch}
@@ -819,10 +825,14 @@ class GaudiStableDiffusionXLInpaintPipeline(
 
                     if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                         # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                        noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+                        noise_pred = rescale_noise_cfg(
+                            noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale
+                        )
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents_batch = self.scheduler.step(noise_pred, t, latents_batch, **extra_step_kwargs, return_dict=False)[0]
+                    latents_batch = self.scheduler.step(
+                        noise_pred, t, latents_batch, **extra_step_kwargs, return_dict=False
+                    )[0]
                     if not self.use_hpu_graphs:
                         self.htcore.mark_step()
 
@@ -849,15 +859,17 @@ class GaudiStableDiffusionXLInpaintPipeline(
 
                         latents_batch = callback_outputs.pop("latents", latents_batch)
                         prompt_embeds_batch = callback_outputs.pop("prompt_embeds", prompt_embeds_batch)
-                        #negative_prompt_embeds_batch = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds_batch)
+                        # negative_prompt_embeds_batch = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds_batch)
                         add_text_embeds_batch = callback_outputs.pop("add_text_embeds", add_text_embeds_batch)
                         # negative_pooled_prompt_embeds = callback_outputs.pop(
                         #     "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
                         # )
                         add_time_ids_batch = callback_outputs.pop("add_time_ids", add_time_ids_batch)
-                        #add_neg_time_ids_batch = callback_outputs.pop("add_neg_time_ids", add_neg_time_ids_batch)
+                        # add_neg_time_ids_batch = callback_outputs.pop("add_neg_time_ids", add_neg_time_ids_batch)
                         mask_batch = callback_outputs.pop("mask", mask_batch)
-                        masked_image_latents_batch = callback_outputs.pop("masked_image_latents", masked_image_latents_batch)
+                        masked_image_latents_batch = callback_outputs.pop(
+                            "masked_image_latents", masked_image_latents_batch
+                        )
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -914,11 +926,13 @@ class GaudiStableDiffusionXLInpaintPipeline(
 
                 image = self.image_processor.postprocess(image, output_type=output_type)
                 if padding_mask_crop is not None:
-                    image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
+                    image = [
+                        self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image
+                    ]
 
-                if output_type == "pil" and isinstance(image, list) :
+                if output_type == "pil" and isinstance(image, list):
                     outputs["images"] += image
-                elif output_type in ["np", "numpy"] and isinstance(image, numpy.ndarray) :
+                elif output_type in ["np", "numpy"] and isinstance(image, numpy.ndarray):
                     if len(outputs["images"]) == 0:
                         outputs["images"] = image
                     else:
@@ -929,13 +943,14 @@ class GaudiStableDiffusionXLInpaintPipeline(
                     else:
                         outputs["images"] = torch.cat((outputs["images"], image), 0)
 
-
             # Offload all models
             self.maybe_free_model_hooks()
             if not return_dict:
                 return (outputs["images"],)
 
-            return GaudiStableDiffusionXLPipelineOutput(images=outputs["images"], throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"])
+            return GaudiStableDiffusionXLPipelineOutput(
+                images=outputs["images"], throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"]
+            )
 
     @torch.no_grad()
     def unet_hpu(

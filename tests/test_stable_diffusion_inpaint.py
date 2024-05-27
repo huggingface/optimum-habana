@@ -23,7 +23,6 @@ Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelin
     test_stable_diffusion_inpaint_no_throughput_regression
 """
 
-
 import gc
 import os
 import random
@@ -64,6 +63,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     INPAINT_THROUGHPUT_BASELINE_BF16 = 3.75
 else:
     INPAINT_THROUGHPUT_BASELINE_BF16 = 1.422
+
 
 class StableDiffusionInpaintPipelineFastTests(
     PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
@@ -186,13 +186,15 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         super().tearDown()
         gc.collect()
 
-    def create_inpaint_pipe(self,
-                            model_name = "stabilityai/stable-diffusion-2-inpainting",
-                            scheduler = None,
-                            use_hpu_graphs = False,
-                            gaudi_config = "Habana/stable-diffusion",
-                            disable_safety_checker = False,
-                            torch_dtype = torch.bfloat16):
+    def create_inpaint_pipe(
+        self,
+        model_name="stabilityai/stable-diffusion-2-inpainting",
+        scheduler=None,
+        use_hpu_graphs=False,
+        gaudi_config="Habana/stable-diffusion",
+        disable_safety_checker=False,
+        torch_dtype=torch.bfloat16,
+    ):
         from optimum.habana.diffusers import GaudiDDIMScheduler
 
         if scheduler is None:
@@ -208,7 +210,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         if disable_safety_checker is True:
             kwargs["safety_checker"] = None
 
-        sdi_pipe = GaudiStableDiffusionInpaintPipeline.from_pretrained(model_name,**kwargs).to(torch_dtype)
+        sdi_pipe = GaudiStableDiffusionInpaintPipeline.from_pretrained(model_name, **kwargs).to(torch_dtype)
 
         sdi_pipe.set_progress_bar_config(disable=None)
 
@@ -232,7 +234,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "use_habana": True,
             "use_hpu_graphs": True,
             "gaudi_config": "Habana/stable-diffusion",
-            "torch_dtype": torch.float
+            "torch_dtype": torch.float,
         }
 
         pipe = GaudiStableDiffusionInpaintPipeline.from_pretrained(model_id, safety_checker=None, **init_kwargs)
@@ -252,8 +254,8 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        #There is no difference in the experimental results observed by the human eye.
-        #np.abs(expected_image - image).max() = 0.31966144
+        # There is no difference in the experimental results observed by the human eye.
+        # np.abs(expected_image - image).max() = 0.31966144
         assert np.abs(expected_image - image).max() < 0.4
 
     def test_stable_diffusion_inpaint_pipeline_bf16(self):
@@ -274,14 +276,10 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "use_habana": True,
             "use_hpu_graphs": True,
             "gaudi_config": "Habana/stable-diffusion-2",
-            "torch_dtype": torch.bfloat16
+            "torch_dtype": torch.bfloat16,
         }
 
-        pipe = GaudiStableDiffusionInpaintPipeline.from_pretrained(
-            model_id,
-            safety_checker=None,
-            **init_kwargs
-        )
+        pipe = GaudiStableDiffusionInpaintPipeline.from_pretrained(model_id, safety_checker=None, **init_kwargs)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
@@ -298,8 +296,8 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        #The format of expected_image used for testing is only float16. There is no difference in the experimental results observed by the human eye.
-        #np.abs(expected_image - image).max() = 0.9626465
+        # The format of expected_image used for testing is only float16. There is no difference in the experimental results observed by the human eye.
+        # np.abs(expected_image - image).max() = 0.9626465
         assert np.abs(expected_image - image).max() < 0.97
 
     @slow
@@ -316,20 +314,23 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             clip_sample=False,
             set_alpha_to_one=False,
         )
-        sdi_pipe = self.create_inpaint_pipe(gaudi_config = gaudi_config, scheduler = scheduler, disable_safety_checker = True)
+        sdi_pipe = self.create_inpaint_pipe(
+            gaudi_config=gaudi_config, scheduler=scheduler, disable_safety_checker=True
+        )
 
-        #Initialize inpaint parameters
-        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
-        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+        # Initialize inpaint parameters
+        init_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png"
+        )
 
         self.assertIsInstance(sdi_pipe, GaudiStableDiffusionInpaintPipeline)
         self.assertIsInstance(sdi_pipe.scheduler, GaudiDDIMScheduler)
         self.assertIsNone(sdi_pipe.safety_checker)
 
-        image = sdi_pipe("example prompt",
-            image=init_image,
-            mask_image=mask_image,
-            num_inference_steps=2).images[0]
+        image = sdi_pipe("example prompt", image=init_image, mask_image=mask_image, num_inference_steps=2).images[0]
         self.assertIsNotNone(image)
 
         # Check that there's no error when saving a pipeline with one of the models being None
@@ -343,10 +344,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         # Sanity check that the pipeline still works
         self.assertIsNone(sdi_pipe.safety_checker)
-        image = sdi_pipe("example prompt",
-            image=init_image,
-            mask_image=mask_image,
-            num_inference_steps=2).images[0]
+        image = sdi_pipe("example prompt", image=init_image, mask_image=mask_image, num_inference_steps=2).images[0]
         self.assertIsNotNone(image)
 
     @slow
@@ -363,20 +361,23 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             clip_sample=False,
             set_alpha_to_one=False,
         )
-        sdi_pipe = self.create_inpaint_pipe(gaudi_config = gaudi_config, scheduler = scheduler, disable_safety_checker = False)
+        sdi_pipe = self.create_inpaint_pipe(
+            gaudi_config=gaudi_config, scheduler=scheduler, disable_safety_checker=False
+        )
 
-        #Initialize inpaint parameters
-        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
-        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+        # Initialize inpaint parameters
+        init_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png"
+        )
 
         self.assertIsInstance(sdi_pipe, GaudiStableDiffusionInpaintPipeline)
         self.assertIsInstance(sdi_pipe.scheduler, GaudiDDIMScheduler)
-        #self.assertIsNotNone(sdi_pipe.safety_checker) <--- The safety checker is not being found.
+        # self.assertIsNotNone(sdi_pipe.safety_checker) <--- The safety checker is not being found.
 
-        image = sdi_pipe("example prompt",
-            image=init_image,
-            mask_image=mask_image,
-            num_inference_steps=2).images[0]
+        image = sdi_pipe("example prompt", image=init_image, mask_image=mask_image, num_inference_steps=2).images[0]
         self.assertIsNotNone(image)
 
         # Check that there's no error when saving a pipeline with one of the models being None
@@ -390,10 +391,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         # Sanity check that the pipeline still works
         self.assertIsNone(sdi_pipe.safety_checker)
-        image = sdi_pipe("example prompt",
-            image=init_image,
-            mask_image=mask_image,
-            num_inference_steps=2).images[0]
+        image = sdi_pipe("example prompt", image=init_image, mask_image=mask_image, num_inference_steps=2).images[0]
         self.assertIsNotNone(image)
 
     @slow
@@ -401,9 +399,13 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         """Test that stable diffusion inpainting no throughput regression autocast"""
         from diffusers.utils import load_image
 
-        #Initialize inpaint parameters
-        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
-        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+        # Initialize inpaint parameters
+        init_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png"
+        )
 
         prompts = [
             "a black cat with glowing eyes, cute, adorable, disney, pixar, highly detailed, 8k",
@@ -428,8 +430,8 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
             throughput_warmup_steps=3,
-            num_inference_steps = num_inference_steps,
-            batch_size=4
+            num_inference_steps=num_inference_steps,
+            batch_size=4,
         )
 
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))

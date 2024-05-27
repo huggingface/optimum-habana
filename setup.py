@@ -48,7 +48,7 @@ TESTS_REQUIRE = [
     "datasets",
     "safetensors",
     "scipy",
-    "torchsde"
+    "torchsde",
 ]
 
 QUALITY_REQUIRES = [

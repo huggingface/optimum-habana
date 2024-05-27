@@ -20,6 +20,7 @@ Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelin
 - Modified the get_dummy_components to add the Gaudi pipeline parameters: use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval
 - added test_stable_diffusion_xl_inpaint_no_throughput_regression
 """
+
 import copy
 import os
 import random
@@ -189,7 +190,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "use_habana": True,
             "use_hpu_graphs": True,
             "gaudi_config": "Habana/stable-diffusion",
-            "bf16_full_eval": True
+            "bf16_full_eval": True,
         }
         return components
 
@@ -248,7 +249,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "output_type": "np",
-            "batch_size": 2
+            "batch_size": 2,
         }
         return inputs
 
@@ -439,8 +440,8 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         for steps in [7, 20]:
             assert_run_mixture(steps, 0.33, EulerDiscreteScheduler)
-            #Currently cannot support the default HeunDiscreteScheduler
-            #assert_run_mixture(steps, 0.33, HeunDiscreteScheduler)
+            # Currently cannot support the default HeunDiscreteScheduler
+            # assert_run_mixture(steps, 0.33, HeunDiscreteScheduler)
 
     @slow
     def test_stable_diffusion_two_xl_mixture_of_denoiser(self):
@@ -506,7 +507,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
                     GaudiEulerAncestralDiscreteScheduler,
                     DPMSolverMultistepScheduler,
                     UniPCMultistepScheduler,
-                    #HeunDiscreteScheduler,
+                    # HeunDiscreteScheduler,
                 ]:
                     assert_run_mixture(steps, split, scheduler_cls)
 
@@ -598,12 +599,12 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
                     GaudiEulerAncestralDiscreteScheduler,
                     DPMSolverMultistepScheduler,
                     UniPCMultistepScheduler,
-                    #HeunDiscreteScheduler,
+                    # HeunDiscreteScheduler,
                 ]:
                     assert_run_mixture(steps, split_1, split_2, scheduler_cls)
 
     def test_stable_diffusion_xl_multi_prompts(self):
-        device= "cpu"
+        device = "cpu"
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
         # forward with single prompt
@@ -813,9 +814,13 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         """Test that stable diffusion inpainting no throughput regression autocast"""
         from diffusers.utils import load_image
 
-        #Initialize inpaint parameters
-        init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
-        mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+        # Initialize inpaint parameters
+        init_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png"
+        )
 
         prompts = [
             "a black cat with glowing eyes, cute, adorable, disney, pixar, highly detailed, 8k",
@@ -828,7 +833,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "use_habana": True,
             "use_hpu_graphs": True,
             "gaudi_config": "Habana/stable-diffusion",
-            "torch_dtype": torch.bfloat16
+            "torch_dtype": torch.bfloat16,
         }
         sdi_pipe = GaudiStableDiffusionXLInpaintPipeline.from_pretrained(model_name, **init_kwargs)
 
@@ -839,8 +844,8 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
             throughput_warmup_steps=2,
-            num_inference_steps = num_inference_steps,
-            batch_size=4
+            num_inference_steps=num_inference_steps,
+            batch_size=4,
         )
 
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))

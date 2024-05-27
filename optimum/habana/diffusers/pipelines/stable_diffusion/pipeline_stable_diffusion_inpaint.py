@@ -34,10 +34,8 @@ from .pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-class GaudiStableDiffusionInpaintPipeline(
-    GaudiDiffusionPipeline,
-    StableDiffusionInpaintPipeline
-):
+
+class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusionInpaintPipeline):
     r"""
     Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py#L222
     - Two `mark_step()` were added to add support for lazy mode
@@ -107,7 +105,6 @@ class GaudiStableDiffusionInpaintPipeline(
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
-
         GaudiDiffusionPipeline.__init__(
             self,
             use_habana,
@@ -132,7 +129,9 @@ class GaudiStableDiffusionInpaintPipeline(
         self.to(self._device)
 
     @classmethod
-    def _split_inputs_into_batches(cls, batch_size, latents, prompt_embeds, negative_prompt_embeds, mask, masked_image_latents):
+    def _split_inputs_into_batches(
+        cls, batch_size, latents, prompt_embeds, negative_prompt_embeds, mask, masked_image_latents
+    ):
         # Use torch.split to generate num_batches batches of size batch_size
         latents_batches = list(torch.split(latents, batch_size))
         prompt_embeds_batches = list(torch.split(prompt_embeds, batch_size))
@@ -194,7 +193,6 @@ class GaudiStableDiffusionInpaintPipeline(
         masked_image_latents_batches = torch.stack(masked_image_latents_batches)
 
         return latents_batches, prompt_embeds_batches, num_dummy_samples, mask_batches, masked_image_latents_batches
-
 
     @torch.no_grad()
     def __call__(
@@ -520,12 +518,15 @@ class GaudiStableDiffusionInpaintPipeline(
                 self.do_classifier_free_guidance,
             )
 
-            #8. Check that sizes of mask, masked image and latents match
+            # 8. Check that sizes of mask, masked image and latents match
             if num_channels_unet == 9:
                 # default case for runwayml/stable-diffusion-inpainting
                 num_channels_mask = mask.shape[1]
                 num_channels_masked_image = masked_image_latents.shape[1]
-                if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
+                if (
+                    num_channels_latents + num_channels_mask + num_channels_masked_image
+                    != self.unet.config.in_channels
+                ):
                     raise ValueError(
                         f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                         f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
@@ -542,11 +543,7 @@ class GaudiStableDiffusionInpaintPipeline(
             extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
             # 9.1 Add image embeds for IP-Adapter
-            added_cond_kwargs = (
-                {"image_embeds": image_embeds}
-                if ip_adapter_image is not None
-                else None
-            )
+            added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
             # 9.2 Optionally get Guidance Scale Embedding
             timestep_cond = None
@@ -562,13 +559,15 @@ class GaudiStableDiffusionInpaintPipeline(
             self._num_timesteps = len(timesteps)
 
             # 11. Split into batches (HPU-specific step)
-            latents_batches, prompt_embeds_batches, num_dummy_samples, mask_batches, masked_image_latents_batches = self._split_inputs_into_batches(
-                batch_size,
-                latents,
-                prompt_embeds,
-                negative_prompt_embeds,
-                mask,
-                masked_image_latents,
+            latents_batches, prompt_embeds_batches, num_dummy_samples, mask_batches, masked_image_latents_batches = (
+                self._split_inputs_into_batches(
+                    batch_size,
+                    latents,
+                    prompt_embeds,
+                    negative_prompt_embeds,
+                    mask,
+                    masked_image_latents,
+                )
             )
 
             outputs = {
@@ -579,7 +578,7 @@ class GaudiStableDiffusionInpaintPipeline(
             t1 = t0
 
             for j in self.progress_bar(range(num_batches)):
-                #The throughput is calculated from the 3rd iteration
+                # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
 
                 latents_batch = latents_batches[0]
@@ -601,14 +600,22 @@ class GaudiStableDiffusionInpaintPipeline(
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    latent_model_input = (
+                        torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
+                    )
                     mask_batch_input = torch.cat([mask_batch] * 2) if self.do_classifier_free_guidance else mask_batch
-                    masked_image_latents_batch_input = torch.cat([masked_image_latents_batch] * 2) if self.do_classifier_free_guidance else masked_image_latents_batch
+                    masked_image_latents_batch_input = (
+                        torch.cat([masked_image_latents_batch] * 2)
+                        if self.do_classifier_free_guidance
+                        else masked_image_latents_batch
+                    )
 
                     # concat latents, mask, masked_image_latents in the channel dimension
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
                     if num_channels_unet == 9:
-                        latent_model_input = torch.cat([latent_model_input, mask_batch_input, masked_image_latents_batch_input], dim=1)
+                        latent_model_input = torch.cat(
+                            [latent_model_input, mask_batch_input, masked_image_latents_batch_input], dim=1
+                        )
                     # predict the noise residual
                     noise_pred = self.unet_hpu(
                         latent_model_input,
@@ -625,7 +632,9 @@ class GaudiStableDiffusionInpaintPipeline(
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents_batch = self.scheduler.step(noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False)[0]
+                    latents_batch = self.scheduler.step(
+                        noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False
+                    )[0]
                     if num_channels_unet == 4:
                         init_latents_proper = image_latents
                         if self.do_classifier_free_guidance:
@@ -650,12 +659,14 @@ class GaudiStableDiffusionInpaintPipeline(
 
                         latents_batch = callback_outputs.pop("latents", latents_batch)
                         prompt_embeds_batch = callback_outputs.pop("prompt_embeds", prompt_embeds_batch)
-                        #negative_prompt_embeds_batch = callback_outputs.pop("negative_prompt_embeds", None)
+                        # negative_prompt_embeds_batch = callback_outputs.pop("negative_prompt_embeds", None)
                         # if negative_prompt_embeds_batch is not None:
                         #     prompt_embeds_batch = torch.cat([prompt_embeds_batch, negative_prompt_embeds_batch])
 
                         mask_batch = callback_outputs.pop("mask", mask_batch)
-                        masked_image_latents_batch = callback_outputs.pop("masked_image_latents", masked_image_latents_batch)
+                        masked_image_latents_batch = callback_outputs.pop(
+                            "masked_image_latents", masked_image_latents_batch
+                        )
 
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -672,7 +683,10 @@ class GaudiStableDiffusionInpaintPipeline(
                         mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
                         condition_kwargs = {"image": init_image_condition, "mask": mask_condition}
                     image = self.vae.decode(
-                        latents_batch / self.vae.config.scaling_factor, return_dict=False, generator=generator, **condition_kwargs
+                        latents_batch / self.vae.config.scaling_factor,
+                        return_dict=False,
+                        generator=generator,
+                        **condition_kwargs,
                     )[0]
                 else:
                     image = latents_batch
@@ -715,11 +729,13 @@ class GaudiStableDiffusionInpaintPipeline(
 
                 image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
                 if padding_mask_crop is not None:
-                    image = [self.image_processor.apply_overlay(mask_image, original_image, j, crops_coords) for j in image]
+                    image = [
+                        self.image_processor.apply_overlay(mask_image, original_image, j, crops_coords) for j in image
+                    ]
 
-                if output_type == "pil" and isinstance(image, list) :
+                if output_type == "pil" and isinstance(image, list):
                     outputs["images"] += image
-                elif output_type in ["np", "numpy"] and isinstance(image, numpy.ndarray) :
+                elif output_type in ["np", "numpy"] and isinstance(image, numpy.ndarray):
                     if len(outputs["images"]) == 0:
                         outputs["images"] = image
                     else:
@@ -740,7 +756,11 @@ class GaudiStableDiffusionInpaintPipeline(
             if not return_dict:
                 return (outputs["images"], outputs["has_nsfw_concept"])
 
-            return GaudiStableDiffusionPipelineOutput(images=outputs["images"], nsfw_content_detected=outputs["has_nsfw_concept"], throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"])
+            return GaudiStableDiffusionPipelineOutput(
+                images=outputs["images"],
+                nsfw_content_detected=outputs["has_nsfw_concept"],
+                throughput=speed_measures[f"{speed_metrics_prefix}_samples_per_second"],
+            )
 
     @torch.no_grad()
     def unet_hpu(

@@ -52,12 +52,10 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
 )
 
 
-
 SUPPORTED_TASKS_MAPPINGS = [
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
     AUTO_INPAINT_PIPELINES_MAPPING,
 ]
-
 
 
 def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool = True):
@@ -66,6 +64,7 @@ def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool
             for model_name, pipeline in task_mapping.items():
                 if pipeline.__name__ == pipeline_class_name:
                     return model_name
+
     pipeline_class_name = GAUDI_PREFIX_NAME + pipeline_class_name
     model_name = get_model(pipeline_class_name)
 

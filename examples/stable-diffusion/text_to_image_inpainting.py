@@ -18,6 +18,7 @@ Adapted from: https://github.com/huggingface/optimum-habana/blob/main/examples/s
 - Use the AutoPipelineForInpainting to load the Gaudi inpaint pipeline.
 - Add the inpaint examples from https://huggingface.co/docs/diffusers/en/using-diffusers/inpaint
 """
+
 import argparse
 import logging
 import sys
@@ -48,6 +49,7 @@ except ImportError:
 
 
 check_optimum_habana_min_version("1.10.0")
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -82,9 +84,7 @@ def main():
     parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
     )
-    parser.add_argument(
-        "--batch_size", type=int, default=1, help="The batch size to generate per step."
-    )
+    parser.add_argument("--batch_size", type=int, default=1, help="The batch size to generate per step.")
     parser.add_argument(
         "--height",
         type=int,
@@ -205,31 +205,28 @@ def main():
     elif args.scheduler == "dimm":
         scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler", **kwargs)
     else:
-        #Use the default scheduler of pretrained model
+        # Use the default scheduler of pretrained model
         scheduler = None
 
     init_kwargs = {
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
-        "torch_dtype": torch.bfloat16 if args.bf16 else None
+        "torch_dtype": torch.bfloat16 if args.bf16 else None,
     }
     if scheduler is not None:
         init_kwargs["scheduler"] = scheduler
 
-    pipe = AutoPipelineForInpainting.from_pretrained(
-        args.model_name_or_path,
-        **init_kwargs
-    )
+    pipe = AutoPipelineForInpainting.from_pretrained(args.model_name_or_path, **init_kwargs)
 
-    kwargs={
+    kwargs = {
         "num_inference_steps": args.num_inference_steps,
         "num_images_per_prompt": args.num_images_per_prompt,
         "height": args.height,
         "width": args.width,
         "guidance_scale": args.guidance_scale,
         "output_type": args.output_type,
-        "batch_size": args.batch_size
+        "batch_size": args.batch_size,
     }
 
     prompts = args.prompts
@@ -248,6 +245,7 @@ def main():
                 image.save(image_save_dir / f"image_{i+1}.png")
         else:
             logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
+
 
 if __name__ == "__main__":
     main()
