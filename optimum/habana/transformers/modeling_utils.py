@@ -66,6 +66,9 @@ from .models import (
     GaudiPhiDecoderLayer,
     GaudiPhiForCausalLM,
     GaudiPhiModel,
+    GaudiQwen2Model,
+    GaudiQwen2Attention,
+    GaudiQwen2MLP,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
     GaudiStableLmForCausalLM,
@@ -135,8 +138,7 @@ from .models import (
     gaudi_persimmon_attention_forward,
     gaudi_persimmon_decoder_layer_forward,
     gaudi_persimmon_model_forward,
-    gaudi_qwen2_attention_forward,
-    gaudi_qwen2_model_forward,
+    gaudi_qwen2_rmsnorm_forward,
     gaudi_rot_matmul,
     gaudi_rot_vec_mul,
     gaudi_SpeechT5Attention_forward,
@@ -414,9 +416,11 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for qwen2 on Gaudi
     transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = GaudiQwen2ForCausalLM
-    transformers.models.qwen2.modeling_qwen2.Qwen2Model.forward = gaudi_qwen2_model_forward
-    transformers.models.qwen2.modeling_qwen2.Qwen2Attention.forward = gaudi_qwen2_attention_forward
+    transformers.models.qwen2.modeling_qwen2.Qwen2Model = GaudiQwen2Model
+    transformers.models.qwen2.modeling_qwen2.Qwen2Attention = GaudiQwen2Attention
+    transformers.models.qwen2.modeling_qwen2.Qwen2MLP = GaudiQwen2MLP
     transformers.models.qwen2.modeling_qwen2.Qwen2DecoderLayer = GaudiQwen2DecoderLayer
+    transformers.models.qwen2.modeling_qwen2.Qwen2RMSNorm.forward = gaudi_qwen2_rmsnorm_forward
 
     # Optimization for stablelm on Gaudi
     transformers.models.stablelm.modeling_stablelm.StableLmForCausalLM = GaudiStableLmForCausalLM
