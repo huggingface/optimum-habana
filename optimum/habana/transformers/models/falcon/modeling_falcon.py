@@ -430,7 +430,7 @@ class GaudiFalconAttention(FalconAttention):
         else:
             kv_length = present[0][-2] if reuse_cache else present[0].shape[-2]
 
-        if alibi is None:  # inference case
+        if alibi is None:  # both train/inference
             if output_attentions:
                 attention_scores = query_layer @ key_layer.transpose(-1, -2)
                 attention_scores /= math.sqrt(self.head_dim)
@@ -439,7 +439,9 @@ class GaudiFalconAttention(FalconAttention):
                 # It is unclear why neither dropout nor head_mask is applied here (while it is with alibi).
                 attn_output = attention_scores @ value_layer
             else:
-                if use_flash_attention:
+                if use_flash_attention or (
+                    self.training and self._use_sdpa and not output_attentions and head_mask is None
+                ):
                     is_causal = self.is_causal and query_length > 1 and flash_attention_causal_mask
                     if self.is_fp8:
                         attn_mask = None if is_causal else attention_mask
