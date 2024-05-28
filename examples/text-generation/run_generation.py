@@ -30,7 +30,7 @@ import pandas as pd
 import struct
 import contextlib
 import torch
-from utils import adjust_batch, count_hpu_graphs, initialize_model
+from utils import adjust_batch, count_hpu_graphs, initialize_model, finalize_quantization
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -818,9 +818,7 @@ def main():
             print(f"Graph compilation duration          = {compilation_duration} seconds")
         print(separator)
     if args.quant_config:
-        import habana_quantization_toolkit
-
-        habana_quantization_toolkit.finish_measurements(model)
+        finalize_quantization(model)
     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
         import shutil
 
