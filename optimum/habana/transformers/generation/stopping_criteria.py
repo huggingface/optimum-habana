@@ -90,7 +90,7 @@ def needs_tensor_output(token_idx, ignore_eos, eos_token_id) -> bool:
         return not ignore_eos and eos_token_id is not None
     else:
         # token_idx is present, so we have static shapes, so using single boolean
-        False
+        return False
 
 
 def gaudi_StoppingCriteriaList_call(
@@ -101,7 +101,7 @@ def gaudi_StoppingCriteriaList_call(
     )
     is_done = (
         torch.full((input_ids.shape[0],), 0, device=input_ids.device, dtype=torch.int8)
-        if kwargs["out_type_tensor"]
+        if kwargs["needs_tensor_output"]
         else False
     )
     for criteria in self:
