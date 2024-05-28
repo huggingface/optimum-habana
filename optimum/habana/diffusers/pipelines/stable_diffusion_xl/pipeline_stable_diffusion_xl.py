@@ -825,9 +825,9 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
                 image = self.image_processor.postprocess(image, output_type=output_type)
 
-                if output_type == "pil" and isinstance(image, list) :
+                if output_type == "pil" and isinstance(image, list):
                     outputs["images"] += image
-                elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray) :
+                elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
                     if len(outputs["images"]) == 0:
                         outputs["images"] = image
                     else:
