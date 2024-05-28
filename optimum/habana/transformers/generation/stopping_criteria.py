@@ -101,7 +101,7 @@ def gaudi_StoppingCriteriaList_call(
     )
     is_done = (
         torch.full((input_ids.shape[0],), 0, device=input_ids.device, dtype=torch.int8)
-        if kwargs["out_type_tensor"]
+        if kwargs["needs_tensor_output"]
         else False
     )
     for criteria in self:

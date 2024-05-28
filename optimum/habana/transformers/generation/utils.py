@@ -752,8 +752,6 @@ class GaudiGenerationMixin(GenerationMixin):
         if generation_config.static_shapes:
             # Pad inputs to have static shapes during generation, this gives better performance than dynamic shapes on HPUs
             # In encoder_decoder models, Inputs are already padded
-            if generation_config.pad_token_id == generation_config.eos_token_id:
-                assert generation_config.ignore_eos, f"For Gaudi, we pad input_ids with pad_token_id (= {generation_config.pad_token_id}), which is equal to eos_token_id for this model, so this option (ignore_eos=False) isn't available. Try setting `--ignore_eos`."
 
             if not self.config.is_encoder_decoder:
                 # only pad if bucket_size < -1. If we are bucketing (bucket_size > 0), then that is taken care in greedy_search()
@@ -946,6 +944,8 @@ class GaudiGenerationMixin(GenerationMixin):
             stopping_criteria=stopping_criteria,
             ignore_eos=self.generation_config.ignore_eos,
         )
+        if generation_config.static_shapes and (generation_config.pad_token_id == generation_config.eos_token_id):
+            assert not any(isinstance(k, EosTokenCriteria) for k in prepared_stopping_criteria), f"For Gaudi, we pad input_ids with pad_token_id (= {generation_config.pad_token_id}), which is equal to eos_token_id for this model, and EosTokenCriteria stopping criteria is requested, so this option (ignore_eos=False) isn't available. Try setting `--ignore_eos` to False."
 
         # In lazy mode, import Habana torch to be able to add mark_step()
         if lazy_mode:
