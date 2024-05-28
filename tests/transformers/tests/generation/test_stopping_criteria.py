@@ -94,26 +94,31 @@ class StoppingCriteriaTestCase(unittest.TestCase):
         input_ids, scores = self._get_tensors(5)
 
         criteria = MaxTimeCriteria(max_time=0.1)
-        self.assertFalse(all(criteria(input_ids, scores)))
+        self.assertFalse(all(criteria(input_ids, scores, needs_tensor_output=True)))
+        self.assertFalse(criteria(input_ids, scores, needs_tensor_output=False))
 
         criteria = MaxTimeCriteria(max_time=0.1, initial_timestamp=time.time() - 0.2)
-        self.assertTrue(all(criteria(input_ids, scores)))
+        self.assertTrue(all(criteria(input_ids, scores, needs_tensor_output=True)))
+        self.assertTrue(criteria(input_ids, scores, needs_tensor_output=False))
 
     def test_eos_token_criteria(self):
         criteria = EosTokenCriteria(eos_token_id=0)
 
         input_ids, scores = self._get_tensors(5)
         input_ids[:, -1] = 0
-        self.assertTrue(all(criteria(input_ids, scores)))
+        self.assertTrue(all(criteria(input_ids, scores, needs_tensor_output=True)))
+        self.assertTrue(criteria(input_ids, scores, needs_tensor_output=False))
 
         input_ids, scores = self._get_tensors(5)
         input_ids[:2, -1] = 0
         input_ids[2, -1] = 1
-        self.assertListEqual(criteria(input_ids, scores).tolist(), [True, True, False])
+        self.assertListEqual(criteria(input_ids, scores, needs_tensor_output=True).tolist(), [True, True, False])
+        self.assertFalse(criteria(input_ids, scores, needs_tensor_output=False))
 
         input_ids, scores = self._get_tensors(5)
         input_ids[:, -1] = 1
-        self.assertListEqual(criteria(input_ids, scores).tolist(), [False, False, False])
+        self.assertListEqual(criteria(input_ids, scores, needs_tensor_output=True).tolist(), [False, False, False])
+        self.assertFalse(criteria(input_ids, scores, needs_tensor_output=False))
 
     def test_validate_stopping_criteria(self):
         validate_stopping_criteria(StoppingCriteriaList([MaxLengthCriteria(10)]), 10)
