@@ -22,6 +22,13 @@ GPT-2 is trained or fine-tuned using a causal language modeling (CLM) loss while
 The following examples will run on datasets hosted on our [hub](https://huggingface.co/datasets) or with your own
 text files for training and validation. We give examples of both below.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## GPT2/GPT-J/GPT-NeoX and causal language modeling
 
 The following examples fine-tune GPT-2, GPT-J-6B and GPT-NeoX-20B on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before the tokenization). The loss here is the one of causal language modeling.
@@ -386,36 +393,6 @@ python3 run_lora_clm.py \
     --lora_alpha=16 \
     --lora_dropout=0.05 \
     --lora_target_modules "q_proj" "v_proj" \
-    --dataset_concatenation \
-    --max_seq_length 512 \
-    --low_cpu_mem_usage True \
-    --validation_split_percentage 4 \
-    --adam_epsilon 1e-08
-```
-- Single-card finetuning of Mistral-7B-Instruct-v0.2 with fp8:
-```bash
-python3 run_lora_clm.py \
-    --model_name_or_path mistralai/Mistral-7B-Instruct-v0.2\
-    --dataset_name tatsu-lab/alpaca \
-    --fp8 True \
-    --output_dir ./model_lora_mistral \
-    --num_train_epochs 3 \
-    --per_device_train_batch_size 8 \
-    --evaluation_strategy "no" \
-    --save_strategy "no" \
-    --learning_rate 4e-4 \
-    --warmup_ratio  0.03 \
-    --lr_scheduler_type "constant" \
-    --max_grad_norm  0.3 \
-    --logging_steps 1 \
-    --do_train \
-    --use_habana \
-    --use_lazy_mode \
-    --throughput_warmup_steps 5 \
-    --lora_rank=8 \
-    --lora_target_modules "v_proj" "q_proj" \
-    --lora_alpha=16 \
-    --lora_dropout=0.05 \
     --dataset_concatenation \
     --max_seq_length 512 \
     --low_cpu_mem_usage True \
