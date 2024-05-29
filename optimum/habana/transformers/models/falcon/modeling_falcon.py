@@ -365,8 +365,10 @@ class GaudiFalconAttention(FalconAttention):
             )
         fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
         # 3 x [batch_size, seq_length, num_heads, head_dim]
+
+        train_with_flash_attention = self.training and self._use_sdpa and not output_attentions and head_mask is None
         (query_layer, key_layer, value_layer) = self._split_heads(
-            fused_qkv, not use_flash_attention and not self.is_fp8
+            fused_qkv, not use_flash_attention and not self.is_fp8 and not train_with_flash_attention
         )
 
         batch_size, query_length, _, _ = query_layer.shape
@@ -439,9 +441,7 @@ class GaudiFalconAttention(FalconAttention):
                 # It is unclear why neither dropout nor head_mask is applied here (while it is with alibi).
                 attn_output = attention_scores @ value_layer
             else:
-                if use_flash_attention or (
-                    self.training and self._use_sdpa and not output_attentions and head_mask is None
-                ):
+                if use_flash_attention or train_with_flash_attention:
                     is_causal = self.is_causal and query_length > 1 and flash_attention_causal_mask
                     if self.is_fp8:
                         attn_mask = None if is_causal else attention_mask
@@ -503,7 +503,7 @@ class GaudiFalconAttention(FalconAttention):
                 return attn_output, present, _
 
         else:
-            if self._use_sdpa and not output_attentions and head_mask is None:
+            if train_with_flash_attention:
                 if FusedSDPA:
                     # TODO needs to be turned into a module for quantization
                     with sdp_kernel(enable_recompute=False) if SDPContext else contextlib.nullcontext():
