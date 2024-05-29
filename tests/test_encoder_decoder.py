@@ -34,7 +34,7 @@ else:
     MODELS_TO_TEST = {
         "summarization": {
             "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 2.628, 26.7494, 2, 1),
+                ("facebook/bart-large-cnn", "Habana/bart", 2.304, 29.174, 2, 2),
                 ("t5-3b", "Habana/t5", 1.005, 21.7286, 2, 1),
             ],
         },
