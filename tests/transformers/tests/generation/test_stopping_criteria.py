@@ -24,7 +24,6 @@ from ..test_modeling_common import ids_tensor, torch_device
 
 if is_torch_available():
     import torch
-
     from transformers.generation import (
         EosTokenCriteria,
         MaxLengthCriteria,
