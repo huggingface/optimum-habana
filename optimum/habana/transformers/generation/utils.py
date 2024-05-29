@@ -402,7 +402,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hpu_graphs: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        hb_gen_time: Optional[HabanaGenerationtime] = None,
+        iteration_times: Optional[List[float]] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
