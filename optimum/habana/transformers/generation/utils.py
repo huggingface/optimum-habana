@@ -20,6 +20,7 @@ import math
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
+import habana_frameworks.torch.hpu as torch_hpu
 import torch
 import torch.distributed as dist
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
@@ -46,7 +47,6 @@ from transformers.generation.utils import (
 )
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.utils import ModelOutput
-import habana_frameworks.torch.hpu as torch_hpu
 
 from optimum.utils import logging
 
@@ -1455,7 +1455,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
-        first_done = False
+        time_to_first_token_done = False
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1588,8 +1588,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hb_profer.step()
             if hb_gen_time is not None:
-                if not first_done:
-                    first_done = True
+                if not time_to_first_token_done:
+                    time_to_first_token_done = True
                     torch_hpu.synchronize()
                 hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
@@ -1840,7 +1840,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 assert "position_ids" not in model_kwargs, "Untested path"
 
         # auto-regressive generation
-        first_done = False
+        time_to_first_token_done = False
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1969,8 +1969,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
             hb_profer.step()
             if hb_gen_time is not None:
-                if not first_done:
-                    first_done = True
+                if not time_to_first_token_done:
+                    time_to_first_token_done = True
                     torch_hpu.synchronize()
                 hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
@@ -2315,7 +2315,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if self.generation_config.static_shapes:
             initial_ids = input_ids[::num_beams, 0:cur_len]
 
-        first_done = False
+        time_to_first_token_done = False
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -2535,8 +2535,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     this_peer_finished = True
             if hb_gen_time is not None:
-                if not first_done:
-                    first_done = True
+                if not time_to_first_token_done:
+                    time_to_first_token_done = True
                     torch_hpu.synchronize()
                 hb_gen_time.step()
         hb_profer.stop()
@@ -3121,7 +3121,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
-        first_done = False
+        time_to_first_token_done = False
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -3251,8 +3251,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     this_peer_finished = True
             if hb_gen_time is not None:
-                if not first_done:
-                    first_done = True
+                if not time_to_first_token_done:
+                    time_to_first_token_done = True
                     torch_hpu.synchronize()
                 hb_gen_time.step()
 
