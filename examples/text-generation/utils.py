@@ -36,7 +36,12 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import (
+    check_habana_frameworks_version,
+    check_optimum_habana_min_version,
+    get_habana_frameworks_version,
+    set_seed,
+)
 
 
 def adjust_batch(batch, size):
@@ -96,6 +101,22 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
+def setup_inference(args, model):
+    import habana_frameworks.torch.core as htcore
+
+    habana_version = get_habana_frameworks_version()
+
+    print("Initializing inference mode")
+    # Keeping the if-else here for back compat. TODO remove later
+    if habana_version.major >= 1 and habana_version.minor >= 16:
+        htcore.hpu_initialize(model, mark_only_scales_as_const=True)
+    else:
+        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
+        if const_marking == "True":
+            htcore.hpu_initialize(model)
+    return model
+
+
 def setup_const_serialization(const_serialization_path):
     import uuid
 
@@ -132,7 +153,7 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.fp8:
+        if args.quant_config:
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -405,7 +426,7 @@ def initialize_model(args, logger):
     set_seed(args.seed)
     get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     use_deepspeed = args.world_size > 0
-    if use_deepspeed or args.bf16 or args.fp8:
+    if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
@@ -429,13 +450,8 @@ def initialize_model(args, logger):
 
     if args.const_serialization_path:
         setup_const_serialization(args.const_serialization_path)
-    if args.fp8:
-        import habana_frameworks.torch.core as htcore
-
-        print("Initializing inference mode")
-        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
-        if const_marking == "True":
-            htcore.hpu_initialize(model)
+    if args.quant_config:
+        model = setup_inference(args, model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
