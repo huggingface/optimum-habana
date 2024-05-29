@@ -1,8 +1,10 @@
+import argparse
 import json
 import os
 import sys
-import argparse
+
 import numpy as np
+
 
 def find_measurement_path(measurement, measurements_dir_path, scales, group_size):
     measurment_card = measurement + '_' + str(group_size)
