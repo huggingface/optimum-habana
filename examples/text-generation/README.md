@@ -154,7 +154,9 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --use_hpu_graphs \
 --use_kv_cache \
 --batch_size 1 \
---do_sample
+--do_sample \
+--use_flash_attention \
+--flash_attention_causal_mask
 ```
 
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
