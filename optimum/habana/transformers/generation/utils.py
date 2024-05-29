@@ -46,6 +46,7 @@ from transformers.generation.utils import (
 )
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.utils import ModelOutput
+import habana_frameworks.torch.hpu as torch_hpu
 
 from optimum.utils import logging
 
@@ -401,7 +402,7 @@ class GaudiGenerationMixin(GenerationMixin):
         hpu_graphs: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        iteration_times: Optional[List[float]] = None,
+        hb_gen_time: Optional[HabanaGenerationtime] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -492,6 +493,11 @@ class GaudiGenerationMixin(GenerationMixin):
                     - [`transformers.generation.GenerateEncoderDecoderOutput`],
                     - [`transformers.generation.GenerateBeamEncoderDecoderOutput`]
         """
+        if iteration_times is not None:
+            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
+            hb_gen_time.start()
+        else:
+            hb_gen_time = None
         if synced_gpus is None:
             if is_deepspeed_zero3_enabled() and dist.get_world_size() > 1:
                 synced_gpus = True
@@ -880,7 +886,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
-                iteration_times=iteration_times,
+                hb_gen_time=hb_gen_time,
                 **model_kwargs,
             )
 
@@ -936,7 +942,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
-                iteration_times=iteration_times,
+                hb_gen_time=hb_gen_time,
                 **model_kwargs,
             )
 
@@ -1270,7 +1276,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        iteration_times: Optional[List[float]] = None,
+        hb_gen_time: Optional[HabanaGenerationtime] = None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -1442,9 +1448,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
-        if iteration_times is not None:
-            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
-            hb_gen_time.start()
+        first_done = False
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1575,8 +1579,11 @@ class GaudiGenerationMixin(GenerationMixin):
             if stopping_criteria(input_ids, scores, token_idx=cur_len):
                 this_peer_finished = True
 
+            if not first_done:
+                first_done = True
+                torch_hpu.synchronize()
             hb_profer.step()
-            if iteration_times is not None:
+            if hb_gen_time is not None:
                 hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
                 break
@@ -1630,7 +1637,7 @@ class GaudiGenerationMixin(GenerationMixin):
         ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
-        iteration_times: Optional[List[float]] = None,
+        hb_gen_time: Optional[HabanaGenerationtime] = None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -1812,9 +1819,6 @@ class GaudiGenerationMixin(GenerationMixin):
         if token_idx is not None:
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
-        if iteration_times is not None:
-            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
-            hb_gen_time.start()
 
         bucket_size = model_kwargs.get("bucket_size", -1)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
@@ -1829,6 +1833,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 assert "position_ids" not in model_kwargs, "Untested path"
 
         # auto-regressive generation
+        first_done = False
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1955,8 +1960,11 @@ class GaudiGenerationMixin(GenerationMixin):
             if stopping_criteria(input_ids, scores, token_idx=cur_len):
                 this_peer_finished = True
 
+            if not first_done:
+                first_do = False
+                torch_hpu.synchronize()
             hb_profer.step()
-            if iteration_times is not None:
+            if hb_gen_time is not None:
                 hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
                 break
