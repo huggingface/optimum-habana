@@ -447,9 +447,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         choices=["no", "fp32", "bf16"],
-        help=(
-            "Choose prior generation precision between fp32 and bf16 (bfloat16)."
-        ),
+        help=("Choose prior generation precision between fp32 and bf16 (bfloat16)."),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
@@ -999,7 +997,7 @@ def main(args):
 
     if gaudi_config.use_fused_adam:
         from habana_frameworks.torch.hpex.optimizers import FusedAdamW
-        
+
         optimizer_class = FusedAdamW
     else:
         optimizer_class = torch.optim.AdamW
@@ -1274,12 +1272,7 @@ def main(args):
                         generator = None
                     images = []
                     for _ in range(args.num_validation_images):
-                        with torch.autocast(
-                            device_type="hpu", dtype=weight_dtype, enabled=gaudi_config.use_torch_autocast
-                        ):
-                            image = pipeline(
-                                args.validation_prompt, num_inference_steps=25, generator=generator
-                            ).images[0]
+                        image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                         images.append(image)
 
                     for tracker in accelerator.trackers:

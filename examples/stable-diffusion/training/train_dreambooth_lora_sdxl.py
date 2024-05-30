@@ -45,7 +45,7 @@ from diffusers import (
 )
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
+from diffusers.training_utils import _set_state_dict_into_text_encoder, compute_snr
 from diffusers.utils import (
     check_min_version,
     convert_state_dict_to_diffusers,
@@ -527,7 +527,7 @@ def parse_args(input_args=None):
         "--mixed_precision",
         type=str,
         default=None,
-        choices=["no","bf16"],
+        choices=["no", "bf16"],
         help=(
             "Whether to use mixed precision. Default to the value of accelerate config of the current system or the"
             " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
@@ -538,9 +538,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         choices=["no", "fp32", "bf16"],
-        help=(
-            "Choose prior generation precision between fp32 and bf16 (bfloat16)."
-        ),
+        help=("Choose prior generation precision between fp32 and bf16 (bfloat16)."),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
@@ -1102,18 +1100,8 @@ def main(args):
             _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
 
             _set_state_dict_into_text_encoder(
-                lora_state_dict, prefix="text_encoder_2.", text_encoder=text_encoder_one_
+                lora_state_dict, prefix="text_encoder_2.", text_encoder=text_encoder_two_
             )
-
-        # Make sure the trainable params are in float32. This is again needed since the base models
-        # are in `weight_dtype`. More details:
-        # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
-        if args.mixed_precision == "fp16":
-            models = [unet_]
-            if args.train_text_encoder:
-                models.extend([text_encoder_one_, text_encoder_two_])
-                # only upcast trainable parameters (LoRA) into fp32
-                cast_training_params(models)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1122,15 +1110,6 @@ def main(args):
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
-
-    # Make sure the trainable params are in float32.
-    if args.mixed_precision == "fp16":
-        models = [unet]
-        if args.train_text_encoder:
-            models.extend([text_encoder_one, text_encoder_two])
-
-        # only upcast trainable parameters (LoRA) into fp32
-        cast_training_params(models, dtype=torch.float32)
 
     unet_lora_parameters = list(filter(lambda p: p.requires_grad, unet.parameters()))
 
@@ -1186,7 +1165,7 @@ def main(args):
             optimizer_class = bnb.optim.AdamW8bit
         elif gaudi_config.use_fused_adam:
             from habana_frameworks.torch.hpex.optimizers import FusedAdamW
-            
+
             optimizer_class = FusedAdamW
         else:
             optimizer_class = torch.optim.AdamW
@@ -1654,11 +1633,9 @@ def main(args):
                     generator = None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.autocast(device_type="hpu", dtype=weight_dtype, enabled=gaudi_config.use_torch_autocast):
-                    images = [
-                        pipeline(**pipeline_args, generator=generator).images[0]
-                        for _ in range(args.num_validation_images)
-                    ]
+                images = [
+                    pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)
+                ]
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
