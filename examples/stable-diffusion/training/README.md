@@ -65,6 +65,34 @@ python textual_inversion.py \
 
 > As described in [the official paper](https://arxiv.org/abs/2208.01618), only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`. However, one can also add multiple embedding vectors for the placeholder token to increase the number of fine-tuneable parameters. This can help the model to learn more complex details. To use multiple embedding vectors, you can define `--num_vectors` to a number larger than one, *e.g.*: `--num_vectors 5`. The saved textual inversion vectors will then be larger in size compared to the default case.
 
+## Dreambooth
+
+[Dreambooth](https://arxiv.org/abs/2208.12242) is another method to personalize text2image models like Stable Diffusion on your own images using just 3-5 examples.
+The `train_dreambooth.py` script shows how to implement the training procedure on Habana Gaudi.
+
+We can use the cat toy example images that were downloaded above as training samples.
+Now we can launch the training using:
+```bash
+python train_dreambooth.py \
+  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --instance_data_dir ./cat \
+  --instance_prompt "<cat-toy>" \
+  --resolution 512 \
+  --train_batch_size 4 \
+  --max_train_steps 3000 \
+  --learning_rate 5.0e-04 \
+  --scale_lr \
+  --lr_scheduler constant \
+  --lr_warmup_steps 0 \
+  --output_dir /tmp/textual_inversion_cat \
+  --save_as_full_pipeline \
+  --gaudi_config_name Habana/stable-diffusion \
+  --throughput_warmup_steps 3
+```
+
+> You can additionally add --class_data_dir and include sample images of the class you wish to finetune for along with --class_prompt.
+
+> Another technique to crate high quality image is by including --with_prior_preservation and --prior_loss_weight.
 
 ## ControlNet Training
 
