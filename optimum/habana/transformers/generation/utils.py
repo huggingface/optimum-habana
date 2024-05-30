@@ -42,12 +42,8 @@ from transformers.generation.utils import (
     GenerationMixin,
     GenerationMode,
     _split_model_inputs,
-    stack_model_outputs,
     _split_model_outputs,
-    _split,
-    _ranking_fast,
-    top_k_top_p_filtering
-
+    stack_model_outputs,
 )
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.utils import ModelOutput
@@ -404,7 +400,6 @@ class GaudiGenerationMixin(GenerationMixin):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         lazy_mode: Optional[bool] = False,
         hpu_graphs: Optional[bool] = False,
-        ignore_eos: Optional[bool] = None,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         iteration_times: Optional[List[float]] = None,
@@ -540,14 +535,17 @@ class GaudiGenerationMixin(GenerationMixin):
                 generation_config.static_shapes = self.config.decoder.model_type in MODELS_OPTIMIZED_WITH_STATIC_SHAPES
         self.generation_config.static_shapes = generation_config.static_shapes
         if generation_config.ignore_eos is None:
-            generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode) 
+            generation_config.ignore_eos = kwargs.get("ignore_eos", lazy_mode)
         num_virtual_tokens = kwargs.pop("num_virtual_tokens", 0)
+        for key in kwargs.keys():
+            if key == "max_new_tokens":
+                kwargs["max_new_tokens"]=generation_config.max_new_tokens
         model_kwargs = generation_config.update(**kwargs)  # All unused kwargs must be model kwargs
-        
+
         if self.config.model_type == "falcon" and "token_type_ids" in kwargs.keys():
             for key in ["token_type_ids"]:
                 model_kwargs.pop(key, None)
-        self._validate_model_kwargs(model_kwargs.copy())
+        #self._validate_model_kwargs(model_kwargs.copy())
 
         # 2. Set generation parameters if not already defined
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
@@ -850,12 +848,13 @@ class GaudiGenerationMixin(GenerationMixin):
                 inputs_tensor=inputs_tensor,
                 assistant_model=assistant_model,
                 logits_processor=logits_processor,
-                model_kwargs=model_kwargs,
+                model_kwargs=model_kwargs
             )
 
-            # 12. run assisted generate
             return self.assisted_decoding(
                 input_ids,
+                inputs_tensor,
+                assistant_model=assistant_model,
                 candidate_generator=candidate_generator,
                 do_sample=generation_config.do_sample,
                 logits_processor=prepared_logits_processor,
@@ -1389,7 +1388,6 @@ class GaudiGenerationMixin(GenerationMixin):
         >>> tokenizer.batch_decode(outputs, skip_special_tokens=True)
         ["It might be possible to get a better understanding of the nature of the problem, but it's not"]
         ```"""
-        print("Reached Greedy Search")
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
@@ -1769,7 +1767,6 @@ class GaudiGenerationMixin(GenerationMixin):
         >>> tokenizer.batch_decode(outputs, skip_special_tokens=True)
         ['Today is a beautiful day, and we must do everything possible to make it a day of celebration.']
         ```"""
-        print("Reached Sample Search")
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
@@ -3022,7 +3019,6 @@ class GaudiGenerationMixin(GenerationMixin):
         ...         encoder_input_ids.repeat_interleave(num_beams, dim=0), return_dict=True
         ...     )
         ... }
-
         >>> constraint_str = "Sie"
         >>> constraint_token_ids = tokenizer.encode(constraint_str)[:-1]  # slice to remove eos token
         >>> constraints = [PhrasalConstraint(token_ids=constraint_token_ids)]
@@ -3300,7 +3296,8 @@ class GaudiGenerationMixin(GenerationMixin):
     def assisted_decoding(
         self,
         input_ids: torch.LongTensor,
-        assistant_model: Optional["PreTrainedModel"] = None,
+        inputs_tensor: torch.LongTensor,
+        assistant_model: Optional["PreTrainedModel"],
         candidate_generator: Optional["CandidateGenerator"] = None,
         do_sample: bool = False,
         logits_processor: Optional[LogitsProcessorList] = None,
@@ -3433,14 +3430,27 @@ class GaudiGenerationMixin(GenerationMixin):
         >>> tokenizer.batch_decode(outputs, skip_special_tokens=True)
         ["It might be possible to get a better understanding of the nature of the problem, but it's not"]
         ```"""
-        print("Reached Assisted Decoding")
         # init values
         do_sample = logits_warper is not None
-        output_attentions = output_attentions if output_attentions is not None else self.generation_config.output_attentions
-        output_hidden_states = output_hidden_states if output_hidden_states is not None else self.generation_config.output_hidden_states
+        logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
+        stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
+        pad_token_id = pad_token_id if pad_token_id is not None else self.generation_config.pad_token_id
+        eos_token_id = eos_token_id if eos_token_id is not None else self.generation_config.eos_token_id
+        if isinstance(eos_token_id, int):
+            eos_token_id = [eos_token_id]
+        eos_token_id_tensor = torch.tensor(eos_token_id).to(input_ids.device) if eos_token_id is not None else None
         output_scores = output_scores if output_scores is not None else self.generation_config.output_scores
-        output_logits = output_logits if output_logits is not None else self.generation_config.output_logits
-        return_dict_in_generate = return_dict_in_generate if return_dict_in_generate is not None else self.generation_config.return_dict_in_generate
+        output_attentions = (
+            output_attentions if output_attentions is not None else self.generation_config.output_attentions
+        )
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.generation_config.output_hidden_states
+        )
+        return_dict_in_generate = (
+            return_dict_in_generate
+            if return_dict_in_generate is not None
+            else self.generation_config.return_dict_in_generate
+        )
 
         # init attention / hidden states / scores tuples
         scores = () if (return_dict_in_generate and output_scores) else None
@@ -3457,8 +3467,8 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # keep track of which sequences are already finished
-        batch_size = input_ids.shape[0]
         unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
+
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
         this_peer_finished = False  # used by synced_gpus only
@@ -3466,6 +3476,7 @@ class GaudiGenerationMixin(GenerationMixin):
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
         bucket_internal = model_kwargs.get("bucket_internal", None)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
+
         prompt_len = input_ids.shape[-1]
         if not bucket_internal:
             if bucket_size >= 0:
@@ -3480,6 +3491,7 @@ class GaudiGenerationMixin(GenerationMixin):
         if iteration_times is not None:
             hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
             hb_gen_time.start()
+        
         while True:
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -3502,11 +3514,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # prepare model inputs
             model_kwargs["lazy_mode"] = lazy_mode
-            
+            model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
-            cur_len = input_ids.shape[-1]
-
+            
             #  1. Fetch candidate sequences from a `CandidateGenerator`
+            
             candidate_input_ids, candidate_logits = candidate_generator.get_candidates(input_ids)
             candidate_input_ids = candidate_input_ids.to(self.device)
             if candidate_logits is not None:
@@ -3514,6 +3526,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
             candidate_length = candidate_input_ids.shape[1] - input_ids.shape[1]
             is_done_candidate = stopping_criteria(candidate_input_ids, None)
+            #May have to add stopping criteria like if synced_gpus and is_done_candidate: continue
+
 
             # 2. Use the original model to obtain the next token logits given the candidate sequence. We obtain
             # `candidate_length + 1` relevant logits from this process: in the event that all candidates are correct,
@@ -3521,10 +3535,14 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # 2.1. Prepare the model inputs
             candidate_kwargs = copy.copy(model_kwargs)
-            candidate_kwargs = _prepare_attention_mask(
-                candidate_kwargs, candidate_input_ids.shape[1], self.config.is_encoder_decoder
+            #candidate_kwargs = _prepare_attention_mask(
+            #    candidate_kwargs, candidate_input_ids.shape[1], self.config.is_encoder_decoder
+            #)
+            candidate_kwargs["attention_mask"] = self._prepare_attention_mask_for_generation(
+                inputs_tensor, pad_token_id, eos_token_id
             )
-            candidate_kwargs = _prepare_token_type_ids(candidate_kwargs, candidate_input_ids.shape[1])
+
+            #candidate_kwargs = _prepare_token_type_ids(candidate_kwargs, candidate_input_ids.shape[1])
             if "cache_position" in candidate_kwargs:
                 candidate_kwargs["cache_position"] = torch.cat(
                     (
@@ -3535,15 +3553,16 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             model_inputs = self.prepare_inputs_for_generation(candidate_input_ids, **candidate_kwargs)
+            hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(candidate_kwargs)
             if "num_logits_to_keep" in model_inputs:
                 model_inputs["num_logits_to_keep"] = candidate_length + 1
 
             # 2.2. Run a forward pass on the candidate sequence
             outputs = self(
                 **model_inputs,
+                return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
-                return_dict=True,
                 **hpu_graphs_kwargs,
             )
             if synced_gpus and this_peer_finished:
@@ -3662,13 +3681,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids, scores)
             this_peer_finished = unfinished_sequences.max() == 0
-            hb_profer.step()
-            if iteration_times is not None:
-                hb_gen_time.step()
-            if this_peer_finished and not synced_gpus:
-                break
-        
-        hb_profer.stop()
+
         if streamer is not None:
             streamer.end()
 
@@ -3759,3 +3772,4 @@ def _speculative_sampling(
             valid_tokens = t
 
     return valid_tokens, n_matches
+
