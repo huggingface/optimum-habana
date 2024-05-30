@@ -294,20 +294,18 @@ class GaudiFalconAttention(FalconAttention):
     - add new args use_flash_attention
     - add new arg flash_attention_recompute
     - add new arg flash_attention_causal_mask
-    """
-
-    def __init__(self, config: FalconConfig):
-        super().__init__(config)
-
-        """
-        Choice of SDPA:
+    Choice of SDPA:
         There are these variables: use_flash_attention and datatype (bf16/fp8)
         datatype is determined by presence of QUANT_CONFIG env var, presence of which indicates fp8
         1. use_flash_attention, fp8: use ModuleFusedSDPA. most optimal
         2. use_flash_attention, bf16: use FusedSDPA
         3. not use_flash_attention, fp8: Use ScaledDotProductAttention, along with QUANT_CONFIG. This is the case before this PR
         4. not use_flash_attention, bf16: F.scaled_dot_product_attention. Slowest option
-        """
+    """
+
+    def __init__(self, config: FalconConfig):
+        super().__init__(config)
+
         self.is_fp8 = os.getenv("QUANT_CONFIG", "") != ""
 
         # In the constructor we do not know which one we will need later in the forward, so creating both
@@ -896,12 +894,7 @@ class GaudiFalconModel(FalconModel):
         # head_mask has shape n_layer x batch x num_heads x N x N
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
-        # htcore.mark_step()
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
-            # if not self.training and (
-            #    torch.distributed.is_initialized() is False or torch.distributed.get_world_size() == 1
-            # ):
-            # htcore.mark_step()
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
