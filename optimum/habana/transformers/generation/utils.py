@@ -20,7 +20,6 @@ import math
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
-import habana_frameworks.torch.hpu as torch_hpu
 import torch
 import torch.distributed as dist
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
@@ -1590,6 +1589,8 @@ class GaudiGenerationMixin(GenerationMixin):
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
+                    import habana_frameworks.torch.hpu as torch_hpu
+
                     torch_hpu.synchronize()
                 hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
@@ -1971,6 +1972,8 @@ class GaudiGenerationMixin(GenerationMixin):
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
+                    import habana_frameworks.torch.hpu as torch_hpu
+
                     torch_hpu.synchronize()
                 hb_gen_time.step()
             if this_peer_finished and not synced_gpus:
@@ -2537,6 +2540,8 @@ class GaudiGenerationMixin(GenerationMixin):
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
+                    import habana_frameworks.torch.hpu as torch_hpu
+
                     torch_hpu.synchronize()
                 hb_gen_time.step()
         hb_profer.stop()
@@ -3253,6 +3258,8 @@ class GaudiGenerationMixin(GenerationMixin):
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
                     time_to_first_token_done = True
+                    import habana_frameworks.torch.hpu as torch_hpu
+
                     torch_hpu.synchronize()
                 hb_gen_time.step()
 
