@@ -3316,7 +3316,6 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_steps: Optional[int] = 0,
         iteration_times: Optional[List[float]] = None,
         streamer: Optional["BaseStreamer"] = None,
-        iteration_times: Optional[List[float]] = None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
