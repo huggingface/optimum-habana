@@ -390,20 +390,22 @@ class ExampleTestMeta(type):
                 if "llama" in model_name:
                     env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
-            elif self.EXAMPLE_NAME == "run_qa" and is_compile:
-                env_variables["PT_HPU_LAZY_MODE"] = "0"
 
             extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
 
             if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
-            elif self.EXAMPLE_NAME == "run_qa" and is_compile:
+            elif (
+                self.EXAMPLE_NAME == "run_qa"
+                and is_compile
+                and (model_name == "bert-large-uncased-whole-word-masking" or model_name == "roberta-large")
+            ):
                 extra_command_line_arguments.append("--torch_compile_backend hpu_backend")
                 extra_command_line_arguments.append("--torch_compile")
                 if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
                 self.TASK_NAME = [self.TASK_NAME, "compile"]
-
+                env_variables["PT_HPU_LAZY_MODE"] = "0"
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
