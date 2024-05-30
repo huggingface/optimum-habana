@@ -436,10 +436,9 @@ def parse_args(input_args=None):
         "--mixed_precision",
         type=str,
         default=None,
-        choices=["no", "fp16", "bf16"],
+        choices=["no", "bf16"],
         help=(
-            "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
-            " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
+            "Whether to use mixed precision. Default to the value of accelerate config of the current system or the"
             " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
         ),
     )
@@ -447,10 +446,9 @@ def parse_args(input_args=None):
         "--prior_generation_precision",
         type=str,
         default=None,
-        choices=["no", "fp32", "fp16", "bf16"],
+        choices=["no", "fp32", "bf16"],
         help=(
-            "Choose prior generation precision between fp32, fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
-            " 1.10.and an Nvidia Ampere GPU.  Default to  fp16 if a GPU is available else fp32."
+            "Choose prior generation precision between fp32 and bf16 (bfloat16)."
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
@@ -890,8 +888,6 @@ def main(args):
             torch_dtype = torch.bfloat16 if accelerator.device.type == "hpu" else torch.float32
             if args.prior_generation_precision == "fp32":
                 torch_dtype = torch.float32
-            elif args.prior_generation_precision == "fp16":
-                torch_dtype = torch.float16
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
             pipeline = GaudiStableDiffusionPipeline.from_pretrained(
@@ -1001,7 +997,12 @@ def main(args):
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    optimizer_class = torch.optim.AdamW
+    if gaudi_config.use_fused_adam:
+        from habana_frameworks.torch.hpex.optimizers import FusedAdamW
+        
+        optimizer_class = FusedAdamW
+    else:
+        optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
     params_to_optimize = (
@@ -1063,9 +1064,7 @@ def main(args):
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
+    if accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
     # Move vae and text_encoder to device and cast to weight_dtype
