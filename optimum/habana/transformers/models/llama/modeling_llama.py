@@ -831,7 +831,7 @@ class GaudiLlamaModel(LlamaModel):
                     use_flash_attention,
                     flash_attention_recompute,
                     flash_attention_causal_mask,
-                    None
+                    None,
                 )
             else:
                 layer_outputs = decoder_layer(

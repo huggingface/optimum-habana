@@ -265,14 +265,16 @@ class GaudiGenerationMixin(GenerationMixin):
         return input_ids, model_kwargs
 
     def _pad_past_key_values(self, model_kwargs):
-        pad_amount = model_kwargs.get("kv_cache_pad_len" , 0)
-        #print(f"PAD KV Cache by {pad_amount} tokens")
+        pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
+        # print(f"PAD KV Cache by {pad_amount} tokens")
         if model_kwargs["past_key_values"]:
             for i in range(len(model_kwargs["past_key_values"])):
                 for j in range(len(model_kwargs["past_key_values"][i])):
                     if torch.is_tensor(model_kwargs["past_key_values"][i][j]):
-                        model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount))
-                        if model_kwargs.get("lazy_mode" , False):
+                        model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
+                            model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
+                        )
+                        if model_kwargs.get("lazy_mode", False):
                             self.htcore_generation.mark_step()
 
     def _remove_past_key_values(self, model_kwargs):
@@ -1767,8 +1769,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
-            if not model_kwargs.get("pad_done", False) and not model_kwargs.get("reuse_cache", False) \
-                and bucket_internal:
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
                 # Pad the returned pask key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
                 self._pad_past_key_values(model_kwargs)
@@ -1782,8 +1787,12 @@ class GaudiGenerationMixin(GenerationMixin):
                     torch_hpu.synchronize()
                 hb_gen_time.step()
 
-        if model_kwargs.get("use_hpu_graphs", False) and model_kwargs.get("limit_hpu_graphs", False) \
-            and not model_kwargs.get("reuse_cache", False) and bucket_internal:
+        if (
+            model_kwargs.get("use_hpu_graphs", False)
+            and model_kwargs.get("limit_hpu_graphs", False)
+            and not model_kwargs.get("reuse_cache", False)
+            and bucket_internal
+        ):
             # Clear HPU graphs input tensors of the decode phase after the full generation while loop
             print("CLEAR HPU GRAPH INPUTS OF DECODE PHASE")
             self.clear_inputs()
@@ -2175,8 +2184,11 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
-            if not model_kwargs.get("pad_done", False) and not model_kwargs.get("reuse_cache", False) \
-                and bucket_internal:
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
                 # Pad the returned pask key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
                 self._pad_past_key_values(model_kwargs)
@@ -2191,8 +2203,12 @@ class GaudiGenerationMixin(GenerationMixin):
                     torch_hpu.synchronize()
                 hb_gen_time.step()
 
-        if model_kwargs.get("use_hpu_graphs", False) and model_kwargs.get("limit_hpu_graphs", False) \
-            and not model_kwargs.get("reuse_cache", False) and bucket_internal:
+        if (
+            model_kwargs.get("use_hpu_graphs", False)
+            and model_kwargs.get("limit_hpu_graphs", False)
+            and not model_kwargs.get("reuse_cache", False)
+            and bucket_internal
+        ):
             # Clear HPU graphs input tensors of the decode phase after the full generation while loop
             print("CLEAR HPU GRAPH INPUTS OF DECODE PHASE")
             self.clear_inputs()

@@ -143,8 +143,7 @@ def setup_env(args):
         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
-    if args.use_hpu_graphs and args.limit_hpu_graphs and not args.reuse_cache \
-        and args.bucket_internal:
+    if args.use_hpu_graphs and args.limit_hpu_graphs and not args.reuse_cache and args.bucket_internal:
         # Based upon above conditions and below env variable,
         # we can call HPU graphs clear_inputs().
         os.environ.setdefault("PT_HPUGRAPH_DISABLE_TENSOR_CACHE", "1")
