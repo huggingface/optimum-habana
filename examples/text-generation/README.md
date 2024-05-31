@@ -395,14 +395,13 @@ As measurement is being calculated in bf16 precision, to be able to run fp8 mode
 Here are the steps:
 1. Measure the model on a number of cards that are enough for the model to fit in BF16.
 2. Quantize the model on the same amount of cards for scales to be saved.
-3. Run :code:`unify_measurements` script using the measurement files created after running steps 1 and 2. A unified measurement is then calculated.
+3. Run unify_measurements.py script using the measurement files created after running steps 1 and 2. A unified measurement is then calculated.
 ```bash
-python unify_measurements.py -g 01234567 -m *path_to_8x_measurements* -o *path_to_output_1x_measurement*
+python quantization_tools/unify_measurements.py -g 01234567 -m *path_to_8x_measurements* -o *path_to_output_1x_measurement*
 ```
 In the above example, the measurements of cards 0-7 will be unified to a single measurement. For example, if you specify `-g 0123 4567`,
- cards 0-3 and cards 4-7 will be unified in two different measurement files.
-All different group combinations are supported.
-4. Run quantization as detailed in :ref:`quantization_mode` using the unified measurement file/s.
+cards 0-3 and cards 4-7 will be unified in two different measurement files. All different group combinations are supported.
+4. Run quantization using the unified measurement file/s.
 
 More information on usage of the unifier script can be found in fp8 Habana docs: https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
@@ -411,11 +410,11 @@ More information on usage of the unifier script can be found in fp8 Habana docs:
 ### CPU memory reduction on single card
 
 Some models can fit on HPU DRAM but can't fit on the CPU RAM.
-When we run a model on single card and don't use deepspeed the `--disk_offload` flag allows to offload weights to disk during model quantization in HQT. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
+When we run a model on single card and don't use deepspeed, the `--disk_offload` flag allows to offload weights to disk during model quantization in HQT. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
 To enable this weights offload mechanism, add `--disk_offload` flag to the topology command line.
 Here is an example of using disk_offload in quantize command. Please make sure to run the measurement first.
 ```bash
-QUANT_CONFIG=./quantization_config//maxabs_quant.json TQDM_DISABLE=1 \
+QUANT_CONFIG=./quantization_config/maxabs_quant.json TQDM_DISABLE=1 \
 python run_generation.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --attn_softmax_bf16 \
