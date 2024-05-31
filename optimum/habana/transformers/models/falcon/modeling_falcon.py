@@ -88,57 +88,6 @@ def gaudi_falcon_linear_forward(self, input: torch.Tensor) -> torch.Tensor:
     return hidden_states
 
 
-<<<<<<< sasarkar_falcon_opt
-def gaudi_falcon_attention_split_heads(
-    self,
-    fused_qkv: torch.Tensor,
-    broadcast: Optional[bool] = True,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    Copied from FalconAttention._split_heads https://github.com/huggingface/transformers/blob/v4.33.2/src/transformers/models/falcon/modeling_falcon.py
-    Changing index operation of qkv[:::] to use torch.index_select to work around gradient accuracy issue and improve performance.
-    """
-    if self.new_decoder_architecture:
-        batch, seq_len, _ = fused_qkv.shape
-
-        if self.config.num_attention_heads != self.num_heads:  # When DS divides heads for TP
-            num_heads = self.config.num_attention_heads
-            num_kv_heads = self.config.num_kv_heads
-        else:  # When DS not in use
-            num_heads = self.num_heads
-            num_kv_heads = self.num_kv_heads
-
-        qkv = fused_qkv.view(batch, seq_len, -1, num_heads // num_kv_heads + 2, self.head_dim)
-        # query = qkv[:, :, :, :-2]
-        # key = qkv[:, :, :, [-2]]
-        # value = qkv[:, :, :, [-1]]
-        d3 = qkv.shape[3] - 2
-        query = torch.index_select(qkv, 3, index=torch.arange(d3, device=qkv.device))
-        key = torch.index_select(qkv, 3, index=torch.tensor([d3], device=qkv.device))
-        value = torch.index_select(qkv, 3, index=torch.tensor([d3 + 1], device=qkv.device))
-
-        if broadcast:
-            key = torch.broadcast_to(key, query.shape)
-            value = torch.broadcast_to(value, query.shape)
-
-        query, key, value = [x.flatten(2, 3) for x in (query, key, value)]
-        return query, key, value
-    elif not self.multi_query:
-        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
-        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads, 3, self.head_dim)
-        # TODO : Need to be fixed to use index_select()
-        return fused_qkv[..., 0, :], fused_qkv[..., 1, :], fused_qkv[..., 2, :]
-    else:
-        batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
-        fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads + 2, self.head_dim)
-        # return fused_qkv[..., :-2, :], fused_qkv[..., [-2], :], fused_qkv[..., [-1], :]
-        d2 = fused_qkv.shape[2] - 2
-        query = torch.index_select(fused_qkv, 2, index=torch.arange(d2, device=fused_qkv.device))
-        key = torch.index_select(fused_qkv, 2, index=torch.tensor([d2], device=fused_qkv.device))
-        value = torch.index_select(fused_qkv, 2, index=torch.tensor([d2 + 1], device=fused_qkv.device))
-        return query, key, value
-
-
 #  FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
@@ -149,8 +98,6 @@ class ModuleFusedSDPA(torch.nn.Module):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
 
 
-=======
->>>>>>> main
 class Softmax(nn.Module):
     def __init__(self):
         super().__init__()
@@ -322,7 +269,9 @@ class GaudiFalconAttention(FalconAttention):
         self.inp_seq_len = -1
         self.max_position_embeddings = config.max_position_embeddings
 
-    def _split_heads(self, fused_qkv: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _split_heads(
+        self, fused_qkv: torch.Tensor, broadcast: Optional[bool] = True
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.new_decoder_architecture:
             batch, seq_len, _ = fused_qkv.shape
 
@@ -341,9 +290,9 @@ class GaudiFalconAttention(FalconAttention):
             query = torch.index_select(qkv, 3, index=torch.arange(d3, device=qkv.device))
             key = torch.index_select(qkv, 3, index=torch.tensor([d3], device=qkv.device))
             value = torch.index_select(qkv, 3, index=torch.tensor([d3 + 1], device=qkv.device))
-
-            key = torch.broadcast_to(key, query.shape)
-            value = torch.broadcast_to(value, query.shape)
+            if broadcast:
+                key = torch.broadcast_to(key, query.shape)
+                value = torch.broadcast_to(value, query.shape)
 
             query, key, value = [x.flatten(2, 3) for x in (query, key, value)]
             return query, key, value
