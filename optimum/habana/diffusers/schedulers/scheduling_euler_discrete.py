@@ -94,9 +94,14 @@ class GaudiEulerDiscreteScheduler(EulerDiscreteScheduler):
             prediction_type,
             interpolation_type,
             use_karras_sigmas,
+            sigma_min,
+            sigma_max,
             timestep_spacing,
+            timestep_type,
             steps_offset,
+            rescale_betas_zero_snr,
         )
+
         self._initial_timestep = None
         self.reset_timestep_dependent_params()
 
