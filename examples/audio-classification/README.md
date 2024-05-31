@@ -20,6 +20,12 @@ The following examples showcase how to fine-tune `Wav2Vec2` for audio classifica
 
 Speech recognition models that have been pretrained in an unsupervised fashion on audio data alone, *e.g.* [Wav2Vec2](https://huggingface.co/transformers/main/model_doc/wav2vec2.html), have shown to require only very little annotated data to yield good performance on speech classification datasets.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
 
 ## Single-HPU
 
@@ -94,6 +100,8 @@ python ../gaudi_spawn.py \
 On 8 HPUs, this script should run in ~12 minutes and yield an accuracy of **80.49%**.
 
 > If your model classification head dimensions do not fit the number of labels in the dataset, you can specify `--ignore_mismatched_sizes` to adapt it.
+
+> If you get an error reporting unused parameters in the model, you can specify `--ddp_find_unused_parameters True`. Using this parameter might affect the training speed.
 
 
 ## DeepSpeed
