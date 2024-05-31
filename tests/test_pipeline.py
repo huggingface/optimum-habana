@@ -28,8 +28,7 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 MODELS_TO_TEST = {
     "text-to-speech": [
         ("microsoft/speecht5_tts", 16000),
-        # add the test in transformer 4.40
-        # ("facebook/hf-seamless-m4t-medium", 16000),
+        ("facebook/hf-seamless-m4t-medium", 16000),
         ("facebook/mms-tts-eng", 16000),
     ],
     "image-to-text": [
