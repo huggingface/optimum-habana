@@ -107,7 +107,6 @@ Here are a few settings you may be interested in:
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
-- `--fp8` Enable Quantization to fp8
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -238,7 +237,7 @@ python run_generation.py \
 
 `--bucket_size` option is especially useful when processing an input stream with varying lengths, that is when you have something like `--dataset_name squad --column_name context --max_input_tokens -1`. `--max_input_tokens -1` specifies no truncation of input prompt in the dataset.
 
-Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For example `--simulate_dyn_prompt 25,35,45` will extend or crop the default prompt (or the prompt passed in using `--prompt`) to sizes 25, 35, and 45, and throughput will be measured for these 3 lengths. If `--simulate_dyn_prompt` is used, the min and max input lengths from it are computed to perform warmup as well. One final optimization that can be used in case of dynamic inputs is `--reduce_recompile`. Thus the suggested configuration to simulate dynamicity after warmup is to use all three arguments: `--simulate_dyn_prompt 25 35 45 --reduce_recompile --bucket_size 30`
+Another way to simulate dynamic input is to use `--simulate_dyn_prompt`. For example `--simulate_dyn_prompt 25 35 45` will extend or crop the default prompt (or the prompt passed in using `--prompt`) to sizes 25, 35, and 45, and throughput will be measured for these 3 lengths. If `--simulate_dyn_prompt` is used, the min and max input lengths from it are computed to perform warmup as well. One final optimization that can be used in case of dynamic inputs is `--reduce_recompile`. Thus the suggested configuration to simulate dynamicity after warmup is to use all three arguments: `--simulate_dyn_prompt 25 35 45 --reduce_recompile --bucket_size 30`
 
 While `--bucket_size` works for any model without model file changes, an even more optimized version of bucketing is supported for certain models like Llama. This can be enabled by setting `--bucket_internal` flag (along with `--bucket_size` to specify the bucket size)
 
@@ -253,7 +252,7 @@ You will also need to add `--torch_compile` in your command.
 
 ### Running with FP8
 
-Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, and Falcon-180B in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llama2-70b, Llama2-7b, Llama3-70b, Llama3-8b, Mixtral-8x7B, Falcon-7B, Falcon-40B, Falcon-180B and phi-2 in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
@@ -285,8 +284,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_kv_cache \
 --reuse_cache \
 --bf16 \
---batch_size 1 \
---fp8
+--batch_size 1
 ```
 
 Alternatively, here is another example to quantize the model based on previous measurements for LLama2-70b:
@@ -303,8 +301,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --batch_size 277 \
 --max_new_tokens 2048 \
 --max_input_tokens 2048 \
---limit_hpu_graphs \
---fp8
+--limit_hpu_graphs
 ```
 
 Here is an example to measure the tensor quantization statistics on Mixtral-8x7B with 1 card:
@@ -330,8 +327,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generati
 --bucket_size 128 \
 --max_new_tokens 2048 \
 --batch_size 16 \
---bf16 \
---fp8
+--bf16
 ```
 
 Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
@@ -362,11 +358,36 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --batch_size 110 \
 --bf16 \
 --reuse_cache \
---trim_logits \
---fp8
+--trim_logits
 ```
-`--fp8` is required to enable quantization in fp8.
 
+Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
+
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_lm_eval.py \
+-o acc_phi-2_bs1_measure.txt  \
+--model_name_or_path microsoft/phi-2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--trim_logits \
+--reuse_cache \
+--bf16
+```
+
+Here is an example to quantize the model based on previous measurements for phi-2 with 1 card:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.py \
+--model_name_or_path microsoft/phi-2 \
+--use_hpu_graphs \
+--use_kv_cache \
+--max_new_tokens 100 \
+--batch_size 1 \
+--bf16 \
+--trim_logits \
+--reuse_cache
+```
 
 ### Using Habana Flash Attention
 

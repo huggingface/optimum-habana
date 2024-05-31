@@ -36,7 +36,12 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import (
+    check_habana_frameworks_version,
+    check_optimum_habana_min_version,
+    get_habana_frameworks_version,
+    set_seed,
+)
 
 
 def adjust_batch(batch, size):
@@ -96,6 +101,22 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
+def setup_inference(args, model):
+    import habana_frameworks.torch.core as htcore
+
+    habana_version = get_habana_frameworks_version()
+
+    print("Initializing inference mode")
+    # Keeping the if-else here for back compat. TODO remove later
+    if habana_version.major >= 1 and habana_version.minor >= 16:
+        htcore.hpu_initialize(model, mark_only_scales_as_const=True)
+    else:
+        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
+        if const_marking == "True":
+            htcore.hpu_initialize(model)
+    return model
+
+
 def setup_const_serialization(const_serialization_path):
     import uuid
 
@@ -132,7 +153,7 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.fp8:
+        if args.quant_config:
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -158,10 +179,29 @@ def get_torch_compiled_model(model):
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
 
-    if args.peft_model is not None:
-        model = peft_model(args, model_dtype, logger, **model_kwargs)
+    if args.disk_offload:
+        from accelerate import infer_auto_device_map, init_empty_weights
+
+        config = AutoConfig.from_pretrained(args.model_name_or_path)
+        with init_empty_weights():
+            model = AutoModelForCausalLM.from_config(config)
+        max_memory = {"cpu": "10GiB"}
+        device_map = infer_auto_device_map(model, max_memory=max_memory, dtype=model_dtype)
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path,
+            device_map=device_map,
+            offload_folder="/tmp/offload_folder/",
+            offload_state_dict=True,
+            torch_dtype=model_dtype,
+            **model_kwargs,
+        )
     else:
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+        if args.peft_model is not None:
+            model = peft_model(args, model_dtype, logger, **model_kwargs)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+            )
     if args.quant_config:
         import habana_quantization_toolkit
 
@@ -386,7 +426,7 @@ def initialize_model(args, logger):
     set_seed(args.seed)
     get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     use_deepspeed = args.world_size > 0
-    if use_deepspeed or args.bf16 or args.fp8:
+    if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
@@ -399,9 +439,6 @@ def initialize_model(args, logger):
     }
     if args.trust_remote_code:
         logger.warning("`trust_remote_code` is set, there is no guarantee this model works properly and it may fail")
-    if args.disk_offload:
-        model_kwargs["device_map"] = "auto"
-        model_kwargs["offload_folder"] = "/tmp/offload_folder/"
 
     model = (
         setup_model(args, model_dtype, model_kwargs, logger)
@@ -413,13 +450,8 @@ def initialize_model(args, logger):
 
     if args.const_serialization_path:
         setup_const_serialization(args.const_serialization_path)
-    if args.fp8:
-        import habana_frameworks.torch.core as htcore
-
-        print("Initializing inference mode")
-        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
-        if const_marking == "True":
-            htcore.hpu_initialize(model)
+    if args.quant_config:
+        model = setup_inference(args, model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")

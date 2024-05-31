@@ -22,7 +22,6 @@ Fine-tuning the library models for sequence to sequence speech recognition.
 import logging
 import os
 import sys
-import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
@@ -56,8 +55,8 @@ except ImportError:
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.38.0")
-check_optimum_habana_min_version("1.10.0")
+check_min_version("4.40.0")
+check_optimum_habana_min_version("1.11.0")
 
 require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 
@@ -101,12 +100,6 @@ class ModelArguments:
                 "The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
                 "generated when running `huggingface-cli login` (stored in `~/.huggingface`)."
             )
-        },
-    )
-    use_auth_token: bool = field(
-        default=None,
-        metadata={
-            "help": "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead."
         },
     )
     trust_remote_code: bool = field(
@@ -312,15 +305,6 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-    if model_args.use_auth_token is not None:
-        warnings.warn(
-            "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead.",
-            FutureWarning,
-        )
-        if model_args.token is not None:
-            raise ValueError("`token` and `use_auth_token` are both specified. Please set only the argument `token`.")
-        model_args.token = model_args.use_auth_token
-
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_speech_recognition_seq2seq", model_args, data_args)
@@ -343,8 +327,7 @@ def main():
     gaudi_config = GaudiConfig.from_pretrained(
         training_args.gaudi_config_name,
         cache_dir=model_args.cache_dir,
-        # use_auth_token=True if data_args.use_auth_token else None,
-        use_auth_token=False,
+        token=model_args.token,
     )
 
     # Log on each process the small summary:
@@ -467,12 +450,8 @@ def main():
     if hasattr(model.generation_config, "is_multilingual") and model.generation_config.is_multilingual:
         # We only need to set the language and task ids in a multilingual setting
         tokenizer.set_prefix_tokens(language=data_args.language, task=data_args.task)
-        model.generation_config.update(
-            **{
-                "language": data_args.language,
-                "task": data_args.task,
-            }
-        )
+        model.generation_config.language = data_args.language
+        model.generation_config.task = data_args.task
     elif data_args.language is not None:
         raise ValueError(
             "Setting language token for an English-only checkpoint is not permitted. The language argument should "
@@ -485,7 +464,9 @@ def main():
             "The use of `forced_decoder_ids` is deprecated and will be removed in v4.41."
             "Please use the `language` and `task` arguments instead"
         )
-    model.generation_config.forced_decoder_ids = model_args.forced_decoder_ids
+    else:
+        model.generation_config.forced_decoder_ids = None
+        model.config.forced_decoder_ids = None
 
     if model_args.suppress_tokens is not None:
         logger.warning(

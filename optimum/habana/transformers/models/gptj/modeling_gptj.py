@@ -5,6 +5,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gptj.modeling_gptj import (
+    GPTJMLP,
     GPTJAttention,
     GPTJForCausalLM,
     apply_rotary_pos_emb,
@@ -141,51 +142,59 @@ class GaudiGPTJAttention(GPTJAttention):
         return outputs  # a, present, (attentions)
 
 
-def gaudi_gptj_block_forward(
-    self,
-    hidden_states: Optional[torch.FloatTensor],
-    layer_past: Optional[Tuple[torch.Tensor]] = None,
-    attention_mask: Optional[torch.FloatTensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    head_mask: Optional[torch.FloatTensor] = None,
-    use_cache: Optional[bool] = False,
-    output_attentions: Optional[bool] = False,
-    token_idx: Optional[torch.Tensor] = None,
-    sin: Optional[torch.Tensor] = None,
-    cos: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
-    """
-    Copied from GPTJBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/modeling_gptj.py
-    The only differences are:
-    - add new args token_idx
-    - pass sin and cos from upper level as they are identical for each attn block
-    """
-    residual = hidden_states
-    hidden_states = self.ln_1(hidden_states)
-    attn_outputs = self.attn(
-        hidden_states=hidden_states,
-        layer_past=layer_past,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        head_mask=head_mask,
-        use_cache=use_cache,
-        output_attentions=output_attentions,
-        token_idx=token_idx,
-        sin=sin,
-        cos=cos,
-    )
-    attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
-    outputs = attn_outputs[1:]
+class GaudiGPTJBlock(torch.nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        inner_dim = config.n_inner if config.n_inner is not None else 4 * config.n_embd
+        self.ln_1 = torch.nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
+        self.attn = GaudiGPTJAttention(config)
+        self.mlp = GPTJMLP(inner_dim, config)
 
-    feed_forward_hidden_states = self.mlp(hidden_states)
-    hidden_states = attn_output + feed_forward_hidden_states + residual
+    def forward(
+        self,
+        hidden_states: Optional[torch.FloatTensor],
+        layer_past: Optional[Tuple[torch.Tensor]] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = False,
+        output_attentions: Optional[bool] = False,
+        token_idx: Optional[torch.Tensor] = None,
+        sin: Optional[torch.Tensor] = None,
+        cos: Optional[torch.Tensor] = None,
+    ) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
+        """
+        Copied from GPTJBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/modeling_gptj.py
+        The only differences are:
+        - add new args token_idx
+        - pass sin and cos from upper level as they are identical for each attn block
+        """
+        residual = hidden_states
+        hidden_states = self.ln_1(hidden_states)
+        attn_outputs = self.attn(
+            hidden_states=hidden_states,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            token_idx=token_idx,
+            sin=sin,
+            cos=cos,
+        )
+        attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
+        outputs = attn_outputs[1:]
 
-    if use_cache:
-        outputs = (hidden_states,) + outputs
-    else:
-        outputs = (hidden_states,) + outputs[1:]
+        feed_forward_hidden_states = self.mlp(hidden_states)
+        hidden_states = attn_output + feed_forward_hidden_states + residual
 
-    return outputs  # hidden_states, present, (attentions)
+        if use_cache:
+            outputs = (hidden_states,) + outputs
+        else:
+            outputs = (hidden_states,) + outputs[1:]
+
+        return outputs  # hidden_states, present, (attentions)
 
 
 def gaudi_gptj_model_forward(

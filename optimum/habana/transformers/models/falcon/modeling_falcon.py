@@ -88,6 +88,7 @@ def gaudi_falcon_linear_forward(self, input: torch.Tensor) -> torch.Tensor:
     return hidden_states
 
 
+<<<<<<< sasarkar_falcon_opt
 def gaudi_falcon_attention_split_heads(
     self,
     fused_qkv: torch.Tensor,
@@ -148,6 +149,8 @@ class ModuleFusedSDPA(torch.nn.Module):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
 
 
+=======
+>>>>>>> main
 class Softmax(nn.Module):
     def __init__(self):
         super().__init__()
@@ -318,6 +321,46 @@ class GaudiFalconAttention(FalconAttention):
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.max_position_embeddings = config.max_position_embeddings
+
+    def _split_heads(self, fused_qkv: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.new_decoder_architecture:
+            batch, seq_len, _ = fused_qkv.shape
+
+            if self.config.num_attention_heads != self.num_heads:  # When DS divides heads for TP
+                num_heads = self.config.num_attention_heads
+                num_kv_heads = self.config.num_kv_heads
+            else:  # When DS not in use
+                num_heads = self.num_heads
+                num_kv_heads = self.num_kv_heads
+
+            qkv = fused_qkv.view(batch, seq_len, -1, num_heads // num_kv_heads + 2, self.head_dim)
+            # query = qkv[:, :, :, :-2]
+            # key = qkv[:, :, :, [-2]]
+            # value = qkv[:, :, :, [-1]]
+            d3 = qkv.shape[3] - 2
+            query = torch.index_select(qkv, 3, index=torch.arange(d3, device=qkv.device))
+            key = torch.index_select(qkv, 3, index=torch.tensor([d3], device=qkv.device))
+            value = torch.index_select(qkv, 3, index=torch.tensor([d3 + 1], device=qkv.device))
+
+            key = torch.broadcast_to(key, query.shape)
+            value = torch.broadcast_to(value, query.shape)
+
+            query, key, value = [x.flatten(2, 3) for x in (query, key, value)]
+            return query, key, value
+        elif not self.multi_query:
+            batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
+            fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads, 3, self.head_dim)
+            # TODO : Need to be fixed to use index_select()
+            return fused_qkv[..., 0, :], fused_qkv[..., 1, :], fused_qkv[..., 2, :]
+        else:
+            batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
+            fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads + 2, self.head_dim)
+            # return fused_qkv[..., :-2, :], fused_qkv[..., [-2], :], fused_qkv[..., [-1], :]
+            d2 = fused_qkv.shape[2] - 2
+            query = torch.index_select(fused_qkv, 2, index=torch.arange(d2, device=fused_qkv.device))
+            key = torch.index_select(fused_qkv, 2, index=torch.tensor([d2], device=fused_qkv.device))
+            value = torch.index_select(fused_qkv, 2, index=torch.tensor([d2 + 1], device=fused_qkv.device))
+            return query, key, value
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         if self.config.new_decoder_architecture:
@@ -854,28 +897,25 @@ class GaudiFalconModel(FalconModel):
             elif head_mask is None:
                 alibi = alibi.reshape(batch_size, -1, *alibi.shape[1:])
 
-                attention_mask_2d = attention_mask
                 # We don't call _prepare_4d_causal_attention_mask_for_sdpa as we need to mask alibi using the 4D attention_mask untouched.
                 attention_mask = _gaudi_prepare_4d_causal_attention_mask(
                     attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
                 )
 
                 # We take care to integrate alibi bias in the attention_mask here.
-                if attention_mask_2d is None:
-                    attention_mask = alibi / math.sqrt(self.config.hidden_size // self.num_heads)
-                else:
-                    attention_mask = torch.masked_fill(
-                        alibi / math.sqrt(self.config.hidden_size // self.num_heads),
-                        attention_mask < -1,
-                        torch.finfo(alibi.dtype).min,
-                    )
+                min_dtype = torch.finfo(alibi.dtype).min
+                attention_mask = torch.masked_fill(
+                    alibi / math.sqrt(self.config.hidden_size // self.num_heads),
+                    attention_mask < -1,
+                    min_dtype,
+                )
 
-                    # From PyTorch 2.1 onwards, F.scaled_dot_product_attention with the memory-efficient attention backend
-                    # produces nans if sequences are completely unattended in the attention mask. Details: https://github.com/pytorch/pytorch/issues/110213
-                    if seq_length > 1:
-                        attention_mask = GaudiAttentionMaskConverter._unmask_unattended(
-                            attention_mask, attention_mask_2d, unmasked_value=0.0
-                        )
+                # From PyTorch 2.1 onwards, F.scaled_dot_product_attention with the memory-efficient attention backend
+                # produces nans if sequences are completely unattended in the attention mask. Details: https://github.com/pytorch/pytorch/issues/110213
+                if seq_length > 1:
+                    attention_mask = GaudiAttentionMaskConverter._unmask_unattended(
+                        attention_mask, min_dtype=min_dtype
+                    )
             else:
                 # PyTorch SDPA does not support head_mask, we fall back on the eager implementation in this case.
                 attention_mask = _gaudi_prepare_4d_causal_attention_mask(
