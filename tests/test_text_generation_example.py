@@ -39,21 +39,21 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("google/gemma-7b", 1, False, 109.70751574382221),
         ],
         "fp8": [
-            ("tiiuae/falcon-180B", 4, "278", "128", "128", 2055.18908620476762),
-            ("meta-llama/Llama-2-7b-hf", 1, 1200, 128, 128, 13415.103401047876),
-            ("meta-llama/Llama-2-7b-hf", 1, 160, 128, 2048, 2930.9086839308384),
-            ("meta-llama/Llama-2-7b-hf", 1, 90, 2048, 128, 1104.0681776998265),
-            ("meta-llama/Llama-2-7b-hf", 1, 60, 2048, 2048, 1248.3177998857964),
-            ("meta-llama/Llama-2-70b-hf", 8, 2500, 128, 128, 10327.895829614834),
-            ("meta-llama/Llama-2-70b-hf", 8, 430, 128, 2048, 10425.578514886345),
-            ("meta-llama/Llama-2-70b-hf", 8, 40, 2048, 128, 695.475101514524),
-            ("meta-llama/Llama-2-70b-hf", 8, 64, 2048, 2048, 2773.173092391251),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, 128, 128, 12397.11410288204),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, 128, 2048, 5394.675714459493),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, 2048, 128, 919.8470890081497),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, 2048, 2048, 2471.950758729518),
-            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 1, 128, 128, 39.26845661768185),
-            ("microsoft/phi-2", 1, 1, 128, 128, 254.08932787178165),
+            ("tiiuae/falcon-180B", 4, 278, True, 128, 128, 2055.18908620476762),
+            ("meta-llama/Llama-2-7b-hf", 1, 1200, False, 128, 128, 13415.103401047876),
+            ("meta-llama/Llama-2-7b-hf", 1, 160, False, 128, 2048, 2930.9086839308384),
+            ("meta-llama/Llama-2-7b-hf", 1, 90, False, 2048, 128, 1104.0681776998265),
+            ("meta-llama/Llama-2-7b-hf", 1, 60, False, 2048, 2048, 1248.3177998857964),
+            ("meta-llama/Llama-2-70b-hf", 8, 2500, False, 128, 128, 10327.895829614834),
+            ("meta-llama/Llama-2-70b-hf", 8, 430, False, 128, 2048, 10425.578514886345),
+            ("meta-llama/Llama-2-70b-hf", 8, 40, False, 2048, 128, 695.475101514524),
+            ("meta-llama/Llama-2-70b-hf", 8, 64, False, 2048, 2048, 2773.173092391251),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128, 12397.11410288204),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 5394.675714459493),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 919.8470890081497),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 2471.950758729518),
+            ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 39.26845661768185),
+            ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 36.77314954096159),
@@ -133,7 +133,7 @@ def _test_text_generation(
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
-    if reuse_cache or torch_compile or fp8 and "mixtral" not in model_name.lower():
+    if reuse_cache or torch_compile:
         command += ["--reuse_cache"]
 
     if torch_compile:
@@ -151,6 +151,12 @@ def _test_text_generation(
     if fp8:
         if "--trim_logits" not in command:
             command += ["--trim_logits"]
+        if "Llama-2" in model_name:
+            command.insert(-2, "--use_flash_attention")
+            command.insert(-2, "--flash_attention_recompute")
+            command.insert(-2, "--bucket_size 128")
+            command.insert(-2, "--bucket_internal")
+
         global prev_quant_model_name
         global prev_quant_rank
         measure_command = None
@@ -220,9 +226,18 @@ def test_text_generation_bf16(model_name: str, baseline: float, batch_size: int,
     _test_text_generation(model_name, baseline, token, batch_size, reuse_cache)
 
 
-@pytest.mark.parametrize("model_name, world_size, batch_size, input_len, output_len, baseline", MODELS_TO_TEST["fp8"])
+@pytest.mark.parametrize(
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["fp8"]
+)
 def test_text_generation_fp8(
-    model_name: str, baseline: float, world_size: int, batch_size: int, input_len: int, output_len: int, token: str
+    model_name: str,
+    baseline: float,
+    world_size: int,
+    batch_size: int,
+    reuse_cache: bool,
+    input_len: int,
+    output_len: int,
+    token: str,
 ):
     deepspeed = True if world_size > 1 else False
     _test_text_generation(
@@ -233,6 +248,7 @@ def test_text_generation_fp8(
         world_size=world_size,
         fp8=True,
         batch_size=batch_size,
+        reuse_cache=reuse_cache,
         max_input_tokens=input_len,
         max_output_tokens=output_len,
     )
