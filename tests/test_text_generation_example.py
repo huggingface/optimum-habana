@@ -40,6 +40,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
             ("Qwen/Qwen1.5-7B", 4, False, 488.82855464593257),
             ("google/gemma-7b", 1, False, 109.70751574382221),
+            ("CohereForAI/c4ai-command-r-v01", 1, False, 30.472430202916325),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
