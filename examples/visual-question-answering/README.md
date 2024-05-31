@@ -16,9 +16,9 @@ limitations under the License.
 
 # Visual Question Answering Examples
 
-The `run_pipeline.py` script showcases how to use the Transformers pipeline API to run visual question answering task on HPUs.
-
 ## Single-HPU inference
+
+The `run_pipeline.py` script showcases how to use the Transformers pipeline API to run visual question answering task on HPUs.
 
 ```bash
 python3 run_pipeline.py \
@@ -37,7 +37,7 @@ Models that have been validated:
 ## OpenCLIP inference
 
 The `run_openclip_vqa.py` can be used to run zero shot image classification with [OpenCLIP Huggingface Models](https://huggingface.co/docs/hub/en/open_clip#using-openclip-at-hugging-face).
-Requirements can be installed with `openclip_requirements.txt` as follows:
+The requirements for `run_openclip_vqa.py`can be installed with `openclip_requirements.txt` as follows:
 
 ```bash
 pip install -r openclip_requirements.txt
