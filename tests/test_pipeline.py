@@ -13,11 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import numpy as np
 import pytest
-import os
-from unittest import TestCase
-
 import torch
 from datasets import load_dataset
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
