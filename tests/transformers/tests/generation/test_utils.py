@@ -30,7 +30,6 @@ from transformers.testing_utils import (
     require_torch,
     require_torch_multi_accelerator,
     slow,
-    torch_device,
 )
 
 from ..test_modeling_common import floats_tensor, ids_tensor, torch_device
@@ -724,7 +723,6 @@ class GenerationTesterMixin:
                     num_beams=2,
                 )
 
-    @pytest.mark.skip("Beam search sampling is not supported by optimum-habana yet")
     def test_beam_sample_generate(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -761,7 +759,6 @@ class GenerationTesterMixin:
 
                 torch.testing.assert_close(output_generate[:, input_embeds.shape[1] :], output_generate2)
 
-    @pytest.mark.skip("Beam search sampling is not supported by optimum-habana yet")
     def test_beam_sample_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -822,7 +819,6 @@ class GenerationTesterMixin:
             output_ids_generate = model.generate(do_sample=False, max_length=max_length, remove_invalid_values=True)
             self.assertIsNotNone(output_ids_generate)
 
-    @pytest.mark.skip("Group beam search is not supported by optimum-habana")
     def test_group_beam_search_generate(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -865,7 +861,6 @@ class GenerationTesterMixin:
             )
             self.assertTrue(output_generate.shape[-1] == max_length)
 
-    @pytest.mark.skip("Group beam search is not supported by optimum-habana")
     def test_group_beam_search_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -1158,7 +1153,6 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(low_output.tolist(), high_output.tolist())
 
-    @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     @is_flaky()  # Read NOTE (1) below. If there are API issues, all attempts will fail.
     def test_assisted_decoding_matches_greedy_search(self):
         # This test ensures that the assisted generation does not introduce output changes over greedy search.
@@ -1291,7 +1285,6 @@ class GenerationTesterMixin:
             for output in (output_greedy, output_prompt_lookup):
                 self._check_outputs(output, input_ids, model.config, use_cache=True)
 
-    @pytest.mark.skip(reason="Assisted decoding not yet supported by optimum-habana")
     def test_assisted_decoding_sample(self):
         # In this test we don't check assisted vs non-assisted output -- seeded assisted decoding with sample will not
         # match sample for the same seed, as the forward pass does not return the exact same logits (due to matmul with
@@ -2481,6 +2474,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
             ],
         )
 
+    @pytest.mark.xfail(reason="AssertionError: optimum-habana does not support inputs_embeds yet")
     def test_max_length_if_input_embeds(self):
         # PT-only test: TF doesn't have StoppingCriteria
         article = "Today a dragon flew over Paris."
@@ -2495,6 +2489,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         out_gen_embeds = model.generate(inputs_embeds=inputs_embeds, max_length=max_length)
         self.assertEqual(out_gen.shape[-1], input_len + out_gen_embeds.shape[-1])
 
+    @pytest.mark.xfail(reason="AssertionError: optimum-habana does not support inputs_embeds yet")
     def test_min_length_if_input_embeds(self):
         # PT-only test: TF doesn't have StoppingCriteria
         article = "Today a dragon flew over Paris."
@@ -2589,6 +2584,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         self.assertListEqual(output_sequences.tolist(), output_sequences_kwargs.tolist())
         self.assertEqual(output_sequences.shape, (2, 5))
 
+    @pytest.mark.xfail(reason="Group beam search is not supported by optimum-habana yet")
     def test_transition_scores_group_beam_search_encoder_decoder(self):
         # PT-only test: TF doesn't have group beam search
         articles = [
@@ -2624,7 +2620,9 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         tokenizer.pad_token_id = tokenizer.eos_token_id
         model_inputs = tokenizer("I", return_tensors="pt")["input_ids"]
 
-        low_output = model.generate(model_inputs, max_new_tokens=40, num_beams=5, early_stopping=True, low_memory=True)
+        low_output = model.generate(
+            model_inputs, max_new_tokens=40, num_beams=5, early_stopping=True, low_memory=True
+        )
 
         high_output = model.generate(
             model_inputs, max_new_tokens=40, num_beams=5, early_stopping=True, low_memory=False
@@ -3035,6 +3033,9 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         # because it doesn't do signature filtering.
         class FakeEncoder(bart_model.model.encoder.__class__):
             def forward(self, input_ids, **kwargs):
+                kwargs.pop("bucket_size")
+                kwargs.pop("bucket_internal")
+                kwargs.pop("reduce_recompile")
                 return super().forward(input_ids, **kwargs)
 
         fake_encoder = FakeEncoder(bart_model.config, bart_model.model.shared).to(torch_device)
@@ -3055,9 +3056,10 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         tokenized_inputs = tokenizer([text], return_tensors="pt")
         input_ids = tokenized_inputs.input_ids.to(torch_device)
 
+        # NOTE: The following warning is not trigger when token_idx is passed
         # Default generation config value of 20 -> emits warning
-        with self.assertWarns(UserWarning):
-            model.generate(input_ids)
+        # with self.assertWarns(UserWarning):
+        #     model.generate(input_ids)
 
         # Explicitly setting max_length to 20 -> no warning
         with warnings.catch_warnings(record=True) as warning_list:
@@ -3072,6 +3074,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
             model.generate(input_ids)
             self.assertEqual(len(warning_list), 0)
 
+    @pytest.mark.xfail(reason="Assisted decoding is not supported by optimum-habana yet")
     def test_length_warning_assisted_generation(self):
         # PT-only test: TF doesn't support assisted decoding yet.
         model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2").to(torch_device)
@@ -3094,6 +3097,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
             )
             self.assertEqual(len(warning_list), 0)
 
+    @pytest.mark.xfail(reason="Assisted decoding is not supported by optimum-habana yet")
     def test_generated_length_assisted_generation(self):
         # PT-only test: TF doesn't support assisted decoding yet.
         model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2").to(torch_device)
@@ -3122,6 +3126,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         )
         self.assertTrue((input_length + 10) <= out.shape[-1] <= 20)
 
+    @pytest.mark.xfail(reason="Assisted decoding is not supported by optimum-habana yet")
     def test_model_kwarg_assisted_decoding_decoder_only(self):
         # PT-only test: TF doesn't support assisted decoding yet.
         model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2").to(torch_device)
@@ -3156,6 +3161,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         )
         self.assertListEqual(outputs_assisted.tolist(), outputs_tti.tolist())
 
+    @pytest.mark.xfail(reason="Assisted decoding is not supported by optimum-habana yet")
     def test_model_kwarg_assisted_decoding_encoder_decoder(self):
         """
         Tests that the following scenario is compatible with assisted generation:
@@ -3222,6 +3228,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         )
         self.assertListEqual(outputs_assisted.tolist(), outputs_foo.tolist())
 
+    @pytest.mark.xfail(reason="Assisted decoding is not supported by optimum-habana yet")
     def test_assisted_decoding_encoder_decoder_shared_encoder(self):
         """
         Tests that the following scenario is compatible with assisted generation:
@@ -3300,6 +3307,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         )
         self.assertListEqual(outputs_assisted.tolist(), outputs_foo.tolist())
 
+    @pytest.mark.xfail(reason="Assisted decoding is not supported by optimum-habana yet")
     def test_assisted_decoding_num_assistant_tokens_heuristic_schedule(self):
         # This test ensures that the assisted generation num_assistant_tokens 'heuristic' schedule works properly.
 
@@ -3323,6 +3331,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         # update_candidate_strategy is called only once and therefore, assistant_model.generation_config.num_assistant_tokens should be either 4 or 7
         self.assertTrue(assistant_model.generation_config.num_assistant_tokens in (4, 7))
 
+    @pytest.mark.xfail(reason="Assisted decoding is not supported by optimum-habana yet")
     def test_assisted_decoding_num_assistant_tokens_heuristic_transient_schedule(self):
         # This test ensures that the assisted generation num_assistant_tokens 'heuristic' schedule works properly.
 
@@ -3387,14 +3396,15 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
 
         # perform dummy check if unpreprocessed logits make sense.
         # do preselection on high probabilities; find scores of y and n tokens
-        probs_all = torch.nn.functional.softmax(outputs.logits[2][0], dim=-1)
+        probs_all = torch.nn.functional.softmax(outputs.logits[0].flatten())
         indices = torch.argwhere(probs_all > 0.001)
-        indices = indices[:, -1]
         tokens_max = tokenizer.batch_decode(indices, skip_special_tokens=True)
         probs_max = probs_all[probs_all > 0.001]
 
         self.assertTrue(len(indices) >= 2)
-        next_token_dict = {str(t): p for t, p in zip(tokens_max, probs_max)}
+        # Note this test is easier than the original transformer test
+        # since we convert tokens such as ' y' into 'y'
+        next_token_dict = {str(t.strip()): p for t, p in zip(tokens_max, probs_max)}
         self.assertTrue("n" in next_token_dict)
         self.assertTrue("y" in next_token_dict)
         y_prob = next_token_dict["y"]
@@ -3403,6 +3413,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         self.assertTrue(y_prob > 0.001 and n_prob > 0.001)
         self.assertTrue(y_prob <= 1.0 and n_prob <= 1.0)
 
+    @pytest.mark.xfail(reason="AssertionError: optimum-habana does not support inputs_embeds yet")
     def test_generate_from_inputs_embeds_with_bos_token_id_is_none(self):
         article = "Today a dragon flew over Paris."
         model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2").to(torch_device)

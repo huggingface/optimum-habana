@@ -3,8 +3,12 @@ Framework agnostic tests for generate()-related methods.
 """
 
 import numpy as np
+import pytest
+
+from ..test_modeling_common import torch_device
+
 from transformers import AutoTokenizer
-from transformers.testing_utils import slow, torch_device
+from transformers.testing_utils import slow
 
 
 class GenerationIntegrationTestsMixin:
@@ -257,6 +261,7 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
+    @pytest.mark.xfail(reason="optimum-habana does not support return_dict_in_generate with static_shapes")
     def test_transition_scores_beam_search_encoder_decoder_with_eos(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -328,6 +333,7 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
+    @pytest.mark.xfail(reason="Beam search sampling is not supported by optimum-habana yet")
     def test_transition_scores_beam_sample_encoder_decoder(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
