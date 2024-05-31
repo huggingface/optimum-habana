@@ -1,6 +1,5 @@
 # coding=utf-8
 # Copyright 2022 The HuggingFace Inc. team.
-# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +15,9 @@
 
 import numpy as np
 import pytest
+import os
+from unittest import TestCase
+
 import torch
 from datasets import load_dataset
 from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -49,7 +51,7 @@ class TestGaudiPipeline:
             "max_new_tokens": 128,
             "ignore_eos": False,
         }
-        image = "./tests/resource/image-captioning-example.png"
+        image = os.path.dirname(__file__) + "/resource/img/image-captioning-example.png"
         for model_dtype in MODEL_DTYPE_LIST:
             generator = pipeline(
                 "image-to-text",

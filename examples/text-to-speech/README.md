@@ -18,6 +18,13 @@ limitations under the License.
 
 This directory contains a script that showcases how to use the Transformers pipeline API to run text to speech task on HPUs.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Single-HPU inference
 
 ```bash

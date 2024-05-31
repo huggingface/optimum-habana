@@ -36,7 +36,12 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import (
+    check_habana_frameworks_version,
+    check_optimum_habana_min_version,
+    get_habana_frameworks_version,
+    set_seed,
+)
 
 
 def adjust_batch(batch, size):
@@ -96,6 +101,22 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
+def setup_inference(args, model):
+    import habana_frameworks.torch.core as htcore
+
+    habana_version = get_habana_frameworks_version()
+
+    print("Initializing inference mode")
+    # Keeping the if-else here for back compat. TODO remove later
+    if habana_version.major >= 1 and habana_version.minor >= 16:
+        htcore.hpu_initialize(model, mark_only_scales_as_const=True)
+    else:
+        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
+        if const_marking == "True":
+            htcore.hpu_initialize(model)
+    return model
+
+
 def setup_const_serialization(const_serialization_path):
     import uuid
 
@@ -132,7 +153,7 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.fp8:
+        if args.quant_config:
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -158,10 +179,29 @@ def get_torch_compiled_model(model):
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
 
-    if args.peft_model is not None:
-        model = peft_model(args, model_dtype, logger, **model_kwargs)
+    if args.disk_offload:
+        from accelerate import infer_auto_device_map, init_empty_weights
+
+        config = AutoConfig.from_pretrained(args.model_name_or_path)
+        with init_empty_weights():
+            model = AutoModelForCausalLM.from_config(config)
+        max_memory = {"cpu": "10GiB"}
+        device_map = infer_auto_device_map(model, max_memory=max_memory, dtype=model_dtype)
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path,
+            device_map=device_map,
+            offload_folder="/tmp/offload_folder/",
+            offload_state_dict=True,
+            torch_dtype=model_dtype,
+            **model_kwargs,
+        )
     else:
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+        if args.peft_model is not None:
+            model = peft_model(args, model_dtype, logger, **model_kwargs)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
+            )
     if args.quant_config:
         import habana_quantization_toolkit
 
@@ -171,10 +211,14 @@ def setup_model(args, model_dtype, model_kwargs, logger):
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
+        from optimum.habana.transformers.trainer import _is_peft_model
+
         if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
             model = wrap_in_hpu_graph(model, hash_with_views=False)
         else:
             model = wrap_in_hpu_graph(model)
+        if _is_peft_model(model):
+            model.base_model = wrap_in_hpu_graph(model.base_model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
@@ -285,17 +329,24 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
 
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
         model = PeftModel.from_pretrained(model, args.peft_model, torch_dtype=model_dtype, **model_kwargs)
+    if hasattr(model, "merge_and_unload"):
+        model = model.merge_and_unload()
+        if model_dtype == torch.bfloat16:
+            model = model.to(torch.bfloat16)
+        return model
+    else:
+        from optimum.habana.peft.peft_model import gaudi_generate, gaudi_prepare_inputs_for_generation
 
-    model = model.merge_and_unload()
-    if model_dtype == torch.bfloat16:
-        model = model.to(torch.bfloat16)
-    return model
+        model.__class__.generate = gaudi_generate
+        model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
+        return model
 
 
 def setup_tokenizer(args, model):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
+        "trust_remote_code": args.trust_remote_code,
     }
     if args.bad_words is not None or args.force_words is not None:
         tokenizer_kwargs["add_prefix_space"] = True
@@ -362,6 +413,7 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.use_flash_attention = args.use_flash_attention
     generation_config.flash_attention_recompute = args.flash_attention_recompute
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
+    generation_config.trust_remote_code = args.trust_remote_code
     return generation_config
 
 
@@ -374,7 +426,7 @@ def initialize_model(args, logger):
     set_seed(args.seed)
     get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     use_deepspeed = args.world_size > 0
-    if use_deepspeed or args.bf16 or args.fp8:
+    if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
@@ -383,10 +435,10 @@ def initialize_model(args, logger):
     model_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
+        "trust_remote_code": args.trust_remote_code,
     }
-    if args.disk_offload:
-        model_kwargs["device_map"] = "auto"
-        model_kwargs["offload_folder"] = "/tmp/offload_folder/"
+    if args.trust_remote_code:
+        logger.warning("`trust_remote_code` is set, there is no guarantee this model works properly and it may fail")
 
     model = (
         setup_model(args, model_dtype, model_kwargs, logger)
@@ -398,13 +450,8 @@ def initialize_model(args, logger):
 
     if args.const_serialization_path:
         setup_const_serialization(args.const_serialization_path)
-    if args.fp8:
-        import habana_frameworks.torch.core as htcore
-
-        print("Initializing inference mode")
-        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
-        if const_marking == "True":
-            htcore.hpu_initialize(model)
+    if args.quant_config:
+        model = setup_inference(args, model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")

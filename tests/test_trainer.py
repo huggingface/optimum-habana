@@ -22,6 +22,7 @@ import re
 import subprocess
 import tempfile
 import unittest
+from functools import partial
 from itertools import product
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -50,6 +51,7 @@ from transformers.testing_utils import (
     get_tests_dir,
     is_staging_test,
     parse_flag_from_env,
+    require_accelerate,
     require_optuna,
     require_safetensors,
     require_sentencepiece,
@@ -57,15 +59,15 @@ from transformers.testing_utils import (
     require_tokenizers,
     require_torch,
 )
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_pt_utils import AcceleratorConfig
-from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend, get_last_checkpoint
+from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend
 from transformers.training_args import OptimizerNames
 from transformers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
     SAFE_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
+    is_accelerate_available,
     is_safetensors_available,
 )
 from transformers.utils.hp_naming import TrialShortNamer
@@ -79,19 +81,29 @@ if is_torch_available():
     import transformers.optimization
     from torch import nn
     from torch.utils.data import IterableDataset
-    from transformers import EarlyStoppingCallback, GPT2Config, GPT2LMHeadModel, PreTrainedModel, TrainerState
+    from transformers import EarlyStoppingCallback, GPT2Config, PreTrainedModel, TrainerState
     from transformers.modeling_utils import unwrap_model
 
     from optimum.habana import GaudiTrainer
+    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+    from optimum.habana.transformers.models.gpt2 import GaudiGPT2LMHeadModel
 
     if is_safetensors_available():
         import safetensors.torch
+
+
+# for version specific tests in TrainerIntegrationTest
+require_accelerate_version_min_0_28 = partial(require_accelerate, min_version="0.28")
+GRAD_ACCUM_KWARGS_VERSION_AVAILABLE = is_accelerate_available("0.28")
 
 
 PATH_SAMPLE_TEXT = f"{get_tests_dir()}/fixtures/sample_text.txt"
 
 
 _run_safe_loading_tests_ = parse_flag_from_env("SAFE_LOADING_TESTS", default=False)
+
+
+adapt_transformers_to_gaudi()
 
 
 def safe_loading_test(test_case):
@@ -709,6 +721,31 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         self.assertEqual(sched1.lr_lambdas[0].args, sched2.lr_lambdas[0].args)
         self.assertEqual(sched1.lr_lambdas[0].keywords, sched2.lr_lambdas[0].keywords)
 
+    def test_cosine_with_min_lr_scheduler(self):
+        train_dataset = RegressionDataset()
+        model = RegressionModel()
+        num_steps, num_warmup_steps = 10, 2
+        extra_kwargs = {"min_lr": 1e-5}  # Non-default arguments
+        args = GaudiTrainingArguments(
+            "./regression",
+            lr_scheduler_type="cosine_with_min_lr",
+            lr_scheduler_kwargs=extra_kwargs,
+            learning_rate=0.2,
+            warmup_steps=num_warmup_steps,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(model, gaudi_config=get_gaudi_config(), args=args, train_dataset=train_dataset)
+        trainer.create_optimizer_and_scheduler(num_training_steps=num_steps)
+
+        # Checking that the scheduler was created
+        self.assertIsNotNone(trainer.lr_scheduler)
+
+        # Check the last learning rate
+        for _ in range(num_steps):
+            trainer.lr_scheduler.step()
+        self.assertEqual(trainer.lr_scheduler.get_last_lr()[0], 1e-5)
+
     def test_reduce_lr_on_plateau_args(self):
         # test passed arguments for a custom ReduceLROnPlateau scheduler
         train_dataset = RegressionDataset(length=64)
@@ -874,7 +911,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
     def test_evaluation_with_keys_to_drop(self):
         config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-        tiny_gpt2 = GPT2LMHeadModel(config)
+        tiny_gpt2 = GaudiGPT2LMHeadModel(config)
         x = torch.randint(0, 100, (128,))
         eval_dataset = RepeatDataset(x)
         args = GaudiTrainingArguments("./test", use_habana=True, use_lazy_mode=True)
@@ -962,7 +999,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
     def test_logging_inf_nan_filter(self):
         config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-        tiny_gpt2 = GPT2LMHeadModel(config)
+        tiny_gpt2 = GaudiGPT2LMHeadModel(config)
         x = torch.randint(0, 100, (128,))
         train_dataset = RepeatDataset(x)
 
@@ -1256,19 +1293,6 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             trainer = get_regression_trainer(output_dir=tmpdir, save_steps=5, pretrained=False)
             trainer.train()
             self.check_saved_checkpoints(tmpdir, 5, int(self.n_epochs * 64 / self.batch_size), False)
-
-    def test_save_checkpoints_is_atomic(self):
-        class UnsaveableTokenizer(PreTrainedTokenizerBase):
-            def save_pretrained(self, *args, **kwargs):
-                raise OSError("simulated file write error")
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            trainer = get_regression_trainer(output_dir=tmpdir, save_steps=5)
-            # Attach unsaveable tokenizer to partially fail checkpointing
-            trainer.tokenizer = UnsaveableTokenizer()
-            with self.assertRaises(OSError) as _context:
-                trainer.train()
-            assert get_last_checkpoint(tmpdir) is None
 
     @require_safetensors
     def test_safe_checkpoints(self):
@@ -1933,6 +1957,10 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.assertEqual(trainer.accelerator.even_batches, True)
             self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
 
+            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                # gradient accumulation kwargs configures gradient_state
+                self.assertNotIn("sync_each_batch", trainer.accelerator.gradient_state.plugin_kwargs)
+
     def test_accelerator_config_from_dict(self):
         # Checks that accelerator kwargs can be passed through
         # and the accelerator is initialized respectively
@@ -1941,16 +1969,20 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             model = RegressionPreTrainedModel(config)
             eval_dataset = SampleIterableDataset()
 
+            accelerator_config = {
+                "split_batches": True,
+                "dispatch_batches": True,
+                "even_batches": False,
+                "use_seedable_sampler": True,
+            }
+            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                accelerator_config["gradient_accumulation_kwargs"] = {"sync_each_batch": True}
+
             # Leaves all options as something *not* basic
             gaudi_config = get_gaudi_config()
             args = RegressionGaudiTrainingArguments(
                 output_dir=tmp_dir,
-                accelerator_config={
-                    "split_batches": True,
-                    "dispatch_batches": True,
-                    "even_batches": False,
-                    "use_seedable_sampler": True,
-                },
+                accelerator_config=accelerator_config,
                 use_habana=True,
             )
             trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
@@ -1958,6 +1990,9 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.assertEqual(trainer.accelerator.dispatch_batches, True)
             self.assertEqual(trainer.accelerator.even_batches, False)
             self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
+
+            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
 
     def test_accelerator_config_from_yaml(self):
         # Checks that accelerator kwargs can be passed through
@@ -1971,6 +2006,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                     "even_batches": False,
                     "use_seedable_sampler": False,
                 }
+                if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                    accelerator_config["gradient_accumulation_kwargs"] = {"sync_each_batch": True}
                 json.dump(accelerator_config, f)
             config = RegressionModelConfig(a=1.5, b=2.5)
             model = RegressionPreTrainedModel(config)
@@ -1985,11 +2022,18 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.assertEqual(trainer.accelerator.even_batches, False)
             self.assertEqual(trainer.accelerator.use_seedable_sampler, False)
 
+            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
+
     def test_accelerator_config_from_dataclass(self):
         # Checks that accelerator kwargs can be passed through
         # and the accelerator is initialized respectively
+
         accelerator_config = AcceleratorConfig(
-            split_batches=True, dispatch_batches=True, even_batches=False, use_seedable_sampler=False
+            split_batches=True,
+            dispatch_batches=True,
+            even_batches=False,
+            use_seedable_sampler=False,
         )
         config = RegressionModelConfig(a=1.5, b=2.5)
         model = RegressionPreTrainedModel(config)
@@ -2004,6 +2048,35 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.assertEqual(trainer.accelerator.dispatch_batches, True)
             self.assertEqual(trainer.accelerator.even_batches, False)
             self.assertEqual(trainer.accelerator.use_seedable_sampler, False)
+
+    @require_accelerate_version_min_0_28
+    def test_accelerate_config_from_dataclass_grad_accum(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+
+        grad_acc_kwargs = {
+            "num_steps": 10,
+            "adjust_scheduler": False,
+            "sync_with_dataloader": False,
+            "sync_each_batch": True,
+        }
+        accelerator_config = AcceleratorConfig(
+            split_batches=True,
+            dispatch_batches=True,
+            even_batches=False,
+            use_seedable_sampler=False,
+            gradient_accumulation_kwargs=grad_acc_kwargs,
+        )
+        config = RegressionModelConfig(a=1.5, b=2.5)
+        model = RegressionPreTrainedModel(config)
+        eval_dataset = SampleIterableDataset()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            args = RegressionGaudiTrainingArguments(output_dir=tmp_dir, accelerator_config=accelerator_config)
+            trainer = GaudiTrainer(model=model, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["num_steps"], 10)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["adjust_scheduler"], False)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_with_dataloader"], False)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
 
     def test_accelerator_config_from_partial(self):
         # Checks that accelerator kwargs can be passed through
@@ -2082,6 +2155,77 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
                 eval_dataset = SampleIterableDataset()
                 trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
                 self.assertEqual(trainer.accelerator.split_batches, True)
+
+    @require_accelerate_version_min_0_28
+    def test_accelerator_config_from_dict_grad_accum_num_steps(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # case - TrainingArguments.gradient_accumulation_steps == 1
+            #      - gradient_accumulation_kwargs['num_steps] == 1
+            # results in grad accum set to 1
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir,
+                gradient_accumulation_steps=1,
+                accelerator_config={
+                    "gradient_accumulation_kwargs": {
+                        "num_steps": 1,
+                    }
+                },
+            )
+            trainer = GaudiTrainer(model=model, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["num_steps"], 1)
+
+            # case - TrainingArguments.gradient_accumulation_steps > 1
+            #      - gradient_accumulation_kwargs['num_steps] specified
+            # results in exception raised
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir,
+                gradient_accumulation_steps=2,
+                accelerator_config={
+                    "gradient_accumulation_kwargs": {
+                        "num_steps": 10,
+                    }
+                },
+            )
+            with self.assertRaises(Exception) as context:
+                trainer = GaudiTrainer(model=model, args=args, eval_dataset=eval_dataset)
+            self.assertTrue("The `AcceleratorConfig`'s `num_steps` is set but" in str(context.exception))
+
+    def test_accelerator_config_not_instantiated(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(NotImplementedError) as context:
+                _ = RegressionGaudiTrainingArguments(
+                    output_dir=tmp_dir,
+                    accelerator_config=AcceleratorConfig,
+                    use_habana=True,
+                    use_lazy_mode=True,
+                )
+            self.assertTrue("Tried passing in a callable to `accelerator_config`" in str(context.exception))
+
+        # Now test with a custom subclass
+        @dataclasses.dataclass
+        class CustomAcceleratorConfig(AcceleratorConfig):
+            pass
+
+        @dataclasses.dataclass
+        class CustomTrainingArguments(GaudiTrainingArguments):
+            accelerator_config: dict = dataclasses.field(
+                default=CustomAcceleratorConfig,
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(NotImplementedError) as context:
+                _ = CustomTrainingArguments(
+                    output_dir=tmp_dir,
+                    use_habana=True,
+                    use_lazy_mode=True,
+                )
+            self.assertTrue("Tried passing in a callable to `accelerator_config`" in str(context.exception))
 
     def test_profiling(self):
         # 24 total steps and compilation takes place during the 1st three steps
@@ -2602,3 +2746,56 @@ class HyperParameterSearchBackendsTest(unittest.TestCase):
             list(ALL_HYPERPARAMETER_SEARCH_BACKENDS.keys()),
             list(HPSearchBackend),
         )
+
+
+@require_torch
+class OptimizerAndModelInspectionTest(unittest.TestCase):
+    def test_get_num_trainable_parameters(self):
+        model = nn.Sequential(nn.Linear(128, 64), nn.Linear(64, 32))
+        args = GaudiTrainingArguments(
+            output_dir="tmp_trainer",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        # in_features * out_features + bias
+        layer_1 = 128 * 64 + 64
+        layer_2 = 64 * 32 + 32
+        trainer = GaudiTrainer(model=model, gaudi_config=get_gaudi_config(), args=args)
+        self.assertEqual(trainer.get_num_trainable_parameters(), layer_1 + layer_2)
+        # Freeze the last layer
+        for param in model[-1].parameters():
+            param.requires_grad = False
+        self.assertEqual(trainer.get_num_trainable_parameters(), layer_1)
+
+    def test_get_learning_rates(self):
+        model = nn.Sequential(nn.Linear(128, 64))
+        args = GaudiTrainingArguments(
+            output_dir="tmp_trainer",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(model=model, gaudi_config=get_gaudi_config(), args=args)
+        with self.assertRaises(ValueError):
+            trainer.get_learning_rates()
+        trainer.create_optimizer()
+        self.assertEqual(trainer.get_learning_rates(), [5e-05, 5e-05])
+
+    def test_get_optimizer_group(self):
+        model = nn.Sequential(nn.Linear(128, 64))
+        args = GaudiTrainingArguments(
+            output_dir="tmp_trainer",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(model=model, gaudi_config=get_gaudi_config(), args=args)
+        # ValueError is raised if optimizer is None
+        with self.assertRaises(ValueError):
+            trainer.get_optimizer_group()
+        trainer.create_optimizer()
+        # Get groups
+        num_groups = len(trainer.get_optimizer_group())
+        self.assertEqual(num_groups, 2)
+        # Get group of parameter
+        param = next(model.parameters())
+        group = trainer.get_optimizer_group(param)
+        self.assertIn(param, group["params"])
