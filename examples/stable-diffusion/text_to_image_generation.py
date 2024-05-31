@@ -220,6 +220,24 @@ def main():
         default=0,
         help="Number of steps to capture for profiling.",
     )
+    parser.add_argument(
+        "--unet_adapter_name_or_path",
+        default=None,
+        type=str,
+        help="Path to pre-trained model",
+    )
+    parser.add_argument(
+        "--text_encoder_adapter_name_or_path",
+        default=None,
+        type=str,
+        help="Path to pre-trained model",
+    )
+    parser.add_argument(
+        "--lora_id",
+        default=None,
+        type=str,
+        help="Path to lora id",
+    )
     args = parser.parse_args()
 
     # Set image resolution
@@ -311,6 +329,8 @@ def main():
             controlnet=controlnet,
             **kwargs,
         )
+        if args.lora_id:
+            pipeline.load_lora_weights(args.lora_id)
 
         # Set seed before running the model
         set_seed(args.seed)
@@ -334,6 +354,8 @@ def main():
             args.model_name_or_path,
             **kwargs,
         )
+        if args.lora_id:
+            pipeline.load_lora_weights(args.lora_id)
 
         # Set seed before running the model
         set_seed(args.seed)
@@ -358,8 +380,18 @@ def main():
             args.model_name_or_path,
             **kwargs,
         )
+        if args.unet_adapter_name_or_path is not None:
+            from peft import PeftModel
 
-        # Set seed before running the model
+            pipeline.unet = PeftModel.from_pretrained(pipeline.unet, args.unet_adapter_name_or_path)
+            pipeline.unet = pipeline.unet.merge_and_unload()
+        if args.text_encoder_adapter_name_or_path is not None:
+            from peft import PeftModel
+
+            pipeline.text_encoder = PeftModel.from_pretrained(
+                pipeline.text_encoder, args.text_encoder_adapter_name_or_path
+            )
+            pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
         set_seed(args.seed)
 
         outputs = pipeline(

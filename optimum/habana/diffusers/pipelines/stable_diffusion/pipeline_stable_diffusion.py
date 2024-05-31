@@ -512,7 +512,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 text_embeddings_batch = text_embeddings_batches[0]
                 text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
 
-                for i in range(num_inference_steps):
+                for i in range(len(timesteps)):
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1_inf = time.time()
                         t1 += t1_inf - t0_inf
@@ -626,10 +626,18 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
 
                 image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-                if output_type == "pil":
+                if output_type == "pil" and isinstance(image, list):
                     outputs["images"] += image
+                elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = np.concatenate((outputs["images"], image), axis=0)
                 else:
-                    outputs["images"] += [*image]
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = torch.cat((outputs["images"], image), 0)
 
                 if has_nsfw_concept is not None:
                     outputs["has_nsfw_concept"] += has_nsfw_concept

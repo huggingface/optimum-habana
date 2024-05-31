@@ -840,10 +840,18 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
                 image = self.image_processor.postprocess(image, output_type=output_type)
 
-                if output_type == "pil":
+                if output_type == "pil" and isinstance(image, list):
                     outputs["images"] += image
+                elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = np.concatenate((outputs["images"], image), axis=0)
                 else:
-                    outputs["images"] += [*image]
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = torch.cat((outputs["images"], image), 0)
 
             # Offload all models
             self.maybe_free_model_hooks()
