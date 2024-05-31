@@ -62,9 +62,10 @@ class gaudi_BartLearnedPositionalEmbedding(nn.Embedding):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
 
         bsz, seq_len = input_ids.shape[:2]
-        positions = torch.arange(0, seq_len, dtype=torch.long, device=self.weight.device).expand(bsz, -1)
-        positions += past_key_values_length
-
+        positions = (
+            torch.arange(0, seq_len, dtype=torch.long, device=self.weight.device).expand(bsz, -1) + \
+                past_key_values_length
+        )
         return super().forward(positions + self.offset)
 
 

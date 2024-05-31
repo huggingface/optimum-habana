@@ -959,6 +959,10 @@ class GaudiGenerationMixin(GenerationMixin):
             input_ids_length=input_ids_length,
             has_token_idx="token_idx" in model_kwargs,
         )
+        if model_input_name == "inputs_embeds" and "token_idx" in model_kwargs:
+            # Need to make sure that generation_config.max_length is correct in this code path
+            # otherwise it will crash withs self._validate_generated_length() below
+            assert input_ids.numel() > 0, "optimum-habana does not support inputs_embeds yet"
 
         if generation_config.cache_implementation in NEED_SETUP_CACHE_CLASSES_MAPPING:
             if generation_config.cache_implementation == "static":
@@ -2951,6 +2955,13 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         if return_dict_in_generate:
+            if self.generation_config.static_shapes:
+                # for static_shapes we only have sequence_outputs["sequences"]
+                assert (
+                    "sequence_scores" in sequence_outputs,
+                    "optimum-habana does not support return_dict_in_generate with static_shapes"
+                )
+
             if not output_scores:
                 sequence_outputs["sequence_scores"] = None
 
