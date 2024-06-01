@@ -610,7 +610,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 "falcon",
                 "mixtral",
                 "phi",
-            ], "reuse_cache only supported by llama, mistral, falcon, mixtral and phi at the moment"
+		"qwen2",
+            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi and qwen2 at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -766,7 +767,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     )
                     model_kwargs["kv_cache_len"] = calculated_max_length
 
-            if self.config.model_type in ["llama", "falcon", "mistral"]:
+            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
