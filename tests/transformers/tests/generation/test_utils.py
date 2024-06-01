@@ -31,7 +31,7 @@ from transformers.testing_utils import (
     require_torch_multi_accelerator,
     slow,
 )
-
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from ..test_modeling_common import floats_tensor, ids_tensor, torch_device
 from .test_framework_agnostic import GenerationIntegrationTestsMixin
 
@@ -76,6 +76,9 @@ if is_torch_available():
         StoppingCriteriaList,
     )
     from transformers.generation.utils import _speculative_sampling
+
+torch_device = "hpu"
+adapt_transformers_to_gaudi()
 
 
 class GenerationTesterMixin:
@@ -723,6 +726,7 @@ class GenerationTesterMixin:
                     num_beams=2,
                 )
 
+    @pytest.mark.xfail("Beam search sampling is not supported by optimum-habana yet")
     def test_beam_sample_generate(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -819,6 +823,7 @@ class GenerationTesterMixin:
             output_ids_generate = model.generate(do_sample=False, max_length=max_length, remove_invalid_values=True)
             self.assertIsNotNone(output_ids_generate)
 
+    @pytest.mark.xfail("Group beam search is not supported by optimum-habana")
     def test_group_beam_search_generate(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -861,6 +866,7 @@ class GenerationTesterMixin:
             )
             self.assertTrue(output_generate.shape[-1] == max_length)
 
+    @pytest.mark.xfail("Group beam search is not supported by optimum-habana")
     def test_group_beam_search_generate_dict_output(self):
         for model_class in self.all_generative_model_classes:
             config, input_ids, attention_mask, max_length = self._get_input_ids_and_config()
@@ -1078,7 +1084,7 @@ class GenerationTesterMixin:
             )
 
             self.assertTrue(output_generate.sequences.shape[-1] == max_length)
-            self._check_outputs(output_generate, input_ids, model.config, use_cache=True)            
+            self._check_outputs(output_generate, input_ids, model.config, use_cache=True)
 
     def test_contrastive_generate_low_memory(self):
         # Check that choosing 'low_memory' does not change the model output
@@ -1153,6 +1159,7 @@ class GenerationTesterMixin:
             )
             self.assertListEqual(low_output.tolist(), high_output.tolist())
 
+    @pytest.mark.xfail(reason="Assisted decoding not yet supported by optimum-habana")
     @is_flaky()  # Read NOTE (1) below. If there are API issues, all attempts will fail.
     def test_assisted_decoding_matches_greedy_search(self):
         # This test ensures that the assisted generation does not introduce output changes over greedy search.
@@ -1285,6 +1292,7 @@ class GenerationTesterMixin:
             for output in (output_greedy, output_prompt_lookup):
                 self._check_outputs(output, input_ids, model.config, use_cache=True)
 
+    @pytest.mark.xfail(reason="Assisted decoding not yet supported by optimum-habana")
     def test_assisted_decoding_sample(self):
         # In this test we don't check assisted vs non-assisted output -- seeded assisted decoding with sample will not
         # match sample for the same seed, as the forward pass does not return the exact same logits (due to matmul with
@@ -1333,7 +1341,7 @@ class GenerationTesterMixin:
                 "do_sample": True,
                 "assistant_model": assistant_model,
                 "output_scores": True,
-                "output_logits": True,                
+                "output_logits": True,
                 "output_hidden_states": True,
                 "output_attentions": True,
                 "return_dict_in_generate": True,
@@ -2179,7 +2187,6 @@ class GenerationTesterMixin:
     def _check_outputs(self, output, input_ids, config, use_cache=False, num_return_sequences=1):
         batch_size, seq_length = input_ids.shape
         num_sequences_in_output = batch_size * num_return_sequences
-
         gen_len = (
             output.sequences.shape[-1] - 1 if config.is_encoder_decoder else output.sequences.shape[-1] - seq_length
         )

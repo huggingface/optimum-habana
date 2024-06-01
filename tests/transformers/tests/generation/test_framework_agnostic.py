@@ -67,7 +67,7 @@ class GenerationIntegrationTestsMixin:
         with self.assertRaises(ValueError):
             bart_model.generate(input_ids, logits_processor=logits_processor)
 
-        bart_model.geeneration_config.min_length = None
+        bart_model.generation_config.min_length = None
         bart_model.generate(input_ids, logits_processor=logits_processor)
 
     def test_max_new_tokens_encoder_decoder(self):
@@ -226,6 +226,7 @@ class GenerationIntegrationTestsMixin:
         )
         self.assertTrue(np.allclose(transition_scores, expected_scores, atol=1e-3))
 
+    @pytest.mark.xfail(reason="optimum-habana does not support return_dict_in_generate with static_shapes")
     def test_transition_scores_beam_search_encoder_decoder(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -296,6 +297,7 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
+    @pytest.mark.xfail(reason="optimum-habana does not support return_dict_in_generate with static_shapes")
     def test_transition_scores_beam_search_decoder_only(self):
         model_cls = self.framework_dependent_parameters["AutoModelForCausalLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -406,6 +408,7 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores))
 
+    @pytest.mark.xfail(reason="optimum-habana does not support return_dict_in_generate with static_shapes")
     def test_encoder_decoder_generate_attention_mask(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -534,7 +537,7 @@ class GenerationIntegrationTestsMixin:
 
         pixel_values = floats_tensor((2, 3, 30, 30))
         model = model_cls.from_pretrained("hf-internal-testing/tiny-random-VisionEncoderDecoderModel-vit-gpt2")
-        model.generation_config.decoder.eos_token_id = None
+        model.config.decoder.eos_token_id = None
         if is_pt:
             pixel_values = pixel_values.to(torch_device)
             model = model.to(torch_device)
