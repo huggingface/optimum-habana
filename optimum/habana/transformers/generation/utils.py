@@ -2955,11 +2955,10 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         if return_dict_in_generate:
-            if self.generation_config.static_shapes:
-                # for static_shapes we only have sequence_outputs["sequences"]
-                assert (
-                    "sequence_scores" in sequence_outputs,
-                    "optimum-habana does not support return_dict_in_generate with static_shapes"
+            if self.generation_config.static_shapes and "sequence_scores" not in sequence_outputs:
+                # for static_shapes we only have "sequences" in sequence_outputs
+                raise ValueError(
+                    f"optimum-habana does not support return_dict_in_generate with static_shapes"
                 )
 
             if not output_scores:
