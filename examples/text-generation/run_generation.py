@@ -150,7 +150,7 @@ def setup_parser(parser):
         "--assistant_model",
         default=None,
         type=str,
-        help="Optional argument to give a path to a draft/assiatant model for assistant decoding.",
+        help="Optional argument to give a path to a draft/assistant model for assisted decoding.",
     )
     parser.add_argument(
         "--peft_model",
@@ -303,7 +303,7 @@ def main():
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
-    #Get stats for custom input prompts
+
     if args.dataset_name is None:
         # Benchmark over the prompts below
         if args.prompt:

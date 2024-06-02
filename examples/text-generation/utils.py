@@ -155,7 +155,6 @@ def setup_device(args):
 
         if args.quant_config:
             htcore.hpu_set_env()
-    print(f"Using device: {args.device}")
     return torch.device(args.device)
 
 
@@ -180,8 +179,9 @@ def get_torch_compiled_model(model):
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
     if args.assistant_model is None:
-        logger.info("No assistant model.")
         assistant_model = None
+    else:
+        logger.info(f"Using asssitant model {args.assistant_model}.")
     if args.disk_offload:
         from accelerate import infer_auto_device_map, init_empty_weights
 
@@ -198,24 +198,11 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             torch_dtype=model_dtype,
             **model_kwargs,
         )
-        if args.assistant_model is not None:
-            config = AutoConfig.from_pretrained(args.assistant_model)
-            with init_empty_weights():
-                assistant_model = AutoModelForCausalLM.from_config(config)
-            device_map = infer_auto_device_map(assistant_model, max_memory=max_memory, dtype=model_dtype)   
-            assistant_model = AutoModelForCausalLM.from_pretrained(
-                args.assistant_model,
-                device_map=device_map,
-                offload_folder="/tmp/offload_folder/",
-                offload_state_dict=True,
-                torch_dtype=model_dtype,
-                **model_kwargs,
-            )
     else:
         if args.assistant_model is not None:
-                assistant_model = AutoModelForCausalLM.from_pretrained(
-                    args.assistant_model, torch_dtype=model_dtype, **model_kwargs
-                )
+            assistant_model = AutoModelForCausalLM.from_pretrained(
+                args.assistant_model, torch_dtype=model_dtype, **model_kwargs
+            )
         if args.peft_model is not None:
             model = peft_model(args, model_dtype, logger, **model_kwargs)
         else:
@@ -240,19 +227,17 @@ def setup_model(args, model_dtype, model_kwargs, logger):
 
         if check_habana_frameworks_version("1.13.0") and model.config.model_type == "falcon":
             model = wrap_in_hpu_graph(model, hash_with_views=False)
-            if args.assistant_model is not None:
-                assistant_model = wrap_in_hpu_graph(assistant_model, hash_with_views=False)
         else:
             model = wrap_in_hpu_graph(model)
-            if args.assistant_model is not None:
-                assistant_model = wrap_in_hpu_graph(assistant_model)
+        if args.assistant_model is not None:
+            assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
             model.base_model = wrap_in_hpu_graph(model.base_model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
-        if args.assistant_model is not None:
-            assistant_model = get_torch_compiled_model(assistant_model) 
+        # if args.assistant_model is not None:
+        #     assistant_model = get_torch_compiled_model(assistant_model)
     return model, assistant_model
 
 
@@ -264,17 +249,13 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     load_to_meta = model_on_meta(config)
     if args.assistant_model is None:
-        logger.info("No assistant model.")
         assistant_model = None
+    else:
+        logger.info(f"Using asssitant model {args.assistant_model}.")
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
             model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
-        if args.assistant_model is not None:
-            config = AutoConfig.from_pretrained(args.assistant_model, torch_dtype=model_dtype, **model_kwargs)
-            load_to_meta = load_to_meta or model_on_meta(config)
-            with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
-                assistant_model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
 
         # Model loaded to meta is managed differently
         checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
@@ -303,13 +284,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
                 )
-                if args.assistant_model is not None:
-                    assistant_model = AutoModelForCausalLM.from_pretrained(
-                        args.assistant_model, torch_dtype=model_dtype, **model_kwargs
-                    )
     model.eval()
+
     if args.assistant_model is not None:
-        assistant_model.eval()
+        assistant_model = AutoModelForCausalLM.from_pretrained(
+            args.assistant_model, torch_dtype=model_dtype, **model_kwargs
+        ).eval()
 
     # Initialize the model
     ds_inference_kwargs = {"dtype": model_dtype}
@@ -323,9 +303,6 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     model = model.module
     if model.config.model_type in ["llama", "falcon"]:
         patch_scoped_linear_all_reduce(model)
-        if args.assistant_model is not None:
-            assistant_model = deepspeed.init_inference(assistant_model, **ds_inference_kwargs)
-            assistant_model = assistant_model.module
 
     if args.quant_config:
         import habana_quantization_toolkit
@@ -333,10 +310,11 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
         habana_quantization_toolkit.prep_model(model)
         if args.assistant_model is not None:
             habana_quantization_toolkit.prep_model(assistant_model)
+
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
-        if args.assistant_model is not None:
-            assistant_model = get_torch_compiled_model(assistant_model)
+        # if args.assistant_model is not None:
+        #     assistant_model = get_torch_compiled_model(assistant_model)
     return model, assistant_model
 
 
@@ -401,6 +379,7 @@ def setup_tokenizer(args, model, assistant_model):
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
     if not model.config.is_encoder_decoder:
         tokenizer.padding_side = "left"
+        print("888")
 
     if model.config.model_type == "llama":
         # unwind broken decapoda-research config
@@ -447,15 +426,12 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
 
     is_optimized = model_is_optimized(model.config)
-    if assistant_model is not None:
-        is_optimized = is_optimized and model_is_optimized(assistant_model.config)
-        if not is_optimized:
-            raise ValueError("Assistant model must be optimized")
+
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)
     generation_config.max_new_tokens = args.max_new_tokens
     generation_config.use_cache = args.use_kv_cache
-    generation_config.static_shapes = is_optimized
+    generation_config.static_shapes = is_optimized and assistant_model is None
     generation_config.bucket_size = args.bucket_size if is_optimized else -1
     generation_config.bucket_internal = args.bucket_internal
     generation_config.do_sample = args.do_sample
@@ -474,8 +450,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.flash_attention_recompute = args.flash_attention_recompute
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
     generation_config.trust_remote_code = args.trust_remote_code
-    #if assistant_model is not None:
-    #    generation_config.num_assistant_tokens = assistant_model.generation_config.max_new_tokens
+
     return generation_config
 
 

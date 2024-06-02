@@ -220,6 +220,7 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin.beam_sample = GaudiGenerationMixin.beam_sample
     transformers.generation.GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
     transformers.generation.GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
+    transformers.generation.GenerationMixin._get_candidate_generator = GaudiGenerationMixin._get_candidate_generator
     transformers.generation.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call

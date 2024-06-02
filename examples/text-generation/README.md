@@ -99,13 +99,13 @@ If you want to generate a sequence of text from a prompt of your choice using as
 python run_generation.py \
 --model_name_or_path gpt2 \
 --assistant_model distilgpt2 \
----batch_size 1 \
+--batch_size 1 \
 --max_new_tokens 100 \
 --use_hpu_graphs \
 --use_kv_cache \
 --num_return_sequences 1 \
 --temperature 0 \
---prompt "Alice and Bob" 
+--prompt "Alice and Bob"
 ```
 
 ### Benchmark
