@@ -1670,12 +1670,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # prepare model inputs
             model_kwargs["lazy_mode"] = lazy_mode
-            # print("qqqqqq", input_ids.shape)
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
-            # print("hhhhhh", model_inputs["input_ids"].shape)
-            # for key, value in model_inputs.items():
-            #     if hasattr(value, "shape"):
-            #         print("ITEMS", key, value.shape, value)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
 

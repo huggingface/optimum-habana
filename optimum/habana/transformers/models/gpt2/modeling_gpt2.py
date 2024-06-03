@@ -537,7 +537,6 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
         token_idx: Optional[torch.Tensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # if past_key_values is not None:
 
         transformer_outputs = self.transformer(
             input_ids,

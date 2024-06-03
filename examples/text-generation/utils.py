@@ -248,10 +248,12 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     load_to_meta = model_on_meta(config)
+
     if args.assistant_model is None:
         assistant_model = None
     else:
         logger.info(f"Using asssitant model {args.assistant_model}.")
+
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
         with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
