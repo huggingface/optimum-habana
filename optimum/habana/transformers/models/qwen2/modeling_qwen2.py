@@ -1,21 +1,3 @@
-# coding=utf-8
-# Copyright 2024 The HuggingFace Team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-###############################################################################
-# Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
-###############################################################################
-
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
@@ -167,6 +149,7 @@ class GaudiQwen2Attention(Qwen2Attention):
         self.v_cache = KVCache()
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+        self.block_size = 4096
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
@@ -197,7 +180,33 @@ class GaudiQwen2Attention(Qwen2Attention):
         self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
         return (self.k_cache.cache.shape, self.v_cache.cache.shape)
 
-    def forward(
+    def gaudi_flash_attn_v1(self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, q_block_size):
+        """
+        Gaudi version of Flash Attention V1 to support long sequence at prompt phase
+        Causal mask is not supported in this optimization
+        """
+        q_len = query_layer.size(-2)
+        q_tiles = (q_len // q_block_size) if (q_len % q_block_size == 0) else math.ceil(q_len / q_block_size)
+        q_padding = q_tiles * q_block_size - q_len
+        query_layer = F.pad(query_layer, (0, 0, 0, q_padding), "constant", 0)
+        if attention_mask is not None:
+            attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", -10000.0)
+
+        row_o_list = []
+        for i in range(q_tiles):
+            s, e = i * q_block_size, (i + 1) * q_block_size
+            row_q = query_layer[:, :, s:e, :]
+            row_mask = attention_mask[:, :, s:e, :]
+            attn_output_partial = FusedSDPA.apply(row_q, key_layer, value_layer, row_mask, dropout_rate, False, None)
+            row_o_list.append(attn_output_partial)
+        attn_output = torch.cat(row_o_list, dim = -2)
+
+        if q_padding != 0:
+            attn_output = attn_output[:, :, :-q_padding, :]
+
+        return attn_output
+
+    def pre_attn_forward(
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
@@ -299,9 +308,13 @@ class GaudiQwen2Attention(Qwen2Attention):
                         attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
                 else:
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = FusedSDPA.apply(
-                            query_states, key_states, value_states, attention_mask, 0.0, False, None
-                        )
+                        if q_len > 8192:
+                            attn_output = self.gaudi_flash_attn_v1(query_states, key_states, value_states, attention_mask, 0.0, self.block_size)
+                            htcore.mark_step()
+                        else:
+                            attn_output = FusedSDPA.apply(
+                                    query_states, key_states, value_states, attention_mask, 0.0, False, None
+                            )
 
         else:
             query_states, key_states, value_states, attention_mask = gaudi_qwen2_repeat_kv(
@@ -344,12 +357,30 @@ class GaudiQwen2Attention(Qwen2Attention):
 
         return attn_output, attn_weights, past_key_value
 
+    def attention_all_reduce(self, attn_output):
+        if hasattr(self.o_proj, "all_reduce"):
+            self.o_proj.all_reduce(attn_output)
+
+    def post_attn_forward(self, attn_output):
+        if hasattr(self.o_proj, "post_all_reduce"):
+            self.o_proj.post_all_reduce(attn_output)
+        return attn_output
+
 
 class GaudiQwen2MLP(Qwen2MLP):
-    def forward(self, x):
-        input = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
-        output = self.down_proj(input)
+    def pre_mlp_forward(self, x):
+        inputs = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
+        output = self.down_proj(inputs)
         return output
+
+    def mlp_all_reduce(self, x):
+        if hasattr(self.down_proj, "all_reduce"):
+            self.down_proj.all_reduce(x)
+
+    def post_mlp_forward(self, x):
+        if hasattr(self.down_proj, "post_all_reduce"):
+            return self.down_proj.post_all_reduce(x)
+        return x
 
 
 class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
@@ -391,10 +422,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
 
-        hidden_states = self.input_layernorm(hidden_states)
-
-        # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
+        hidden_states, self_attn_weights, present_key_value = self.pre_attn(
             hidden_states,
             attention_mask,
             position_ids,
@@ -408,25 +436,83 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
-            cache_idx=cache_idx
+            cache_idx=cache_idx,
         )
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
+        self.self_attn.attention_all_reduce(hidden_states)
+        hidden_states, residual = self.post_attn_pre_mlp(hidden_states, residual)
+        self.mlp.mlp_all_reduce(hidden_states)
+        hidden_states = self.post_mlp(hidden_states, residual)
 
         outputs = (hidden_states,)
 
         if output_attentions:
             outputs += (self_attn_weights,)
-        
         if use_cache:
             outputs += (present_key_value,)
 
         return outputs
+
+    def pre_attn(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+        attn_softmax_bf16: Optional[bool] = False,
+        reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        cache_idx: int = None,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        hidden_states = self.input_layernorm(hidden_states)
+        hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
+            hidden_states,
+            attention_mask,
+            position_ids,
+            past_key_value,
+            output_attentions,
+            use_cache,
+            cache_position,
+            token_idx,
+            attn_softmax_bf16,
+            reuse_cache,
+            use_flash_attention,
+            flash_attention_recompute,
+            flash_attention_causal_mask,
+            cache_idx=cache_idx,
+        )
+        return hidden_states, attn_weights, present_key_value
+
+    def post_attn_pre_mlp(self, hidden_states, residual):
+        hidden_states = self.self_attn.post_attn_forward(hidden_states)
+
+        if self.training:
+            hidden_states = hidden_states + residual
+            residual = hidden_states
+        else:
+            residual.add_(hidden_states)
+            hidden_states = residual
+
+        hidden_states = self.post_attention_layernorm(hidden_states)
+
+        hidden_states = self.mlp.pre_mlp_forward(hidden_states)
+        return hidden_states, residual
+
+    def post_mlp(self, hidden_states, residual):
+        hidden_states = self.mlp.post_mlp_forward(hidden_states)
+
+        if self.training:
+            hidden_states = hidden_states + residual
+        else:
+            residual.add_(hidden_states)
+            hidden_states = residual
+
+        return hidden_states
 
 
 class GaudiQwen2Model(Qwen2Model):
@@ -794,4 +880,3 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
         )
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
-
