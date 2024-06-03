@@ -2626,6 +2626,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         model = AutoModelForCausalLM.from_pretrained("openai-community/gpt2")
         tokenizer.pad_token_id = tokenizer.eos_token_id
         model_inputs = tokenizer("I", return_tensors="pt")["input_ids"]
+        model_inputs = model_inputs.to(torch_device)
 
         low_output = model.generate(
             model_inputs, max_new_tokens=40, num_beams=5, early_stopping=True, low_memory=True
