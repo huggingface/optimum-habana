@@ -49,6 +49,12 @@ def main():
         type=str,
         help="Path to pre-trained model",
     )
+    parser.add_argument(
+        "--controlnet_model_name_or_path",
+        default="CiaraRowles/temporal-controlnet-depth-svd-v1",
+        type=str,
+        help="Path to pre-trained controlnet model",
+    )
 
     # Pipeline arguments
     parser.add_argument(
@@ -57,6 +63,13 @@ def main():
         default=None,
         nargs="*",
         help="Path to input image(s) to guide video generation",
+    )
+    parser.add_argument(
+        "--control_image_path",
+        type=str,
+        default=None,
+        nargs="*",
+        help="Path to controlnet input image(s) to guide video generation",
     )
     parser.add_argument(
         "--num_videos_per_prompt", type=int, default=1, help="The number of videos to generate per prompt image."
@@ -164,7 +177,12 @@ def main():
         ),
     )
     parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
-
+    parser.add_argument(
+        "--num_frames",
+        type=int,
+        default=25,
+        help="The number of video frames to generate."
+    )
     args = parser.parse_args()
 
     from optimum.habana.diffusers import GaudiStableVideoDiffusionPipeline
@@ -177,6 +195,30 @@ def main():
     )
     logger.setLevel(logging.INFO)
 
+    # Load input image(s)
+    input = []
+    logger.info("Input image(s):")
+    if isinstance(args.image_path, str):
+        args.image_path = [args.image_path]
+    for image_path in args.image_path:
+        print(image_path)
+        image = load_image(image_path)
+        image = image.resize((args.height, args.width))
+        input.append(image)
+        logger.info(image_path)
+
+    # Load control input image
+    control_input = []
+    if args.control_image_path is not None:
+        logger.info("Input control image(s):")
+        if isinstance(args.control_image_path, str):
+            args.control_image_path = [args.control_image_path]
+        for control_image in args.control_image_path:
+            image = load_image(control_image)
+            image = image.resize((args.height, args.width))
+            control_input.append(image)
+            logger.info(control_image)
+
     # Initialize the scheduler and the generation pipeline
     scheduler = GaudiEulerDiscreteScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
     kwargs = {
@@ -188,41 +230,68 @@ def main():
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
 
-    pipeline = GaudiStableVideoDiffusionPipeline.from_pretrained(
-        args.model_name_or_path,
-        **kwargs,
-    )
+    if args.control_image_path is not None:
+        from optimum.habana.diffusers import GaudiStableVideoDiffusionPipelineControlNet
+        from optimum.habana.diffusers.models import ControlNetSDVModel
+        from optimum.habana.diffusers.models import UNetSpatioTemporalConditionControlNetModel
+        controlnet = controlnet = ControlNetSDVModel.from_pretrained(
+            args.controlnet_model_name_or_path,
+            subfolder="controlnet")
+        unet = UNetSpatioTemporalConditionControlNetModel.from_pretrained(
+            args.model_name_or_path,
+            subfolder="unet")
+        pipeline = GaudiStableVideoDiffusionPipelineControlNet.from_pretrained(
+            args.model_name_or_path,
+            controlnet=controlnet,
+            unet=unet,
+            **kwargs)
 
-    # Set seed before running the model
-    set_seed(args.seed)
+        # Set seed before running the model
+        set_seed(args.seed)
 
-    # Load input image(s)
-    input = []
-    logger.info("Input image(s):")
-    if isinstance(args.image_path, str):
-        args.image_path = [args.image_path]
-    for image_path in args.image_path:
-        image = load_image(image_path)
-        image = image.resize((args.height, args.width))
-        input.append(image)
-        logger.info(image_path)
+        # Generate images
+        outputs = pipeline(
+            image=input,
+            controlnet_condition=control_input,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            batch_size=args.batch_size,
+            height=args.height,
+            width=args.width,
+            num_inference_steps=args.num_inference_steps,
+            min_guidance_scale=args.min_guidance_scale,
+            max_guidance_scale=args.max_guidance_scale,
+            fps=args.fps,
+            motion_bucket_id=args.motion_bucket_id,
+            noise_aug_strength=args.noise_aug_strength,
+            decode_chunk_size=args.decode_chunk_size,
+            output_type=args.output_type,
+            num_frames=args.num_frames,
+        )
+    else:
+        pipeline = GaudiStableVideoDiffusionPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
 
-    # Generate images
-    outputs = pipeline(
-        image=input,
-        num_videos_per_prompt=args.num_videos_per_prompt,
-        batch_size=args.batch_size,
-        height=args.height,
-        width=args.width,
-        num_inference_steps=args.num_inference_steps,
-        min_guidance_scale=args.min_guidance_scale,
-        max_guidance_scale=args.max_guidance_scale,
-        fps=args.fps,
-        motion_bucket_id=args.motion_bucket_id,
-        noise_aug_strength=args.noise_aug_strength,
-        decode_chunk_size=args.decode_chunk_size,
-        output_type=args.output_type,
-    )
+        # Set seed before running the model
+        set_seed(args.seed)
+
+        # Generate images
+        outputs = pipeline(
+            image=input,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            batch_size=args.batch_size,
+            height=args.height,
+            width=args.width,
+            num_inference_steps=args.num_inference_steps,
+            min_guidance_scale=args.min_guidance_scale,
+            max_guidance_scale=args.max_guidance_scale,
+            fps=args.fps,
+            motion_bucket_id=args.motion_bucket_id,
+            noise_aug_strength=args.noise_aug_strength,
+            decode_chunk_size=args.decode_chunk_size,
+            output_type=args.output_type,
+        )
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
