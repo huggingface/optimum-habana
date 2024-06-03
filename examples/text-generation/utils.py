@@ -379,7 +379,6 @@ def setup_tokenizer(args, model, assistant_model):
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
     if not model.config.is_encoder_decoder:
         tokenizer.padding_side = "left"
-        print("888")
 
     if model.config.model_type == "llama":
         # unwind broken decapoda-research config
