@@ -955,11 +955,6 @@ class GaudiGenerationMixin(GenerationMixin):
             stopping_criteria=stopping_criteria,
             ignore_eos=self.generation_config.ignore_eos,
         )
-        if generation_config.static_shapes and (generation_config.pad_token_id == generation_config.eos_token_id):
-            if any(isinstance(k, EosTokenCriteria) for k in prepared_stopping_criteria):
-                logger.warning(
-                    f"For Gaudi, we pad input_ids with pad_token_id (= {generation_config.pad_token_id}), which is equal to eos_token_id for this model, and EosTokenCriteria stopping criteria is requested, so this option (ignore_eos=False) isn't available. Try setting `--ignore_eos` to False."
-                )
 
         # In lazy mode, import Habana torch to be able to add mark_step()
         if lazy_mode:
