@@ -59,6 +59,7 @@ from transformers.generation.utils import (
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import CausalLMOutputWithPast, Seq2SeqLMOutput
 from transformers.utils import ModelOutput, is_torchdynamo_compiling
+from transformers.cache_utils import DynamicCache
 
 from optimum.utils import logging
 
@@ -1160,6 +1161,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 synced_gpus=synced_gpus,
                 streamer=streamer,
                 sequential=generation_config.low_memory,
+                lazy_mode=lazy_mode,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
@@ -1539,11 +1541,28 @@ class GaudiGenerationMixin(GenerationMixin):
         logits_warper = logits_warper if logits_warper is not None else LogitsProcessorList()
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
         pad_token_id = pad_token_id if pad_token_id is not None else self.generation_config.pad_token_id
-        eos_token_id = eos_token_id if eos_token_id is not None else self.generation_config.eos_token_id
-        sequential = sequential if sequential is not None else self.generation_config.low_memory
+        if eos_token_id is not None:
+            logger.warning_once(
+                "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
+                " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
+                " Otherwise make sure to set `model.generation_config.eos_token_id`",
+                FutureWarning,
+            )
+            stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+        else:
+            # TODO remove when the method is totally private
+            # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
+            eos_token_id = [
+                criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
+            ]
+            eos_token_id = eos_token_id[0] if eos_token_id else None
+            if eos_token_id is None and self.generation_config.eos_token_id is not None:
+                eos_token_id = self.generation_config.eos_token_id
+                stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
-        eos_token_id_tensor = torch.tensor(eos_token_id).to(input_ids.device) if eos_token_id is not None else None
+        sequential = sequential if sequential is not None else self.generation_config.low_memory
         output_scores = output_scores if output_scores is not None else self.generation_config.output_scores
         output_logits = output_logits if output_logits is not None else self.generation_config.output_logits
         output_attentions = (
@@ -1573,12 +1592,16 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
         # keep track of which sequences are already finished
-        unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
+        batch_size, cur_len = input_ids.shape
+        if "inputs_embeds" in model_kwargs:
+            cur_len = model_kwargs["inputs_embeds"].shape[1]
+        unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
+        model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
+
+        this_peer_finished = False
 
         hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
         hb_profer.start()
-        this_peer_finished = False  # used by synced_gpus only
-        batch_size, cur_len = input_ids.shape
         bucket_size = model_kwargs.get("bucket_size", -1)
         bucket_internal = model_kwargs.get("bucket_internal", None)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
@@ -1596,23 +1619,11 @@ class GaudiGenerationMixin(GenerationMixin):
             # Update cur_len in case of static shapes
             cur_len = token_idx.item()
 
-        if iteration_times is not None:
-            hb_gen_time = HabanaGenerationtime(iteration_times=iteration_times)
-            hb_gen_time.start()
+        time_to_first_token_done = False
 
-        while True:
+        while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
                 self.htcore_generation.mark_step()
-
-            if synced_gpus:
-                # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
-                # The following logic allows an early break if all peers finished generating their sequence
-                this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(input_ids.device)
-                # send 0.0 if we finished, 1.0 otherwise
-                dist.all_reduce(this_peer_finished_flag, op=dist.ReduceOp.SUM)
-                # did all peers finish? the reduced sum will be 0.0 then
-                if this_peer_finished_flag.item() == 0.0:
-                    break
 
             if bucket_size > 0 and not bucket_internal:
                 # it will not have been padded if bucket_size > 0
@@ -1732,7 +1743,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # Replicates the new past_key_values to match the `top_k` candidates
             new_key_values = []
-            for layer in model_kwargs["past_key_values"]:
+            past = model_kwargs["past_key_values"]
+            for layer in past:
                 items = []
                 # item is either the key or the value matrix
                 for item in layer:
@@ -1741,7 +1753,13 @@ class GaudiGenerationMixin(GenerationMixin):
                     else:
                         items.append(item.repeat_interleave(top_k, dim=0))
                 new_key_values.append(tuple(items))
-            model_kwargs["past_key_values"] = tuple(new_key_values)
+            if not isinstance(past, DynamicCache):
+                past = tuple(new_key_values)
+            else:
+                for layer_idx in range(len(new_key_values)):
+                    past.key_cache[layer_idx] = new_key_values[layer_idx][0]
+                    past.value_cache[layer_idx] = new_key_values[layer_idx][1]
+            model_kwargs["past_key_values"] = past
 
             if sequential:
                 all_outputs = []
@@ -1837,16 +1855,22 @@ class GaudiGenerationMixin(GenerationMixin):
 
             else:
                 next_past_key_values = self._extract_past_from_model_output(outputs, standardize_cache_format=True)
-                new_key_values = ()
+                new_key_values = []
                 for layer in next_past_key_values:
-                    items = ()
+                    items = []
                     # item is either the key or the value matrix
                     for item in layer:
                         item = torch.stack(torch.split(item, top_k, dim=0))  # [B, K, num_head, seq_len, esz]
                         item = item[range(batch_size), selected_idx, ...]  # [B, num_head, seq_len, esz]
-                        items += (item,)
-                    new_key_values += (items,)
-                next_past_key_values = new_key_values
+                        items += [item]
+                    new_key_values += [items]
+
+                if not isinstance(next_past_key_values, DynamicCache):
+                    next_past_key_values = tuple(new_key_values)
+                else:
+                    for layer_idx in range(len(new_key_values)):
+                        next_past_key_values.key_cache[layer_idx] = new_key_values[layer_idx][0]
+                        next_past_key_values.value_cache[layer_idx] = new_key_values[layer_idx][1]
 
             logit_for_next_step = torch.stack(torch.split(logits, top_k))[range(batch_size), selected_idx, :]
 
@@ -1901,36 +1925,40 @@ class GaudiGenerationMixin(GenerationMixin):
             if streamer is not None:
                 streamer.put(next_tokens.cpu())
             model_kwargs = self._update_model_kwargs_for_generation(
-                outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
+                outputs,
+                model_kwargs,
+                is_encoder_decoder=self.config.is_encoder_decoder,
             )
-
-            # if eos_token was found in one sentence, set sentence to finished
-            if eos_token_id_tensor is not None:
-                unfinished_sequences = unfinished_sequences.mul(
-                    next_tokens.tile(eos_token_id_tensor.shape[0], 1).ne(eos_token_id_tensor.unsqueeze(1)).prod(dim=0)
-                )
-
-                # stop when each sentence is finished
-                if unfinished_sequences.max() == 0:
-                    this_peer_finished = True
 
             # increase cur_len
             cur_len = cur_len + 1
+            if bucket_size > 0 and bucket_internal:
+                # Calculate slice idx for kv cache during the decode phase.
+                # Breaking down the kv cache in the attention block helps to reduce computation time.
+                if model_kwargs.get("token_idx_cpu") <= (model_kwargs["kv_cache_len"] // bucket_size) * bucket_size:
+                    idx = (model_kwargs.get("token_idx_cpu") - 1) // bucket_size
+                    if prev_idx != idx:
+                        model_kwargs["cache_idx"] = (idx + 1) * bucket_size
+                        prev_idx = idx
+                else:
+                    model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
+
+            # stop when each sentence is finished
+            if token_idx is not None:
+                unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids[:, : (token_idx - 1)], scores)
+            else:
+                unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids, scores)
+            this_peer_finished = unfinished_sequences.max() == 0
 
             hb_profer.step()
 
-            if iteration_times is not None:
+            if hb_gen_time is not None:
+                if not time_to_first_token_done:
+                    time_to_first_token_done = True
+                    import habana_frameworks.torch.hpu as torch_hpu
+
+                    torch_hpu.synchronize()
                 hb_gen_time.step()
-
-            # stop if we exceed the maximum length
-            if token_idx is not None:
-                if stopping_criteria(input_ids[:, : (token_idx - 1)], scores):
-                    this_peer_finished = True
-            elif stopping_criteria(input_ids, scores):
-                this_peer_finished = True
-
-            if this_peer_finished and not synced_gpus:
-                break
 
         hb_profer.stop()
         if streamer is not None:
