@@ -91,6 +91,22 @@ python run_generation.py \
 
 > The batch size should be larger than or equal to the number of prompts. Otherwise, only the first N prompts are kept with N being equal to the batch size.
 
+### Run Speculative Sampling on Gaudi
+
+If you want to generate a sequence of text from a prompt of your choice using assisted decoding, you can use the following command as an example:
+
+```
+python run_generation.py \
+--model_name_or_path gpt2 \
+--assistant_model distilgpt2 \
+--batch_size 1 \
+--max_new_tokens 100 \
+--use_hpu_graphs \
+--use_kv_cache \
+--num_return_sequences 1 \
+--temperature 0 \
+--prompt "Alice and Bob"
+```
 
 ### Benchmark
 
