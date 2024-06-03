@@ -19,8 +19,11 @@ import transformers.utils.fx
 from .generation import (
     GaudiGenerationConfig,
     GaudiGenerationMixin,
+    gaudi_EosTokenCriteria_call,
     gaudi_MaxLengthCriteria_call,
     gaudi_MaxNewTokensCriteria_call,
+    gaudi_MaxTimeCriteria_call,
+    gaudi_StoppingCriteriaList_call,
 )
 from .models import (
     GaudiBloomForCausalLM,
@@ -35,9 +38,11 @@ from .models import (
     GaudiGemmaDecoderLayer,
     GaudiGemmaForCausalLM,
     GaudiGPT2Attention,
+    GaudiGPT2Block,
     GaudiGPT2LMHeadModel,
     GaudiGPTBigCodeForCausalLM,
     GaudiGPTJAttention,
+    GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
     GaudiGPTNeoXForCausalLM,
     GaudiLlamaAttention,
@@ -71,6 +76,7 @@ from .models import (
     GaudiQwen2MLP,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
+    GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
     MistralConfig,
     MixtralConfig,
@@ -106,13 +112,11 @@ from .models import (
     gaudi_conv1d_forward,
     gaudi_esm_for_protein_folding_forward,
     gaudi_esmfolding_trunk_forward,
-    gaudi_falcon_attention_split_heads,
     gaudi_falcon_linear_forward,
     gaudi_gemma_attention_forward,
     gaudi_gemma_model_forward,
     gaudi_generate_speech,
     gaudi_get_extended_attention_mask,
-    gaudi_gpt2_block_forward,
     gaudi_gpt2_forward,
     gaudi_gpt_bigcode_attention_forward,
     gaudi_gpt_bigcode_block_forward,
@@ -121,7 +125,6 @@ from .models import (
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
-    gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
@@ -145,7 +148,6 @@ from .models import (
     gaudi_SpeechT5Decoder_forward,
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_stablelm_attention_forward,
-    gaudi_stablelm_decoder_layer_forward,
     gaudi_stablelm_model_forward,
     gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
@@ -215,17 +217,25 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._prepare_decoder_attention_mask = (
         GaudiGenerationMixin._prepare_decoder_attention_mask
     )
+    transformers.generation.GenerationMixin._prepare_generation_config = (
+        GaudiGenerationMixin._prepare_generation_config
+    )
+    transformers.generation.GenerationMixin._prepare_generated_length = GaudiGenerationMixin._prepare_generated_length
+    transformers.generation.GenerationMixin._get_stopping_criteria = GaudiGenerationMixin._get_stopping_criteria
     transformers.generation.GenerationMixin._validate_model_kwargs = GaudiGenerationMixin._validate_model_kwargs
-    transformers.generation.GenerationMixin.greedy_search = GaudiGenerationMixin.greedy_search
-    transformers.generation.GenerationMixin.sample = GaudiGenerationMixin.sample
-    transformers.generation.GenerationMixin.beam_search = GaudiGenerationMixin.beam_search
-    transformers.generation.GenerationMixin.beam_sample = GaudiGenerationMixin.beam_sample
-    transformers.generation.GenerationMixin.group_beam_search = GaudiGenerationMixin.group_beam_search
-    transformers.generation.GenerationMixin.constrained_beam_search = GaudiGenerationMixin.constrained_beam_search
+    transformers.generation.GenerationMixin._greedy_search = GaudiGenerationMixin._greedy_search
+    transformers.generation.GenerationMixin._sample = GaudiGenerationMixin._sample
+    transformers.generation.GenerationMixin._beam_search = GaudiGenerationMixin._beam_search
+    transformers.generation.GenerationMixin._beam_sample = GaudiGenerationMixin._beam_sample
+    transformers.generation.GenerationMixin._group_beam_search = GaudiGenerationMixin._group_beam_search
+    transformers.generation.GenerationMixin._constrained_beam_search = GaudiGenerationMixin._constrained_beam_search
     transformers.generation.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
     transformers.generation.MaxNewTokensCriteria.__call__ = gaudi_MaxNewTokensCriteria_call
+    transformers.generation.MaxTimeCriteria.__call__ = gaudi_MaxTimeCriteria_call
+    transformers.generation.EosTokenCriteria.__call__ = gaudi_EosTokenCriteria_call
+    transformers.generation.StoppingCriteriaList.__call__ = gaudi_StoppingCriteriaList_call
 
     # Optimization for BLOOM generation on Gaudi
     transformers.models.bloom.modeling_bloom.BloomAttention.forward = gaudi_bloom_attention_forward
@@ -276,7 +286,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gpt2.modeling_gpt2.GPT2Attention = GaudiGPT2Attention
     transformers.models.gpt2.modeling_gpt2.GPT2Model.forward = gaudi_gpt2_forward
     transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel = GaudiGPT2LMHeadModel
-    transformers.models.gpt2.modeling_gpt2.GPT2Block.forward = gaudi_gpt2_block_forward
+    transformers.models.gpt2.modeling_gpt2.GPT2Block = GaudiGPT2Block
     models_with_tracing_support.extend((GaudiGPT2Attention, GaudiGPT2LMHeadModel))
 
     # Optimization for EsmFold on Gaudi
@@ -296,7 +306,7 @@ def adapt_transformers_to_gaudi():
     # Optimization for GPTJ on Gaudi
     transformers.models.gptj.modeling_gptj.GPTJAttention = GaudiGPTJAttention
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
-    transformers.models.gptj.modeling_gptj.GPTJBlock.forward = gaudi_gptj_block_forward
+    transformers.models.gptj.modeling_gptj.GPTJBlock = GaudiGPTJBlock
     transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
 
     # Optimization for GPTBigCode on Gaudi
@@ -338,7 +348,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.falcon.modeling_falcon.FalconMLP = GaudiFalconMLP
     transformers.models.falcon.modeling_falcon.FalconModel = GaudiFalconModel
     transformers.models.falcon.modeling_falcon.FalconDecoderLayer = GaudiFalconDecoderLayer
-    transformers.models.falcon.modeling_falcon.FalconAttention._split_heads = gaudi_falcon_attention_split_heads
     transformers.models.falcon.modeling_falcon.FalconLinear.forward = gaudi_falcon_linear_forward
 
     # Optimization for t5 on Gaudi
@@ -426,7 +435,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.stablelm.modeling_stablelm.StableLmForCausalLM = GaudiStableLmForCausalLM
     transformers.models.stablelm.modeling_stablelm.StableLmModel.forward = gaudi_stablelm_model_forward
     transformers.models.stablelm.modeling_stablelm.StableLmAttention.forward = gaudi_stablelm_attention_forward
-    transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer.forward = gaudi_stablelm_decoder_layer_forward
+    transformers.models.stablelm.modeling_stablelm.StableLmDecoderLayer = GaudiStableLmDecoderLayer
 
     transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder.VisionEncoderDecoderModel.prepare_inputs_for_generation = gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation
 
