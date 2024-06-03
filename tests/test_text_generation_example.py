@@ -40,14 +40,14 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 278, True, 128, 128, 2055.18908620476762),
-            ("meta-llama/Llama-2-7b-hf", 1, 1200, False, 128, 128, 13415.103401047876),
-            ("meta-llama/Llama-2-7b-hf", 1, 160, False, 128, 2048, 2930.9086839308384),
-            ("meta-llama/Llama-2-7b-hf", 1, 90, False, 2048, 128, 1104.0681776998265),
-            ("meta-llama/Llama-2-7b-hf", 1, 60, False, 2048, 2048, 1248.3177998857964),
-            ("meta-llama/Llama-2-70b-hf", 8, 2500, False, 128, 128, 10327.895829614834),
-            ("meta-llama/Llama-2-70b-hf", 8, 430, False, 128, 2048, 10425.578514886345),
-            ("meta-llama/Llama-2-70b-hf", 8, 40, False, 2048, 128, 695.475101514524),
-            ("meta-llama/Llama-2-70b-hf", 8, 64, False, 2048, 2048, 2773.173092391251),
+            ("meta-llama/Llama-2-7b-hf", 1, 1230, False, 128, 128, 13152.7),
+            ("meta-llama/Llama-2-7b-hf", 1, 163, False, 128, 2048, 4774.7),
+            ("meta-llama/Llama-2-7b-hf", 1, 94, False, 2048, 128, 1293.3),
+            ("meta-llama/Llama-2-7b-hf", 1, 81, False, 2048, 2048, 1942.9),
+            ("meta-llama/Llama-2-70b-hf", 4, 3042, False, 128, 128, 5374.6),
+            ("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048, 7422.4),
+            ("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, 568.5),
+            ("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048, 4656.2),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128, 12397.11410288204),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 5394.675714459493),
             ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 919.8470890081497),
@@ -174,9 +174,6 @@ def _test_text_generation(
 
         # FP8 text generation
         command += [
-            "--fp8",
-            "--warmup 1",
-            "--n_iterations 2",
             f"--max_input_tokens {max_input_tokens}",
             "--limit_hpu_graphs",
         ]
@@ -188,6 +185,7 @@ def _test_text_generation(
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
 
         if fp8:
+            env_variables["TQDM_DISABLE"] = "1"
             if measure_command:
                 measure_command.append(f"--token {token.value}")
                 env_variables["QUANT_CONFIG"] = os.path.join(
