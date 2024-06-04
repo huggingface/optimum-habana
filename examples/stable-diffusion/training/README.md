@@ -188,7 +188,7 @@ python train_text_to_image_sdxl.py \
   --bf16 \
   --use_hpu_graphs_for_training \
   --use_hpu_graphs_for_inference \
-  --validation_prompt="a cute Sundar Pichai creature" \
+  --validation_prompt="a cute naruto creature" \
   --validation_epochs 48 \
   --checkpointing_steps 2500 \
   --logging_step 10 \
@@ -221,7 +221,7 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py
   --bf16 \
   --use_hpu_graphs_for_training \
   --use_hpu_graphs_for_inference \
-  --validation_prompt="a cute Sundar Pichai creature" \
+  --validation_prompt="a cute naruto creature" \
   --validation_epochs 48 \
   --checkpointing_steps 336 \
   --mediapipe dataset_sdxl_mediapipe \
