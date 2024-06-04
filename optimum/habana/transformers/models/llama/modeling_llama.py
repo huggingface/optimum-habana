@@ -1,5 +1,5 @@
-import os
 import math
+import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -148,7 +148,7 @@ class ModuleFusedSDPA(torch.nn.Module):
         self._hpu_kernel_fsdpa = fusedSDPA
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
-        return  self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
+        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
 
 
 class Matmul(torch.nn.Module):
