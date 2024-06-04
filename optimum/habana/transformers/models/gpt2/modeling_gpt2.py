@@ -597,7 +597,7 @@ class GaudiGPT2LMHeadModel(GPT2LMHeadModel):
 
 class GaudiGPT2DoubleHeadsModel(GPT2DoubleHeadsModel):
     """
-    Copied from GPT2DoubleHeadsModel: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/gpt2/modeling_gpt2.py#L1146
+    Copied from GPT2DoubleHeadsModel: https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/models/gpt2/modeling_gpt2.py#L1377
     The only differences are:
     - add new args token_idx to support static shapes
     """
