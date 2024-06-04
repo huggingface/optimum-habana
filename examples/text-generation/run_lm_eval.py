@@ -75,13 +75,13 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
         self.options = options
         self._device = args.device
         self.model_inputs = {"use_cache": self.options.use_cache}
-        if self.model.config.model_type in ["llama", "mistral", "falcon", "phi", "mixtral"]:
+        if self.model.config.model_type in ["llama", "mistral", "falcon", "phi", "mixtral", "qwen2"]:
             self.model_inputs.update(
                 {
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral"]:
+        if self.model.config.model_type in ["llama", "mistral", "qwen2"]:
             self.model_inputs.update(
                 {
                     "attn_softmax_bf16": self.options.attn_softmax_bf16,

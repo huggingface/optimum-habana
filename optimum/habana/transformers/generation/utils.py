@@ -370,7 +370,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         else:
                             assert False
                     elif model_kwargs["past_key_values"][0][0].dim() == 4:
-                        return (0, 0, 0, pad_amount)  # llama, falcon
+                        return (0, 0, 0, pad_amount)  # llama, falcon, qwen2
                     else:
                         assert False, "Unknown case, please handle, or dont use bucketing"
 
@@ -787,7 +787,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 "falcon",
                 "mixtral",
                 "phi",
-		"qwen2",
+		        "qwen2",
             ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi and qwen2 at the moment"
             if not generation_config.bucket_internal:
                 assert (
