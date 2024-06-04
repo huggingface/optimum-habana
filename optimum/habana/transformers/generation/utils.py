@@ -2725,7 +2725,8 @@ class GaudiGenerationMixin(GenerationMixin):
                         f"for `low_memory beam_search`. Please open an issue on GitHub if you need this feature."
                     )
 
-                # _split_model_inputs cannot split 'token_idx' and if needed, read from model_kwargs
+                # the function _split_model_inputs cannot split 'token_idx'
+                # note that we always read `token_idx` from `model_kwargs`
                 model_inputs.pop("token_idx", None)
                 inputs_per_sub_batches = _split_model_inputs(
                     model_inputs, split_size=batch_size, full_batch_size=batch_beam_size
