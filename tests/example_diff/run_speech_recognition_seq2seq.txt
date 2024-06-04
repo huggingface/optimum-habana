@@ -1,6 +1,6 @@
 31,32d30
 < from datasets import DatasetDict, load_dataset
-< 
+<
 33a32
 > from datasets import DatasetDict, load_dataset
 41,43d39
@@ -10,21 +10,21 @@
 48a45,55
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
-> 
-> 
+>
+>
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
-> 
+>
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-> 
+>
 51c58,59
 < check_min_version("4.42.0.dev0")
 ---
-> check_min_version("4.38.0")
-> check_optimum_habana_min_version("1.10.0")
-230a239,242
+> check_min_version("4.40.0")
+> check_optimum_habana_min_version("1.11.0")
+237a246,249
 >     label_features_max_length: int = field(
 >         default=None,
 >         metadata={"help": "Max length for padding label features."},
@@ -49,7 +49,7 @@
 >         cache_dir=model_args.cache_dir,
 >         token=data_args.token,
 >     )
-> 
+>
 310a334
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 312,313c336,338

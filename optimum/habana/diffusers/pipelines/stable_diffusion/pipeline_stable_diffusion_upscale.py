@@ -567,13 +567,21 @@ class GaudiStableDiffusionUpscalePipeline(GaudiDiffusionPipeline, StableDiffusio
 
                 image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-                if output_type == "pil":
+                if output_type == "pil" and isinstance(image, list):
                     # Apply watermark
                     if self.watermarker is not None:
                         image = self.watermarker.apply_watermark(image)
                     outputs["images"] += image
+                elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = np.concatenate((outputs["images"], image), axis=0)
                 else:
-                    outputs["images"] += [*image]
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = torch.cat((outputs["images"], image), 0)
 
                 if has_nsfw_concept is not None:
                     outputs["has_nsfw_concept"] += has_nsfw_concept
