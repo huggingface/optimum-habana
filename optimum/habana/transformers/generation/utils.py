@@ -1162,6 +1162,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 streamer=streamer,
                 sequential=generation_config.low_memory,
                 lazy_mode=lazy_mode,
+                ignore_eos=generation_config.ignore_eos,
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
@@ -1429,6 +1430,7 @@ class GaudiGenerationMixin(GenerationMixin):
         streamer: Optional["BaseStreamer"] = None,
         sequential: Optional[bool] = None,
         lazy_mode: Optional[bool] = False,
+        ignore_eos: Optional[bool] = False,
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
@@ -1439,7 +1441,7 @@ class GaudiGenerationMixin(GenerationMixin):
         Generates sequences of token ids for models with a language modeling head using **contrastive search** and can
         be used for text-decoder, text-to-text, speech-to-text, and vision-to-text models.
 
-        Adapted from https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/generation/utils.py#L1789
+        Adapted from: https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/generation/utils.py#L1849
 
         The changes are:
         - support lazy mode and HPU graphs on Gaudi
@@ -1496,6 +1498,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Switches topk hidden state computation from parallel to sequential to reduce memory if True.
             lazy_mode (`bool`, *optional*, defaults to `False`):
                 Whether the run is executed in lazy mode or not (i.e. eager mode).
+            ignore_eos (`bool`, *optional*, defaults to `False`):
+                Whether to ignore finished sequences (faster in lazy mode and with HPU graphs) or not (eager mode).
             profiling_warmup_steps (`int`, *optional*, defaults to 0):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
@@ -1541,24 +1545,25 @@ class GaudiGenerationMixin(GenerationMixin):
         logits_warper = logits_warper if logits_warper is not None else LogitsProcessorList()
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
         pad_token_id = pad_token_id if pad_token_id is not None else self.generation_config.pad_token_id
-        if eos_token_id is not None:
-            logger.warning_once(
-                "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
-                " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
-                " Otherwise make sure to set `model.generation_config.eos_token_id`",
-                FutureWarning,
-            )
-            stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
-        else:
-            # TODO remove when the method is totally private
-            # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
-            eos_token_id = [
-                criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
-            ]
-            eos_token_id = eos_token_id[0] if eos_token_id else None
-            if eos_token_id is None and self.generation_config.eos_token_id is not None:
-                eos_token_id = self.generation_config.eos_token_id
+        if not self.generation_config.ignore_eos:
+            if eos_token_id is not None:
+                logger.warning_once(
+                    "`eos_token_id` is deprecated in this function and will be removed in v4.41, use"
+                    " `stopping_criteria=StoppingCriteriaList([EosTokenCriteria(eos_token_id=eos_token_id)])` instead."
+                    " Otherwise make sure to set `model.generation_config.eos_token_id`",
+                    FutureWarning,
+                )
                 stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
+            else:
+                # TODO remove when the method is totally private
+                # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
+                eos_token_id = [
+                    criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
+                ]
+                eos_token_id = eos_token_id[0] if eos_token_id else None
+                if eos_token_id is None and self.generation_config.eos_token_id is not None:
+                    eos_token_id = self.generation_config.eos_token_id
+                    stopping_criteria.append(EosTokenCriteria(eos_token_id=eos_token_id))
 
         if isinstance(eos_token_id, int):
             eos_token_id = [eos_token_id]
@@ -1595,8 +1600,10 @@ class GaudiGenerationMixin(GenerationMixin):
         batch_size, cur_len = input_ids.shape
         if "inputs_embeds" in model_kwargs:
             cur_len = model_kwargs["inputs_embeds"].shape[1]
-        unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
-        model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
+
+        if not ignore_eos:
+            unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
+            model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
 
         this_peer_finished = False
 
@@ -1908,7 +1915,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 continue  # don't waste resources running the code we don't need
 
             # finished sentences should have their next token be a padding token
-            if eos_token_id is not None:
+            if not ignore_eos and eos_token_id is not None:
                 if pad_token_id is None:
                     raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
@@ -1944,11 +1951,15 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
             # stop when each sentence is finished
-            if token_idx is not None:
-                unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids[:, : (token_idx - 1)], scores)
+            if ignore_eos:
+                this_peer_finished = stopping_criteria(
+                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                )
             else:
-                unfinished_sequences = unfinished_sequences & ~stopping_criteria(input_ids, scores)
-            this_peer_finished = unfinished_sequences.max() == 0
+                unfinished_sequences = unfinished_sequences & ~stopping_criteria(
+                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                )
+                this_peer_finished = unfinished_sequences.max() == 0
 
             hb_profer.step()
 
