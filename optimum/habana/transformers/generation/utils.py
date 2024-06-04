@@ -93,9 +93,9 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "persimmon",
     "qwen2",
     "llava",
+    "llava_next",
     "stablelm",
 ]
-
 
 logger = logging.get_logger(__name__)
 
