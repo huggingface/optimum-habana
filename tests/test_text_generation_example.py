@@ -166,13 +166,13 @@ def _test_text_generation(
         global prev_quant_rank
         measure_command = None
         # FP8 Measurement only needed
-        if (not prev_quant_model_name) or (prev_quant_model_name != model_name) or (prev_quant_rank != world_size):
+        if (prev_quant_model_name is None) or (prev_quant_model_name != model_name) or (prev_quant_rank != world_size):
             measure_command = [
                 x for x in command if not x.startswith("--max_new_tokens")
-            ]  # Remove max_new_tokens for mesurement
+            ]  # Remove max_new_tokens for measurement
             measure_command = [
                 x if not x.startswith("--batch_size") else "--batch_size 1" for x in measure_command
-            ]  # Remove batch_size for mesurement
+            ]  # Remove batch_size for measurement
 
             prev_quant_model_name = model_name
             prev_quant_rank = world_size
@@ -191,21 +191,30 @@ def _test_text_generation(
 
         if fp8:
             env_variables["TQDM_DISABLE"] = "1"
-            if measure_command:
+            if measure_command is not None:
                 measure_command.append(f"--token {token.value}")
                 env_variables["QUANT_CONFIG"] = os.path.join(
                     path_to_example_dir, "text-generation/quantization_config/maxabs_measure_include_outputs.json"
                 )
                 measure_command = [x for y in measure_command for x in re.split(pattern, y) if x]
-                print(f"\n\nMeasure Command to test: {' '.join(measure_command)}\n")
-                subprocess.run(measure_command, env=env_variables)
+                print(f"\n\nMeasure Command to test: {' '.join(measure_command[:-2])}\n")
+                proc = subprocess.run(measure_command, env=env_variables)
+
+                # Ensure the run finished without any issue
+                # Use try-except to avoid logging the token if used
+                try:
+                    assert proc.returncode == 0
+                except AssertionError as e:
+                    if "'--token', 'hf_" in e.args[0]:
+                        e.args = (f"The following command failed:\n{' '.join(measure_command[:-2])}",)
+                    raise
 
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
             )
 
         command = [x for y in command for x in re.split(pattern, y) if x]
-        print(f"\n\nCommand to test: {' '.join(command)}\n")
+        print(f"\n\nCommand to test: {' '.join(command[:-2])}\n")
         proc = subprocess.run(command, env=env_variables)
 
         # Ensure the run finished without any issue
