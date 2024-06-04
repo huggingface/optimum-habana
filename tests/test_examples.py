@@ -406,6 +406,7 @@ class ExampleTestMeta(type):
                     extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
                 self.TASK_NAME = [self.TASK_NAME, "compile"]
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
+                env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
