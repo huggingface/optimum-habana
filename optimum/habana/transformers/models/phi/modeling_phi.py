@@ -30,8 +30,8 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from transformers.models.phi.configuration_phi import PhiConfig
 from transformers.models.phi.modeling_phi import (
     PhiAttention,
-    PhiDecoderLayer,
     PhiForCausalLM,
+    PhiMLP,
     PhiModel,
     apply_rotary_pos_emb,
 )
@@ -293,10 +293,13 @@ class GaudiPhiAttention(PhiAttention):
         return attn_output, attn_weights, past_key_value
 
 
-class GaudiPhiDecoderLayer(PhiDecoderLayer):
+class GaudiPhiDecoderLayer(torch.nn.Module):
     def __init__(self, config: PhiConfig, layer_idx: int):
-        super().__init__(config, layer_idx)
-        self.self_attn = GaudiPhiAttention(config, layer_idx)
+        super().__init__()
+        self.self_attn = GaudiPhiAttention(config, layer_idx=layer_idx)
+        self.mlp = PhiMLP(config)
+        self.input_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.resid_dropout = torch.nn.Dropout(config.resid_pdrop)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)

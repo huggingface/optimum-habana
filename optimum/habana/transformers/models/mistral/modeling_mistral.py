@@ -841,6 +841,7 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
         - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
         - from step2 when enable KV cache, slice next_position_ids from position_ids base on the token_idx
         """
+        reuse_cache = kwargs.get("reuse_cache", False)
         token_idx = kwargs.get("token_idx", None)
 
         # Omit tokens covered by past_key_values
@@ -875,6 +876,10 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
                     attention_mask = attention_mask[:, -max_cache_length:]
             else:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
+        elif reuse_cache and token_idx is not None:
+            # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:

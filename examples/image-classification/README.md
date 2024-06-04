@@ -19,6 +19,13 @@ limitations under the License.
 This directory contains a script that showcases how to fine-tune any model supported by the [`AutoModelForImageClassification` API](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForImageClassification) (such as [ViT](https://huggingface.co/docs/transformers/main/en/model_doc/vit) or [Swin Transformer](https://huggingface.co/docs/transformers/main/en/model_doc/swin)) on HPUs. They can be used to fine-tune models on both [datasets from the hub](#using-datasets-from-hub) as well as on [your own custom data](#using-your-own-data).
 
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Single-HPU training
 
 ### Using datasets from Hub

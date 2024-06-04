@@ -48,7 +48,6 @@ from .falcon import (
     GaudiFalconForCausalLM,
     GaudiFalconMLP,
     GaudiFalconModel,
-    gaudi_falcon_attention_split_heads,
     gaudi_falcon_linear_forward,
 )
 from .gemma import (
@@ -57,7 +56,7 @@ from .gemma import (
     gaudi_gemma_attention_forward,
     gaudi_gemma_model_forward,
 )
-from .gpt2 import GaudiGPT2Attention, GaudiGPT2LMHeadModel, gaudi_gpt2_block_forward, gaudi_gpt2_forward
+from .gpt2 import GaudiGPT2Attention, GaudiGPT2Block, GaudiGPT2LMHeadModel, gaudi_gpt2_forward
 from .gpt_bigcode import (
     GaudiGPTBigCodeForCausalLM,
     gaudi_gpt_bigcode_attention_forward,
@@ -73,8 +72,8 @@ from .gpt_neox import (
 )
 from .gptj import (
     GaudiGPTJAttention,
+    GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
-    gaudi_gptj_block_forward,
     gaudi_gptj_model_forward,
 )
 from .llama import (
@@ -152,9 +151,9 @@ from .speecht5 import (
     gaudi_SpeechT5DecoderLayer_forward,
 )
 from .stablelm import (
+    GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
     gaudi_stablelm_attention_forward,
-    gaudi_stablelm_decoder_layer_forward,
     gaudi_stablelm_model_forward,
 )
 from .swin import gaudi_swin_get_attn_mask

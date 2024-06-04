@@ -91,6 +91,22 @@ python run_generation.py \
 
 > The batch size should be larger than or equal to the number of prompts. Otherwise, only the first N prompts are kept with N being equal to the batch size.
 
+### Run Speculative Sampling on Gaudi
+
+If you want to generate a sequence of text from a prompt of your choice using assisted decoding, you can use the following command as an example:
+
+```
+python run_generation.py \
+--model_name_or_path gpt2 \
+--assistant_model distilgpt2 \
+--batch_size 1 \
+--max_new_tokens 100 \
+--use_hpu_graphs \
+--use_kv_cache \
+--num_return_sequences 1 \
+--temperature 0 \
+--prompt "Alice and Bob"
+```
 
 ### Benchmark
 
@@ -107,7 +123,6 @@ Here are a few settings you may be interested in:
 - `--prompt` to benchmark the model on one or several prompts of your choice
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
-- `--fp8` Enable Quantization to fp8
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
 ```bash
@@ -283,8 +298,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_kv_cache \
 --reuse_cache \
 --bf16 \
---batch_size 1 \
---fp8
+--batch_size 1
 ```
 
 Alternatively, here is another example to quantize the model based on previous measurements for LLama2-70b:
@@ -301,8 +315,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --batch_size 277 \
 --max_new_tokens 2048 \
 --max_input_tokens 2048 \
---limit_hpu_graphs \
---fp8
+--limit_hpu_graphs
 ```
 
 Here is an example to measure the tensor quantization statistics on Mixtral-8x7B with 1 card:
@@ -328,8 +341,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_mixtral.json python run_generati
 --bucket_size 128 \
 --max_new_tokens 2048 \
 --batch_size 16 \
---bf16 \
---fp8
+--bf16
 ```
 
 Here is an example to measure the tensor quantization statistics on Falcon-180B with 8 cards:
@@ -360,8 +372,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --batch_size 110 \
 --bf16 \
 --reuse_cache \
---trim_logits \
---fp8
+--trim_logits
 ```
 
 Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
@@ -389,12 +400,8 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.p
 --batch_size 1 \
 --bf16 \
 --trim_logits \
---reuse_cache \
---fp8
+--reuse_cache
 ```
-
-`--fp8` is required to enable quantization in fp8.
-
 
 ### Using Habana Flash Attention
 
