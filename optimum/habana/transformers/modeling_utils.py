@@ -259,7 +259,7 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._beam_sample = GaudiGenerationMixin._beam_sample
     transformers.generation.GenerationMixin._group_beam_search = GaudiGenerationMixin._group_beam_search
     transformers.generation.GenerationMixin._constrained_beam_search = GaudiGenerationMixin._constrained_beam_search
-    transformers.generation.GenerationMixin.contrastive_search = GaudiGenerationMixin._contrastive_search
+    transformers.generation.GenerationMixin._contrastive_search = GaudiGenerationMixin._contrastive_search
     transformers.generation.GenerationMixin._assisted_decoding = GaudiGenerationMixin._assisted_decoding
     transformers.generation.GenerationMixin._get_candidate_generator = GaudiGenerationMixin._get_candidate_generator
     transformers.generation.GenerationConfig = GaudiGenerationConfig

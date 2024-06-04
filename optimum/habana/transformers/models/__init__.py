@@ -68,12 +68,11 @@ from .gemma import (
 )
 from .gpt2 import (
     GaudiGPT2Attention,
-    GaudiGPT2DoubleHeadsModel,
     GaudiGPT2Block,
+    GaudiGPT2DoubleHeadsModel,
     GaudiGPT2LMHeadModel,
     gaudi_gpt2_forward,
 )
-
 from .gpt_bigcode import (
     GaudiGPTBigCodeForCausalLM,
     gaudi_gpt_bigcode_attention_forward,

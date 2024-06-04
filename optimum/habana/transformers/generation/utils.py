@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 import torch
 import torch.distributed as dist
 from torch import nn
+from transformers.cache_utils import DynamicCache
 from transformers.generation.beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from transformers.generation.beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from transformers.generation.candidate_generator import (
@@ -59,7 +60,6 @@ from transformers.generation.utils import (
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import CausalLMOutputWithPast, Seq2SeqLMOutput
 from transformers.utils import ModelOutput, is_torchdynamo_compiling
-from transformers.cache_utils import DynamicCache
 
 from optimum.utils import logging
 
@@ -1558,7 +1558,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 # TODO remove when the method is totally private
                 # need to get `eos_token_id` and add stopping criteria, so that generation does not go forever
                 eos_token_id = [
-                    criteria.eos_token_id.tolist() for criteria in stopping_criteria if hasattr(criteria, "eos_token_id")
+                    criteria.eos_token_id.tolist()
+                    for criteria in stopping_criteria
+                    if hasattr(criteria, "eos_token_id")
                 ]
                 eos_token_id = eos_token_id[0] if eos_token_id else None
                 if eos_token_id is None and self.generation_config.eos_token_id is not None:
