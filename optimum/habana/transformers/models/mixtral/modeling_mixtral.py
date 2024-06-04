@@ -350,6 +350,8 @@ class GaudiMixtralAttention(MixtralAttention):
             past_key_value = None
 
         if FusedSDPA:
+            if query_states.dtype != key_states.dtype:
+                query_states = query_states.type(key_states.dtype)
             # support long sequences exceeding 8192
             if not self.training and q_len == key_states.size(-2) and q_len > 8192:
                 htcore.mark_step()
