@@ -66,8 +66,8 @@
                     "learning_rate": 4e-5,
                     "train_batch_size": 32,
                     "eval_f1": 93.2753,
-                    "train_runtime": 309.9491,
-                    "train_samples_per_second": 302.089,
+                    "train_runtime": 342.1722,
+                    "train_samples_per_second": 286.435,
                     "extra_arguments": [
                         "--max_seq_length 384",
                         "--use_hpu_graphs_for_inference"

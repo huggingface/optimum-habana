@@ -39,7 +39,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("google/gemma-7b", 1, False, 109.70751574382221),
         ],
         "fp8": [
-            ("tiiuae/falcon-180B", 4, 278, True, 128, 128, 2055.18908620476762),
+            ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
             ("meta-llama/Llama-2-7b-hf", 1, 1230, False, 128, 128, 13152.7),
             ("meta-llama/Llama-2-7b-hf", 1, 163, False, 128, 2048, 4774.7),
             ("meta-llama/Llama-2-7b-hf", 1, 94, False, 2048, 128, 1293.3),
@@ -133,6 +133,9 @@ def _test_text_generation(
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
+    if "falcon-180b" in model_name.lower():
+        command += ["--use_flash_attention", "--flash_attention_causal_mask"]
+
     if reuse_cache or torch_compile:
         command += ["--reuse_cache"]
 
@@ -156,6 +159,8 @@ def _test_text_generation(
             command.insert(-2, "--flash_attention_recompute")
             command.insert(-2, "--bucket_size 128")
             command.insert(-2, "--bucket_internal")
+        elif "falcon-180b" in model_name.lower():
+            command.insert(-2, "--flash_attention_recompute")
 
         global prev_quant_model_name
         global prev_quant_rank
