@@ -31,7 +31,6 @@ from transformers.testing_utils import (
     require_torch_multi_accelerator,
     slow,
 )
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from ..test_modeling_common import floats_tensor, ids_tensor, torch_device
 from .test_framework_agnostic import GenerationIntegrationTestsMixin
 
@@ -76,9 +75,6 @@ if is_torch_available():
         StoppingCriteriaList,
     )
     from transformers.generation.utils import _speculative_sampling
-
-torch_device = "hpu"
-adapt_transformers_to_gaudi()
 
 
 class GenerationTesterMixin:
