@@ -526,6 +526,33 @@ def main():
                 token=model_args.token,
                 trust_remote_code=model_args.trust_remote_code,
             )
+        if data_args.dataset_name == "tatsu-lab/alpaca" or data_args.sql_prompt:
+            # Preprocessing the datasets.
+            for key in raw_datasets:
+                prompts = (
+                    create_prompts(raw_datasets[key])
+                    if not data_args.sql_prompt
+                    else create_sql_prompts(raw_datasets[key])
+                )
+                columns_to_be_removed = list(raw_datasets[key].features.keys())
+                raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
+                raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
+                raw_datasets[key] = raw_datasets[key].remove_columns(columns_to_be_removed)
+        elif (
+            data_args.dataset_name == "timdettmers/openassistant-guanaco"
+        ):  # from https://github.com/artidoro/qlora/blob/main/qlora.py#L621
+            raw_datasets = raw_datasets.map(
+                lambda x: {
+                    "input": "",
+                    "output": x["text"],
+                }
+            )
+            # Remove unused columns.
+            raw_datasets = raw_datasets.remove_columns(
+                [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
+            )
+        else:
+            raise ValueError("Unsupported dataset")
     else:
         data_files = {}
         dataset_args = {}
@@ -548,6 +575,19 @@ def main():
             token=model_args.token,
             **dataset_args,
         )
+
+        if data_args.train_file and training_args.do_train:
+            print([x for x in raw_datasets])
+            raw_datasets = raw_datasets.map(
+                lambda x: {
+                    "input": "",
+                    "output": x["text"],
+                }
+            )
+            # Remove unused columns.
+            raw_datasets = raw_datasets.remove_columns(
+                [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
+            )
 
         # If no validation data is there, validation_split_percentage will be used to divide the dataset.
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
@@ -727,7 +767,19 @@ def main():
                 tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(
                     ["prompt_sources", "prompt_targets"]
                 )
-        tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
+        elif data_args.dataset_name == "timdettmers/openassistant-guanaco":
+            tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
+            if training_args.do_eval:
+                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
+        elif data_args.dataset_name is None:
+            if training_args.do_train:
+                tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
+            if training_args.do_eval:
+                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(["input", "output"])
+        else:
+            raise ValueError("Unsupported dataset")
+        if training_args.do_train:
+            tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
         if training_args.do_eval:
             tokenized_datasets["validation"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
     if training_args.do_train:
