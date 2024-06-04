@@ -101,9 +101,7 @@ config = GaudiPPOConfig(
     pad_max_input_len=script_args.input_max_length,
 )
 
-train_dataset = load_dataset(
-    "lvwerra/stack-exchange-paired", data_dir="data/rl", split="train", verification_mode="no_checks"
-)
+train_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/rl", split="train")
 if script_args.max_train_samples is not None:
     max_train_samples = min(len(train_dataset), script_args.max_train_samples)
     train_dataset = train_dataset.select(range(max_train_samples))
