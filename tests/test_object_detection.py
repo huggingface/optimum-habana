@@ -64,7 +64,7 @@ class GaudiDETRTester(TestCase):
         expected_location = np.array([344.0622, 24.8543, 640.3398, 373.7401])
         self.assertLess(np.abs(boxes[0].cpu().detach().numpy() - expected_location).max(), 1)
 
-    def test_inference_bf16(self):
+    def test_inference_autocast(self):
         model, processor = self.prepare_model_and_processor()
         image = self.prepare_data()
         inputs = processor(images=image, return_tensors="pt").to("hpu")
@@ -93,7 +93,7 @@ class GaudiDETRTester(TestCase):
         expected_location = np.array([344.0622, 24.8543, 640.3398, 373.7401])
         self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 1)
 
-    def test_no_latency_regression_bf16(self):
+    def test_no_latency_regression_autocast(self):
         warmup = 3
         iterations = 10
 
