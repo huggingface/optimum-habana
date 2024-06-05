@@ -340,7 +340,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
-    transformers.models.llava_next.modeling_llava_next.LlavaNextForConditionalGeneration = GaudiLlavaNextForConditionalGeneration
+    transformers.models.llava_next.modeling_llava_next.LlavaNextForConditionalGeneration = (
+        GaudiLlavaNextForConditionalGeneration
+    )
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention

@@ -17,28 +17,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" PyTorch Llava-NeXT model."""
+"""PyTorch Llava-NeXT model."""
 
-from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
-
-from transformers.utils import logging
 from transformers.models.llava_next.modeling_llava_next import (
     LlavaNextCausalLMOutputWithPast,
     LlavaNextForConditionalGeneration,
-    unpad_image,
     get_anyres_image_grid_shape,
+    unpad_image,
 )
+from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
 
-class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
 
+class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -71,7 +69,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
             )
             return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-            if inputs_embeds == None:
+            if inputs_embeds is None:
                 inputs_embeds = self.get_input_embeddings()(input_ids)
 
             outputs = self.language_model(
@@ -83,7 +81,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
-                token_idx=token_idx
+                token_idx=token_idx,
             )
 
             logits = outputs[0]
@@ -148,18 +146,18 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L635
         The only differences are:
         - add new args token_idx
-        - add the process of merging images into inputs_embeds 
+        - add the process of merging images into inputs_embeds
         """
         token_idx = kwargs.get("token_idx", None)
         if token_idx is None:
             return super.prepare_inputs_for_generation(
-                        input_ids=input_ids,
-                        past_key_values=past_key_values,
-                        inputs_embeds=inputs_embeds,
-                        pixel_values=pixel_values,
-                        image_sizes=image_sizes,
-                        attention_mask=attention_mask,
-                        **kwargs,
+                input_ids=input_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                pixel_values=pixel_values,
+                image_sizes=image_sizes,
+                attention_mask=attention_mask,
+                **kwargs,
             )
         else:
             position_ids = kwargs.get("position_ids", None)
