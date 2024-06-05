@@ -61,6 +61,11 @@ fast_tests_feature_extraction:
 fast_test_videomae:
 	python -m pip install .[tests]
 	python -m pytest tests/test_video_mae.py
+# Run unit and integration tests related to Image segmentation
+fast_tests_object_detection:
+	python -m pip install .[tests]
+	python -m pip install timm
+	python -m pytest tests/test_object_detection.py
 
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
