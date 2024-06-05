@@ -236,6 +236,15 @@ def gaudi_gpt_bigcode_model_forward(
     self_attention_mask = self_attention_mask.unsqueeze(2 if self.multi_query else 1)
 
     if self._use_sdpa and head_mask is None and not output_attentions:
+        # SDPA with a custom mask is much faster in fp16/fp32 dtype rather than bool. Cast here to floating point instead of at every layer.
+        dtype = self.wte.weight.dtype
+        min_dtype = torch.finfo(dtype).min
+        self_attention_mask = torch.where(
+            self_attention_mask,
+            torch.full([], 0.0, dtype=dtype, device=self_attention_mask.device),
+            torch.full([], min_dtype, dtype=dtype, device=self_attention_mask.device),
+        )
+
         # output_attentions=True can not be supported when using SDPA, and we fall back on
         # the manual implementation that requires a 4D causal mask in all cases.
         if self.multi_query:
@@ -247,16 +256,8 @@ def gaudi_gpt_bigcode_model_forward(
             # From PyTorch 2.1 onwards, F.scaled_dot_product_attention with the memory-efficient attention backend
             # produces nans if sequences are completely unattended in the attention mask. Details: https://github.com/pytorch/pytorch/issues/110213
             self_attention_mask = GaudiAttentionMaskConverter._unmask_unattended(
-                self_attention_mask, attention_mask, unmasked_value=True
+                self_attention_mask, min_dtype=min_dtype
             )
-
-        # SDPA with a custom mask is much faster in fp16/fp32 dtype rather than bool. Cast here to floating point instead of at every layer.
-        dtype = self.wte.weight.dtype
-        self_attention_mask = torch.where(
-            self_attention_mask,
-            torch.full([], 0.0, dtype=dtype, device=self_attention_mask.device),
-            torch.full([], torch.finfo(self.wte.weight.dtype).min, dtype=dtype, device=self_attention_mask.device),
-        )
 
     attention_mask = self_attention_mask
 

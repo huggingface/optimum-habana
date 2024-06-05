@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from unittest import TestCase
 
 import torch
@@ -32,7 +33,7 @@ class GaudiPipelineTester(TestCase):
             "max_new_tokens": 128,
             "ignore_eos": False,
         }
-        image = "./tests/resource/image-captioning-example.png"
+        image = os.path.dirname(__file__) + "/resource/img/image-captioning-example.png"
         for model_dtype in MODEL_DTYPE_LIST:
             generator = pipeline(
                 "image-to-text",
