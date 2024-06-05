@@ -31,7 +31,7 @@ from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.mistral.configuration_mistral import MistralConfig
+from .configuration_mistral import MistralConfig
 from transformers.models.mistral.modeling_mistral import (
     MistralAttention,
     MistralDecoderLayer,
@@ -222,6 +222,7 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
 class GaudiMistralAttention(MistralAttention):
     def __init__(self, config: MistralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
+        self.config = MistralConfig(config)
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.matmul_qk = Matmul()
@@ -461,6 +462,7 @@ class GaudiMistralAttention(MistralAttention):
 class GaudiMistralDecoderLayer(MistralDecoderLayer):
     def __init__(self, config: MistralConfig, layer_idx: int):
         super(MistralDecoderLayer, self).__init__()
+
         self.hidden_size = config.hidden_size
 
         self.self_attn = GaudiMistralAttention(config, layer_idx)
