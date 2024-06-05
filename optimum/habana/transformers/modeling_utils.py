@@ -77,6 +77,7 @@ from .models import (
     GaudiStableLmForCausalLM,
     GaudiStarcoder2DecoderLayer,
     GaudiStarcoder2ForCausalLM,
+    LlamaConfig,
     MistralConfig,
     MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -340,6 +341,7 @@ def adapt_transformers_to_gaudi():
         GaudiLlamaDynamicNTKScalingRotaryEmbedding
     )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
+    transformers.models.llama.configuration_llama.LlamaConfig = LlamaConfig
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
