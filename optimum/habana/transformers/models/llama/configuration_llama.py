@@ -1,3 +1,4 @@
+# TODO: To remove when the repo is upgraded to Transformers >= 4.41.0
 from transformers.models.llama.configuration_llama import LlamaConfig
 
 
