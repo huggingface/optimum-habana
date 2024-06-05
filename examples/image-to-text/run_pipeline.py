@@ -126,7 +126,7 @@ def main():
         "lazy_mode": True,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
-        "ignore_eos": False,
+        "ignore_eos": True,
     }
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
