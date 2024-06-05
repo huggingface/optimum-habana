@@ -75,6 +75,8 @@ from .models import (
     GaudiQwen2ForCausalLM,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
+    GaudiStarcoder2DecoderLayer,
+    GaudiStarcoder2ForCausalLM,
     MistralConfig,
     MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -147,6 +149,8 @@ from .models import (
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
+    gaudi_starcoder2_attention_forward,
+    gaudi_starcoder2_model_forward,
     gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -420,6 +424,12 @@ def adapt_transformers_to_gaudi():
     transformers.models.persimmon.modeling_persimmon.PersimmonDecoderLayer.forward = (
         gaudi_persimmon_decoder_layer_forward
     )
+
+    # Optimization for starcoder2 on Gaudi
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2ForCausalLM = GaudiStarcoder2ForCausalLM
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2Model.forward = gaudi_starcoder2_model_forward
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2Attention.forward = gaudi_starcoder2_attention_forward
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2DecoderLayer = GaudiStarcoder2DecoderLayer
 
     # Optimization for qwen2 on Gaudi
     transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = GaudiQwen2ForCausalLM

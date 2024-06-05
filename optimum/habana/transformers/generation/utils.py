@@ -90,6 +90,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mixtral",
     "gemma",
     "blip_text_model",
+    "starcoder2",
     "persimmon",
     "qwen2",
     "llava",
@@ -769,8 +770,8 @@ class GaudiGenerationMixin(GenerationMixin):
             not generation_config.bucket_internal
             and generation_config.bucket_size > 0
             and (
-                self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
-                or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
+                generation_config.get_generation_mode(assistant_model) == GenerationMode.GREEDY_SEARCH
+                or generation_config.get_generation_mode(assistant_model) == GenerationMode.BEAM_SEARCH
             )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1

@@ -156,6 +156,12 @@ from .stablelm import (
     gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
 )
+from .starcoder2 import (
+    GaudiStarcoder2DecoderLayer,
+    GaudiStarcoder2ForCausalLM,
+    gaudi_starcoder2_attention_forward,
+    gaudi_starcoder2_model_forward,
+)
 from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
     gaudi_t5_layernorm_forward,
