@@ -150,10 +150,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         The only differences are:
         - add new args token_idx
         """
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
 
         residual = hidden_states
 
