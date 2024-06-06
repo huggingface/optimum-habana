@@ -16,6 +16,7 @@
 import argparse
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -87,6 +88,9 @@ def main():
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     args = parser.parse_args()
 
+    # set args.quant_config with env variable if it is set
+    args.quant_config = os.getenv("QUANT_CONFIG", "")
+
     adapt_transformers_to_gaudi()
 
     model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
@@ -116,6 +120,11 @@ def main():
     else:
         model_dtype = torch.float32
 
+    if args.quant_config:
+        import habana_frameworks.torch.core as htcore
+
+        htcore.hpu_set_env()
+
     generator = pipeline(
         "image-to-text",
         model=args.model_name_or_path,
@@ -133,9 +142,20 @@ def main():
 
         generator.model = wrap_in_hpu_graph(generator.model)
 
+    if args.quant_config:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.prep_model(generator.model)
+
+        htcore.hpu_initialize(generator.model)
+
     # warm up
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+
+    torch.hpu.synchronize()
+    if args.quant_config:
+        habana_quantization_toolkit.finish_measurements(generator.model)
 
     start = time.perf_counter()
     for i in range(args.n_iterations):

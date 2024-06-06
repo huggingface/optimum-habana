@@ -28,6 +28,7 @@ from .generation import (
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
+    GaudiCLIPVisionEmbeddings,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     GaudiFalconAttention,
@@ -345,6 +346,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
+
+    # Optimization for Clip on Gaudi
+    transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention
