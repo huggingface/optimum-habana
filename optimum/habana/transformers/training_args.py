@@ -118,6 +118,8 @@ class GaudiTrainingArguments(TrainingArguments):
             Number of steps to ignore for profling.
         profiling_steps (`int`, *optional*, defaults to 0):
             Number of steps to be captured when enabling profiling.
+        profiling_record_shapes (`bool`, *optional*, defaults to True):
+            Record shapes when enabling profiling.
     """
 
     use_habana: Optional[bool] = field(
