@@ -1,5 +1,5 @@
-import os
 import math
+import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -229,7 +229,7 @@ class ModuleFusedSDPA(torch.nn.Module):
         self._hpu_kernel_fsdpa = fusedSDPA
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
-        return  self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
+        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
 
 
 class Matmul(torch.nn.Module):
@@ -447,7 +447,8 @@ class GaudiLlamaAttention(LlamaAttention):
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
-            softmax_mode = 'fast' if flash_attention_fast_softmax else 'None'
+
+            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
 
             if q_len == 1:
                 # next token
@@ -868,7 +869,7 @@ class GaudiLlamaModel(LlamaModel):
                     flash_attention_recompute,
                     flash_attention_causal_mask,
                     flash_attention_fast_softmax,
-                    None
+                    None,
                 )
             else:
                 layer_outputs = decoder_layer(
