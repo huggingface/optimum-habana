@@ -85,6 +85,9 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
             self.model_inputs.update(
                 {
                     "attn_softmax_bf16": self.options.attn_softmax_bf16,
+                    "use_flash_attention": self.options.use_flash_attention,
+                    "flash_attention_recompute": self.options.flash_attention_recompute,
+                    "flash_attention_causal_mask": self.options.flash_attention_causal_mask,
                 }
             )
         if args.warmup:
