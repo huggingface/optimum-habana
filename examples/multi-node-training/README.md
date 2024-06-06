@@ -69,7 +69,7 @@ Finally, on each system, add all hosts (including itself) to `known_hosts`. The 
 
 You can check if ssh port is working with the following command:
 
-1. Run "lsof -i" inside docker of each node to make sure sshd is up. It should be something like below.
+1. Run `lsof -i` inside docker of each node to make sure sshd is up. It should be something like below.
 ```bash
 COMMAND PID USER   FD   TYPE   DEVICE SIZE/OFF NODE NAME
 sshd     35 root    3u  IPv4 23262521      0t0  TCP *:3022 (LISTEN)
@@ -82,7 +82,7 @@ sed -i 's/#   Port 22/    Port 3022/g' /etc/ssh/ssh_config
 sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 service ssh restart
 ```
-2. Test ssh with command "ssh -p 3022 IP-address" to each other to make sure the nodes can communicate with each other.
+2. Test ssh with command `ssh -p 3022 IP-address` to each other to make sure the nodes can communicate with each other.
 
 3. Try gaudi_spawn.py training command with world_size 8 for few steps to make sure the command works for 8 ranks on each node.
 
