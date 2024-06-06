@@ -34,7 +34,7 @@ from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
-
+import numpy as np
 
 class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
     def forward(
@@ -68,10 +68,17 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
             )
             return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
             if inputs_embeds is None:
                 inputs_embeds = self.get_input_embeddings()(input_ids)
-
+            print(f"attention_mask = {attention_mask.shape}")
+            print(f"attention_mask = {torch.sum(attention_mask)}")
+            print(f"position_ids={position_ids}")
+            print(f"token_idx={token_idx + self.image_offset}")
+            #print(f"pask_key_value={past_key_values}")
+            #torch.save(inputs_embeds, f"token_idx_{token_idx}_input_embeds.pt")
+            #np.save(f"{token_idx}_input_embeds.npy", inputs_embeds.float().cpu().numpy()) 
+            #np.savetxt(f"{token_idx}_attetion_mask.npy", attention_mask.float().cpu().numpy()) 
+            #np.savetxt(f"{token_idx}_position_ids.npy", position_ids.float().cpu().numpy()) 
             outputs = self.language_model(
                 attention_mask=attention_mask,
                 position_ids=position_ids,
@@ -81,7 +88,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
-                token_idx=token_idx,
+                token_idx=token_idx + self.image_offset,
             )
 
             logits = outputs[0]
@@ -132,6 +139,85 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 return_dict=return_dict,
             )
 
+    # Copied from transformers.models.llava.modeling_llava.LlavaForConditionalGeneration._merge_input_ids_with_image_features
+    def _merge_input_ids_with_image_features(self, image_features, inputs_embeds, input_ids, attention_mask, labels):
+        num_images, num_image_patches, embed_dim = image_features.shape
+        batch_size, sequence_length = input_ids.shape
+        left_padding = not torch.sum(input_ids[:, -1] == torch.tensor(self.pad_token_id))
+        # 1. Create a mask to know where special image tokens are
+        special_image_token_mask = input_ids == self.config.image_token_index
+        num_special_image_tokens = torch.sum(special_image_token_mask, dim=-1)
+        # Compute the maximum embed dimension
+        max_embed_dim = (num_special_image_tokens.max() * (num_image_patches - 1)) + sequence_length
+        batch_indices, non_image_indices = torch.where(input_ids != self.config.image_token_index)
+        #print(f"batch_indices={batch_indices},no_image_indices={non_image_indices}")
+
+        # 2. Compute the positions where text should be written
+        # Calculate new positions for text tokens in merged image-text sequence.
+        # `special_image_token_mask` identifies image tokens. Each image token will be replaced by `nb_text_tokens_per_images - 1` text tokens.
+        # `torch.cumsum` computes how each image token shifts subsequent text token positions.
+        # - 1 to adjust for zero-based indexing, as `cumsum` inherently increases indices by one.
+        new_token_positions = torch.cumsum((special_image_token_mask * (num_image_patches - 1) + 1), -1) - 1
+        nb_image_pad = max_embed_dim - 1 - new_token_positions[:, -1]
+        if left_padding:
+            new_token_positions += nb_image_pad[:, None]  # offset for left padding
+        text_to_overwrite = new_token_positions[batch_indices, non_image_indices]
+
+        # 3. Create the full embedding, already padded to the maximum position
+        final_embedding = torch.zeros(
+            batch_size, max_embed_dim, embed_dim, dtype=inputs_embeds.dtype, device=inputs_embeds.device
+        )
+        final_attention_mask = torch.zeros(
+            batch_size, max_embed_dim, dtype=attention_mask.dtype, device=inputs_embeds.device
+        )
+        #print(f"final_attention={final_attention_mask.shape}")
+        if labels is not None:
+            final_labels = torch.full(
+                (batch_size, max_embed_dim), self.config.ignore_index, dtype=input_ids.dtype, device=input_ids.device
+            )
+        # In case the Vision model or the Language model has been offloaded to CPU, we need to manually
+        # set the corresponding tensors into their correct target device.
+        target_device = inputs_embeds.device
+        batch_indices, non_image_indices, text_to_overwrite = (
+            batch_indices.to(target_device),
+            non_image_indices.to(target_device),
+            text_to_overwrite.to(target_device),
+        )
+        attention_mask = attention_mask.to(target_device)
+
+        # 4. Fill the embeddings based on the mask. If we have ["hey" "<image>", "how", "are"]
+        # we need to index copy on [0, 577, 578, 579] for the text and [1:576] for the image features
+        final_embedding[batch_indices, text_to_overwrite] = inputs_embeds[batch_indices, non_image_indices]
+        final_attention_mask[batch_indices, text_to_overwrite] = attention_mask[batch_indices, non_image_indices]
+        if labels is not None:
+            final_labels[batch_indices, text_to_overwrite] = labels[batch_indices, non_image_indices]
+
+        # 5. Fill the embeddings corresponding to the images. Anything that is still zeros needs filling
+        image_to_overwrite = torch.all(final_embedding == 0, dim=-1)
+        image_to_overwrite &= image_to_overwrite.cumsum(-1) - 1 >= nb_image_pad[:, None].to(target_device)
+
+        if image_to_overwrite.sum() != image_features.shape[:-1].numel():
+            raise ValueError(
+                f"The input provided to the model are wrong. The number of image tokens is {torch.sum(special_image_token_mask)} while"
+                f" the number of image given to the model is {num_images}. This prevents correct indexing and breaks batch generation."
+            )
+
+        final_embedding[image_to_overwrite] = image_features.contiguous().reshape(-1, embed_dim).to(target_device)
+        final_attention_mask |= image_to_overwrite
+        position_ids = (final_attention_mask.cumsum(-1) - 1).masked_fill_((final_attention_mask == 0), 1)
+
+        # 6. Mask out the embedding at padding positions, as we later use the past_key_value value to determine the non-attended tokens.
+        # batch_indices, pad_indices = torch.where(input_ids == self.pad_token_id)
+        # indices_to_mask = new_token_positions[batch_indices, pad_indices]
+
+        # final_embedding[batch_indices, indices_to_mask] = 0
+
+        if labels is None:
+            final_labels = None
+
+        return final_embedding, final_attention_mask, final_labels, position_ids
+
+
     def prepare_inputs_for_generation(
         self,
         input_ids,
@@ -149,6 +235,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         - add the process of merging images into inputs_embeds
         """
         token_idx = kwargs.get("token_idx", None)
+        print(f"token_idx={token_idx}")
+        print(f"input_ids={input_ids}")
         if token_idx is None:
             return super.prepare_inputs_for_generation(
                 input_ids=input_ids,
@@ -233,13 +321,15 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 inputs_embeds, attention_mask, labels, position_ids = self._merge_input_ids_with_image_features(
                     image_features, inputs_embeds, input_ids, attention_mask, labels
                 )
-
+                self.image_offset = image_features.shape[1]-1 #image_token has occupied 1 token position.
                 if labels is None:
                     labels = torch.full_like(attention_mask, self.config.ignore_index).to(torch.long)
 
             # In case input_ids.shape[1] == 1 & pixel_values==None & past_key_values != None, we are in the case of
             # generation with cache
             elif past_key_values is not None and pixel_values is not None:
+                seq_len = input_ids.shape[1]
+                pad_len = seq_len - token_idx
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
                 # Retrieve the first layer to inspect the logits and mask out the hidden states
                 # that are set to 0
@@ -267,6 +357,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 extended_attention_mask[new_batch_index, new_non_attended_tokens] = 0
 
                 attention_mask = extended_attention_mask
+                attention_mask[:, -pad_len:] = 0
 
             if attention_mask is not None and position_ids is None:
                 # create position_ids on the fly for batch generation
