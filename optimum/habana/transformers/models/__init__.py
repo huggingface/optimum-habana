@@ -30,6 +30,7 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
+from .clip import GaudiCLIPVisionEmbeddings
 from .codegen import (
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
@@ -85,6 +86,7 @@ from .llama import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    LlamaConfig,
     gaudi_llama_rmsnorm_forward,
 )
 from .llava import GaudiLlavaForConditionalGeneration
@@ -167,6 +169,12 @@ from .stablelm import (
     GaudiStableLmForCausalLM,
     gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
+)
+from .starcoder2 import (
+    GaudiStarcoder2DecoderLayer,
+    GaudiStarcoder2ForCausalLM,
+    gaudi_starcoder2_attention_forward,
+    gaudi_starcoder2_model_forward,
 )
 from .swin import gaudi_swin_get_attn_mask
 from .t5 import (

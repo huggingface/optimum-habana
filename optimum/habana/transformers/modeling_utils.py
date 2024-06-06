@@ -28,6 +28,7 @@ from .generation import (
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
+    GaudiCLIPVisionEmbeddings,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     GaudiFalconAttention,
@@ -75,6 +76,9 @@ from .models import (
     GaudiQwen2ForCausalLM,
     GaudiStableLmDecoderLayer,
     GaudiStableLmForCausalLM,
+    GaudiStarcoder2DecoderLayer,
+    GaudiStarcoder2ForCausalLM,
+    LlamaConfig,
     MistralConfig,
     MixtralConfig,
     _gaudi_wav2vec2_compute_mask_indices,
@@ -157,6 +161,8 @@ from .models import (
     gaudi_SpeechT5DecoderLayer_forward,
     gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
+    gaudi_starcoder2_attention_forward,
+    gaudi_starcoder2_model_forward,
     gaudi_swin_get_attn_mask,
     gaudi_t5_layernorm_forward,
     gaudi_T5Attention_forward,
@@ -207,7 +213,6 @@ def adapt_transformers_to_gaudi():
 
     # Generation is modified to run faster in lazy mode
     transformers.generation.GenerationMixin.generate = GaudiGenerationMixin.generate
-    transformers.generation.GenerationMixin.assisted_decoding = GaudiGenerationMixin.assisted_decoding
     transformers.generation.GenerationMixin._update_model_kwargs_for_generation = (
         GaudiGenerationMixin._update_model_kwargs_for_generation
     )
@@ -239,6 +244,7 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._beam_sample = GaudiGenerationMixin._beam_sample
     transformers.generation.GenerationMixin._group_beam_search = GaudiGenerationMixin._group_beam_search
     transformers.generation.GenerationMixin._constrained_beam_search = GaudiGenerationMixin._constrained_beam_search
+    transformers.generation.GenerationMixin._assisted_decoding = GaudiGenerationMixin._assisted_decoding
     transformers.generation.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
@@ -348,9 +354,13 @@ def adapt_transformers_to_gaudi():
         GaudiLlamaDynamicNTKScalingRotaryEmbedding
     )
     transformers.models.llama.modeling_llama.LlamaRMSNorm.forward = gaudi_llama_rmsnorm_forward
+    transformers.models.llama.configuration_llama.LlamaConfig = LlamaConfig
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
+
+    # Optimization for Clip on Gaudi
+    transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention
@@ -472,6 +482,12 @@ def adapt_transformers_to_gaudi():
         gaudi_unconstrained_rational_quadratic_spline
     )
     transformers.models.vits.modeling_vits.VitsResidualCouplingLayer.forward = gaudi_VitsResidualCouplingLayer_forward
+
+    # Optimization for starcoder2 on Gaudi
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2ForCausalLM = GaudiStarcoder2ForCausalLM
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2Model.forward = gaudi_starcoder2_model_forward
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2Attention.forward = gaudi_starcoder2_attention_forward
+    transformers.models.starcoder2.modeling_starcoder2.Starcoder2DecoderLayer = GaudiStarcoder2DecoderLayer
 
     # Optimization for qwen2 on Gaudi
     transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM = GaudiQwen2ForCausalLM

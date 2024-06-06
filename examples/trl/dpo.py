@@ -114,7 +114,6 @@ def get_stack_exchange_paired(
         split="train",
         cache_dir=cache_dir,
         data_dir=data_dir,
-        verification_mode="no_checks",  # TODO: remove this line when Datasets v2.19.2 is released
     )
     original_columns = dataset.column_names
 
