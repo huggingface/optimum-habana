@@ -24,8 +24,8 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
 from transformers.models.qwen2.modeling_qwen2 import (
     Qwen2Attention,
     Qwen2DecoderLayer,
@@ -41,7 +41,6 @@ from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
 
-from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -83,6 +82,22 @@ def gaudi_qwen2_rmsnorm_forward(self, hidden_states):
         return self.weight * hidden_states.to(input_dtype)
 
 
+class GaudiQwen2MLP(Qwen2MLP):
+    def pre_mlp_forward(self, x):
+        inputs = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
+        output = self.down_proj(inputs)
+        return output
+
+    def mlp_all_reduce(self, x):
+        if hasattr(self.down_proj, "all_reduce"):
+            self.down_proj.all_reduce(x)
+
+    def post_mlp_forward(self, x):
+        if hasattr(self.down_proj, "post_all_reduce"):
+            return self.down_proj.post_all_reduce(x)
+        return x
+
+
 def gaudi_qwen2_repeat_kv(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
@@ -115,6 +130,7 @@ class Matmul(torch.nn.Module):
 
     def forward(self, x, y):
         return torch.matmul(x, y)
+
 
 class KVCache(torch.nn.Module):
     def __init__(self):
@@ -217,7 +233,7 @@ class GaudiQwen2Attention(Qwen2Attention):
             row_mask = attention_mask[:, :, s:e, :]
             attn_output_partial = FusedSDPA.apply(row_q, key_layer, value_layer, row_mask, dropout_rate, False, None)
             row_o_list.append(attn_output_partial)
-        attn_output = torch.cat(row_o_list, dim = -2)
+        attn_output = torch.cat(row_o_list, dim=-2)
 
         if q_padding != 0:
             attn_output = attn_output[:, :, :-q_padding, :]
@@ -327,11 +343,13 @@ class GaudiQwen2Attention(Qwen2Attention):
                 else:
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                         if q_len > 8192:
-                            attn_output = self.gaudi_flash_attn_v1(query_states, key_states, value_states, attention_mask, 0.0, self.block_size)
+                            attn_output = self.gaudi_flash_attn_v1(
+                                query_states, key_states, value_states, attention_mask, 0.0, self.block_size
+                            )
                             htcore.mark_step()
                         else:
                             attn_output = FusedSDPA.apply(
-                                    query_states, key_states, value_states, attention_mask, 0.0, False, None
+                                query_states, key_states, value_states, attention_mask, 0.0, False, None
                             )
 
         else:
@@ -385,22 +403,6 @@ class GaudiQwen2Attention(Qwen2Attention):
         return attn_output
 
 
-class GaudiQwen2MLP(Qwen2MLP):
-    def pre_mlp_forward(self, x):
-        inputs = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
-        output = self.down_proj(inputs)
-        return output
-
-    def mlp_all_reduce(self, x):
-        if hasattr(self.down_proj, "all_reduce"):
-            self.down_proj.all_reduce(x)
-
-    def post_mlp_forward(self, x):
-        if hasattr(self.down_proj, "post_all_reduce"):
-            return self.down_proj.post_all_reduce(x)
-        return x
-
-
 class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
     def __init__(self, config: Qwen2Config, layer_idx: int):
         super(Qwen2DecoderLayer, self).__init__()
@@ -436,7 +438,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
-        cache_idx: int = None
+        cache_idx: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
 
@@ -465,6 +467,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
 
         if output_attentions:
             outputs += (self_attn_weights,)
+
         if use_cache:
             outputs += (present_key_value,)
 
@@ -710,6 +713,7 @@ class GaudiQwen2Model(Qwen2Model):
             attentions=all_self_attns,
         )
 
+
 class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.model.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
@@ -742,16 +746,18 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         flash_attention_causal_mask: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
-) -> Union[Tuple, CausalLMOutputWithPast]:
+    ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
         if not hasattr(self.config, "_attn_implementation"):
             setattr(self.config, "_attn_implementation", "eager")
         else:
             self.config._attn_implementation = "eager"
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
@@ -773,6 +779,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
         )
+
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
@@ -862,6 +869,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
                     position_ids = position_ids[:, -input_ids.shape[1] :]
 
         cache_position = None
+
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
@@ -887,6 +895,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
             }
         )
         return model_inputs
+
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
