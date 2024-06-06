@@ -190,7 +190,6 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 > --bf16
 > ```
 
-
 ### Use any dataset from the Hugging Face Hub
 
 You can also provide the name of a dataset from the Hugging Face Hub to perform generation on it with the argument `--dataset_name`.
