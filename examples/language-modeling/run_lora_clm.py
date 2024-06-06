@@ -240,6 +240,9 @@ class DataArguments:
         default=False,
         metadata={"help": "Whether to keep in memory the loaded dataset. Defaults to False."},
     )
+    keep_linebreaks: bool = field(
+        default=True, metadata={"help": "Whether to keep line breaks when using TXT files or not."}
+    )
     dataset_seed: int = field(
         default=42,
         metadata={
@@ -568,6 +571,8 @@ def main():
         if extension == "txt":
             extension = "text"
             dataset_args["keep_linebreaks"] = data_args.keep_linebreaks
+        if extension in ("json", "jsonl"):
+            extension = "json"
         raw_datasets = load_dataset(
             extension,
             data_files=data_files,
@@ -576,18 +581,26 @@ def main():
             **dataset_args,
         )
 
-        if data_args.train_file and training_args.do_train:
-            print([x for x in raw_datasets])
+        # For --do_train and --do_train and --do_eval
+        if (data_args.train_file and training_args.do_train) or (data_args.validation_file and training_args.do_eval):
             raw_datasets = raw_datasets.map(
                 lambda x: {
                     "input": "",
                     "output": x["text"],
                 }
             )
-            # Remove unused columns.
-            raw_datasets = raw_datasets.remove_columns(
-                [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
-            )
+
+            if training_args.do_train:
+                # Remove unused columns.
+                raw_datasets = raw_datasets.remove_columns(
+                    [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
+                )
+
+            if training_args.do_eval:
+                # Remove unused columns.
+                raw_datasets = raw_datasets.remove_columns(
+                    [col for col in raw_datasets.column_names["validation"] if col not in ["input", "output"]]
+                )
 
         # If no validation data is there, validation_split_percentage will be used to divide the dataset.
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
@@ -901,7 +914,7 @@ def main():
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
 
-        # Evaluation
+    # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
