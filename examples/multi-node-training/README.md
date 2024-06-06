@@ -67,6 +67,28 @@ Finally, on each system, add all hosts (including itself) to `known_hosts`. The 
    ssh-keyscan -p 3022 -H 10.10.100.104 >> ~/.ssh/known_hosts
    ```
 
+You can check if ssh port is working fine,
+
+a. Run "lsof -i" inside both dockers. It should be something like below.
+```bash
+COMMAND PID USER   FD   TYPE   DEVICE SIZE/OFF NODE NAME
+sshd     35 root    3u  IPv4 23262521      0t0  TCP *:3022 (LISTEN)
+sshd     35 root    4u  IPv6 23262523      0t0  TCP *:3022 (LISTEN)
+```
+If no sshd, then do the following to restart sshd.
+```bash
+sed -i 's/#Port 22/Port 3022/g' /etc/ssh/sshd_config
+sed -i 's/#   Port 22/    Port 3022/g' /etc/ssh/ssh_config
+sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+service ssh restart
+```
+b. Try ssh connect "ssh -p 3022  IP-address" to each other to make sure the nodes can talk to each other.
+
+c. Try gaudi_spawn.py with world_size 8 for few steps if it can run on the docker on each node.
+
+d. Start gaudi_spawn.py with multi-nodes run on main node docker (the node with the 1st ip address in the hostfile)
+
+
 ## Hostfile
 
 DeepSpeed requires a [hostfile](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node) to know the addresses of and the number of devices to use on each node. You can specify its path with `--hostfile`. This file should look like this:
