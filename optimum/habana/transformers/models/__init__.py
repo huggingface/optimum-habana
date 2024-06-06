@@ -141,10 +141,12 @@ from .phi import (
     GaudiPhiModel,
 )
 from .qwen2 import (
+    GaudiQwen2Attention,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
-    gaudi_qwen2_attention_forward,
-    gaudi_qwen2_model_forward,
+    GaudiQwen2MLP,
+    GaudiQwen2Model,
+    gaudi_qwen2_rmsnorm_forward,
 )
 from .speecht5 import (
     gaudi_generate_speech,

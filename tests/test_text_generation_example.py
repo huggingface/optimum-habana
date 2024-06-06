@@ -36,7 +36,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
             ("bigcode/starcoder2-3b", 1, False, 234.2649120507936),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
-            ("Qwen/Qwen1.5-7B", 4, False, 451.7454544774087),
+            ("Qwen/Qwen1.5-7B", 4, False, 518.023965255802),
             ("google/gemma-7b", 1, False, 109.70751574382221),
         ],
         "fp8": [
