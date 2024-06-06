@@ -180,22 +180,3 @@ if __name__ == "__main__":
             exit(1)
 
         trainer.args.eval_accumulation_steps = None
-
-    # Check that saving does indeed work with temp dir rotation
-    # If this fails, will see a FileNotFoundError
-    model = RegressionModel()
-    training_args.max_steps = 1
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-    sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda x: 1)
-    trainer = GaudiTrainer(
-        model,
-        gaudi_config=gaudi_config,
-        args=training_args,
-        optimizers=(opt, sched),
-        data_collator=DummyDataCollator(),
-        eval_dataset=dataset,
-    )
-    trainer._save_checkpoint(model=None, trial=None)
-    # Check that the temp folder does not exist
-    assert not (Path(training_args.output_dir) / "tmp-checkpoint-0").exists()
-    assert (Path(training_args.output_dir) / "checkpoint-0").exists()

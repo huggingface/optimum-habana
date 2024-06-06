@@ -220,6 +220,7 @@ class GaudiMixtralAttentionLongSequence:
 class GaudiMixtralAttention(MixtralAttention):
     def __init__(self, config: MixtralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
+        self.config = MixtralConfig(config)
         self._init_rope()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
@@ -349,6 +350,9 @@ class GaudiMixtralAttention(MixtralAttention):
             past_key_value = None
 
         if FusedSDPA:
+            if query_states.dtype != key_states.dtype:
+                key_states = key_states.type(query_states.dtype)
+                value_states = value_states.type(query_states.dtype)
             # support long sequences exceeding 8192
             if not self.training and q_len == key_states.size(-2) and q_len > 8192:
                 htcore.mark_step()
