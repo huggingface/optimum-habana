@@ -90,6 +90,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mixtral",
     "gemma",
     "blip_text_model",
+    "starcoder2",
     "persimmon",
     "qwen2",
     "llava",
@@ -769,8 +770,8 @@ class GaudiGenerationMixin(GenerationMixin):
             not generation_config.bucket_internal
             and generation_config.bucket_size > 0
             and (
-                self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
-                or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
+                generation_config.get_generation_mode(assistant_model) == GenerationMode.GREEDY_SEARCH
+                or generation_config.get_generation_mode(assistant_model) == GenerationMode.BEAM_SEARCH
             )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
@@ -990,11 +991,6 @@ class GaudiGenerationMixin(GenerationMixin):
             stopping_criteria=stopping_criteria,
             ignore_eos=self.generation_config.ignore_eos,
         )
-        if generation_config.static_shapes and (generation_config.pad_token_id == generation_config.eos_token_id):
-            if any(isinstance(k, EosTokenCriteria) for k in prepared_stopping_criteria):
-                logger.warning(
-                    f"For Gaudi, we pad input_ids with pad_token_id (= {generation_config.pad_token_id}), which is equal to eos_token_id for this model, and EosTokenCriteria stopping criteria is requested, so this option (ignore_eos=False) isn't available. Try setting `--ignore_eos` to False."
-                )
 
         # In lazy mode, import Habana torch to be able to add mark_step()
         if lazy_mode:
