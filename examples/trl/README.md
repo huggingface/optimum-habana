@@ -1,10 +1,9 @@
 # Examples
 
 
-## Prerequisites
+## Requirements
 
-Install all the dependencies in the `requirements.txt`:
-
+First, you should install the requirements:
 ```
 $ pip install -U -r requirements.txt
 ```

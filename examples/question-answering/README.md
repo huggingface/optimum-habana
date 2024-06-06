@@ -26,6 +26,13 @@ uses special features of those tokenizers. You can check if your favorite model 
 
 Note that if your dataset contains samples with no possible answers (like SQUAD version 2), you need to pass along the flag `--version_2_with_negative`.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Fine-tuning BERT on SQuAD1.1
 
 For the following cases, an example of a Gaudi configuration file is given
