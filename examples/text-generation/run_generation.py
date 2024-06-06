@@ -150,6 +150,12 @@ def setup_parser(parser):
         help="Number of steps to capture for profiling.",
     )
     parser.add_argument(
+        "--profiling_record_shapes",
+        default=False,
+        type=bool,
+        help="Record shapes when enabling profiling.",
+    )
+    parser.add_argument(
         "--prompt",
         default=None,
         type=str,
@@ -375,6 +381,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             outputs = outputs.tolist()
             for i in range(len(outputs)):
@@ -578,6 +585,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             outputs = tokenizer.batch_decode(output_tokens, skip_special_tokens=True)
             duration = time.perf_counter() - t0
@@ -761,6 +769,7 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             return prompt, outputs
 
