@@ -147,6 +147,12 @@ def setup_parser(parser):
         help="Optional argument list of words that must be generated.",
     )
     parser.add_argument(
+        "--assistant_model",
+        default=None,
+        type=str,
+        help="Optional argument to give a path to a draft/assistant model for assisted decoding.",
+    )
+    parser.add_argument(
         "--peft_model",
         default=None,
         type=str,
@@ -221,7 +227,6 @@ def setup_parser(parser):
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
 
-    parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
@@ -236,6 +241,11 @@ def setup_parser(parser):
         "--flash_attention_causal_mask",
         action="store_true",
         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
+    )
+    parser.add_argument(
+        "--flash_attention_fast_softmax",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
         "--book_source",
@@ -290,7 +300,7 @@ def setup_parser(parser):
 def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
-    model, tokenizer, generation_config = initialize_model(args, logger)
+    model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
     if args.torch_compile and model.config.model_type == "llama":
@@ -388,6 +398,7 @@ def main():
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
+                assistant_model=assistant_model,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,

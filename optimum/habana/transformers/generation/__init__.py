@@ -1,3 +1,4 @@
+from .candidate_generator import GaudiAssistedCandidateGenerator
 from .configuration_utils import GaudiGenerationConfig
 from .stopping_criteria import (
     gaudi_EosTokenCriteria_call,

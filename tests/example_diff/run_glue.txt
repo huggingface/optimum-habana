@@ -1,10 +1,6 @@
-16c16
-< """ Finetuning the library models for sequence classification on GLUE."""
----
-> """Finetuning the library models for sequence classification on GLUE."""
 29,30d28
 < from datasets import load_dataset
-<
+< 
 31a30
 > from datasets import load_dataset
 40,41d38
@@ -15,27 +11,27 @@
 48a45,54
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
->
->
+> 
+> 
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
->
+> 
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 50,51c56,61
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 < check_min_version("4.42.0.dev0")
 ---
->
+> 
 > logger = logging.getLogger(__name__)
->
+> 
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.40.0")
 > check_optimum_habana_min_version("1.11.0")
-68,69d77
+67,68d76
 < logger = logging.getLogger(__name__)
-<
+< 
 143a152,155
 >     problem_type: Optional[str] = field(
 >         default="single_label_classification",
@@ -57,7 +53,7 @@
 >         revision=model_args.model_revision,
 >         token=model_args.token,
 >     )
->
+> 
 251a275
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 253,254c277,279
@@ -74,7 +70,7 @@
 >         if not model.config.pad_token_id and not tokenizer.pad_token:
 >             tokenizer.pad_token = tokenizer.eos_token
 >             model.config.pad_token_id = tokenizer.eos_token_id
->
+> 
 527c558
 <     trainer = Trainer(
 ---
@@ -82,8 +78,8 @@
 528a560
 >         gaudi_config=gaudi_config,
 628,632d659
-<
-<
+< 
+< 
 < def _mp_fn(index):
 <     # For xla_spawn (TPUs)
 <     main()
