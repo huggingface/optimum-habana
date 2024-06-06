@@ -78,7 +78,12 @@ def gaudi_EosTokenCriteria_call(
     self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
 ) -> Union[torch.BoolTensor, bool]:
     self.eos_token_id = self.eos_token_id.to(input_ids.device)
-    is_done = torch.isin(input_ids[:, -1], self.eos_token_id)
+    token_idx = kwargs.get("token_idx", None)
+    if token_idx is not None:
+        assert not kwargs["needs_tensor_output"]
+        is_done = torch.isin(input_ids[:, token_idx - 1], self.eos_token_id)
+    else:
+        is_done = torch.isin(input_ids[:, -1], self.eos_token_id)
     if kwargs["needs_tensor_output"]:
         return is_done.byte()
     else:

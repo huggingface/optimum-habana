@@ -149,7 +149,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
 
 def main():
     args = setup_lm_eval_parser()
-    model, tokenizer, generation_config = initialize_model(args, logger)
+    model, _, tokenizer, generation_config = initialize_model(args, logger)
 
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
     with torch.no_grad():
