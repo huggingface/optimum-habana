@@ -189,9 +189,6 @@ class GaudiQwen2Attention(Qwen2Attention):
         super().__init__(config, layer_idx)
         
         self.is_fp8 = os.getenv("QUANT_CONFIG", "") != ""
-        
-        # In the constructor we do not know which one we will need later in the forward, so creating both
-        # TODO, Does this affect memory usage?
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA)
 
         self.matmul_qk = Matmul()
@@ -231,21 +228,22 @@ class GaudiQwen2Attention(Qwen2Attention):
         self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
         return (self.k_cache.cache.shape, self.v_cache.cache.shape)
 
-    def gaudi_flash_attn_v1(self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, q_block_size, softmax_mode):
+    def gaudi_flash_attn_v1(self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, is_casual, scale, softmax_mode):
         """
         Gaudi version of Flash Attention V1 to support long sequence at prompt phase
         Causal mask is not supported in this optimization
         """
+        assert not is_casual
         q_len = query_layer.size(-2)
-        q_tiles = (q_len // q_block_size) if (q_len % q_block_size == 0) else math.ceil(q_len / q_block_size)
-        q_padding = q_tiles * q_block_size - q_len
+        q_tiles = (q_len // self.block_size) if (q_len % self.block_size == 0) else math.ceil(q_len / self.block_size)
+        q_padding = q_tiles * self.block_size - q_len
         query_layer = F.pad(query_layer, (0, 0, 0, q_padding), "constant", 0)
         if attention_mask is not None:
             attention_mask = F.pad(attention_mask, (0, 0, 0, q_padding), "constant", -10000.0)
 
         row_o_list = []
         for i in range(q_tiles):
-            s, e = i * q_block_size, (i + 1) * q_block_size
+            s, e = i * self.block_size, (i + 1) * self.block_size
             row_q = query_layer[:, :, s:e, :]
             row_mask = attention_mask[:, :, s:e, :]
             attn_output_partial = self.fused_scaled_dot_product_attention(row_q, key_layer, value_layer, row_mask, dropout_rate, False, None, softmax_mode)
@@ -389,40 +387,64 @@ class GaudiQwen2Attention(Qwen2Attention):
                     is_causal=self.is_causal and attention_mask is None and query_length > 1,
                 )
         '''    
-            
+
         flash_attention_fast_softmax = True  # TODO pass this along
         softmax_mode = "fast" if flash_attention_fast_softmax else "None"
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
 
+            enable_recompute = q_len == 1 or flash_attention_recompute
+            is_causal = q_len > 1 and flash_attention_causal_mask
+
+            attn_mask = None if flash_attention_causal_mask else attention_mask
+            args = (query_states, key_states, value_states, attn_mask, 0.0, is_causal, None, softmax_mode)
+            with ht.sdp_kernel(enable_recompute=enable_recompute):
+                if flash_attention_causal_mask or (not flash_attention_causal_mask and q_len <= 8192):
+                    attn_output = self.fused_scaled_dot_product_attention(*args)
+                else:
+                    attn_output = self.gaudi_flash_attn_v1(*args)
+                    htcore.mark_step()
+            
+            '''
             if q_len == 1:
                 # next token
                 #with ht.sdp_kernel(enable_recompute=False):
                 #    attn_output = FusedSDPA.apply(
                 #        query_states, key_states, value_states, attention_mask, 0.0, False, None
                 #    )
-                
                 with ht.sdp_kernel(enable_recompute=True):
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
                     )
             else:
-                # first token
-                if flash_attention_causal_mask:
-                    # causal masking on first token requires inputs to be of the same length
-                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = self.fused_scaled_dot_product_attention(query_states, key_states, value_states, None, 0.0, True, None, softmax_mode)
-                else:
-                    with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        if q_len > 8192:
-                            attn_output = self.gaudi_flash_attn_v1(
-                                query_states, key_states, value_states, attention_mask, 0.0, self.block_size, softmax_mode
-                            )
-                            htcore.mark_step()
-                        else:
-                            attn_output = self.fused_scaled_dot_product_attention(
-                                query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
-                            )
+            
+                attn_mask = None if flash_attention_causal_mask else attention_mask
+                args = (query_states, key_states, value_states, attn_mask, 0.0, flash_attention_causal_mask, None, softmax_mode)
+                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                    if flash_attention_causal_mask:
+                        attn_output = self.fused_scaled_dot_product_attention(*args)
+                    else:
+                        attn_output = self.gaudi_flash_attn_v1(*args)
+                        htcore.mark_step()
+            '''     
+            '''
+            # first token
+            if flash_attention_causal_mask:
+                # causal masking on first token requires inputs to be of the same length
+                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                    attn_output = self.fused_scaled_dot_product_attention(query_states, key_states, value_states, attn_mask, 0.0, True, None, softmax_mode)
+            else:
+                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                    if q_len > 8192:
+                        attn_output = self.gaudi_flash_attn_v1(
+                            query_states, key_states, value_states, attn_mask, 0.0, False, None, softmax_mode
+                        )
+                        htcore.mark_step()
+                    else:
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states, key_states, value_states, attn_mask, 0.0, False, None, softmax_mode
+                        )
+            '''
 
         else:
             query_states, key_states, value_states, attention_mask = gaudi_qwen2_repeat_kv(
