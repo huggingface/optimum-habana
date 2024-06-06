@@ -36,6 +36,15 @@ HPUs offer fast model training and inference as well as a great price-performanc
 Check out [this blog post about BLOOM inference](https://huggingface.co/blog/habana-gaudi-2-bloom) and [this post benchmarking Intel Gaudi 2 and NVIDIA A100 GPUs for BridgeTower training](https://huggingface.co/blog/bridgetower) for concrete examples.
 
 
+## Gaudi Setup
+
+Please refer to the Intel Gaudi AI Accelerator official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html).
+
+> Tests should be run in a Docker container based on Intel Gaudi Docker images.
+>
+> The current version has been validated for SynapseAI 1.15.
+
+
 ## Install the library and get example scripts
 
 ### Option 1: Use the latest stable release
@@ -236,15 +245,6 @@ Other models and tasks supported by the Transformers and Diffusers libraries may
 If you find any issues while using those, please open an issue or a pull request.
 
 After training your model, feel free to submit it to the Intel [leaderboard](https://huggingface.co/spaces/Intel/powered_by_intel_llm_leaderboard) which is designed to evaluate, score, and rank open-source LLMs that have been pre-trained or fine-tuned on Intel Hardwares. Models submitted to the leaderboard will be evaluated on the Intel Developer Cloud. The evaluation platform consists of Gaudi Accelerators and Xeon CPUs running benchmarks from the Eleuther AI Language Model Evaluation Harness.
-
-## Gaudi Setup
-
-Please refer to the Intel Gaudi AI Accelerator official [installation guide](https://docs.habana.ai/en/latest/Installation_Guide/index.html).
-
-> Tests should be run in a Docker container based on Intel Gaudi Docker images.
->
-> The current version has been validated for SynapseAI 1.15.
-
 
 ## Development
 
