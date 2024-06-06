@@ -266,7 +266,6 @@ class GaudiGenerationMixin(GenerationMixin):
 
     def _pad_past_key_values(self, model_kwargs):
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
-        # print(f"PAD KV Cache by {pad_amount} tokens")
         if model_kwargs["past_key_values"]:
             for i in range(len(model_kwargs["past_key_values"])):
                 for j in range(len(model_kwargs["past_key_values"][i])):
@@ -1794,7 +1793,6 @@ class GaudiGenerationMixin(GenerationMixin):
             and bucket_internal
         ):
             # Clear HPU graphs input tensors of the decode phase after the full generation while loop
-            print("CLEAR HPU GRAPH INPUTS OF DECODE PHASE")
             self.clear_inputs()
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
@@ -2210,7 +2208,6 @@ class GaudiGenerationMixin(GenerationMixin):
             and bucket_internal
         ):
             # Clear HPU graphs input tensors of the decode phase after the full generation while loop
-            print("CLEAR HPU GRAPH INPUTS OF DECODE PHASE")
             self.clear_inputs()
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
