@@ -90,6 +90,8 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "mixtral",
     "gemma",
     "blip_text_model",
+    "seamless_m4t",
+    "starcoder2",
     "persimmon",
     "qwen2",
     "llava",
@@ -171,6 +173,7 @@ class GaudiGenerationMixin(GenerationMixin):
         bos_token_id: int = None,
         device: torch.device = None,
         max_new_tokens: int = None,
+        pad_token_id: int = None,
     ) -> Tuple[torch.LongTensor, Dict[str, torch.Tensor]]:
         """Prepares `decoder_input_ids` for generation with encoder-decoder models"""
         # 1. Check whether the user has defined `decoder_input_ids` manually. To facilitate in terms of input naming,
@@ -205,7 +208,10 @@ class GaudiGenerationMixin(GenerationMixin):
             # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
             max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
             decoder_input_ids_start = (
-                torch.ones((batch_size, max_length), dtype=torch.long, device=device) * decoder_start_token_id
+                torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+            )
+            decoder_input_ids_start = torch.nn.functional.pad(
+                decoder_input_ids_start, (0, max_length - 1), value=pad_token_id
             )
 
         # no user input -> use decoder_start_token_id as decoder_input_ids
@@ -225,7 +231,18 @@ class GaudiGenerationMixin(GenerationMixin):
             isinstance(decoder_start_token_id, torch.Tensor)
             and (decoder_input_ids[:, 0] != decoder_start_token_id[:, 0]).all().item()
         ):
-            decoder_input_ids = torch.cat([decoder_input_ids_start, decoder_input_ids], dim=-1)
+            if token_idx is None:
+                decoder_input_ids = torch.cat([decoder_input_ids_start, decoder_input_ids], dim=-1)
+            else:
+                max_length = max_new_tokens + 2 if max_new_tokens is not None else self.generation_config.max_length
+                if max_length != decoder_input_ids_start.shape[-1]:
+                    decoder_input_ids_start = torch.nn.functional.pad(
+                        decoder_input_ids_start,
+                        (0, max_length - decoder_input_ids_start.shape[-1]),
+                        value=pad_token_id,
+                    )
+                decoder_input_ids = decoder_input_ids_start.index_copy(1, token_idx, decoder_input_ids)
+                token_idx.add_(1)
             if "decoder_attention_mask" in model_kwargs:
                 decoder_attention_mask = model_kwargs["decoder_attention_mask"]
                 decoder_attention_mask = torch.cat(
@@ -233,6 +250,27 @@ class GaudiGenerationMixin(GenerationMixin):
                     dim=-1,
                 )
                 model_kwargs["decoder_attention_mask"] = decoder_attention_mask
+        else:
+            if token_idx is not None:
+                decoder_input_ids_len = decoder_input_ids.shape[-1]
+                max_length = (
+                    max_new_tokens + decoder_input_ids_len
+                    if max_new_tokens is not None
+                    else self.generation_config.max_length
+                )
+                decoder_input_ids = torch.nn.functional.pad(
+                    decoder_input_ids, (0, max_length - decoder_input_ids_len), value=pad_token_id
+                )
+                token_idx.copy_(decoder_input_ids_len)
+                if "decoder_attention_mask" in model_kwargs:
+                    decoder_attention_mask = model_kwargs["decoder_attention_mask"]
+                    pad_len = max_length - decoder_attention_mask.shape[-1]
+                    decoder_attention_mask = torch.cat(
+                        (torch.ones_like(decoder_attention_mask)[:, :pad_len], decoder_attention_mask),
+                        dim=-1,
+                    )
+                    model_kwargs["decoder_attention_mask"] = decoder_attention_mask
+
         return decoder_input_ids, model_kwargs
 
     @staticmethod
@@ -273,6 +311,29 @@ class GaudiGenerationMixin(GenerationMixin):
 
         return input_ids, model_kwargs
 
+    def _pad_past_key_values(self, model_kwargs):
+        pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
+        if model_kwargs["past_key_values"]:
+            for i in range(len(model_kwargs["past_key_values"])):
+                for j in range(len(model_kwargs["past_key_values"][i])):
+                    if torch.is_tensor(model_kwargs["past_key_values"][i][j]):
+                        model_kwargs["past_key_values"][i][j] = torch.nn.functional.pad(
+                            model_kwargs["past_key_values"][i][j], (0, 0, 0, pad_amount)
+                        )
+                        if model_kwargs.get("lazy_mode", False):
+                            self.htcore_generation.mark_step()
+
+    def _remove_past_key_values(self, model_kwargs):
+        if model_kwargs["past_key_values"]:
+            for i in range(len(model_kwargs["past_key_values"])):
+                for j in range(len(model_kwargs["past_key_values"][i])):
+                    if torch.is_tensor(model_kwargs["past_key_values"][i][j]):
+                        t = model_kwargs["past_key_values"][i][j]
+                        del t
+                        model_kwargs["past_key_values"][i][j] = None
+        del model_kwargs["past_key_values"]
+        model_kwargs["past_key_values"] = None
+
     def _update_model_kwargs_for_generation(
         self,
         outputs: ModelOutput,
@@ -287,10 +348,11 @@ class GaudiGenerationMixin(GenerationMixin):
         """
         # mark to identify starting from second token
         model_kwargs["first_token"] = False
-        # update past_key_values
-        model_kwargs["past_key_values"] = self._extract_past_from_model_output(
-            outputs, standardize_cache_format=standardize_cache_format
-        )
+        if not model_kwargs.get("pad_done", False):
+            # update past_key_values
+            model_kwargs["past_key_values"] = self._extract_past_from_model_output(
+                outputs, standardize_cache_format=standardize_cache_format
+            )
         if getattr(outputs, "state", None) is not None:
             model_kwargs["state"] = outputs.state
 
@@ -370,7 +432,7 @@ class GaudiGenerationMixin(GenerationMixin):
                         else:
                             assert False
                     elif model_kwargs["past_key_values"][0][0].dim() == 4:
-                        return (0, 0, 0, pad_amount)  # llama, falcon
+                        return (0, 0, 0, pad_amount)  # llama, falcon, qwen2
                     else:
                         assert False, "Unknown case, please handle, or dont use bucketing"
 
@@ -769,8 +831,8 @@ class GaudiGenerationMixin(GenerationMixin):
             not generation_config.bucket_internal
             and generation_config.bucket_size > 0
             and (
-                self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
-                or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
+                generation_config.get_generation_mode(assistant_model) == GenerationMode.GREEDY_SEARCH
+                or generation_config.get_generation_mode(assistant_model) == GenerationMode.BEAM_SEARCH
             )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
@@ -780,6 +842,9 @@ class GaudiGenerationMixin(GenerationMixin):
         )
         if model_kwargs["reduce_recompile"]:
             assert generation_config.bucket_size
+        # Below condition checked explicitly since llama supports bucket_internal even without reuse_cache
+        if generation_config.bucket_internal:
+            assert generation_config.bucket_size >= 0, "please set bucket_size to use bucket_internal"
         if generation_config.reuse_cache:
             assert self.config.model_type in [
                 "llama",
@@ -787,7 +852,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 "falcon",
                 "mixtral",
                 "phi",
-            ], "reuse_cache only supported by llama, mistral, falcon, mixtral and phi at the moment"
+                "qwen2",
+            ], "reuse_cache only supported by llama, mistral, falcon, mixtral, phi and qwen2 at the moment"
             if not generation_config.bucket_internal:
                 assert (
                     generation_config.bucket_size <= 0
@@ -865,6 +931,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 bos_token_id=generation_config.bos_token_id,
                 device=inputs_tensor.device,
                 max_new_tokens=generation_config.max_new_tokens,
+                pad_token_id=generation_config.pad_token_id,
             )
         else:
             input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop("input_ids")
@@ -913,6 +980,7 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["attn_softmax_bf16"] = generation_config.attn_softmax_bf16
 
         # determine whether limit_hpu_graphs needs to be used
+        model_kwargs["use_hpu_graphs"] = hpu_graphs
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
         # prepare for allocate kv cache
@@ -922,6 +990,9 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["use_flash_attention"] = generation_config.use_flash_attention
         model_kwargs["flash_attention_recompute"] = True if generation_config.flash_attention_recompute else False
         model_kwargs["flash_attention_causal_mask"] = True if generation_config.flash_attention_causal_mask else False
+        model_kwargs["flash_attention_fast_softmax"] = (
+            True if generation_config.flash_attention_fast_softmax else False
+        )
         model_kwargs["num_virtual_tokens"] = num_virtual_tokens
 
         if not self.config.is_encoder_decoder:
@@ -934,9 +1005,11 @@ class GaudiGenerationMixin(GenerationMixin):
                     unwrap_deepspeed_model(self).allocate_kv_cache(
                         bs * generation_config.num_beams, calculated_max_length, token_idx + num_virtual_tokens
                     )
-                    model_kwargs["kv_cache_len"] = calculated_max_length
+            if generation_config.use_cache:
+                model_kwargs["kv_cache_len"] = calculated_max_length
+                model_kwargs["kv_cache_pad_len"] = generation_config.max_new_tokens
 
-            if self.config.model_type in ["llama", "falcon", "mistral"]:
+            if self.config.model_type in ["llama", "falcon", "mistral", "qwen2"]:
                 if self.config.max_position_embeddings < calculated_max_length:
                     unwrap_deepspeed_model(self).update_sincos_cache(seq_len=calculated_max_length)
 
@@ -1652,6 +1725,8 @@ class GaudiGenerationMixin(GenerationMixin):
             cur_len = token_idx.item()
 
         time_to_first_token_done = False
+        model_kwargs["pad_done"] = False
+        model_kwargs["lazy_mode"] = lazy_mode
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1664,7 +1739,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # prepare model inputs
-            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -1771,6 +1845,15 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
+                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
+                # before starting the decode phase.
+                self._pad_past_key_values(model_kwargs)
+                model_kwargs["pad_done"] = True
             hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
@@ -1779,6 +1862,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+
+        if (
+            model_kwargs.get("use_hpu_graphs", False)
+            and model_kwargs.get("limit_hpu_graphs", False)
+            and not model_kwargs.get("reuse_cache", False)
+            and bucket_internal
+        ):
+            # Clear HPU graphs input tensors of the decode phase after the full generation while loop
+            self.clear_inputs()
+            # Delete past key value tensors
+            self._remove_past_key_values(model_kwargs)
 
         hb_profer.stop()
         if streamer is not None:
@@ -2050,6 +2144,8 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # auto-regressive generation
         time_to_first_token_done = False
+        model_kwargs["pad_done"] = False
+        model_kwargs["lazy_mode"] = lazy_mode
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -2062,7 +2158,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
 
             # prepare model inputs
-            model_kwargs["lazy_mode"] = lazy_mode
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
@@ -2164,6 +2259,16 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
+                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
+                # before starting the decode phase.
+                self._pad_past_key_values(model_kwargs)
+                model_kwargs["pad_done"] = True
+
             hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
@@ -2172,6 +2277,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+
+        if (
+            model_kwargs.get("use_hpu_graphs", False)
+            and model_kwargs.get("limit_hpu_graphs", False)
+            and not model_kwargs.get("reuse_cache", False)
+            and bucket_internal
+        ):
+            # Clear HPU graphs input tensors of the decode phase after the full generation while loop
+            self.clear_inputs()
+            # Delete past key value tensors
+            self._remove_past_key_values(model_kwargs)
 
         hb_profer.stop()
         if streamer is not None:
