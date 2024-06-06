@@ -44,6 +44,7 @@ fast_tests_diffusers:
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
+	python -m pytest tests/test_pipeline.py
 
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs
@@ -74,7 +75,7 @@ slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
 slow_tests_trl: test_installs
-	python -m pip install trl==0.7.8
+	python -m pip install trl==0.8.6
 	python -m pip install peft==0.7.0
 	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
 

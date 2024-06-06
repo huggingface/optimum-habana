@@ -91,6 +91,22 @@ python run_generation.py \
 
 > The batch size should be larger than or equal to the number of prompts. Otherwise, only the first N prompts are kept with N being equal to the batch size.
 
+### Run Speculative Sampling on Gaudi
+
+If you want to generate a sequence of text from a prompt of your choice using assisted decoding, you can use the following command as an example:
+
+```
+python run_generation.py \
+--model_name_or_path gpt2 \
+--assistant_model distilgpt2 \
+--batch_size 1 \
+--max_new_tokens 100 \
+--use_hpu_graphs \
+--use_kv_cache \
+--num_return_sequences 1 \
+--temperature 0 \
+--prompt "Alice and Bob"
+```
 
 ### Benchmark
 
@@ -385,6 +401,52 @@ QUANT_CONFIG=./quantization_config/maxabs_quant_phi.json python run_generation.p
 --bf16 \
 --trim_logits \
 --reuse_cache
+```
+
+
+### Running FP8 models on single device
+
+Some bf16 models don't fit on one card due to hpu memory limitation, but in fp8 precision they do fit.
+As measurement is being calculated in bf16 precision, to be able to run fp8 model on single card you should use `unify_measurements` script.
+Here are the steps:
+1. Measure the model on a number of cards that are enough for the model to fit in BF16.
+2. Quantize the model on the same amount of cards for scales to be saved.
+3. Run unify_measurements.py script using the measurement files created after running steps 1 and 2. A unified measurement is then calculated.
+```bash
+python quantization_tools/unify_measurements.py -g 01234567 -m *path_to_8x_measurements* -o *path_to_output_1x_measurement*
+```
+In the above example, the measurements of cards 0-7 will be unified to a single measurement. For example, if you specify `-g 0123 4567`,
+cards 0-3 and cards 4-7 will be unified in two different measurement files. All different group combinations are supported.
+4. Run quantization using the unified measurement file/s.
+
+More information on usage of the unifier script can be found in fp8 Habana docs: https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
+
+
+
+### CPU memory reduction on single card
+
+Some models can fit on HPU DRAM but can't fit on the CPU RAM.
+When we run a model on single card and don't use deepspeed, the `--disk_offload` flag allows to offload weights to disk during model quantization in HQT. When this flag is mentioned, during the quantization process, each weight first is loaded from disk to CPU RAM, when brought to HPU DRAM and quantized there. This way not all the model is on the CPU RAM but only one weight each time.
+To enable this weights offload mechanism, add `--disk_offload` flag to the topology command line.
+Here is an example of using disk_offload in quantize command. Please make sure to run the measurement first.
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant.json TQDM_DISABLE=1 \
+python run_generation.py \
+--model_name_or_path meta-llama/Llama-2-70b-hf \
+--attn_softmax_bf16 \
+--use_hpu_graphs \
+--trim_logits \
+--use_kv_cache \
+--limit_hpu_graphs \
+--bucket_size=128 \
+--bucket_internal \
+--max_new_tokens 2048 \
+--max_input_tokens 2048 \
+--bf16 \
+--batch_size 1 \
+--disk_offload \
+--use_flash_attention \
+--flash_attention_recompute
 ```
 
 ### Using Habana Flash Attention
