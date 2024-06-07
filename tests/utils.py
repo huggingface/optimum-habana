@@ -60,6 +60,7 @@ MODELS_TO_TEST_MAPPING = {
     "llama_guard": [("meta-llama/LlamaGuard-7b", "Habana/llama")],
     "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/llama")],
     "protst": [("mila-intel/protst-esm1b-for-sequential-classification", "Habana/gpt2")],
+    "starcoder2":  [("bigcode/starcoder2-3b", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [

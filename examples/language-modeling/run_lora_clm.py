@@ -600,13 +600,23 @@ def main():
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
+    padding_val = False
+    add_special_tokens_val = False
+
+    if model.config.model_type == "starcoder2":
+        padding_val = True
+        add_special_tokens_val = True
+        if tokenizer.pad_token is None:
+            tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
     def tokenize(prompt, add_eos_token=True):
         results = tokenizer(
             prompt,
             truncation=True,
             max_length=data_args.max_seq_length,
-            padding=False,
+            padding=padding_val,
             return_tensors=None,
+            add_special_tokens=add_special_tokens_val,
         )
         for i in range(len(results["input_ids"])):
             if (

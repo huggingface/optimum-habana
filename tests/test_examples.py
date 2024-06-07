@@ -154,7 +154,7 @@ _SCRIPT_TO_MODEL_MAPPING = {
     "run_lora_clm": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
-        ["llama", "falcon"],
+        ["llama", "falcon", "starcoder2"],
     ),
     "run_speech_recognition_seq2seq": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
