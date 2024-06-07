@@ -216,6 +216,9 @@ def _test_text_generation(
             )
 
         command = [x for y in command for x in re.split(pattern, y) if x]
+        #print(f"\n\nCommand to test: {' '.join(command[:-2])}\n")
+        print(f"ENV VARIABLES>>>>>>>>>{env_variables}")
+        print(f"measure_command>>>>{measure_command}")
         print(f"\n\nCommand to test: {' '.join(command[:-2])}\n")
         proc = subprocess.run(command, env=env_variables)
 
