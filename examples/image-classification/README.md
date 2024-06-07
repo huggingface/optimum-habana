@@ -19,6 +19,13 @@ limitations under the License.
 This directory contains a script that showcases how to fine-tune any model supported by the [`AutoModelForImageClassification` API](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForImageClassification) (such as [ViT](https://huggingface.co/docs/transformers/main/en/model_doc/vit) or [Swin Transformer](https://huggingface.co/docs/transformers/main/en/model_doc/swin)) on HPUs. They can be used to fine-tune models on both [datasets from the hub](#using-datasets-from-hub) as well as on [your own custom data](#using-your-own-data).
 
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Single-HPU training
 
 ### Using datasets from Hub
@@ -31,6 +38,7 @@ python run_image_classification.py \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
+    --image_column_name img \
     --do_train \
     --do_eval \
     --learning_rate 3e-5 \
@@ -47,7 +55,8 @@ python run_image_classification.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
-    --dataloader_num_workers 1
+    --dataloader_num_workers 1 \
+    --bf16
 ```
 
 For Swin, you need to change/add the following arguments:
@@ -95,7 +104,8 @@ python run_image_classification.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
-    --dataloader_num_workers 1
+    --dataloader_num_workers 1 \
+    --bf16
 ```
 
 Internally, the script will use the [`ImageFolder`](https://huggingface.co/docs/datasets/v2.0.0/en/image_process#imagefolder) feature which will automatically turn the folders into 🤗 Dataset objects.
@@ -114,10 +124,10 @@ from datasets import load_dataset
 # example 1: local folder
 dataset = load_dataset("imagefolder", data_dir="path_to_your_folder")
 
-# example 2: local files (suppoted formats are tar, gzip, zip, xz, rar, zstd)
+# example 2: local files (supported formats are tar, gzip, zip, xz, rar, zstd)
 dataset = load_dataset("imagefolder", data_files="path_to_zip_file")
 
-# example 3: remote files (suppoted formats are tar, gzip, zip, xz, rar, zstd)
+# example 3: remote files (supported formats are tar, gzip, zip, xz, rar, zstd)
 dataset = load_dataset("imagefolder", data_files="https://download.microsoft.com/download/3/E/1/3E1C3F21-ECDB-4869-8368-6DEBA77B919F/kagglecatsanddogs_3367a.zip")
 
 # example 4: providing several splits
@@ -180,6 +190,7 @@ python ../gaudi_spawn.py \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
+    --image_column_name img \
     --do_train \
     --do_eval \
     --learning_rate 2e-4 \
@@ -196,7 +207,8 @@ python ../gaudi_spawn.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
     --throughput_warmup_steps 3 \
-    --dataloader_num_workers 1
+    --dataloader_num_workers 1 \
+    --bf16
 ```
 
 For Swin, you need to change/add the following arguments:
@@ -218,6 +230,7 @@ python ../gaudi_spawn.py \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
+    --image_column_name img \
     --do_train \
     --do_eval \
     --learning_rate 2e-4 \
@@ -273,10 +286,12 @@ python run_image_classification.py \
     --dataset_name cifar10 \
     --output_dir /tmp/outputs/ \
     --remove_unused_columns False \
+    --image_column_name img \
     --do_eval \
     --per_device_eval_batch_size 64 \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/vit \
-    --dataloader_num_workers 1
+    --dataloader_num_workers 1 \
+    --bf16

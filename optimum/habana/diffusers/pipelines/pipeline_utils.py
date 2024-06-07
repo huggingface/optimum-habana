@@ -19,15 +19,16 @@ import importlib
 import inspect
 import os
 import sys
-import tempfile
-import warnings
-from typing import Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import torch
 from diffusers.pipelines import DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import _unwrap_model
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo
 
+from optimum.habana.utils import to_device_dtype
 from optimum.utils import logging
 
 from ...transformers.gaudi_configuration import GaudiConfig
@@ -53,12 +54,45 @@ GAUDI_LOADABLE_CLASSES = {
     },
     "optimum.habana.diffusers.schedulers": {
         "GaudiDDIMScheduler": ["save_pretrained", "from_pretrained"],
+        "GaudiEulerDiscreteScheduler": ["save_pretrained", "from_pretrained"],
+        "GaudiEulerAncestralDiscreteScheduler": ["save_pretrained", "from_pretrained"],
     },
 }
 
 GAUDI_ALL_IMPORTABLE_CLASSES = {}
 for library in GAUDI_LOADABLE_CLASSES:
     GAUDI_ALL_IMPORTABLE_CLASSES.update(GAUDI_LOADABLE_CLASSES[library])
+
+
+def _fetch_class_library_tuple(module):
+    # import it here to avoid circular import
+    from diffusers import pipelines
+
+    # register the config from the original module, not the dynamo compiled one
+    not_compiled_module = _unwrap_model(module)
+    library = not_compiled_module.__module__.split(".")[0]
+    if library == "optimum":
+        library = "optimum.habana.diffusers.schedulers"
+
+    # check if the module is a pipeline module
+    module_path_items = not_compiled_module.__module__.split(".")
+    pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
+
+    path = not_compiled_module.__module__.split(".")
+    is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+
+    # if library is not in GAUDI_LOADABLE_CLASSES, then it is a custom module.
+    # Or if it's a pipeline module, then the module is inside the pipeline
+    # folder so we set the library to module name.
+    if is_pipeline_module:
+        library = pipeline_dir
+    elif library not in GAUDI_LOADABLE_CLASSES:
+        library = not_compiled_module.__module__
+
+    # retrieve class_name
+    class_name = not_compiled_module.__class__.__name__
+
+    return (library, class_name)
 
 
 class GaudiDiffusionPipeline(DiffusionPipeline):
@@ -87,7 +121,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         gaudi_config: Union[str, GaudiConfig] = None,
         bf16_full_eval: bool = False,
     ):
-        super().__init__()
+        DiffusionPipeline.__init__(self)
 
         self.use_habana = use_habana
         if self.use_habana:
@@ -110,61 +144,27 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
                     f"`gaudi_config` must be a string or a GaudiConfig object but is {type(gaudi_config)}."
                 )
 
-            if self.gaudi_config.use_habana_mixed_precision or self.gaudi_config.use_torch_autocast:
+            if self.gaudi_config.use_torch_autocast:
                 if bf16_full_eval:
                     logger.warning(
-                        "`use_habana_mixed_precision` or `use_torch_autocast` is True in the given Gaudi configuration but "
-                        "`torch_dtype=torch.blfloat16` was given. Disabling mixed precision and continuing in bf16 only."
+                        "`use_torch_autocast` is True in the given Gaudi configuration but "
+                        "`torch_dtype=torch.bfloat16` was given. Disabling mixed precision and continuing in bf16 only."
                     )
                     self.gaudi_config.use_torch_autocast = False
-                    self.gaudi_config.use_habana_mixed_precision = False
-                elif self.gaudi_config.use_torch_autocast:
-                    # Open temporary files to write mixed-precision ops
-                    with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                        with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                            self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                                hmp_bf16_file.name,
-                                hmp_fp32_file.name,
-                            )
-                            os.environ["LOWER_LIST"] = str(hmp_bf16_file)
-                            os.environ["FP32_LIST"] = str(hmp_fp32_file)
-
-                            import habana_frameworks.torch.core  # noqa
-                elif self.gaudi_config.use_habana_mixed_precision:
-                    try:
-                        from habana_frameworks.torch.hpex import hmp
-                    except ImportError as error:
-                        error.msg = f"Could not import habana_frameworks.torch.hpex. {error.msg}."
-                        raise error
-
-                    warnings.warn(
-                        "Habana Mixed Precision is deprecated and will be removed in SynapseAI v1.12. Please"
-                        " use Torch Autocast instead setting `use_torch_autocast=true` in your Gaudi configuration.",
-                        FutureWarning,
-                    )
-
-                    # Open temporary files to write mixed-precision ops
-                    with tempfile.NamedTemporaryFile() as hmp_bf16_file:
-                        with tempfile.NamedTemporaryFile() as hmp_fp32_file:
-                            # hmp.convert needs ops to be written in text files
-                            self.gaudi_config.write_bf16_fp32_ops_to_text_files(
-                                hmp_bf16_file.name,
-                                hmp_fp32_file.name,
-                            )
-                            hmp.convert(
-                                opt_level=self.gaudi_config.hmp_opt_level,
-                                bf16_file_path=hmp_bf16_file.name,
-                                fp32_file_path=hmp_fp32_file.name,
-                                isVerbose=self.gaudi_config.hmp_is_verbose,
-                            )
+                else:
+                    self.gaudi_config.declare_autocast_bf16_fp32_ops()
 
             # Workaround for Synapse 1.11 for full bf16 and Torch Autocast
             if bf16_full_eval or self.gaudi_config.use_torch_autocast:
                 import diffusers
 
-                from ..models import gaudi_unet_2d_condition_model_forward
+                from ..models import (
+                    gaudi_unet_2d_condition_model_forward,
+                )
 
-                diffusers.models.unet_2d_condition.UNet2DConditionModel.forward = gaudi_unet_2d_condition_model_forward
+                diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.forward = (
+                    gaudi_unet_2d_condition_model_forward
+                )
 
             if self.use_hpu_graphs:
                 try:
@@ -197,42 +197,12 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             self._device = torch.device("cpu")
 
     def register_modules(self, **kwargs):
-        # import it here to avoid circular import
-        from diffusers import pipelines
-
         for name, module in kwargs.items():
             # retrieve library
-            if module is None:
+            if module is None or isinstance(module, (tuple, list)) and module[0] is None:
                 register_dict = {name: (None, None)}
             else:
-                # register the config from the original module, not the dynamo compiled one
-                if is_compiled_module(module):
-                    not_compiled_module = module._orig_mod
-                else:
-                    not_compiled_module = module
-
-                library = not_compiled_module.__module__.split(".")[0]
-                if library == "optimum":
-                    library = "optimum.habana.diffusers.schedulers"
-
-                # check if the module is a pipeline module
-                module_path_items = not_compiled_module.__module__.split(".")
-                pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
-
-                path = not_compiled_module.__module__.split(".")
-                is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
-
-                # if library is not in GAUDI_LOADABLE_CLASSES, then it is a custom module.
-                # Or if it's a pipeline module, then the module is inside the pipeline
-                # folder so we set the library to module name.
-                if is_pipeline_module:
-                    library = pipeline_dir
-                elif library not in GAUDI_LOADABLE_CLASSES:
-                    library = not_compiled_module.__module__
-
-                # retrieve class_name
-                class_name = not_compiled_module.__class__.__name__
-
+                library, class_name = _fetch_class_library_tuple(module)
                 register_dict = {name: (library, class_name)}
 
             # save model index config
@@ -299,7 +269,7 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             # Dynamo wraps the original model in a private class.
             # I didn't find a public API to get the original class.
             if is_compiled_module(sub_model):
-                sub_model = sub_model._orig_mod
+                sub_model = _unwrap_model(sub_model)
                 model_cls = sub_model.__class__
 
             save_method_name = None
@@ -348,6 +318,11 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
             self.gaudi_config.save_pretrained(save_directory)
 
         if push_to_hub:
+            # Create a new empty model card and eventually tag it
+            model_card = load_or_create_model_card(repo_id, token=token, is_pipeline=True)
+            model_card = populate_model_card(model_card)
+            model_card.save(os.path.join(save_directory, "README.md"))
+
             self._upload_folder(
                 save_directory,
                 repo_id,
@@ -384,4 +359,34 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         return super().from_pretrained(
             pretrained_model_name_or_path,
             **kwargs,
+        )
+
+    @classmethod
+    def save_lora_weights(
+        cls,
+        save_directory: Union[str, os.PathLike],
+        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+    ):
+        # Move the state dict from HPU to CPU before saving
+        if unet_lora_layers:
+            unet_lora_layers = to_device_dtype(unet_lora_layers, target_device=torch.device("cpu"))
+        if text_encoder_lora_layers:
+            text_encoder_lora_layers = to_device_dtype(text_encoder_lora_layers, target_device=torch.device("cpu"))
+        if text_encoder_2_lora_layers:
+            text_encoder_2_lora_layers = to_device_dtype(text_encoder_2_lora_layers, target_device=torch.device("cpu"))
+        return super().save_lora_weights(
+            save_directory,
+            unet_lora_layers,
+            text_encoder_lora_layers,
+            text_encoder_2_lora_layers,
+            is_main_process,
+            weight_name,
+            save_function,
+            safe_serialization,
         )

@@ -21,8 +21,10 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from transformers.models.mpt.modeling_mpt import MptForCausalLM, MptModel, _expand_mask, _make_causal_mask
+from transformers.models.mpt.modeling_mpt import MptForCausalLM, MptModel
 from transformers.utils import logging
+
+from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
 
 
 logger = logging.get_logger(__name__)
@@ -150,34 +152,6 @@ def gaudi_mpt_block_forward(
 
 
 class GaudiMptModel(MptModel):
-    def _prepare_attn_mask(
-        self, attention_mask: torch.Tensor, input_shape: Tuple[int, int], past_key_values_length: int
-    ) -> torch.BoolTensor:
-        # create causal mask
-        # [batch_size, seq_length] -> [batch_size, 1, tgt_length, src_length]
-        if past_key_values_length > 0 and input_shape[1] + past_key_values_length != attention_mask.shape[1]:
-            raise ValueError(
-                "Attention mask shape should be (batch_size, seq_length + past_key_values_length)"
-                f" but is {attention_mask.shape} with input_ids shape {input_shape} and past length"
-                f" {past_key_values_length}."
-            )
-        combined_attention_mask = None
-        device = attention_mask.device
-        _, src_length = input_shape
-
-        if src_length > 1:
-            combined_attention_mask = _make_causal_mask(
-                input_shape, device=device, past_key_values_length=past_key_values_length
-            )
-
-        # [batch_size, seq_length] -> [batch_size, 1, tgt_length, src_length]
-        expanded_attn_mask = _expand_mask(attention_mask, tgt_length=src_length)
-        combined_attention_mask = (
-            expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask | combined_attention_mask
-        )
-
-        return combined_attention_mask
-
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -243,31 +217,25 @@ class GaudiMptModel(MptModel):
 
         alibi = self.build_mpt_alibi_tensor(self.num_heads, self.config.max_seq_len, device=hidden_states.device)
 
-        causal_mask = self._prepare_attn_mask(
-            attention_mask,
-            input_shape=(batch_size, seq_length),
-            past_key_values_length=past_key_values_length,
+        causal_mask = _gaudi_prepare_4d_causal_attention_mask(
+            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
         )
+        causal_mask = causal_mask.bool()
 
-        for i, (block, layer_past) in enumerate(zip(self.blocks, past_key_values)):
+        for block, layer_past in zip(self.blocks, past_key_values):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
-
-                    return custom_forward
-
-                outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                outputs = self._gradient_checkpointing_func(
+                    block.__call__,
                     hidden_states,
                     alibi,
                     causal_mask,
                     layer_past,
+                    use_cache,
+                    output_attentions,
+                    None,
                 )
             else:
                 outputs = block(
@@ -322,10 +290,19 @@ class GaudiMptForCausalLM(MptForCausalLM):
         - add token_idx into model_inputs
         - from step2 when enable KV cache, slice next_input_ids from input_ids base on the token_idx
         """
-        # only last token for input_ids if past is not None
-        if past_key_values:
+        # only last tokens for input_ids if past is not None
+        if past_key_values is not None:
             if token_idx is None:
-                input_ids = input_ids[:, -1].unsqueeze(-1)
+                past_length = past_key_values[0][0].shape[2]
+
+                # Some generation methods already pass only the last input ID
+                if input_ids.shape[1] > past_length:
+                    remove_prefix_length = past_length
+                else:
+                    # Default to old behavior: keep only final ID
+                    remove_prefix_length = input_ids.shape[1] - 1
+
+                input_ids = input_ids[:, remove_prefix_length:]
             else:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
 

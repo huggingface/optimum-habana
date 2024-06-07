@@ -16,7 +16,7 @@
 import random
 import subprocess
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.12.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.15.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -67,11 +67,13 @@ def speed_metrics(
     start_time: float,
     num_samples: int = None,
     num_steps: int = None,
+    num_tokens: int = None,
     start_time_after_warmup: float = None,
     log_evaluate_save_time: float = None,
 ) -> Dict[str, float]:
     """
     Measure and return speed performance metrics.
+
     This function requires a time snapshot `start_time` before the operation to be measured starts and this function
     should be run immediately after the operation to be measured has completed.
 
@@ -80,6 +82,7 @@ def speed_metrics(
         start_time (float): operation start time
         num_samples (int, optional): number of samples processed. Defaults to None.
         num_steps (int, optional): number of steps performed. Defaults to None.
+        num_tokens (int, optional): number of tokens processed. Defaults to None.
         start_time_after_warmup (float, optional): time after warmup steps have been performed. Defaults to None.
         log_evaluate_save_time (float, optional): time spent to log, evaluate and save. Defaults to None.
 
@@ -107,8 +110,38 @@ def speed_metrics(
     if num_steps is not None:
         steps_per_second = num_steps / runtime
         result[f"{split}_steps_per_second"] = round(steps_per_second, 3)
+    if num_tokens is not None:
+        tokens_per_second = num_tokens / runtime
+        result[f"{split}_tokens_per_second"] = round(tokens_per_second, 3)
 
     return result
+
+
+def warmup_inference_steps_time_adjustment(
+    start_time_after_warmup, start_time_after_inference_steps_warmup, num_inference_steps, warmup_steps
+):
+    """
+    Adjust start time after warmup to account for warmup inference steps.
+
+    When warmup is applied to multiple inference steps within a single sample generation we need to account for
+    skipped inference steps time to estimate "per sample generation time".  This function computes the average
+    inference time per step and adjusts the start time after warmup accordingly.
+
+    Args:
+        start_time_after_warmup: time after warmup steps have been performed
+        start_time_after_inference_steps_warmup: time after warmup inference steps have been performed
+        num_inference_steps: total number of inference steps per sample generation
+        warmup_steps: number of warmup steps
+
+    Returns:
+        [float]: adjusted start time after warmup which accounts for warmup inference steps based on average non-warmup steps time
+    """
+    if num_inference_steps > warmup_steps:
+        avg_time_per_inference_step = (time.time() - start_time_after_inference_steps_warmup) / (
+            num_inference_steps - warmup_steps
+        )
+        start_time_after_warmup -= avg_time_per_inference_step * warmup_steps
+    return start_time_after_warmup
 
 
 def to_gb_rounded(mem: float) -> float:
@@ -209,23 +242,35 @@ def get_habana_frameworks_version():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    return version.parse(output.stdout.split("\n")[0].split(" ")[-1])
+    return version.parse(output.stdout.split("\n")[0].split()[-1])
 
 
 def get_driver_version():
     """
     Returns the driver version.
     """
+    # Enable console printing for `hl-smi` check
     output = subprocess.run(
-        "hl-smi",
-        shell=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        "hl-smi", shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={"ENABLE_CONSOLE": "true"}
     )
-    if output.returncode == 0:
+    if output.returncode == 0 and output.stdout:
         return version.parse(output.stdout.split("\n")[2].replace(" ", "").split(":")[1][:-1].split("-")[0])
     return None
+
+
+class HabanaGenerationtime(object):
+    def __init__(self, iteration_times: List[float] = None):
+        self.iteration_times = iteration_times
+        self.start_time = 0
+        self.end_time = 0
+
+    def start(self):
+        self.start_time = time.perf_counter()
+
+    def step(self):
+        self.end_time = time.perf_counter()
+        self.iteration_times.append(self.end_time - self.start_time)
+        self.start_time = self.end_time
 
 
 class HabanaProfile(object):
@@ -243,7 +288,7 @@ class HabanaProfile(object):
         output_dir: str = "./hpu_profile",
         wait: int = 0,
     ):
-        if active <= 0 or warmup <= 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
+        if active <= 0 or warmup < 0 or not HabanaProfile.HABANA_PROFILE_ENABLED:
 
             def noop():
                 pass
@@ -318,6 +363,25 @@ def check_optimum_habana_min_version(min_version):
                 "`pip install git+https://github.com/huggingface/optimum-habana.git`."
             )
         raise ImportError(error_message)
+
+
+def check_habana_frameworks_min_version(min_version):
+    """
+    Checks if the installed version of `habana_frameworks` is larger than or equal to `min_version`.
+    """
+    if get_habana_frameworks_version() < version.parse(min_version):
+        return False
+    else:
+        return True
+
+
+def check_habana_frameworks_version(req_version):
+    """
+    Checks if the installed version of `habana_frameworks` is equal to `req_version`.
+    """
+    return (get_habana_frameworks_version().major == version.parse(req_version).major) and (
+        get_habana_frameworks_version().minor == version.parse(req_version).minor
+    )
 
 
 def get_device_name():

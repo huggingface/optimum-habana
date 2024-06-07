@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # This script is based on https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/protein_folding.ipynb
-
+import os
 import time
 
 import habana_frameworks.torch.core as htcore
@@ -27,6 +27,10 @@ from transformers.models.esm.openfold_utils.protein import to_pdb
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 
+os.environ["PT_HPU_ENABLE_H2D_DYNAMIC_SLICE"] = "0"
+os.environ["PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES"] = "1"
+
+
 try:
     from optimum.habana.utils import check_optimum_habana_min_version
 except ImportError:
@@ -36,7 +40,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.7.5")
+check_optimum_habana_min_version("1.11.0")
 
 
 def convert_outputs_to_pdb(outputs):

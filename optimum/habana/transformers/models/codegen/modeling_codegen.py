@@ -2,108 +2,17 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
-from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.codegen.modeling_codegen import (
+    CodeGenAttention,
     CodeGenForCausalLM,
     apply_rotary_pos_emb,
-    create_sinusoidal_positions,
     logger,
 )
 
 
-class GaudiCodeGenAttention(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-
-        max_positions = config.max_position_embeddings
-        self.register_buffer(
-            "causal_mask",
-            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.uint8)).view(
-                1, 1, max_positions, max_positions
-            ),
-            persistent=False,
-        )
-
-        self.attn_dropout = nn.Dropout(config.attn_pdrop)
-        self.resid_dropout = nn.Dropout(config.resid_pdrop)
-
-        self.embed_dim = config.hidden_size
-        self.num_attention_heads = config.num_attention_heads
-        self.head_dim = self.embed_dim // self.num_attention_heads
-        if self.head_dim * self.num_attention_heads != self.embed_dim:
-            raise ValueError(
-                f"embed_dim must be divisible by num_attention_heads (got `embed_dim`: {self.embed_dim} and"
-                f" `num_attention_heads`: {self.num_attention_heads})."
-            )
-        self.scale_attn = torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float32)).to(torch.get_default_dtype())
-        self.qkv_proj = nn.Linear(self.embed_dim, self.embed_dim * 3, bias=False)
-
-        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
-        self.rotary_dim = config.rotary_dim
-        pos_embd_dim = self.rotary_dim or self.embed_dim
-        self.embed_positions = create_sinusoidal_positions(max_positions, pos_embd_dim)
-
-    def _split_heads(self, x, n_head, dim_head, mp_num):
-        reshaped = x.reshape(x.shape[:-1] + (n_head // mp_num, dim_head))
-        reshaped = reshaped.reshape(x.shape[:-2] + (-1,) + reshaped.shape[-1:])
-        return reshaped
-
-    def _merge_heads(self, tensor, num_attention_heads, attn_head_size):
-        """
-        Merges attn_head_size dim and num_attn_heads dim into n_ctx
-        """
-        if len(tensor.shape) == 5:
-            tensor = tensor.permute(0, 1, 3, 2, 4).contiguous()
-        elif len(tensor.shape) == 4:
-            tensor = tensor.permute(0, 2, 1, 3).contiguous()
-        else:
-            raise ValueError(f"Input tensor rank should be one of [4, 5], but is: {len(tensor.shape)}")
-        new_shape = tensor.size()[:-2] + (num_attention_heads * attn_head_size,)
-        return tensor.view(new_shape)
-
-    def _attn(
-        self,
-        query,
-        key,
-        value,
-        attention_mask=None,
-        head_mask=None,
-    ):
-        # compute causal mask from causal mask buffer
-        query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.causal_mask[:, :, key_length - query_length : key_length, :key_length].bool()
-
-        # Keep the attention weights computation in fp32 to avoid overflow issues
-        query = query.to(torch.float32)
-        key = key.to(torch.float32)
-
-        attn_weights = torch.matmul(query, key.transpose(-1, -2))
-
-        attn_weights = attn_weights / self.scale_attn
-        mask_value = torch.finfo(attn_weights.dtype).min
-        # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
-        # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-        mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
-        attn_weights = torch.where(causal_mask, attn_weights, mask_value)
-
-        if attention_mask is not None:
-            # Apply the attention mask
-            attn_weights = attn_weights + attention_mask
-
-        attn_weights = nn.Softmax(dim=-1)(attn_weights)
-        attn_weights = attn_weights.to(value.dtype)
-        attn_weights = self.attn_dropout(attn_weights)
-
-        # Mask heads if we want to
-        if head_mask is not None:
-            attn_weights = attn_weights * head_mask
-
-        attn_output = torch.matmul(attn_weights, value)
-
-        return attn_output, attn_weights
-
+class GaudiCodeGenAttention(CodeGenAttention):
     def forward(
         self,
         hidden_states: Optional[torch.FloatTensor],
@@ -281,9 +190,6 @@ def gaudi_codegen_model_forward(
     if token_type_ids is not None:
         token_type_ids = token_type_ids.view(-1, input_shape[-1])
 
-    if position_ids is not None:
-        position_ids = position_ids.view(-1, input_shape[-1]).long()
-
     if past_key_values is None:
         past_length = 0
         past_key_values = tuple([None] * len(self.h))
@@ -292,7 +198,7 @@ def gaudi_codegen_model_forward(
 
     if position_ids is None:
         position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
-        position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+        position_ids = position_ids.unsqueeze(0)
 
     # Attention mask.
     if attention_mask is not None:
@@ -349,21 +255,16 @@ def gaudi_codegen_model_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, use_cache, output_attentions)
-
-                return custom_forward
-
-            outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(block),
+            outputs = self._gradient_checkpointing_func(
+                block.__call__,
                 hidden_states,
                 None,
                 attention_mask,
                 position_ids,
                 head_mask[i],
+                use_cache,
+                output_attentions,
+                None,
             )
         else:
             outputs = block(
@@ -414,16 +315,16 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
 
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, token_idx=None, **kwargs):
         token_type_ids = kwargs.get("token_type_ids", None)
-        # only last token for inputs_ids if past is defined in kwargs
+        # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
-                input_ids = torch.index_select(input_ids, 1, token_idx - 1).unsqueeze(-1)
+                input_ids = torch.index_select(input_ids, 1, token_idx - 1)
                 if token_type_ids is not None:
-                    token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1).unsqueeze(-1)
+                    token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
             else:
-                input_ids = input_ids[:, -1].unsqueeze(-1)
+                input_ids = input_ids[:, -1]
                 if token_type_ids is not None:
-                    token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
+                    token_type_ids = token_type_ids[:, -1]
 
         attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
@@ -434,9 +335,9 @@ class GaudiCodeGenForCausalLM(CodeGenForCausalLM):
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
                 if token_idx is not None:
-                    position_ids = torch.index_select(position_ids, 1, token_idx - 1).unsqueeze(-1)
+                    position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+                    position_ids = position_ids[:, -1]
 
         return {
             "input_ids": input_ids,

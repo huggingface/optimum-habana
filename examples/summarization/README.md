@@ -20,8 +20,15 @@ This directory contains examples for finetuning and evaluating transformers on s
 
 `run_summarization.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune and evaluate T5 (or predict using BART) on it.
 
-For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files.
+For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets#json-files.
 You will also find examples of these below.
+
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
 
 ## Single-card Training
 
@@ -47,7 +54,8 @@ python run_summarization.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 Only T5 models `t5-small`, `t5-base`, `t5-large`, `t5-3b` and `t5-11b` must use an additional argument: `--source_prefix "summarize: "`.
@@ -78,7 +86,8 @@ python run_summarization.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 The task of summarization also supports custom CSV and JSONLINES formats.
@@ -163,7 +172,8 @@ python ../gaudi_spawn.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 
@@ -223,7 +233,9 @@ python run_summarization.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
-    --pad_to_max_length
+    --pad_to_max_length \
+    --bf16 \
+    --bf16_full_eval
 ```
 
 You can run inference with BART on the CNN-DailyMail dataset on 1 Gaudi card with the following command:
@@ -245,6 +257,3 @@ python run_summarization.py \
     --pad_to_max_length \
     --num_beams 1
 ```
-
-
-Only `--num_beams 1` is supported for BART.

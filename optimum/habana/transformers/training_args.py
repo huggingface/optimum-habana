@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import io
+import json
 import os
 import warnings
 from dataclasses import asdict, dataclass, field
@@ -23,14 +25,18 @@ from typing import Optional, Union
 from packaging import version
 from transformers.debug_utils import DebugOption
 from transformers.file_utils import cached_property, is_torch_available, requires_backends
-from transformers.trainer_utils import EvaluationStrategy, HubStrategy, IntervalStrategy, SchedulerType
+from transformers.trainer_pt_utils import AcceleratorConfig
+from transformers.trainer_utils import EvaluationStrategy, FSDPOption, HubStrategy, IntervalStrategy, SchedulerType
 from transformers.training_args import (
+    _VALID_DICT_FIELDS,
     OptimizerNames,
     ParallelMode,
     TrainingArguments,
+    _convert_str_dict,
     default_logdir,
 )
 from transformers.utils import (
+    ACCELERATE_MIN_VERSION,
     get_full_repo_name,
     is_accelerate_available,
     is_safetensors_available,
@@ -41,6 +47,7 @@ from optimum.utils import logging
 
 from ..accelerate.state import GaudiAcceleratorState, GaudiPartialState
 from ..accelerate.utils import GaudiDistributedType
+from ..utils import get_habana_frameworks_version
 from .gaudi_configuration import GaudiConfig
 
 
@@ -53,12 +60,10 @@ logger = logging.get_logger(__name__)
 
 # List of arguments that are not supported by optimum-habana
 UNSUPPORTED_ARGUMENTS = [
-    "bf16_full_eval",
     "fp16",
     "fp16_backend",
     "fp16_full_eval",
     "fp16_opt_level",
-    "fsdp",
     "mp_parameters",
     "tf32",
     "tpu_metrics_debug",
@@ -84,7 +89,7 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use Habana's HPU for running the model.
         gaudi_config_name (`str`, *optional*):
             Pretrained Gaudi config name or path.
-        use_lazy_mode (`bool`, *optional*, defaults to `False`):
+        use_lazy_mode (`bool`, *optional*, defaults to `True`):
             Whether to use lazy mode for running the model.
         use_hpu_graphs (`bool`, *optional*, defaults to `False`):
             Deprecated, use `use_hpu_graphs_for_inference` instead. Whether to use HPU graphs for performing inference.
@@ -92,6 +97,10 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to use HPU graphs for performing inference. It will speed up latency but may not be compatible with some operations.
         use_hpu_graphs_for_training (`bool`, *optional*, defaults to `False`):
             Whether to use HPU graphs for performing inference. It will speed up training but may not be compatible with some operations.
+        disable_tensor_cache_hpu_graphs (`bool`, *optional*, defaults to `False`):
+            Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
+        max_hpu_graphs (`int`, *optional*):
+            Maximum number of hpu graphs to be cached. Reduce to save device memory.
         distribution_strategy (`str`, *optional*, defaults to `ddp`):
             Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
@@ -122,7 +131,7 @@ class GaudiTrainingArguments(TrainingArguments):
     )
 
     use_lazy_mode: Optional[bool] = field(
-        default=False,
+        default=True,
         metadata={"help": "Whether to use lazy mode for running the model."},
     )
 
@@ -145,6 +154,16 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={
             "help": "Whether to use HPU graphs for performing training. It will speed up training but may not be compatible with some operations."
         },
+    )
+
+    disable_tensor_cache_hpu_graphs: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use a tensor cache for hpu graphs."},
+    )
+
+    max_hpu_graphs: Optional[int] = field(
+        default=None,
+        metadata={"help": "Maximum number of HPU graphs to use."},
     )
 
     distribution_strategy: Optional[str] = field(
@@ -183,6 +202,11 @@ class GaudiTrainingArguments(TrainingArguments):
                 "host backward building and HPU forward computing."
             )
         },
+    )
+
+    ignore_eos: Optional[bool] = field(
+        default=True,
+        metadata={"help": ("Whether to disable stopping with eos token when calling `generate`.")},
     )
 
     non_blocking_data_copy: Optional[bool] = field(
@@ -262,12 +286,24 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    fp8: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use fp8 for training."},
+    )
+
+    fp8_recipe_format: Optional[str] = field(
+        default="E5M2",
+        metadata={
+            "help": "Which fp8 format to use for fp8 training.",
+            "choices": ["E5M2", "E4M3", "HYBRID"],
+        },
+    )
+
     def __post_init__(self):
         if self.use_hpu_graphs:
             warnings.warn(
                 (
-                    "`--use_hpu_graphs` is deprecated and will be removed in a future version of 🤗 Optimum Habana. Use "
-                    "`--use_hpu_graphs_for_inference` instead."
+                    "`--use_hpu_graphs` is deprecated and will be removed in a future version of 🤗 Optimum Habana. Use `--use_hpu_graphs_for_training` or `--use_hpu_graphs_for_inference` instead."
                 ),
                 FutureWarning,
             )
@@ -278,8 +314,7 @@ class GaudiTrainingArguments(TrainingArguments):
             raise ValueError(
                 "`--use_lazy_mode`, `--use_hpu_graphs_for_inference`, `--use_hpu_graphs_for_training` and `--gaudi_config_name` cannot be used without `--use_habana`."
             )
-
-        if use_hpu_graphs and not self.use_lazy_mode:
+        if use_hpu_graphs and (not self.use_lazy_mode and not self.torch_compile_backend):
             raise ValueError(
                 "`--use_hpu_graphs_for_inference` and `--use_hpu_graphs_for_training` cannot be used in eager mode. Please set `--use_lazy_mode` to True."
             )
@@ -289,16 +324,18 @@ class GaudiTrainingArguments(TrainingArguments):
                 f"`--distribution_strategy` is {self.distribution_strategy} which is an invalid or unsupported value. Possible choices are: {', '.join(SUPPORTED_DISTRIBUTION_STRATEGIES)}."
             )
 
+        if self.disable_tensor_cache_hpu_graphs and not use_hpu_graphs:
+            raise ValueError("must be using hpu graphs to set disable_tensor_cache_hpu_graphs.")
+
+        if self.max_hpu_graphs is not None and not use_hpu_graphs:
+            raise ValueError("must be using hpu graphs to set max_hpu_graphs.")
+
         # Raise errors for arguments that are not supported by optimum-habana
-        if self.bf16_full_eval:
-            raise ValueError("--bf16_full_eval is not supported by optimum-habana.")
         if self.fp16 or self.fp16_full_eval:
             raise ValueError(
                 "--fp16, --fp16_backend, --fp16_full_eval and --fp16_opt_level are not"
                 " supported by optimum-habana. Mixed-precision can be enabled in your Gaudi configuration."
             )
-        if self.fsdp:
-            raise ValueError("--fsdp is not supported by optimum-habana.")
         if self.tpu_num_cores or self.tpu_metrics_debug:
             raise ValueError("TPUs are not supported by optimum-habana.")
         if self.mp_parameters:
@@ -308,6 +345,17 @@ class GaudiTrainingArguments(TrainingArguments):
 
         if self.throughput_warmup_steps < 0:
             raise ValueError("--throughput_warmup_steps must be positive.")
+
+        # Parse in args that could be `dict` sent in from the CLI as a string
+        for field in _VALID_DICT_FIELDS:
+            passed_value = getattr(self, field)
+            # We only want to do this if the str starts with a bracket to indiciate a `dict`
+            # else its likely a filename if supported
+            if isinstance(passed_value, str) and passed_value.startswith("{"):
+                loaded_dict = json.loads(passed_value)
+                # Convert str values to types if applicable
+                loaded_dict = _convert_str_dict(loaded_dict)
+                setattr(self, field, loaded_dict)
 
         # expand paths, if not os.makedirs("~/bar") will make directory
         # in the current directory instead of the actual home
@@ -382,7 +430,7 @@ class GaudiTrainingArguments(TrainingArguments):
                     if not (self.eval_steps < 1 and self.save_steps < 1):
                         raise ValueError(
                             "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
-                            "steps, which cannot get guaranteed when mixing ratio and absolute steps for save_steps"
+                            "steps, which cannot get guaranteed when mixing ratio and absolute steps for save_steps "
                             f"{self.save_steps} and eval_steps {self.eval_steps}."
                         )
                     # Work around floating point precision issues
@@ -437,9 +485,28 @@ class GaudiTrainingArguments(TrainingArguments):
             if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
                 raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
 
+        if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
+            assert get_habana_frameworks_version().minor > 12, "Torch compile is not available"
+            self.torch_compile = True
+            assert not os.getenv("PT_HPU_LAZY_MODE", "1") != "0", "Dynamo and lazy are mutually exclusive."
+            # Note: PT_HPU_LAZY_MODE=0 needs to be set before library is loaded,
+            #       setting it here would be too late - hence assertion.
+        if self.torch_compile and self.torch_compile_backend is None:
+            self.torch_compile_backend = "inductor"
+
+        # accelerate integration for torch compile
+        if self.torch_compile:
+            # set env vars for accelerate
+            prefix = "ACCELERATE_DYNAMO_"
+            os.environ[prefix + "BACKEND"] = self.torch_compile_backend
+            if self.torch_compile_mode is not None:
+                os.environ[prefix + "MODE"] = self.torch_compile_mode
+
         # if training args is specified, it will override the one specified in the accelerate config
         mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
-        if self.bf16:
+        if self.fp8:
+            mixed_precision_dtype = "fp8"
+        elif self.bf16:
             mixed_precision_dtype = "bf16"
         os.environ["ACCELERATE_MIXED_PRECISION"] = mixed_precision_dtype
 
@@ -467,6 +534,136 @@ class GaudiTrainingArguments(TrainingArguments):
                 "Both warmup_ratio and warmup_steps given, warmup_steps will override any effect of warmup_ratio"
                 " during training"
             )
+
+        # Copy of https://github.com/huggingface/transformers/blob/b71f20a7c9f3716d30f6738501559acf863e2c5c/src/transformers/training_args.py#L1563
+        # except following changes, (1) Remove XLA specific code & (2) change fsdp_backward_prefetch to backward_prefetch
+        if isinstance(self.fsdp, bool):
+            self.fsdp = "full_shard" if self.fsdp else ""
+        if isinstance(self.fsdp, str):
+            self.fsdp = [FSDPOption(s) for s in self.fsdp.split()]
+        if self.fsdp == [FSDPOption.OFFLOAD]:
+            raise ValueError(
+                "`--fsdp offload` can't work on its own. It needs to be added to `--fsdp full_shard` or "
+                '`--fsdp shard_grad_op`. For example, `--fsdp "full_shard offload"`.'
+            )
+        elif FSDPOption.FULL_SHARD in self.fsdp and FSDPOption.SHARD_GRAD_OP in self.fsdp:
+            raise ValueError("`--fsdp full_shard` is not compatible with `--fsdp shard_grad_op`.")
+
+        if self.fsdp_config is None:
+            self.fsdp_config = {}
+
+        if isinstance(self.fsdp_config, str):
+            if len(self.fsdp) == 0:
+                warnings.warn("`--fsdp_config` is useful only when `--fsdp` is specified.")
+            with io.open(self.fsdp_config, "r", encoding="utf-8") as f:
+                self.fsdp_config = json.load(f)
+                for k in list(self.fsdp_config.keys()):
+                    if k.startswith("fsdp_"):
+                        v = self.fsdp_config.pop(k)
+                        self.fsdp_config[k[5:]] = v
+
+        if self.fsdp_min_num_params > 0:
+            warnings.warn("using `--fsdp_min_num_params` is deprecated. Use fsdp_config instead ", FutureWarning)
+
+        self.fsdp_config["min_num_params"] = max(self.fsdp_config.get("min_num_params", 0), self.fsdp_min_num_params)
+
+        # if fsdp_config["transformer_layer_cls_to_wrap"] is specified as a string, convert it to a list with a single object
+        if isinstance(self.fsdp_config.get("transformer_layer_cls_to_wrap", None), str):
+            self.fsdp_config["transformer_layer_cls_to_wrap"] = [self.fsdp_config["transformer_layer_cls_to_wrap"]]
+
+        if self.fsdp_transformer_layer_cls_to_wrap is not None:
+            warnings.warn(
+                "using `--fsdp_transformer_layer_cls_to_wrap` is deprecated. Use fsdp_config instead ", FutureWarning
+            )
+            self.fsdp_config["transformer_layer_cls_to_wrap"] = self.fsdp_config.get(
+                "transformer_layer_cls_to_wrap", []
+            ) + [self.fsdp_transformer_layer_cls_to_wrap]
+
+        if len(self.fsdp) == 0 and self.fsdp_config["min_num_params"] > 0:
+            warnings.warn("`min_num_params` is useful only when `--fsdp` is specified.")
+
+        if len(self.fsdp) == 0 and self.fsdp_config.get("transformer_layer_cls_to_wrap", None) is not None:
+            warnings.warn("`transformer_layer_cls_to_wrap` is useful only when `--fsdp` is specified.")
+
+        if (
+            len(self.fsdp) > 0
+            and self.fsdp_config["min_num_params"] > 0
+            and self.fsdp_config.get("transformer_layer_cls_to_wrap", None) is not None
+        ):
+            raise ValueError("`min_num_params` and `transformer_layer_cls_to_wrap` are mutually exclusive.")
+        self.fsdp_config["xla"] = self.fsdp_config.get("xla", False)
+        self.fsdp_config["xla_fsdp_v2"] = self.fsdp_config.get("xla_fsdp_v2", False)
+        self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
+
+        # accelerate integration for FSDP
+        if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
+            os.environ["ACCELERATE_USE_FSDP"] = "true"
+            os.environ["FSDP_CPU_RAM_EFFICIENT_LOADING"] = "true"
+            from accelerate.utils.constants import (
+                FSDP_AUTO_WRAP_POLICY,
+                FSDP_SHARDING_STRATEGY,
+            )
+
+            prefix = "FSDP_"
+            for fsdp_option in self.fsdp:
+                if fsdp_option.upper() in FSDP_SHARDING_STRATEGY:
+                    # set environment variable for FSDP sharding strategy
+                    os.environ[f"{prefix}SHARDING_STRATEGY"] = str(
+                        FSDP_SHARDING_STRATEGY.index(fsdp_option.upper()) + 1
+                    )
+                elif fsdp_option == FSDPOption.OFFLOAD:
+                    os.environ[f"{prefix}OFFLOAD_PARAMS"] = "true"
+                elif fsdp_option == FSDPOption.AUTO_WRAP:
+                    os.environ[f"{prefix}AUTO_WRAP_POLICY"] = FSDP_AUTO_WRAP_POLICY[0]
+                    if self.fsdp_config["min_num_params"] > 0:
+                        os.environ[f"{prefix}MIN_NUM_PARAMS"] = str(self.fsdp_config["min_num_params"])
+                        os.environ[f"{prefix}AUTO_WRAP_POLICY"] = FSDP_AUTO_WRAP_POLICY[1]
+                    elif self.fsdp_config.get("transformer_layer_cls_to_wrap", None) is not None:
+                        os.environ[f"{prefix}TRANSFORMER_CLS_TO_WRAP"] = ",".join(
+                            self.fsdp_config["transformer_layer_cls_to_wrap"]
+                        )
+            prefetch_policy = self.fsdp_config.get("backward_prefetch", "NO_PREFETCH")
+            os.environ[f"{prefix}BACKWARD_PREFETCH"] = prefetch_policy.upper()
+            os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefetch", "false"))
+            os.environ[f"{prefix}SYNC_MODULE_STATES"] = str(self.fsdp_config.get("sync_module_states", "true"))
+            os.environ[f"{prefix}USE_ORIG_PARAMS"] = str(self.fsdp_config.get("use_orig_params", "true"))
+            os.environ[f"{prefix}ACTIVATION_CHECKPOINTING"] = str(
+                self.fsdp_config.get("activation_checkpointing", "false")
+            )
+
+        if is_accelerate_available():
+            if not isinstance(self.accelerator_config, (AcceleratorConfig)):
+                if self.accelerator_config is None:
+                    self.accelerator_config = AcceleratorConfig()
+                elif isinstance(self.accelerator_config, dict):
+                    self.accelerator_config = AcceleratorConfig(**self.accelerator_config)
+                # Check that a user didn't pass in the class instantiator
+                # such as `accelerator_config = AcceleratorConfig`
+                elif isinstance(self.accelerator_config, type):
+                    raise NotImplementedError(
+                        "Tried passing in a callable to `accelerator_config`, but this is not supported. "
+                        "Please pass in a fully constructed `AcceleratorConfig` object instead."
+                    )
+                else:
+                    self.accelerator_config = AcceleratorConfig.from_json_file(self.accelerator_config)
+            if self.dispatch_batches is not None:
+                warnings.warn(
+                    "Using `--dispatch_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
+                    " `--accelerator_config {'dispatch_batches':VALUE} instead",
+                    FutureWarning,
+                )
+                self.accelerator_config.dispatch_batches = self.dispatch_batches
+
+            if self.split_batches is not None:
+                warnings.warn(
+                    "Using `--split_batches` is deprecated and will be removed in version 4.41 of 🤗 Transformers. Use"
+                    " `--accelerator_config {'split_batches':VALUE} instead",
+                    FutureWarning,
+                )
+                self.accelerator_config.split_batches = self.split_batches
+
+            if self.dataloader_drop_last:
+                self.accelerator_config.even_batches = False
 
         if isinstance(self.debug, str):
             self.debug = [DebugOption(s) for s in self.debug.split()]
@@ -505,6 +702,15 @@ class GaudiTrainingArguments(TrainingArguments):
             mixed_precision = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
             self.deepspeed_plugin.set_mixed_precision(mixed_precision)
             self.deepspeed_plugin.set_deepspeed_weakref()
+
+        if self.use_cpu:
+            self.dataloader_pin_memory = False
+
+        if self.dataloader_num_workers == 0 and self.dataloader_prefetch_factor is not None:
+            raise ValueError(
+                "--dataloader_prefetch_factor can only be set when data is loaded in a different process, i.e."
+                " when --dataloader_num_workers > 1."
+            )
 
         if self.push_to_hub_token is not None:
             warnings.warn(
@@ -582,9 +788,10 @@ class GaudiTrainingArguments(TrainingArguments):
                 gaudi_config.declare_autocast_bf16_fp32_ops()
 
         logger.info("PyTorch: setting up devices")
-        if not is_accelerate_available(min_version="0.21.0"):
+        if not is_accelerate_available():
             raise ImportError(
-                "Using the `GaudiTrainer` requires `accelerate>=0.21.0`: Please run `pip install accelerate -U`."
+                f"Using the `Trainer` with `PyTorch` requires `accelerate>={ACCELERATE_MIN_VERSION}`: "
+                "Please run `pip install transformers[torch]` or `pip install accelerate -U`"
             )
         GaudiAcceleratorState._reset_state()
         GaudiPartialState._reset_state()
@@ -610,9 +817,11 @@ class GaudiTrainingArguments(TrainingArguments):
 
             if self.use_lazy_mode:
                 logger.info("Enabled lazy mode.")
-            else:
-                os.environ["PT_HPU_LAZY_MODE"] = "2"
-                logger.info("Enabled eager mode because use_lazy_mode=False.")
+            elif not self.torch_compile:
+                if os.getenv("PT_HPU_LAZY_MODE", "1") != "0":
+                    raise ValueError(
+                        "Lazy mode or compile mode not enabled => eager mode should be enabled using PT_HPU_LAZY_MODE=0"
+                    )
 
             if self.deepspeed:
                 # Need to do similar for Accelerator init

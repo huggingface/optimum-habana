@@ -60,6 +60,21 @@ if is_torch_available():
             else:
                 return input_ids
 
+    class RegressionModel(nn.Module):
+        def __init__(self, a=0, b=0, double_output=False):
+            super().__init__()
+            self.a = torch.nn.Parameter(torch.tensor(a).float())
+            self.b = torch.nn.Parameter(torch.tensor(b).float())
+            self.double_output = double_output
+            self.config = None
+
+        def forward(self, input_x, labels=None, **kwargs):
+            y = input_x * self.a + self.b
+            if labels is None:
+                return (y, y) if self.double_output else (y,)
+            loss = torch.nn.functional.mse_loss(y, labels)
+            return (loss, y, y) if self.double_output else (loss, y)
+
 
 class TestGaudiTrainerDistributed(TestCasePlus):
     def _test_gaudi_trainer_distributed(self, kwargs={}):

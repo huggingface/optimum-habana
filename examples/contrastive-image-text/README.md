@@ -23,6 +23,13 @@ This folder contains two examples:
 
 Such models can be used for natural language image search and potentially zero-shot image classification.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Download COCO dataset (2017)
 This example uses COCO dataset (2017) through a custom dataset script, which requires users to manually download the
 COCO dataset before training.
@@ -110,7 +117,8 @@ python run_clip.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/clip \
     --throughput_warmup_steps 3 \
-    --dataloader_num_workers 16
+    --dataloader_num_workers 16 \
+    --bf16
 ```
 
 
@@ -141,7 +149,9 @@ python ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --throughput_warmup_steps 3 \
     --dataloader_num_workers 16 \
     --mediapipe_dataloader \
-    --use_hpu_graphs_for_training
+    --use_hpu_graphs_for_training \
+    --bf16 \
+    --distribution_strategy fast_ddp
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.
@@ -204,22 +214,24 @@ For instance, to reproduce the results presented in [this blog post](https://hug
 
 ```bash
 python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridgetower.py \
---output_dir /tmp/bridgetower-test \
---model_name_or_path BridgeTower/bridgetower-large-itm-mlm-itc \
---dataset_name jmhessel/newyorker_caption_contest --dataset_config_name matching \
---image_column image --caption_column image_description \
---remove_unused_columns=False \
---do_train --do_eval --do_predict \
---per_device_train_batch_size="40" --per_device_eval_batch_size="16" \
---num_train_epochs 5 \
---learning_rate="1e-5" \
---overwrite_output_dir \
---save_strategy no \
---use_habana --use_lazy_mode --use_hpu_graphs_for_inference --gaudi_config_name Habana/clip \
---throughput_warmup_steps 3 \
---logging_steps 10 \
---dataloader_num_workers 1 \
---mediapipe_dataloader
+  --output_dir /tmp/bridgetower-test \
+  --model_name_or_path BridgeTower/bridgetower-large-itm-mlm-itc \
+  --dataset_name jmhessel/newyorker_caption_contest --dataset_config_name matching \
+  --dataset_revision 3c6c4f6c0ff7e902833d3afa5f8f3875c2b036e6 \
+  --image_column image --caption_column image_description \
+  --remove_unused_columns=False \
+  --do_train --do_eval --do_predict \
+  --per_device_train_batch_size="40" --per_device_eval_batch_size="16" \
+  --num_train_epochs 5 \
+  --learning_rate="1e-5" \
+  --overwrite_output_dir \
+  --save_strategy no \
+  --use_habana --use_lazy_mode --use_hpu_graphs_for_inference --gaudi_config_name Habana/clip \
+  --throughput_warmup_steps 3 \
+  --logging_steps 10 \
+  --dataloader_num_workers 1 \
+  --mediapipe_dataloader \
+  --distribution_strategy fast_ddp
 ```
 
 > `--mediapipe_dataloader` only works on Gaudi2.
@@ -246,5 +258,9 @@ python run_clip.py \
     --use_habana \
     --use_lazy_mode \
     --use_hpu_graphs_for_inference \
-    --gaudi_config_name Habana/clip
+    --gaudi_config_name Habana/clip \
+    --bf16 \
+    --mediapipe_dataloader
 ```
+
+> `--mediapipe_dataloader` only works on Gaudi2.

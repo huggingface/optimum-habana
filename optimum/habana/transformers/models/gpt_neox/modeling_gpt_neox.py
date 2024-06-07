@@ -5,17 +5,11 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXForCausalLM, apply_rotary_pos_emb, logger
 
-from ....utils import get_device_name
 
-
-# TODO: remove this workaround when FusedRoPE properly works on Gaudi
-if get_device_name() == "gaudi2":
-    try:
-        from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
-    except ImportError:
-        print("Not using HPU fused kernel for apply_rotary_pos_emb")
-        FusedRoPE = None
-else:
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+except ImportError:
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
 
@@ -28,6 +22,7 @@ def gaudi_gpt_neox_attention_forward(
     layer_past: Optional[Tuple[torch.Tensor]] = None,
     use_cache: Optional[bool] = False,
     output_attentions: Optional[bool] = False,
+    padding_mask: Optional[torch.Tensor] = None,
     token_idx: Optional[torch.Tensor] = None,
 ):
     """
@@ -36,6 +31,11 @@ def gaudi_gpt_neox_attention_forward(
     - add new args token_idx
     - optimize KV cache
     """
+    # Workaround till FusedRoPE is fixed
+    global FusedRoPE
+    if self.training and FusedRoPE is not None:
+        FusedRoPE = None
+
     has_layer_past = layer_past is not None
 
     # Compute QKV
@@ -198,9 +198,7 @@ def gaudi_gpt_neox_model_forward(
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
         position_ids = torch.arange(past_length, seq_length + past_length, dtype=torch.long, device=device)
-        position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-    else:
-        position_ids = position_ids.view(-1, seq_length).long()
+        position_ids = position_ids.unsqueeze(0)
 
     # Attention mask.
     if attention_mask is not None:
@@ -248,20 +246,16 @@ def gaudi_gpt_neox_model_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for layer_past
-                    return module(*inputs, use_cache, None, output_attentions)
-
-                return custom_forward
-
-            outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(layer),
+            outputs = self._gradient_checkpointing_func(
+                layer.__call__,
                 hidden_states,
                 attention_mask,
                 position_ids,
                 head_mask[i],
+                use_cache,
+                None,
+                output_attentions,
+                None,
             )
         else:
             outputs = layer(
@@ -368,11 +362,20 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         input_shape = input_ids.shape
 
         # cut decoder_input_ids if past is used
-        if past_key_values and past_key_values[0] is not None:
+        if past_key_values is not None:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
-                input_ids = input_ids[:, -1:]
+                past_length = past_key_values[0][0].shape[2]
+
+                # Some generation methods already pass only the last input ID
+                if input_ids.shape[1] > past_length:
+                    remove_prefix_length = past_length
+                else:
+                    # Default to old behavior: keep only final ID
+                    remove_prefix_length = input_ids.shape[1] - 1
+
+                input_ids = input_ids[:, remove_prefix_length:]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
@@ -383,7 +386,7 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
                 if token_idx is not None:
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
         if attention_mask is None:
@@ -394,7 +397,6 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
             model_inputs = {"input_ids": input_ids}
-
         model_inputs.update(
             {
                 "attention_mask": attention_mask,
@@ -407,8 +409,37 @@ class GaudiGPTNeoXForCausalLM(GPTNeoXForCausalLM):
         return model_inputs
 
 
+def gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache(self, seq_len, device, dtype):
+    self.max_seq_len_cached = seq_len
+    t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+
+    freqs = torch.outer(t, self.inv_freq)
+    # Different from paper, but it uses a different permutation in order to obtain the same calculation
+    emb = torch.cat((freqs, freqs), dim=-1)
+    self.cos_cached = emb.cos()
+    self.sin_cached = emb.sin()
+
+
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        return FusedRoPE.apply(q, cos, sin, position_ids), FusedRoPE.apply(k, cos, sin, position_ids)
+        if q.dtype == torch.bfloat16:
+            rope_q = FusedRoPE.apply(
+                q,
+                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                position_ids,
+            )
+        else:
+            rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        if k.dtype == torch.bfloat16:
+            rope_k = FusedRoPE.apply(
+                k,
+                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+                position_ids,
+            )
+        else:
+            rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        return rope_q, rope_k
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)

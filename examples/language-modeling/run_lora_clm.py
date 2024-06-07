@@ -30,11 +30,8 @@ import evaluate
 import torch
 import transformers
 from datasets import load_dataset
-from peft import (
-    LoraConfig,
-    TaskType,
-    get_peft_model,
-)
+from peft import AdaLoraConfig, IA3Config, LoraConfig, TaskType, get_peft_model, tuners
+from peft.utils.other import fsdp_auto_wrap_policy
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -42,7 +39,6 @@ from transformers import (
     DataCollatorForLanguageModeling,
     HfArgumentParser,
 )
-from transformers.modeling_utils import unwrap_model
 from transformers.trainer_utils import is_main_process
 
 from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
@@ -64,7 +60,7 @@ os.environ["WANDB_DISABLED"] = "true"
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.7.5")
+check_optimum_habana_min_version("1.10.0")
 
 
 @dataclass
@@ -92,6 +88,10 @@ class ModelArguments:
         default=None,
         metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
     )
+    token: Optional[str] = field(
+        default=None,
+        metadata={"help": "auth token for private models"},
+    )
     use_fast_tokenizer: bool = field(
         default=True,
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
@@ -100,17 +100,19 @@ class ModelArguments:
         default="main",
         metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
     )
-    use_auth_token: bool = field(
-        default=False,
-        metadata={
-            "help": "Will use the token generated when running `transformers-cli login` (necessary to use this script "
-            "with private models)."
-        },
-    )
     trust_remote_code: bool = field(
         default=False,
         metadata={
             "help": "should enable when using custom model architecture that is not yet part of the Hugging Face transformers package like MPT)."
+        },
+    )
+    use_cache: bool = field(
+        default=True,
+        metadata={
+            "help": (
+                "Whether or not the model should return the last key/values attentions (not used by all models)."
+                "Only relevant if `config.is_decoder=True`."
+            )
         },
     )
     low_cpu_mem_usage: bool = field(
@@ -119,6 +121,55 @@ class ModelArguments:
             "help": (
                 "It is an option to create the model as an empty shell, then only materialize its parameters when the pretrained weights are loaded."
                 "When set to True, it will benefit LLM loading time and RAM consumption."
+            )
+        },
+    )
+    attn_softmax_bf16: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to run attention softmax layer in bf16 precision for fine-tuning. The current support is limited to Llama only."
+            )
+        },
+    )
+    use_flash_attention: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to use Habana flash attention for fine-tuning. The current support is limited to Llama only."
+            )
+        },
+    )
+    flash_attention_recompute: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable recompute in Habana flash attention for fine-tuning."
+                " It is applicable only when use_flash_attention is True."
+            )
+        },
+    )
+    flash_attention_causal_mask: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to enable causal mask in Habana flash attention for fine-tuning."
+                " It is applicable only when use_flash_attention is True."
+            )
+        },
+    )
+    use_fused_rope: bool = field(
+        default=True,
+        metadata={
+            "help": ("Whether to use Habana fused-rope for fine-tuning. The current support is limited to Llama only.")
+        },
+    )
+    load_meta_device: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "It is an option to load the model to the device instead of the host, so it can reduce the host RAM usage."
+                "https://huggingface.co/blog/accelerate-large-models"
             )
         },
     )
@@ -201,6 +252,13 @@ class DataArguments:
         default=False,
         metadata={"help": "Whether to concatenate the sentence for more efficient training."},
     )
+    sql_prompt: bool = field(
+        default=False,
+        metadata={"help": "Whether to have a SQL style prompt"},
+    )
+    save_last_ckpt: bool = field(
+        default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
+    )
 
 
 @dataclass
@@ -223,11 +281,52 @@ class FinetuneArguments:
     )
     lora_target_modules: List[str] = field(
         default_factory=lambda: None,
-        metadata={"help": "Target modules for the LoRA method."},
+        metadata={"help": "Target modules for the LoRA/AdaLoRA method."},
     )
     train_on_inputs: bool = field(
         default=True,
         metadata={"help": "if False, masks out inputs in loss"},
+    )
+    adalora_init_r: int = field(
+        default=12,
+        metadata={"help": "Initial AdaLoRA rank"},
+    )
+    adalora_target_r: int = field(
+        default=4,
+        metadata={"help": "Target AdaLoRA rank"},
+    )
+    adalora_tinit: int = field(
+        default=50,
+        metadata={"help": "Number of warmup steps for AdaLoRA wherein no pruning is performed"},
+    )
+    adalora_tfinal: int = field(
+        default=100,
+        metadata={
+            "help": "Fix the resulting budget distribution and fine-tune the model for tfinal steps when using AdaLoRA"
+        },
+    )
+    adalora_delta_t: int = field(
+        default=10,
+        metadata={"help": "Interval of steps for AdaLoRA to update rank"},
+    )
+    adalora_orth_reg_weight: float = field(
+        default=0.5,
+        metadata={"help": "Orthogonal regularization weight for AdaLoRA"},
+    )
+    peft_type: str = field(
+        default="lora",
+        metadata={
+            "help": ("The PEFT type to use."),
+            "choices": ["lora", "ia3", "adalora"],
+        },
+    )
+    ia3_target_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target modules for the IA3 method."},
+    )
+    feedforward_modules: List[str] = field(
+        default_factory=lambda: None,
+        metadata={"help": "Target feedforward modules for the IA3 method."},
     )
 
 
@@ -244,6 +343,13 @@ PROMPT_DICT = {
     ),
 }
 
+SQL_PROMPT = (
+    "You are a text-to-SQL model. Your job is to answer questions about a database. "
+    "You are given a question and a context regarding one or more tables in the database.\n\n"
+    "You must output the SQL query that answers the question. The SQL query must be between [SQL] and [/SQL] tags.\n\n"
+    "### Question: \n{question}\n\n### Context: \n{context}\n\n### Response:"
+)
+
 
 def create_prompts(examples):
     prompts = {}
@@ -256,6 +362,17 @@ def create_prompts(examples):
         source = prompt_template.format_map(example)
         prompts["source"].append(source)
         prompts["target"].append(example["output"])
+    return prompts
+
+
+def create_sql_prompts(examples):
+    prompts = {}
+    prompts["source"] = []
+    prompts["target"] = []
+    for example in examples:
+        source = SQL_PROMPT.format_map(example)
+        prompts["source"].append(source)
+        prompts["target"].append(example["answer"])
     return prompts
 
 
@@ -291,8 +408,8 @@ def main():
     # Log on each process the small summary
     b16 = training_args.fp16 or training_args.bf16
     logger.warning(
-        f"Process rank: {training_args.local_rank}, device: {training_args.device}"
-        + f"\ndistributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {b16}"
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
+        + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {b16}"
     )
     # Set the verbosity to info of the Transformers logger (on main process only):
     if is_main_process(training_args.local_rank):
@@ -312,8 +429,9 @@ def main():
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
         "trust_remote_code": True if model_args.trust_remote_code else None,
+        "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
+        "token": model_args.token,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -326,7 +444,7 @@ def main():
         "cache_dir": model_args.cache_dir,
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
+        "token": model_args.token,
     }
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
@@ -353,7 +471,7 @@ def main():
             data_args.dataset_name,
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
         )
 
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
@@ -362,14 +480,14 @@ def main():
                 data_args.dataset_config_name,
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
-                use_auth_token=True if model_args.use_auth_token else None,
+                token=model_args.token,
             )
             raw_datasets["train"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
-                use_auth_token=True if model_args.use_auth_token else None,
+                token=model_args.token,
             )
     else:
         data_files = {}
@@ -390,7 +508,7 @@ def main():
             extension,
             data_files=data_files,
             cache_dir=model_args.cache_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
             **dataset_args,
         )
 
@@ -401,7 +519,7 @@ def main():
                 data_files=data_files,
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
-                use_auth_token=True if model_args.use_auth_token else None,
+                token=model_args.token,
                 **dataset_args,
             )
             raw_datasets["train"] = load_dataset(
@@ -409,13 +527,18 @@ def main():
                 data_files=data_files,
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
-                use_auth_token=True if model_args.use_auth_token else None,
+                token=model_args.token,
                 **dataset_args,
             )
-    if data_args.dataset_name == "tatsu-lab/alpaca":
+
+    if data_args.dataset_name == "tatsu-lab/alpaca" or data_args.sql_prompt:
         # Preprocessing the datasets.
         for key in raw_datasets:
-            prompts = create_prompts(raw_datasets[key])
+            prompts = (
+                create_prompts(raw_datasets[key])
+                if not data_args.sql_prompt
+                else create_sql_prompts(raw_datasets[key])
+            )
             columns_to_be_removed = list(raw_datasets[key].features.keys())
             raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
             raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
@@ -444,10 +567,11 @@ def main():
             config=config,
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
             trust_remote_code=True if model_args.trust_remote_code else None,
             torch_dtype=model_dtype,
             low_cpu_mem_usage=model_args.low_cpu_mem_usage,
+            device_map=training_args.device.type if model_args.load_meta_device else None,
+            token=model_args.token,
         )
     else:
         raise ValueError("Must provide model_name_or_path to load a pretrained CausalLM model.")
@@ -457,6 +581,14 @@ def main():
         model.generation_config.pad_token_id = 0
         model.generation_config.bos_token_id = 1
         model.generation_config.eos_token_id = 2
+        if model_args.attn_softmax_bf16:
+            model.generation_config.attn_softmax_bf16 = True
+        if model_args.use_flash_attention:
+            model.generation_config.use_flash_attention = True
+            model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
+            model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
+        if not model_args.use_fused_rope:
+            model.generation_config.use_fused_rope = False
 
     if hasattr(model.generation_config, "pad_token_id") and model.generation_config.pad_token_id is not None:
         tokenizer.pad_token_id = model.generation_config.pad_token_id
@@ -529,10 +661,10 @@ def main():
                 concatenated_dataset[column] = reshaped_data
             return datasets.Dataset.from_dict(concatenated_dataset)
 
-        if data_args.dataset_name == "tatsu-lab/alpaca":
+        if data_args.dataset_name == "tatsu-lab/alpaca" or data_args.sql_prompt:
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
             if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(
+                tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(
                     ["prompt_sources", "prompt_targets"]
                 )
         elif data_args.dataset_name == "timdettmers/openassistant-guanaco":
@@ -543,7 +675,7 @@ def main():
             raise ValueError("Unsupported dataset")
         tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
         if training_args.do_eval:
-            tokenized_datasets["test"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
+            tokenized_datasets["validation"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
     if training_args.do_train:
         if "train" not in tokenized_datasets:
             raise ValueError("--do_train requires a train dataset")
@@ -552,9 +684,9 @@ def main():
             train_dataset = train_dataset.select(range(data_args.max_train_samples))
 
     if training_args.do_eval:
-        if "test" not in tokenized_datasets:
-            raise ValueError("--do_eval requires a test dataset")
-        eval_dataset = tokenized_datasets["test"]
+        if "validation" not in tokenized_datasets:
+            raise ValueError("--do_eval requires a validation dataset")
+        eval_dataset = tokenized_datasets["validation"]
         if data_args.max_eval_samples is not None:
             eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
 
@@ -582,18 +714,42 @@ def main():
 
     if training_args.do_train or training_args.do_eval:
         # PEFT settings
-        peft_config = LoraConfig(
-            r=finetune_args.lora_rank,
-            lora_alpha=finetune_args.lora_alpha,
-            lora_dropout=finetune_args.lora_dropout,
-            target_modules=finetune_args.lora_target_modules,
-            bias="none",
-            task_type=TaskType.CAUSAL_LM,
-        )
+        if finetune_args.peft_type == "lora":
+            peft_config = LoraConfig(
+                r=finetune_args.lora_rank,
+                lora_alpha=finetune_args.lora_alpha,
+                lora_dropout=finetune_args.lora_dropout,
+                target_modules=finetune_args.lora_target_modules,
+                bias="none",
+                task_type=TaskType.CAUSAL_LM,
+            )
+        elif finetune_args.peft_type == "adalora":
+            peft_config = AdaLoraConfig(
+                init_r=finetune_args.adalora_init_r,
+                target_r=finetune_args.adalora_target_r,
+                tinit=finetune_args.adalora_tinit,
+                tfinal=finetune_args.adalora_tfinal,
+                deltaT=finetune_args.adalora_delta_t,
+                lora_alpha=finetune_args.lora_alpha,
+                lora_dropout=finetune_args.lora_dropout,
+                target_modules=finetune_args.lora_target_modules,
+                orth_reg_weight=finetune_args.adalora_orth_reg_weight,
+                bias="none",
+                task_type=TaskType.CAUSAL_LM,
+            )
+            from optimum.habana.peft.layer import GaudiAdaloraLayerSVDLinearForward
+
+            tuners.adalora.layer.SVDLinear.forward = GaudiAdaloraLayerSVDLinearForward
+        elif finetune_args.peft_type == "ia3":
+            peft_config = IA3Config(
+                target_modules=finetune_args.ia3_target_modules,
+                feedforward_modules=finetune_args.feedforward_modules,
+                task_type=TaskType.CAUSAL_LM,
+            )
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
         lora_model = get_peft_model(model, peft_config)
-        if training_args.bf16:
+        if training_args.bf16 and finetune_args.peft_type != "ia3":
             lora_model = lora_model.to(torch.bfloat16)
         lora_model.print_trainable_parameters()
         gaudi_config = GaudiConfig()
@@ -613,13 +769,18 @@ def main():
             preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         )
 
-    if training_args.do_train:
-        trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+        # Solution for https://github.com/huggingface/peft/blob/v0.6.2/README.md#caveats (1)
+        if training_args.fsdp and training_args.fsdp_config["auto_wrap_policy"] == "TRANSFORMER_BASED_WRAP":
+            trainer.accelerator.state.fsdp_plugin.auto_wrap_policy = fsdp_auto_wrap_policy(lora_model)
 
-        with training_args.main_process_first(desc="save model"):
-            if is_main_process(training_args.local_rank):
-                unwrapped_model = unwrap_model(lora_model)
-                unwrapped_model.save_pretrained(training_args.output_dir, state_dict=unwrapped_model.state_dict())
+    if training_args.do_train:
+        train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+        if data_args.save_last_ckpt:
+            trainer.save_model()
+
+        metrics = train_result.metrics
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
 
         # Evaluation
     if training_args.do_eval:

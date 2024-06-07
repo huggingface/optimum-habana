@@ -29,15 +29,16 @@ except Exception as error:
 
 
 INSTALL_REQUIRES = [
-    "transformers >= 4.33.0",
+    "transformers >= 4.40.0, < 4.41.0",
     "optimum",
     "torch",
-    "accelerate >= 0.22.0",
-    "diffusers >= 0.18.0",
+    "accelerate < 0.28.0",
+    "diffusers >= 0.26.0, < 0.27.0",
+    "pytest < 8.0.0",
+    "huggingface_hub < 0.23.0",
 ]
 
 TESTS_REQUIRE = [
-    "pytest",
     "psutil",
     "parameterized",
     "GitPython",
@@ -48,7 +49,6 @@ TESTS_REQUIRE = [
 ]
 
 QUALITY_REQUIRES = [
-    "black",
     "ruff",
     "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
 ]

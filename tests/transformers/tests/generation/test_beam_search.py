@@ -17,11 +17,12 @@
 import unittest
 
 from transformers import is_torch_available
-from transformers.testing_utils import require_torch, torch_device
+from transformers.testing_utils import require_torch
 
-from ..test_modeling_common import floats_tensor, ids_tensor
+from ..test_modeling_common import floats_tensor, ids_tensor, torch_device
 
 
+assert torch_device == "hpu"
 if is_torch_available():
     import torch
     from transformers.generation import (
@@ -354,7 +355,7 @@ class ConstrainedBeamSearchTester:
             token_ids = token_ids[0] if isinstance(token_ids[0], list) else token_ids
             stacked_token_ids = stacked_token_ids + token_ids
 
-        fulfilling_sequence = torch.LongTensor(stacked_token_ids)
+        fulfilling_sequence = torch.LongTensor(stacked_token_ids).to(torch_device)
         fulfill_len = fulfilling_sequence.size(0)
         input_ids[:, :fulfill_len] = fulfilling_sequence
 
@@ -427,7 +428,7 @@ class ConstrainedBeamSearchTester:
             token_ids = token_ids[0] if isinstance(token_ids[0], list) else token_ids
             stacked_token_ids = stacked_token_ids + token_ids
 
-        fulfilling_sequence = torch.LongTensor(stacked_token_ids)
+        fulfilling_sequence = torch.LongTensor(stacked_token_ids).to(torch_device)
 
         fulfill_len = fulfilling_sequence.size(0)
         input_ids[:, :fulfill_len] = fulfilling_sequence

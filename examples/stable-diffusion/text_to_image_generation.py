@@ -18,9 +18,14 @@ import logging
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 
-from optimum.habana.diffusers import GaudiDDIMScheduler
+from optimum.habana.diffusers import (
+    GaudiDDIMScheduler,
+    GaudiEulerAncestralDiscreteScheduler,
+    GaudiEulerDiscreteScheduler,
+)
 from optimum.habana.utils import set_seed
 
 
@@ -33,7 +38,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.7.5")
+check_optimum_habana_min_version("1.11.0")
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +54,28 @@ def main():
         help="Path to pre-trained model",
     )
 
+    parser.add_argument(
+        "--controlnet_model_name_or_path",
+        default="lllyasviel/sd-controlnet-canny",
+        type=str,
+        help="Path to pre-trained model",
+    )
+
+    parser.add_argument(
+        "--scheduler",
+        default="ddim",
+        choices=["euler_discrete", "euler_ancestral_discrete", "ddim"],
+        type=str,
+        help="Name of scheduler",
+    )
+
+    parser.add_argument(
+        "--timestep_spacing",
+        default="linspace",
+        choices=["linspace", "leading", "trailing"],
+        type=str,
+        help="The way the timesteps should be scaled.",
+    )
     # Pipeline arguments
     parser.add_argument(
         "--prompts",
@@ -58,11 +85,43 @@ def main():
         help="The prompt or prompts to guide the image generation.",
     )
     parser.add_argument(
+        "--prompts_2",
+        type=str,
+        nargs="*",
+        default=None,
+        help="The second prompt or prompts to guide the image generation (applicable to SDXL).",
+    )
+    parser.add_argument(
+        "--control_image",
+        type=str,
+        default=None,
+        help=("Path to the controlnet conditioning image"),
+    )
+    parser.add_argument(
+        "--control_preprocessing_type",
+        type=str,
+        default="canny",
+        help=(
+            "The type of preprocessing to apply on contol image. Only `canny` is supported."
+            " Defaults to `canny`. Set to unsupported value to disable preprocessing."
+        ),
+    )
+    parser.add_argument(
         "--num_images_per_prompt", type=int, default=1, help="The number of images to generate per prompt."
     )
     parser.add_argument("--batch_size", type=int, default=1, help="The number of images in a batch.")
-    parser.add_argument("--height", type=int, default=512, help="The height in pixels of the generated images.")
-    parser.add_argument("--width", type=int, default=512, help="The width in pixels of the generated images.")
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=0,
+        help="The height in pixels of the generated images (0=default from model config).",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=0,
+        help="The width in pixels of the generated images (0=default from model config).",
+    )
     parser.add_argument(
         "--num_inference_steps",
         type=int,
@@ -88,6 +147,13 @@ def main():
         nargs="*",
         default=None,
         help="The prompt or prompts not to guide the image generation.",
+    )
+    parser.add_argument(
+        "--negative_prompts_2",
+        type=str,
+        nargs="*",
+        default=None,
+        help="The second prompt or prompts not to guide the image generation (applicable to SDXL).",
     )
     parser.add_argument(
         "--eta",
@@ -136,16 +202,89 @@ def main():
     parser.add_argument(
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
-
+    parser.add_argument(
+        "--throughput_warmup_steps",
+        type=int,
+        default=None,
+        help="Number of steps to ignore for throughput calculation.",
+    )
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        type=int,
+        default=0,
+        help="Number of steps to ignore for profiling.",
+    )
+    parser.add_argument(
+        "--profiling_steps",
+        type=int,
+        default=0,
+        help="Number of steps to capture for profiling.",
+    )
+    parser.add_argument(
+        "--unet_adapter_name_or_path",
+        default=None,
+        type=str,
+        help="Path to pre-trained model",
+    )
+    parser.add_argument(
+        "--text_encoder_adapter_name_or_path",
+        default=None,
+        type=str,
+        help="Path to pre-trained model",
+    )
+    parser.add_argument(
+        "--lora_id",
+        default=None,
+        type=str,
+        help="Path to lora id",
+    )
     args = parser.parse_args()
 
-    if args.ldm3d:
-        from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
+    # Set image resolution
+    kwargs_call = {}
+    if args.width > 0 and args.height > 0:
+        kwargs_call["width"] = args.width
+        kwargs_call["height"] = args.height
 
-        if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
-            args.model_name_or_path = "Intel/ldm3d-4c"
+    # ControlNet
+    if args.control_image is not None:
+        from diffusers.utils import load_image
+        from PIL import Image
+
+        # get control image
+        control_image = load_image(args.control_image)
+        if args.control_preprocessing_type == "canny":
+            import cv2
+
+            image = np.array(control_image)
+            # get canny image
+            image = cv2.Canny(image, 100, 200)
+            image = image[:, :, None]
+            image = np.concatenate([image, image, image], axis=2)
+            control_image = Image.fromarray(image)
+
+    # Import selected pipeline
+    sdxl_models = ["stable-diffusion-xl", "sdxl"]
+
+    if args.control_image is not None:
+        from diffusers import ControlNetModel
+
+        from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
+
+        sdxl = False
+    elif any(model in args.model_name_or_path for model in sdxl_models):
+        from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
+
+        sdxl = True
     else:
-        from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+        if args.ldm3d:
+            from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
+
+            if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
+                args.model_name_or_path = "Intel/ldm3d-4c"
+        else:
+            from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+        sdxl = False
 
     # Setup logging
     logging.basicConfig(
@@ -156,36 +295,118 @@ def main():
     logger.setLevel(logging.INFO)
 
     # Initialize the scheduler and the generation pipeline
-    scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler")
+    kwargs = {"timestep_spacing": args.timestep_spacing}
+    if args.scheduler == "euler_discrete":
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    elif args.scheduler == "euler_ancestral_discrete":
+        scheduler = GaudiEulerAncestralDiscreteScheduler.from_pretrained(
+            args.model_name_or_path, subfolder="scheduler", **kwargs
+        )
+    else:
+        scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, subfolder="scheduler", **kwargs)
+
     kwargs = {
         "scheduler": scheduler,
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
     }
+
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
-    pipeline = GaudiStableDiffusionPipeline.from_pretrained(
-        args.model_name_or_path,
-        **kwargs,
-    )
 
-    # Set seed before running the model
-    set_seed(args.seed)
+    if args.throughput_warmup_steps is not None:
+        kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
 
     # Generate images
-    outputs = pipeline(
-        prompt=args.prompts,
-        num_images_per_prompt=args.num_images_per_prompt,
-        batch_size=args.batch_size,
-        height=args.height,
-        width=args.width,
-        num_inference_steps=args.num_inference_steps,
-        guidance_scale=args.guidance_scale,
-        negative_prompt=args.negative_prompts,
-        eta=args.eta,
-        output_type=args.output_type,
-    )
+    if args.control_image is not None:
+        model_dtype = torch.bfloat16 if args.bf16 else None
+        controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path, torch_dtype=model_dtype)
+        pipeline = GaudiStableDiffusionControlNetPipeline.from_pretrained(
+            args.model_name_or_path,
+            controlnet=controlnet,
+            **kwargs,
+        )
+        if args.lora_id:
+            pipeline.load_lora_weights(args.lora_id)
+
+        # Set seed before running the model
+        set_seed(args.seed)
+
+        outputs = pipeline(
+            prompt=args.prompts,
+            image=control_image,
+            num_images_per_prompt=args.num_images_per_prompt,
+            batch_size=args.batch_size,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            negative_prompt=args.negative_prompts,
+            eta=args.eta,
+            output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            **kwargs_call,
+        )
+    elif sdxl:
+        pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        if args.lora_id:
+            pipeline.load_lora_weights(args.lora_id)
+
+        # Set seed before running the model
+        set_seed(args.seed)
+
+        outputs = pipeline(
+            prompt=args.prompts,
+            prompt_2=args.prompts_2,
+            num_images_per_prompt=args.num_images_per_prompt,
+            batch_size=args.batch_size,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            negative_prompt=args.negative_prompts,
+            negative_prompt_2=args.negative_prompts_2,
+            eta=args.eta,
+            output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            **kwargs_call,
+        )
+    else:
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        if args.unet_adapter_name_or_path is not None:
+            from peft import PeftModel
+
+            pipeline.unet = PeftModel.from_pretrained(pipeline.unet, args.unet_adapter_name_or_path)
+            pipeline.unet = pipeline.unet.merge_and_unload()
+        if args.text_encoder_adapter_name_or_path is not None:
+            from peft import PeftModel
+
+            pipeline.text_encoder = PeftModel.from_pretrained(
+                pipeline.text_encoder, args.text_encoder_adapter_name_or_path
+            )
+            pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
+        set_seed(args.seed)
+
+        outputs = pipeline(
+            prompt=args.prompts,
+            num_images_per_prompt=args.num_images_per_prompt,
+            batch_size=args.batch_size,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            negative_prompt=args.negative_prompts,
+            eta=args.eta,
+            output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            **kwargs_call,
+        )
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:

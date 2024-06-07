@@ -57,44 +57,16 @@ To not take them into account in the computation of the throughput at the end of
 ## Mixed-Precision Training
 
 Mixed-precision training enables to compute some operations using lighter data types to accelerate training.
-Habana Mixed Precision (HMP) proposes to mix *fp32* and *bf16* operations.
+Optimum Habana enables mixed precision training in a similar fashion as 🤗 Transformers:
+- argument `--bf16` enables usage of PyTorch autocast
+- argument `--half_precision_backend [hpu_amp, cpu_amp]` is used to specify a device on which mixed precision operations should be performed
+
 
 <Tip warning={true}>
 
-Please refer to the [list of supported PyTorch operators](https://docs.habana.ai/en/latest/PyTorch/Pytorch_Operators/Pytorch_Operators.html) beforehand to make sure the ones you are interested in are compatible with *bf16*.
-
-</Tip>
-
-To apply HMP, you must set `"use_habana_mixed_precision"` to `true` in the Gaudi configuration file.
-Then, you can specify which operators to compute in *bf16* with `"hmp_bf16_ops"` and which operators to compute in *fp32* with `"hmp_fp32_ops"`.
-If these operators are not specified, their default values are set to be the ones written in the [Gaudi configuration file of BERT](https://huggingface.co/Habana/bert-large-uncased-whole-word-masking/blob/main/gaudi_config.json), which is a good starting point for applying HMP:
-```
-"hmp_bf16_ops": [
-    "add",
-    "addmm",
-    "bmm",
-    "div",
-    "dropout",
-    "gelu",
-    "iadd",
-    "linear",
-    "layer_norm",
-    "matmul",
-    "mm",
-    "rsub",
-    "softmax",
-    "truediv"
-],
-"hmp_fp32_ops": [
-    "embedding",
-    "nll_loss",
-    "log_softmax"
-]
-```
-
-<Tip>
-
-Torch Autocast can also be used as a backend for mixed-precision training. You need to add the argument `--bf16` to enable it.
+Please refer to the [advanced autocast usage on Gaudi](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Mixed_Precision/Autocast.html) for more informations regarding:
+- default autocast operations
+- default autocast operations override
 
 </Tip>
 
@@ -209,4 +181,4 @@ In distributed mode, memory stats are communicated only by the main process.
 
 </Tip>
 
-You can take a look at [Habana Gaudi's official documentation](https://docs.habana.ai/en/latest/PyTorch/PyTorch_User_Guide/Python_Packages.html#memory-stats-apis) for more information about the memory stats API.
+You can take a look at [Intel® Gaudi® AI Accelerator's official documentation](https://docs.habana.ai/en/latest/PyTorch/PyTorch_User_Guide/Python_Packages.html#memory-stats-apis) for more information about the memory stats API.

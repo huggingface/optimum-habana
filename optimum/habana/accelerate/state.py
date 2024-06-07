@@ -41,9 +41,13 @@ class GaudiPartialState(PartialState):
             self.device = torch.device(env_device) if env_device is not None else None
             self.debug = parse_flag_from_env("ACCELERATE_DEBUG_MODE")
 
-            if int(os.environ.get("LOCAL_RANK", -1)) != -1 and not cpu:
-                from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+            # initialize_distributed_hpu is already called in the __init__ of
+            # habana_frameworks.torch.distributed.hccl
+            # It is necessary so that the env variable LOCAL_RANK is set before the
+            # conditional statement right below
+            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
+            if int(os.environ.get("LOCAL_RANK", -1)) != -1 and not cpu:
                 world_size, rank, local_rank = initialize_distributed_hpu()
                 self.backend = kwargs.pop("backend", "hccl")
 
@@ -51,19 +55,23 @@ class GaudiPartialState(PartialState):
                     if not is_deepspeed_available():
                         raise ImportError(
                             "DeepSpeed is not available, install it with: `pip install"
-                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0`."
+                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0`."
                         )
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
-                    if not torch.distributed.is_initialized():
-                        import deepspeed
+                    import deepspeed
 
-                        if world_size > 1:
-                            os.environ["HLS_MODULE_ID"] = str(local_rank)
-                            os.environ["ID"] = str(rank)
+                    if world_size > 1:
+                        os.environ["HLS_MODULE_ID"] = str(local_rank)
+                        os.environ["ID"] = str(rank)
 
-                        deepspeed.init_distributed(dist_backend=self.backend, **kwargs)
-                        logger.info("DeepSpeed is enabled.")
+                    deepspeed.init_distributed(dist_backend=self.backend, **kwargs)
+                    logger.info("DeepSpeed is enabled.")
                     self._mixed_precision = "no"  # deepspeed handles mixed_precision using deepspeed_config
+                elif os.environ.get("ACCELERATE_USE_FSDP", "false") == "true":
+                    self.distributed_type = GaudiDistributedType.FSDP
+                    if not torch.distributed.is_initialized():
+                        torch.distributed.init_process_group(backend=self.backend, rank=rank, world_size=world_size)
+                        logger.info("Enabled distributed run.")
                 else:
                     self.distributed_type = GaudiDistributedType.MULTI_HPU
                     if not torch.distributed.is_initialized():
@@ -73,9 +81,14 @@ class GaudiPartialState(PartialState):
                 self.process_index = rank
                 self.local_process_index = local_rank
                 if self.device is None:
-                    self.device = torch.device("hpu", self.local_process_index)
+                    # TODO: replace by `torch.device("hpu", self.local_process_index)` when hpu:x is supported
+                    self.device = torch.device("hpu")
             else:
-                self.distributed_type = GaudiDistributedType.NO
+                self.distributed_type = (
+                    GaudiDistributedType.NO
+                    if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "false"
+                    else GaudiDistributedType.DEEPSPEED
+                )
                 self.num_processes = 1
                 self.process_index = self.local_process_index = 0
                 logger.info("Single-device run.")
@@ -108,9 +121,9 @@ class GaudiPartialState(PartialState):
         ```
         """
         if self.distributed_type in (
-            GaudiDistributedType.MULTI_CPU,
             GaudiDistributedType.DEEPSPEED,
             GaudiDistributedType.MULTI_HPU,
+            GaudiDistributedType.FSDP,
         ):
             torch.distributed.barrier()
 
@@ -160,6 +173,7 @@ class GaudiAcceleratorState(AcceleratorState):
                 if mixed_precision is None
                 else mixed_precision.lower()
             )
+            self.is_fp8_enabled = mixed_precision == "fp8"
             self.dynamo_plugin = dynamo_plugin
             # deepspeed handles mixed_precision using deepspeed_config
             self._mixed_precision = (
@@ -167,6 +181,10 @@ class GaudiAcceleratorState(AcceleratorState):
             )
             if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true" and not cpu:
                 self.deepspeed_plugin = deepspeed_plugin
+            if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true" and not cpu:
+                if self._mixed_precision != "no":
+                    fsdp_plugin.set_mixed_precision(self._mixed_precision)
+                self.fsdp_plugin = fsdp_plugin
             GaudiPartialState._shared_state["distributed_type"] = self.distributed_type
             self.use_ipex = False
 

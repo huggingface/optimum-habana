@@ -1,25 +1,27 @@
-17d16
-< """ Conditional text generation with the auto-regressive models of the library (GPT/GPT-2/CTRL/Transformer-XL/XLNet)
-19c18,19
-< 
+17c17,19
+< """Conditional text generation with the auto-regressive models of the library (GPT/GPT-2/CTRL/Transformer-XL/XLNet)"""
 ---
+> """
 > Conditional text generation on Habana Gaudi/Gaudi2.
 > """
-22c22,23
+20c22
 < import inspect
 ---
-> import copy
 > import json
-24c25,27
+22c24,28
 < from typing import Tuple
 ---
+> import math
 > import os
 > import time
+> from itertools import cycle
 > from pathlib import Path
-27,50c30,35
+25,26c31
 < from accelerate import PartialState
 < from accelerate.utils import set_seed
-< 
+---
+> from utils import adjust_batch, count_hpu_graphs, initialize_model
+28,50c33
 < from transformers import (
 <     AutoTokenizer,
 <     BloomForCausalLM,
@@ -41,23 +43,11 @@
 <     XLMWithLMHeadModel,
 <     XLNetLMHeadModel,
 <     XLNetTokenizer,
----
-> from checkpoint_utils import (
->     get_ds_injection_policy,
->     get_repo_root,
->     model_is_optimized,
->     model_on_meta,
->     write_checkpoints_json,
-52c37,39
+< )
 < from transformers.modeling_outputs import CausalLMOutputWithPast
 ---
-> from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-> from transformers.utils import check_min_version
-> 
-53a41,42
-> # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-> check_min_version("4.33.0")
-62,284d50
+> from optimum.habana.utils import get_hpu_memory_stats
+60,281d42
 < MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 < 
 < MODEL_CLASSES = {
@@ -280,18 +270,23 @@
 <         beam_idx at every generation step.
 <         """
 <         return self._default._reorder_cache(past_key_values, beam_idx)
+283,285c44,46
 < 
-286a53
+< def main():
+<     parser = argparse.ArgumentParser()
+---
+> def setup_parser(parser):
 >     # Arguments management
-289c56
+>     parser.add_argument("--device", "-d", type=str, choices=["hpu"], help="Device to run", default="hpu")
+287c48
 <         "--model_type",
 ---
 >         "--model_name_or_path",
-293c60
+291c52
 <         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 ---
 >         help="Path to pre-trained model (on the HF Hub or locally).",
-296c63,83
+294c55,83
 <         "--model_name_or_path",
 ---
 >         "--bf16",
@@ -299,10 +294,18 @@
 >         help="Whether to perform generation in bf16 precision.",
 >     )
 >     parser.add_argument("--max_new_tokens", type=int, default=100, help="Number of tokens to generate.")
+>     parser.add_argument(
+>         "--max_input_tokens",
+>         type=int,
+>         default=0,
+>         help="If > 0 then pad and truncate the input sequences to this specified length of tokens. \
+>             if == 0, then truncate to 16 (original default) \
+>             if < 0, then do not truncate, use full input prompt",
+>     )
 >     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
 >     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
 >     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
->     parser.add_argument("--local_rank", type=int, default=-1, metavar="N", help="Local process rank.")
+>     parser.add_argument("--local_rank", type=int, default=0, metavar="N", help="Local process rank.")
 >     parser.add_argument(
 >         "--use_kv_cache",
 >         action="store_true",
@@ -315,18 +318,18 @@
 >     )
 >     parser.add_argument(
 >         "--dataset_name",
-299,300c86
+297,298c86
 <         required=True,
 <         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 ---
 >         help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
-302,306d87
+300,304d87
 < 
 <     parser.add_argument("--prompt", type=str, default="")
 <     parser.add_argument("--length", type=int, default=20)
 <     parser.add_argument("--stop_token", type=str, default=None, help="Token at which text generation is stopped")
 < 
-308,311c89,92
+306,309c89,92
 <         "--temperature",
 <         type=float,
 <         default=1.0,
@@ -336,7 +339,7 @@
 >         default=None,
 >         type=str,
 >         help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
-314c95,103
+312c95,227
 <         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
 ---
 >         "--do_sample",
@@ -348,22 +351,10 @@
 >         default=1,
 >         type=int,
 >         help="Number of beams used for beam search generation. 1 means greedy search will be performed.",
-316,323d104
-<     parser.add_argument("--k", type=int, default=0)
-<     parser.add_argument("--p", type=float, default=0.9)
-< 
-<     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
-<     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
-<     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
-< 
-<     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
-325c106
-<         "--use_cpu",
----
+>     )
+>     parser.add_argument(
 >         "--trim_logits",
-327c108,126
-<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
----
+>         action="store_true",
 >         help="Calculate logits only for the last token to save memory in the first step.",
 >     )
 >     parser.add_argument(
@@ -376,22 +367,20 @@
 >         "--profiling_warmup_steps",
 >         default=0,
 >         type=int,
->         help="Number of steps to ignore for profling.",
+>         help="Number of steps to ignore for profiling.",
 >     )
 >     parser.add_argument(
 >         "--profiling_steps",
 >         default=0,
 >         type=int,
 >         help="Number of steps to capture for profiling.",
-329d127
-<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
-331c129,169
-<         "--fp16",
----
+>     )
+>     parser.add_argument(
 >         "--prompt",
 >         default=None,
 >         type=str,
->         help="Optional argument to give a prompt of your choice as input.",
+>         nargs="*",
+>         help='Optional argument to give a prompt of your choice as input. Can be a single string (eg: --prompt "Hello world"), or a list of space-separated strings (eg: --prompt "Hello world" "How are you?")',
 >     )
 >     parser.add_argument(
 >         "--bad_words",
@@ -406,6 +395,12 @@
 >         type=str,
 >         nargs="+",
 >         help="Optional argument list of words that must be generated.",
+>     )
+>     parser.add_argument(
+>         "--assistant_model",
+>         default=None,
+>         type=str,
+>         help="Optional argument to give a path to a draft/assistant model for assisted decoding.",
 >     )
 >     parser.add_argument(
 >         "--peft_model",
@@ -429,14 +424,10 @@
 >     )
 >     parser.add_argument(
 >         "--attn_softmax_bf16",
-333c171,172
-<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
----
+>         action="store_true",
 >         help="Whether to run attention softmax layer in lower precision provided that the model supports it and "
 >         "is also running in lower precision.",
-335c174,185
-<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
----
+>     )
 >     parser.add_argument(
 >         "--output_dir",
 >         default=None,
@@ -444,111 +435,153 @@
 >         help="Output directory to store results in.",
 >     )
 >     parser.add_argument(
+>         "--bucket_size",
+>         default=-1,
+>         type=int,
+>         help="Bucket size to maintain static shapes. If this number is negative (default is -1) \
+>             then we use `shape = prompt_length + max_new_tokens`. If a positive number is passed \
+>             we increase the bucket in steps of `bucket_size` instead of allocating to max (`prompt_length + max_new_tokens`).",
+>     )
+>     parser.add_argument(
+>         "--bucket_internal",
+>         action="store_true",
+>         help="Split kv sequence into buckets in decode phase. It improves throughput when max_new_tokens is large.",
+>     )
+>     parser.add_argument(
+>         "--dataset_max_samples",
+>         default=-1,
+>         type=int,
+>         help="If a negative number is passed (default = -1) perform inference on the whole dataset, else use only `dataset_max_samples` samples.",
+>     )
+>     parser.add_argument(
 >         "--limit_hpu_graphs",
 >         action="store_true",
 >         help="Skip HPU Graph usage for first token to save memory",
 >     )
-> 
-338,339c188,227
+>     parser.add_argument(
+>         "--reuse_cache",
+>         action="store_true",
+>         help="Whether to reuse key/value cache for decoding. It should save memory.",
+>     )
+>     parser.add_argument("--verbose_workers", action="store_true", help="Enable output from non-master workers")
+>     parser.add_argument(
+>         "--simulate_dyn_prompt",
+>         default=None,
+>         type=int,
+>         nargs="*",
+>         help="If empty, static prompt is used. If a comma separated list of integers is passed, we warmup and use those shapes for prompt length.",
+>     )
+>     parser.add_argument(
+>         "--reduce_recompile",
+>         action="store_true",
+>         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
+314,319d228
+<     parser.add_argument("--k", type=int, default=0)
+<     parser.add_argument("--p", type=float, default=0.9)
+< 
+<     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
+<     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
+<     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
+321c230,235
+<     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
+---
+>     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
+>     parser.add_argument(
+>         "--use_flash_attention",
+>         action="store_true",
+>         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
+>     )
+323c237
+<         "--use_cpu",
+---
+>         "--flash_attention_recompute",
+325c239
+<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
+---
+>         help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
+327d240
+<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+329c242
+<         "--fp16",
+---
+>         "--flash_attention_causal_mask",
+331c244,278
+<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
+---
+>         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
+>     )
+>     parser.add_argument(
+>         "--book_source",
+>         action="store_true",
+>         help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
+>     )
+>     parser.add_argument(
+>         "--torch_compile",
+>         action="store_true",
+>         help="Whether to use torch compiled model or not.",
+>     )
+>     parser.add_argument(
+>         "--ignore_eos",
+>         default=True,
+>         action=argparse.BooleanOptionalAction,
+>         help="Whether to ignore eos, set False to disable it",
+>     )
+>     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
+>     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
+>     parser.add_argument(
+>         "--const_serialization_path",
+>         "--csp",
+>         type=str,
+>         help="Path to serialize const params. Const params will be held on disk memory instead of being allocated on host memory.",
+>     )
+>     parser.add_argument(
+>         "--disk_offload",
+>         action="store_true",
+>         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
+>     )
+>     parser.add_argument(
+>         "--trust_remote_code",
+>         action="store_true",
+>         help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
+333d279
+<     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
+336,337c282,283
 <     # Initialize the distributed state.
 <     distributed_state = PartialState(cpu=args.use_cpu)
 ---
->     # If the DeepSpeed launcher is used, the env variable _ will be equal to /usr/local/bin/deepspeed
->     # For multi node, the value of the env variable WORLD_SIZE should be larger than 8
->     use_deepspeed = "deepspeed" in os.environ["_"] or (
->         "WORLD_SIZE" in os.environ and int(os.environ["WORLD_SIZE"]) > 8
->     )
->     if use_deepspeed:
->         # Set necessary env variables
->         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
->         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
-> 
->     if not args.use_hpu_graphs:
->         args.limit_hpu_graphs = False
->     # Device is HPU
->     args.device = "hpu"
->     import habana_frameworks.torch.hpu as torch_hpu
-> 
->     # Get world size, rank and local rank
->     from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
-> 
->     world_size, rank, args.local_rank = initialize_distributed_hpu()
-> 
->     if use_deepspeed:
->         # Check if DeepSpeed is installed
->         from transformers.integrations.deepspeed import is_deepspeed_available
-> 
->         if not is_deepspeed_available():
->             raise ImportError(
->                 "This script requires deepspeed: `pip install"
->                 " git+https://github.com/HabanaAI/DeepSpeed.git@1.11.0`."
->             )
->         import deepspeed
-> 
->         # Initialize process(es) for DeepSpeed
->         deepspeed.init_distributed(dist_backend="hccl")
->         logger.info("DeepSpeed is enabled.")
->     else:
->         logger.info("Single-device run.")
-> 
->     # Tweak generation so that it runs faster on Gaudi
->     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
-341c229
+>     if args.torch_compile:
+>         args.use_hpu_graphs = False
+339c285,286
 <     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
->     adapt_transformers_to_gaudi()
-343,344c231,232
+>     if not args.use_hpu_graphs:
+>         args.limit_hpu_graphs = False
+341,342c288,293
 <     if args.seed is not None:
 <         set_seed(args.seed)
 ---
->     # Set seed before initializing model.
->     from optimum.habana.utils import set_seed
-346d233
+>     args.quant_config = os.getenv("QUANT_CONFIG", "")
+>     if args.quant_config == "" and args.disk_offload:
+>         logger.warning(
+>             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
+>         )
+>     return args
+344,371d294
 <     # Initialize the model and tokenizer
-348,351c235,236
+<     try:
 <         args.model_type = args.model_type.lower()
 <         model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
 <     except KeyError:
 <         raise KeyError("the model {} you specified is not supported. You are welcome to add it and open a PR :)")
----
->         from optimum.habana.utils import check_optimum_habana_min_version
->     except ImportError:
-353,356c238,242
+< 
 <     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
 <     if tokenizer.pad_token is None:
 <         tokenizer.pad_token = tokenizer.eos_token
 <     model = model_class.from_pretrained(args.model_name_or_path)
----
->         def check_optimum_habana_min_version(*a, **b):
->             return ()
-> 
->     # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
->     check_optimum_habana_min_version("1.8.0.dev0")
-358,359c244,263
+< 
 <     # Set the model to the right device
 <     model.to(distributed_state.device)
----
->     set_seed(args.seed)
-> 
->     # TODO: remove the following hack when Falcon is available in Transformers
->     # Temporary hack for Falcon
->     if args.model_name_or_path == "tiiuae/falcon-7b":
->         args.model_revision = "4e2d06f0a7c6370ebabbc30c6f59377ae8f73d76"
->     elif args.model_name_or_path == "tiiuae/falcon-7b-instruct":
->         args.model_revision = "f8dac3fff96d5debd43edf56fb4e1abcfffbef28"
->     elif args.model_name_or_path == "tiiuae/falcon-40b":
->         args.model_revision = "f1ba7d328c06aa6fbb4a8afd3c756f46d7e6b232"
->     elif args.model_name_or_path == "tiiuae/falcon-40b-instruct":
->         args.model_revision = "7475ff8cfc36ed9a962b658ae3c33391566a85a5"
-> 
->     tokenizer_kwargs = {
->         "revision": args.model_revision,
->         "token": args.token,
->     }
->     if args.bad_words is not None or args.force_words is not None:
->         tokenizer_kwargs["add_prefix_space"] = True
->     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, **tokenizer_kwargs)
-361,373c265,269
+< 
 <     if args.fp16:
 <         model.half()
 <     max_seq_length = getattr(model.config, "max_position_embeddings", 0)
@@ -562,142 +595,77 @@
 <     if requires_preprocessing:
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
----
->     if use_deepspeed or args.bf16:
->         model_dtype = torch.bfloat16
->     else:
->         model_dtype = torch.float
->         args.attn_softmax_bf16 = False
-375,376c271,284
+373,384c296,299
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
----
->     model_kwargs = {
->         "revision": args.model_revision,
->         "token": args.token,
->     }
-> 
->     if use_deepspeed:
->         config = AutoConfig.from_pretrained(args.model_name_or_path, **model_kwargs)
->         is_optimized = model_is_optimized(config)
->         load_to_meta = model_on_meta(config)
-> 
->         if load_to_meta:
->             # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
->             with deepspeed.OnDevice(dtype=model_dtype, device="meta"):
->                 model = AutoModelForCausalLM.from_config(config, torch_dtype=model_dtype)
-378c286,309
+<         else:
 <             tokenizer_kwargs = {}
----
->             get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
->             # TODO: revisit placement on CPU when auto-injection is possible
->             with deepspeed.OnDevice(dtype=model_dtype, device="cpu"):
->                 model = AutoModelForCausalLM.from_pretrained(
->                     args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs
->                 )
->         model = model.eval()
-> 
->         # Initialize the model
->         ds_inference_kwargs = {"dtype": model_dtype}
->         ds_inference_kwargs["tensor_parallel"] = {"tp_size": world_size}
->         ds_inference_kwargs["enable_cuda_graph"] = args.use_hpu_graphs
-> 
->         if load_to_meta:
->             # model loaded to meta is managed differently
->             checkpoints_json = "checkpoints.json"
->             write_checkpoints_json(args.model_name_or_path, args.local_rank, checkpoints_json)
-> 
->         # Make sure all devices/nodes have access to the model checkpoints
->         torch.distributed.barrier()
-> 
->         ds_inference_kwargs["injection_policy"] = get_ds_injection_policy(config)
->         if load_to_meta:
->             ds_inference_kwargs["checkpoint"] = checkpoints_json
-380,382c311,312
+< 
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
----
->         model = deepspeed.init_inference(model, **ds_inference_kwargs)
->         model = model.module
-384,386c314,341
+<     else:
 <         prefix = args.prefix if args.prefix else args.padding_text
 <         encoded_prompt = tokenizer.encode(prefix + prompt_text, add_special_tokens=False, return_tensors="pt")
 <     encoded_prompt = encoded_prompt.to(distributed_state.device)
 ---
->         get_repo_root(args.model_name_or_path, token=args.token)
->         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
->         model = model.eval().to(args.device)
->         is_optimized = model_is_optimized(model.config)
-> 
->         if args.use_hpu_graphs:
->             from habana_frameworks.torch.hpu import wrap_in_hpu_graph
-> 
->             model = wrap_in_hpu_graph(model)
-> 
->     if not model.config.is_encoder_decoder:
->         tokenizer.padding_side = "left"
->     # Some models like GPT2 do not have a PAD token so we have to set it if necessary
->     if model.config.model_type == "llama":
->         # unwind broken decapoda-research config
->         model.generation_config.pad_token_id = 0
->         model.generation_config.bos_token_id = 1
->         model.generation_config.eos_token_id = 2
->         tokenizer.bos_token_id = model.generation_config.bos_token_id
->         tokenizer.eos_token_id = model.generation_config.eos_token_id
->         tokenizer.pad_token_id = model.generation_config.pad_token_id
->         tokenizer.pad_token = tokenizer.decode(tokenizer.pad_token_id)
->         tokenizer.eos_token = tokenizer.decode(tokenizer.eos_token_id)
->         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
-> 
->     if tokenizer.pad_token is None:
->         tokenizer.pad_token = tokenizer.eos_token
->         model.generation_config.pad_token_id = model.generation_config.eos_token_id
-388,389c343,486
+> def main():
+>     parser = argparse.ArgumentParser()
+>     args = setup_parser(parser)
+>     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
+386,387c301,495
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
->     if rank in [-1, 0]:
->         logger.info(f"Args: {args}")
->         logger.info(f"device: {args.device}, n_hpu: {world_size}, bf16: {use_deepspeed or args.bf16}")
+>     use_lazy_mode = True
+>     if args.torch_compile and model.config.model_type == "llama":
+>         use_lazy_mode = False
 > 
->     bad_words_ids = None
->     force_words_ids = None
->     if args.bad_words is not None:
->         bad_words_ids = [tokenizer.encode(bad_word, add_special_tokens=False) for bad_word in args.bad_words]
->     if args.force_words is not None:
->         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
-> 
->     if args.peft_model:
->         import importlib.util
-> 
->         if importlib.util.find_spec("peft") is None:
->             raise ImportError("The `peft` package is not installed, please run: `pip install peft`.")
->         from peft import PeftModel
-> 
->         model = PeftModel.from_pretrained(model, args.peft_model)
->         model = model.to(model_dtype)
-> 
->     # Generation configuration
->     generation_config = copy.deepcopy(model.generation_config)
->     generation_config.max_new_tokens = args.max_new_tokens
->     generation_config.use_cache = args.use_kv_cache
->     generation_config.static_shapes = is_optimized
->     generation_config.do_sample = args.do_sample
->     generation_config.num_beams = args.num_beams
->     generation_config.bad_words_ids = bad_words_ids
->     generation_config.force_words_ids = force_words_ids
->     generation_config.num_return_sequences = args.num_return_sequences
->     generation_config.trim_logits = args.trim_logits
->     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
->     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
+>     import habana_frameworks.torch.hpu as torch_hpu
 > 
 >     if args.dataset_name is None:
 >         # Benchmark over the prompts below
 >         if args.prompt:
->             input_sentences = [
->                 args.prompt,
+>             input_sentences = args.prompt
+>         elif args.book_source:
+> 
+>             def download_book(book_id):
+>                 import os
+> 
+>                 import requests
+> 
+>                 url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
+>                 response = requests.get(url)
+>                 if response.status_code == 200:
+>                     pid = os.getpid()
+>                     save_path = f"/tmp/{book_id}_{pid}.txt"
+>                     with open(save_path, "wb") as file:
+>                         file.write(response.content)
+>                     print(f"Book downloaded and saved to: {save_path}")
+>                     return save_path
+>                 else:
+>                     print("Failed to download book! Exiting...")
+>                     import sys
+> 
+>                     sys.exit()
+> 
+>             def assemble_prompt(prompt_size, book_path):
+>                 prompt = ""
+>                 counter = 0
+>                 book_lines = open(book_path).readlines()
+>                 for line in book_lines:
+>                     for word in line.split():
+>                         counter += 1
+>                         prompt += word + " "
+>                         if counter == prompt_size:
+>                             return [prompt] * args.batch_size
+> 
+>             book_ids = [
+>                 2701,  # Moby Dick; Or, The Whale
+>                 1513,  # Romeo and Juliet
+>                 1342,  # Pride and Prejudice
 >             ]
+>             input_sentences = assemble_prompt(prompt_size=args.max_input_tokens, book_path=download_book(book_ids[0]))
 >         else:
 >             input_sentences = [
 >                 "DeepSpeed is a machine learning framework",
@@ -718,25 +686,43 @@
 >         elif args.batch_size < len(input_sentences):
 >             input_sentences = input_sentences[: args.batch_size]
 > 
->         def generate():
+>         def generate(size=None, reduce_recompile=False):
 >             """Generates sequences from the input sentences and returns them."""
-> 
+>             encode_t0 = time.perf_counter()
 >             # Tokenization
->             input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+>             if args.max_input_tokens > 0:
+>                 input_tokens = tokenizer.batch_encode_plus(
+>                     input_sentences,
+>                     return_tensors="pt",
+>                     padding="max_length",
+>                     max_length=args.max_input_tokens,
+>                     truncation=True,
+>                 )
+>             else:
+>                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+>             encode_duration = time.perf_counter() - encode_t0
 > 
->             # Move inputs to target device(s)
->             for t in input_tokens:
->                 if torch.is_tensor(input_tokens[t]):
->                     input_tokens[t] = input_tokens[t].to(args.device)
-> 
+>             if size is not None:
+>                 input_tokens = adjust_batch(input_tokens, size)
+>             if not reduce_recompile:
+>                 # Move inputs to target device(s)
+>                 for t in input_tokens:
+>                     if torch.is_tensor(input_tokens[t]):
+>                         input_tokens[t] = input_tokens[t].to(args.device)
+>             iteration_times = []
 >             outputs = model.generate(
 >                 **input_tokens,
 >                 generation_config=generation_config,
->                 lazy_mode=True,
+>                 assistant_model=assistant_model,
+>                 lazy_mode=use_lazy_mode,
 >                 hpu_graphs=args.use_hpu_graphs,
 >                 profiling_steps=args.profiling_steps,
 >                 profiling_warmup_steps=args.profiling_warmup_steps,
+>                 ignore_eos=args.ignore_eos,
+>                 iteration_times=iteration_times,
 >             ).cpu()
+>             first_token_time = iteration_times[0] + encode_duration
+>             logger.info(f"Time to first token = {first_token_time*1000}ms")
 >             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 > 
 >         from optimum.habana.utils import HabanaProfile
@@ -744,69 +730,96 @@
 >         # compilation stage disable profiling
 >         HabanaProfile.disable()
 >         # Compilation
->         if rank in [-1, 0]:
->             logger.info("Graph compilation...")
+>         logger.info("Graph compilation...")
+>         dyn_prompt_lens = args.simulate_dyn_prompt
 >         t0 = time.perf_counter()
 >         # The first three iterations take longer because of graph compilation
->         for _ in range(args.warmup):
->             generate()
+>         if dyn_prompt_lens is None or len(set(dyn_prompt_lens)) == 1:
+>             for _ in range(args.warmup):
+>                 if dyn_prompt_lens is None:
+>                     print("Warming up", flush=True)
+>                     generate(None, args.reduce_recompile)
+>                 else:
+>                     print("Warming up for shape,", dyn_prompt_lens[0], flush=True)
+>                     generate(dyn_prompt_lens[0], args.reduce_recompile)
+>         else:
+>             if args.bucket_size > 0:
+>                 mn = min(dyn_prompt_lens)
+>                 mx = max(dyn_prompt_lens)
+> 
+>                 def rounder(x):
+>                     return int(math.ceil(x / args.bucket_size) * args.bucket_size)
+> 
+>                 min_prompt_len = rounder(mn)
+>                 max_sentence_len = rounder(mx)
+>                 for _ in range(args.warmup):
+>                     lst = list(range(min_prompt_len, max_sentence_len + 1, args.bucket_size))
+>                     for sz in lst:
+>                         print("Warming up for shape,", sz - 1, flush=True)
+>                         generate(sz - 1, args.reduce_recompile)
 >         torch_hpu.synchronize()
 >         compilation_duration = time.perf_counter() - t0
 >         HabanaProfile.enable()
 >         total_new_tokens_generated = 0
->         if rank in [-1, 0]:
->             logger.info("Running generate...")
+>         logger.info("Running generate...")
 >         t0 = time.perf_counter()
 >         # Benchmark over n_iterations iterations
->         for i in range(args.n_iterations):
->             generated = generate()
+>         if dyn_prompt_lens is None:
+>             for i in range(args.n_iterations):
+>                 generated = generate(None, args.reduce_recompile)
+>         else:
+>             repeated_prompt_len = cycle(dyn_prompt_lens)
+>             for i in range(args.n_iterations):
+>                 prompt_len = next(repeated_prompt_len)
+>                 print("Generating for shape,", prompt_len)
+>                 generated = generate(prompt_len, args.reduce_recompile)
 >         duration = time.perf_counter() - t0
 >         total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
 >         throughput = total_new_tokens_generated / duration
 > 
->         if rank in [-1, 0]:
+>         print()
+>         print("Input/outputs:")
+>         for i, input_sentence in enumerate(zip(input_sentences)):
+>             print(f"input {i+1}: {input_sentence}")
+>             for j, output in enumerate(
+>                 zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
+>             ):
+>                 print(f"output {j+1}: {output}")
 >             print()
->             print("Input/outputs:")
->             for i, input_sentence in enumerate(zip(input_sentences)):
->                 print(f"input {i+1}: {input_sentence}")
->                 for j, output in enumerate(
->                     zip(generated[args.num_return_sequences * i : args.num_return_sequences * (i + 1)])
->                 ):
->                     print(f"output {j+1}: {output}")
->                 print()
 > 
->             # Store results if necessary
->             if args.output_dir is not None:
->                 output_dir = Path(args.output_dir)
->                 output_dir.mkdir(parents=True, exist_ok=True)
+>         # Store results if necessary
+>         if args.output_dir is not None and args.global_rank == 0:
+>             output_dir = Path(args.output_dir)
+>             output_dir.mkdir(parents=True, exist_ok=True)
 > 
->                 results = {
->                     "throughput": throughput,
->                     "output": output,
->                 }
->                 with (output_dir / "results.json").open("w", encoding="utf-8") as f:
->                     json.dump(results, f, ensure_ascii=False, indent=4)
->             from optimum.habana.utils import get_hpu_memory_stats
+>             results = {
+>                 "throughput": throughput,
+>                 "output": output,
+>             }
+>             with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+>                 json.dump(results, f, ensure_ascii=False, indent=4)
 > 
->             stats = f"Throughput (including tokenization) = {throughput} tokens/second"
->             separator = "-" * len(stats)
->             print()
->             print("Stats:")
->             print(separator)
->             print(stats)
->             mem = get_hpu_memory_stats()
->             for k, v in mem.items():
->                 print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
->             if args.use_hpu_graphs:
->                 print(f"Graph compilation duration          = {compilation_duration} seconds")
->             print(separator)
->             print()
-391c488,499
+>         stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+>         stats = stats + f"\nNumber of HPU graphs                = {count_hpu_graphs()}"
+>         separator = "-" * len(stats)
+>         print()
+>         print("Stats:")
+>         print(separator)
+>         print(stats)
+>         mem = get_hpu_memory_stats()
+>         for k, v in mem.items():
+>             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+>         print(f"Graph compilation duration          = {compilation_duration} seconds")
+>         print(separator)
+>         print()
+389c497,514
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
 >         from datasets import load_dataset
 >         from torch.utils.data import DataLoader
+> 
+>         assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 > 
 >         raw_dataset = load_dataset(args.dataset_name)
 >         if "test" in raw_dataset:
@@ -815,8 +828,12 @@
 >             split = "validation"
 >         else:
 >             split = "train"
->         raw_dataset = raw_dataset[split]
-393,399c501,509
+>         raw_dataset = (
+>             raw_dataset[split]
+>             .shuffle()
+>             .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
+>         )
+391,397c516,523
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -830,11 +847,10 @@
 >             column_name = [key for key in raw_dataset.features.keys() if raw_dataset.features[key].dtype == "string"][
 >                 0
 >             ]
->             if rank in [-1, 0]:
->                 logger.info(
->                     f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
->                 )
-401,440c511,514
+>             logger.info(
+>                 f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
+>             )
+399,437c525,545
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -874,64 +890,135 @@
 <         # Add the prompt at the beginning of the sequence. Remove the excess text that was used for pre-processing
 <         total_sequence = (
 <             prompt_text + text[len(tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
-<         )
 ---
 >             column_name = args.column_name
 > 
 >         # Remove unused columns
 >         raw_dataset = raw_dataset.remove_columns([name for name in raw_dataset.column_names if name != column_name])
-442,443c516,517
-<         generated_sequences.append(total_sequence)
-<         print(total_sequence)
----
->         # Set the prompt length to 16
->         prompt_length = 16
-445c519,564
-<     return generated_sequences
----
+> 
+>         # Set the prompt length to args.max_input_tokens if > 0 else (if 0 truncate to 16, otherwise use full length)
+>         prompt_length = args.max_input_tokens if args.max_input_tokens > 0 else (-1, 16)[args.max_input_tokens == 0]
+> 
 >         def preprocess_function(examples):
 >             # Tokenize the texts
->             return tokenizer(examples[column_name], padding="max_length", max_length=prompt_length, truncation=True)
+>             return tokenizer(
+>                 examples[column_name],
+>                 padding="max_length",
+>                 max_length=prompt_length if prompt_length > 0 else None,
+>                 truncation=prompt_length > 0,
+>             )
 > 
 >         raw_dataset = raw_dataset.map(
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
->         )
+438a547,628
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
 > 
->         separator = None
+>         if prompt_length <= 0:
+>             # Todo please check if this collate function is suitable for your model
+>             # This has been tested for OPT, llama, and Bloom
+>             assert model.config.model_type in ["opt", "bloom", "llama"]
 > 
->         logger.info("Running generation...")
+>             def collate_fn(data):
+>                 collect = {k: [dt[k] for dt in data] for k in data[0]}
+>                 result = {}
+>                 for k in collect:
+>                     tensors = collect[k]
+>                     max_shape = max([item.shape[0] for item in tensors])
+>                     result[k] = torch.stack(
+>                         [torch.cat((torch.zeros(max_shape - t.shape[0], dtype=t.dtype), t)) for t in tensors], 0
+>                     )
+>                 return result
 > 
->         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size)
->         for i, batch in enumerate(dataloader):
+>         else:
+>             collate_fn = None
+> 
+>         dataloader = DataLoader(raw_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
+> 
+>         def generate_dataset(batch):
 >             prompt = tokenizer.batch_decode(batch["input_ids"], skip_special_tokens=True)
-> 
 >             # Move inputs to target device(s)
 >             for t in batch:
 >                 if torch.is_tensor(batch[t]):
 >                     batch[t] = batch[t].to(args.device)
-> 
 >             # Generate new sequences
 >             outputs = model.generate(
 >                 **batch,
 >                 generation_config=generation_config,
->                 lazy_mode=True,
+>                 lazy_mode=use_lazy_mode,
 >                 hpu_graphs=args.use_hpu_graphs,
 >                 profiling_steps=args.profiling_steps,
 >                 profiling_warmup_steps=args.profiling_warmup_steps,
+>                 ignore_eos=args.ignore_eos,
 >             ).cpu()
+>             return prompt, outputs
 > 
->             # Print outputs
->             if separator is None:
->                 separator = "-" * len(prompt[0])
->             if rank in [-1, 0]:
->                 print(separator)
->                 print(f"Batch n°{i+1}")
->                 print(f"Input: {prompt[:args.batch_size]}")
->                 print(
->                     f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
->                 )
+>         # warmup
+>         if prompt_length > 0:
+>             from optimum.habana.utils import HabanaProfile
+> 
+>             # compilation stage disable profiling
+>             HabanaProfile.disable()
+>             # Compilation
+>             logger.info("Graph compilation...")
+>             t0 = time.perf_counter()
+>             for i, batch in enumerate(dataloader):
+>                 generate_dataset(batch)
+>                 # The first three iterations take longer because of graph compilation
+>                 if (i + 1) == 3:
+>                     break
+>             torch_hpu.synchronize()
+>             compilation_duration = time.perf_counter() - t0
+>             HabanaProfile.enable()
+> 
+>         total_new_tokens_generated = 0
+>         duration = 0
+>         separator = "-" * 50
+>         logger.info("Running generate dataset...")
+>         t_start = time.time()
+>         for i, batch in enumerate(dataloader):
+>             t0 = time.perf_counter()
+>             prompt, outputs = generate_dataset(batch)
+>             duration += time.perf_counter() - t0
+>             total_new_tokens_generated += args.batch_size * args.max_new_tokens
+>             print(separator)
+>             print(f"Batch n°{i+1}")
+>             print(f"Input: {prompt[:args.batch_size]}")
+>             print(
+>                 f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
+>             )
+>             print(separator)
+>         t_end = time.time()
+> 
+>         throughput = total_new_tokens_generated / duration
+>         # Print Stats
+440,441c630,648
+<         generated_sequences.append(total_sequence)
+<         print(total_sequence)
+---
+>         stats = f"Throughput (including tokenization) = {throughput} tokens/second"
+>         separator = "-" * len(stats)
+>         print()
+>         print("Stats:")
+>         print(separator)
+>         print(stats)
+>         print("Total runtime for dataset:", t_end - t_start)
+>         mem = get_hpu_memory_stats()
+>         for k, v in mem.items():
+>             print("{:35} = {} GB".format(k[:-5].replace("_", " ").capitalize(), v))
+>         if prompt_length > 0:
+>             print(f"Graph compilation duration          = {compilation_duration} seconds")
+>         print(separator)
+>     if args.quant_config:
+>         import habana_quantization_toolkit
+> 
+>         habana_quantization_toolkit.finish_measurements(model)
+>     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
+>         import shutil
+443c650
+<     return generated_sequences
+---
+>         shutil.rmtree(args.const_serialization_path)

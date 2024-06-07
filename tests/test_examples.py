@@ -33,6 +33,7 @@ from transformers import (
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
     MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
+    MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING,
     MODEL_MAPPING,
 )
 from transformers.testing_utils import slow
@@ -58,6 +59,9 @@ ACCURACY_PERF_FACTOR = 0.99
 TIME_PERF_FACTOR = 1.05
 
 
+IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
+
+
 def _get_supported_models_for_script(
     models_to_test: Dict[str, List[Tuple[str]]],
     task_mapping: Dict[str, str],
@@ -75,7 +79,12 @@ def _get_supported_models_for_script(
     """
 
     def is_valid_model_type(model_type: str) -> bool:
-        in_task_mapping = CONFIG_MAPPING[model_type] in task_mapping
+        true_model_type = "llama" if model_type == "llama_guard" else model_type
+        if model_type == "protst":
+            in_task_mapping = True
+        else:
+            # llama_guard is not a model type in Transformers so CONFIG_MAPPING wouldn't find it
+            in_task_mapping = CONFIG_MAPPING[true_model_type] in task_mapping
         in_valid_models_for_task = model_type in valid_models_for_task
         if in_task_mapping and in_valid_models_for_task:
             return True
@@ -137,6 +146,41 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_MAPPING,
         MODELS_TO_TEST_FOR_IMAGE_TEXT,
     ),
+    "run_bridgetower": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        ["bridgetower"],
+    ),
+    "run_lora_clm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama", "falcon"],
+    ),
+    "run_speech_recognition_seq2seq": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING,
+        MODELS_TO_TEST_FOR_SPEECH_RECOGNITION,
+    ),
+    "sft": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama"],
+    ),
+    "dpo": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama"],
+    ),
+    "run_prompt_tuning_clm": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama"],
+    ),
+    "run_sequence_classification": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_MAPPING,
+        ["protst"],
+    ),
 }
 
 
@@ -148,18 +192,44 @@ class ExampleTestMeta(type):
     """
 
     @staticmethod
-    def to_test(model_name: str, multi_card: bool, deepspeed: bool, example_name: str):
+    def to_test(model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool):
         models_with_specific_rules = [
             "albert-xxlarge-v1",
             "gpt2-xl",
             "facebook/wav2vec2-base",
             "facebook/wav2vec2-large-lv60",
+            "BridgeTower/bridgetower-large-itm-mlm-itc",
+            "EleutherAI/gpt-neox-20b",
+            "google/flan-t5-xxl",
+            "tiiuae/falcon-40b",
+            "bigscience/bloom-7b1",
+            "codellama/CodeLlama-13b-Instruct-hf",
+            "MIT/ast-finetuned-speech-commands-v2",
+            "meta-llama/LlamaGuard-7b",
         ]
 
-        if model_name not in models_with_specific_rules and not deepspeed:
+        if fsdp and not IS_GAUDI2:
+            return False
+        elif (
+            "sft" in example_name
+            or "dpo" in example_name
+            or "prompt_tuning" in example_name
+            or example_name == "run_sequence_classification"
+        ) and not IS_GAUDI2:
+            return False
+        elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
             # GPT2-XL is tested only with DeepSpeed
+            return True
+        elif "gpt-neox" in model_name and IS_GAUDI2 and deepspeed:
+            # GPT-NeoX is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "flan-t5" in model_name and IS_GAUDI2 and deepspeed:
+            # Flan-T5 is tested only on Gaudi2 and with DeepSpeed
+            return True
+        elif "CodeLlama" in model_name and IS_GAUDI2 and deepspeed:
+            # CodeLlama is tested only on Gaudi2 and with DeepSpeed
             return True
         elif model_name == "albert-xxlarge-v1":
             if (("RUN_ALBERT_XXL_1X" in os.environ) and strtobool(os.environ["RUN_ALBERT_XXL_1X"])) or multi_card:
@@ -169,10 +239,20 @@ class ExampleTestMeta(type):
             return True
         elif "wav2vec2-large" in model_name and example_name == "run_speech_recognition_ctc":
             return True
+        elif "bridgetower" in model_name and IS_GAUDI2:
+            return True
+        elif "falcon" in model_name and IS_GAUDI2 and not fsdp:
+            return True
+        elif "bloom" in model_name and deepspeed and not IS_GAUDI2:
+            return True
+        elif "LlamaGuard" in model_name and deepspeed and IS_GAUDI2:
+            return True
+        elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
+            return True
 
         return False
 
-    def __new__(cls, name, bases, attrs, example_name=None, multi_card=False, deepspeed=False):
+    def __new__(cls, name, bases, attrs, example_name=None, multi_card=False, deepspeed=False, fsdp=False):
         distribution = "single_card"
         if multi_card:
             distribution = "multi_card"
@@ -182,8 +262,8 @@ class ExampleTestMeta(type):
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
-                if example_name in ["run_esmfold", "run_lora_clm"]:
-                    attrs[f"test_{example_name}_{distribution}"] = cls._create_test(None, None, None, None)
+                if example_name in ["run_esmfold", "run_lora_clm", "run_zero_shot_eval"]:
+                    attrs[f"test_{example_name}_{distribution}"] = cls._create_test(None, None, None, None, None)
                     attrs["EXAMPLE_NAME"] = example_name
                     return super().__new__(cls, name, bases, attrs)
                 else:
@@ -192,16 +272,21 @@ class ExampleTestMeta(type):
                     )
 
         for model_name, gaudi_config_name in models_to_test:
-            if cls.to_test(model_name, multi_card, deepspeed, example_name):
+            if cls.to_test(model_name, multi_card, deepspeed, example_name, fsdp):
                 attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
-                    model_name, gaudi_config_name, multi_card, deepspeed
+                    model_name, gaudi_config_name, multi_card, deepspeed, fsdp
                 )
         attrs["EXAMPLE_NAME"] = example_name
         return super().__new__(cls, name, bases, attrs)
 
     @classmethod
     def _create_test(
-        cls, model_name: str, gaudi_config_name: str, multi_card: bool = False, deepspeed: bool = False
+        cls,
+        model_name: str,
+        gaudi_config_name: str,
+        multi_card: bool = False,
+        deepspeed: bool = False,
+        fsdp: bool = False,
     ) -> Callable[[], None]:
         """
         Create a test function that runs an example for a specific (model_name, gaudi_config_name) pair.
@@ -231,51 +316,35 @@ class ExampleTestMeta(type):
             if self.EXAMPLE_NAME == "run_esmfold":
                 p = subprocess.Popen(["python3", example_script])
                 return_code = p.wait()
-
                 # Ensure the run finished without any issue
                 self.assertEqual(return_code, 0)
                 return
-            # At the moment, just run the LORA example to check if there is no error
-            elif self.EXAMPLE_NAME == "run_lora_clm":
-                self._install_requirements(example_script.parent / "requirements.txt")
-
-                command = [
-                    "python3",
-                    # TODO: uncomment the following lines when LoRA 8x is fixed
-                    # f"{example_script.parent.parent / 'gaudi_spawn.py'}",
-                    # "--use_mpi",
-                    # "--world_size 8",
-                    f"{example_script}",
-                    "--model_name_or_path huggyllama/llama-7b",
-                    "--dataset_name tatsu-lab/alpaca",
-                    "--bf16",
-                    "--output_dir /tmp/model_lora_llama",
-                    "--num_train_epochs 1",
-                    "--per_device_train_batch_size 2",
-                    "--per_device_eval_batch_size 2",
-                    "--gradient_accumulation_steps 4",
-                    "--save_strategy no",
-                    "--learning_rate 1e-4",
-                    "--dataset_concatenation",
-                    "--do_train",
-                    "--use_habana",
-                    "--use_lazy_mode",
-                    "--throughput_warmup_steps 3",
-                    "--max_steps 100",
-                ]
-                pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
-                command = [x for y in command for x in re.split(pattern, y) if x]
-                p = subprocess.Popen(command)
-                return_code = p.wait()
-
-                # Ensure the run finished without any issue
-                self.assertEqual(return_code, 0)
+            elif self.EXAMPLE_NAME == "run_zero_shot_eval":
+                with TemporaryDirectory() as tmp_dir:
+                    cmd_line = f"""
+                        python3
+                        {example_script}
+                        --output_dir {tmp_dir}
+                        --bf16
+                        --max_seq_length 1024
+                    """.split()
+                    p = subprocess.Popen(cmd_line)
+                    return_code = p.wait()
+                    # Ensure the run finished without any issue
+                    self.assertEqual(return_code, 0)
+                    # Assess accuracy
+                    with open(Path(tmp_dir) / "accuracy_metrics.json") as fp:
+                        results = json.load(fp)
+                        baseline = 0.43 if os.environ.get("GAUDI2_CI", "0") == "1" else 0.42
+                        self.assertGreaterEqual(results["accuracy"], baseline)
                 return
-            # The CLIP example requires COCO and a clip-roberta model
             elif self.EXAMPLE_NAME == "run_clip":
-                from .clip_coco_utils import create_clip_roberta_model, download_coco
+                if os.environ.get("DATA_CACHE", None) is None:
+                    from .clip_coco_utils import COCO_URLS, download_files
 
-                download_coco()
+                    download_files(COCO_URLS)
+                from .clip_coco_utils import create_clip_roberta_model
+
                 create_clip_roberta_model()
 
             self._install_requirements(example_script.parent / "requirements.txt")
@@ -284,7 +353,20 @@ class ExampleTestMeta(type):
                 ".json"
             )
             with path_to_baseline.open("r") as json_file:
-                baseline = json.load(json_file)[self.TASK_NAME]
+                device = "gaudi2" if IS_GAUDI2 else "gaudi"
+                baseline = json.load(json_file)[device]
+                if isinstance(self.TASK_NAME, list):
+                    for key in self.TASK_NAME:
+                        if key in baseline:
+                            baseline = baseline[key]
+                            break
+                    if "num_train_epochs" not in baseline:
+                        raise ValueError(
+                            f"Couldn't find a baseline associated to any of these tasks: {self.TASK_NAME}."
+                        )
+                    self.TASK_NAME = key
+                else:
+                    baseline = baseline[self.TASK_NAME]
 
             distribution = "single_card"
             if multi_card:
@@ -292,10 +374,30 @@ class ExampleTestMeta(type):
             elif deepspeed:
                 distribution = "deepspeed"
 
+            env_variables = os.environ.copy()
+            if "falcon" in model_name:
+                env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+            elif "flan" in model_name:
+                env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "512"
+            elif "bloom" in model_name:
+                env_variables["DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED"] = "1"
+                env_variables["PT_HPU_MAX_COMPOUND_OP_SYNC"] = "1"
+                env_variables["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
+            elif fsdp:
+                if "llama" in model_name:
+                    env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
+                env_variables["PT_HPU_LAZY_MODE"] = "0"
+
+            extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
+
+            if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
+                extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
+
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
                     multi_card,
                     deepspeed,
+                    fsdp,
                     example_script,
                     model_name,
                     gaudi_config_name,
@@ -305,12 +407,10 @@ class ExampleTestMeta(type):
                     train_batch_size=baseline.get("distribution").get(distribution).get("train_batch_size"),
                     eval_batch_size=baseline.get("eval_batch_size"),
                     num_epochs=baseline.get("num_train_epochs"),
-                    extra_command_line_arguments=baseline.get("distribution")
-                    .get(distribution)
-                    .get("extra_arguments", []),
+                    extra_command_line_arguments=extra_command_line_arguments,
                 )
 
-                p = subprocess.Popen(cmd_line)
+                p = subprocess.Popen(cmd_line, env=env_variables)
                 return_code = p.wait()
 
                 # Ensure the run finished without any issue
@@ -320,7 +420,7 @@ class ExampleTestMeta(type):
                     results = json.load(fp)
 
                 # Ensure performance requirements (accuracy, training time) are met
-                self.assert_no_regression(results, baseline.get("distribution").get(distribution))
+                self.assert_no_regression(results, baseline.get("distribution").get(distribution), model_name)
 
             # TODO: is a cleanup of the dataset cache needed?
             # self._cleanup_dataset_cache()
@@ -345,6 +445,7 @@ class ExampleTesterBase(TestCase):
     EXAMPLE_NAME = None
     TASK_NAME = None
     DATASET_PARAMETER_NAME = "dataset_name"
+    DATASET_NAME = None
     REGRESSION_METRICS = {
         "eval_f1": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
         "eval_accuracy": (TestCase.assertGreaterEqual, ACCURACY_PERF_FACTOR),
@@ -360,6 +461,7 @@ class ExampleTesterBase(TestCase):
         self,
         multi_card: bool,
         deepspeed: bool,
+        fsdp: bool,
         script: Path,
         model_name: str,
         gaudi_config_name: str,
@@ -371,7 +473,8 @@ class ExampleTesterBase(TestCase):
         task: Optional[str] = None,
         extra_command_line_arguments: Optional[List[str]] = None,
     ) -> List[str]:
-        task_option = f"--{self.DATASET_PARAMETER_NAME} {task}" if task else " "
+        dataset_name = self.DATASET_NAME if self.DATASET_NAME is not None else task
+        task_option = f"--{self.DATASET_PARAMETER_NAME} {dataset_name}" if task else " "
 
         cmd_line = ["python3"]
         if multi_card:
@@ -385,25 +488,40 @@ class ExampleTesterBase(TestCase):
                 "--num_gpus 8",
                 "--no_local_rank",
             ]
+        if self.EXAMPLE_NAME == "dpo":
+            cmd_line += [
+                f"{script}",
+                f"--model_name_or_path {model_name}",
+                f"--tokenizer_name_or_path {model_name}",
+                f"--output_dir {output_dir}",
+                f"--per_device_train_batch_size {train_batch_size}",
+                f"--per_device_eval_batch_size {eval_batch_size}",
+            ]
+        else:
+            cmd_line += [
+                f"{script}",
+                f"--model_name_or_path {model_name}",
+                f"--gaudi_config_name {gaudi_config_name}",
+                f"{task_option}",
+                "--do_train",
+                f"--output_dir {output_dir}",
+                "--overwrite_output_dir",
+                f"--learning_rate {lr}",
+                f"--per_device_train_batch_size {train_batch_size}",
+                f"--per_device_eval_batch_size {eval_batch_size}",
+                f" --num_train_epochs {num_epochs}",
+                "--use_habana",
+                "--throughput_warmup_steps 3",
+                "--save_strategy no",
+            ]
 
-        cmd_line += [
-            f"{script}",
-            f"--model_name_or_path {model_name}",
-            f"--gaudi_config_name {gaudi_config_name}",
-            f"{task_option}",
-            "--do_train",
-            "--do_eval",
-            f"--output_dir {output_dir}",
-            "--overwrite_output_dir",
-            f"--learning_rate {lr}",
-            f"--per_device_train_batch_size {train_batch_size}",
-            f"--per_device_eval_batch_size {eval_batch_size}",
-            f" --num_train_epochs {num_epochs}",
-            "--use_habana",
-            "--use_lazy_mode",
-            "--throughput_warmup_steps 3",
-            "--save_strategy no",
-        ]
+        if "compile" in task:
+            cmd_line += ["--use_lazy_mode False"]
+        elif self.EXAMPLE_NAME != "dpo":
+            cmd_line += ["--use_lazy_mode"]
+
+        if "bloom" not in model_name and self.EXAMPLE_NAME != "dpo":
+            cmd_line.append("--do_eval")
 
         if extra_command_line_arguments is not None:
             cmd_line += extra_command_line_arguments
@@ -424,7 +542,7 @@ class ExampleTesterBase(TestCase):
         return_code = p.wait()
         self.assertEqual(return_code, 0)
 
-    def assert_no_regression(self, results: Dict, baseline: Dict):
+    def assert_no_regression(self, results: Dict, baseline: Dict, model_name: str):
         """
         Assert whether all possible performance requirements are met.
         Attributes:
@@ -437,8 +555,10 @@ class ExampleTesterBase(TestCase):
             if metric_name in baseline and metric_name in results:
                 metrics_to_assess.append(metric_name)
 
-        # There is no accuracy metric for `run_clip.py`
-        min_number_metrics = 2 if self.EXAMPLE_NAME == "run_clip" else 3
+        # There is no accuracy metric for `run_clip.py`, `run_bridgetower.py` and BLOOM
+        min_number_metrics = 3
+        if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower", "sft", "dpo"] or "bloom" in model_name:
+            min_number_metrics = 2
 
         # Check that at least 3 metrics are assessed:
         # training time + throughput + accuracy metric (F1, accuracy, perplexity,...)
@@ -476,6 +596,13 @@ class TextClassificationExampleTester(ExampleTesterBase, metaclass=ExampleTestMe
 
 class MultiCardTextClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue", multi_card=True
+):
+    TASK_NAME = "mrpc"
+    DATASET_PARAMETER_NAME = "task_name"
+
+
+class DeepSpeedTextClassificationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_glue", deepspeed=True
 ):
     TASK_NAME = "mrpc"
     DATASET_PARAMETER_NAME = "task_name"
@@ -531,18 +658,21 @@ class MultiCardAudioClassificationExampleTester(
     TASK_NAME = "common_language"
 
 
-# class SpeechRecognitionExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc"):
-#     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
-
-
 class MultiCardSpeechRecognitionExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_ctc", multi_card=True
 ):
     TASK_NAME = "regisss/librispeech_asr_for_optimum_habana_ci"
+    DATASET_NAME = os.environ.get("DATA_CACHE", None)
 
 
 class MultiCardSummarizationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", multi_card=True
+):
+    TASK_NAME = "cnn_dailymail"
+
+
+class DeepspeedSummarizationExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_summarization", deepspeed=True
 ):
     TASK_NAME = "cnn_dailymail"
 
@@ -563,7 +693,72 @@ class ProteinFoldingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, 
     pass
 
 
-class MultiCardCausalLanguageModelingLORAExampleTester(
-    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"
-):
+class ProteinFoldingExampleTester2(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_zero_shot_eval"):
     pass
+
+
+class MultiCardCausalLanguageModelingLORAExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = ["tatsu-lab/alpaca", "timdettmers/openassistant-guanaco"]
+
+
+class MultiCardBridgetowerExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_bridgetower", multi_card=True
+):
+    TASK_NAME = "jmhessel/newyorker_caption_contest"
+
+
+class MultiCardSeq2SeqSpeechRecognitionExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_speech_recognition_seq2seq", multi_card=True
+):
+    TASK_NAME = "mozilla-foundation/common_voice_11_0"
+
+
+class MultiCardCausalLanguageModelingLORAFSDPCompileExampleTester(
+    ExampleTesterBase,
+    metaclass=ExampleTestMeta,
+    example_name="run_lora_clm",
+    multi_card=True,
+    fsdp=True,
+):
+    TASK_NAME = "tatsu-lab/alpaca_fsdpcompile"
+    DATASET_NAME = "tatsu-lab/alpaca"
+
+
+class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", multi_card=True):
+    TASK_NAME = "trl-sft"
+    DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="dpo", multi_card=True):
+    TASK_NAME = "trl-dpo"
+    DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardProteinFoldingClassificationTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_sequence_classification", multi_card=True
+):
+    TASK_NAME = "prost-sequence-classification"
+    DATASET_NAME = "mila-intel/ProtST-BinaryLocalization"
+
+
+class MultiCardCausalLanguageModelingPromptTuningExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
+):
+    TASK_NAME = ["prompt-tuning"]
+    DATASET_NAME = "ought/raft"
+
+
+class MultiCardCausalLanguageModelingPrefixTuningExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
+):
+    TASK_NAME = ["prefix-tuning"]
+    DATASET_NAME = "ought/raft"
+
+
+class MultiCardCausalLanguageModelingPTuningExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
+):
+    TASK_NAME = ["p-tuning"]
+    DATASET_NAME = "ought/raft"

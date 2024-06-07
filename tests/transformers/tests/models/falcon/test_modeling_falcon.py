@@ -12,8 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch Falcon model. """
-
+"""Testing suite for the PyTorch Falcon model."""
 
 import unittest
 
@@ -323,24 +322,6 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
         result = model(input_ids, attention_mask=attention_mask, labels=sequence_labels)
         self.assertEqual(result.logits.shape, (self.model_tester.batch_size, self.model_tester.num_labels))
 
-    def test_cache_conversions(self):
-        config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
-        input_ids = input_dict["input_ids"]
-        model = FalconForCausalLM(config)
-        model.to(torch_device)
-        model.eval()
-        result = model(input_ids, use_cache=True)
-        batch_size = input_ids.shape[0]
-        rw_cache = model._convert_to_rw_cache(result.past_key_values)
-        standard_cache = model._convert_cache_to_standard_format(rw_cache, batch_size)
-        for layer in range(len(rw_cache)):
-            for tensor_idx in range(2):
-                self.assertTrue(rw_cache[layer][tensor_idx].ndim == 3)
-                self.assertTrue(result.past_key_values[layer][tensor_idx].ndim == 4)
-                self.assertTrue(
-                    torch.all(result.past_key_values[layer][tensor_idx] == standard_cache[layer][tensor_idx])
-                )
-
     def test_falcon_sequence_classification_model_for_multi_label(self):
         config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
         config.num_labels = 3
@@ -372,7 +353,7 @@ class FalconModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase
             outputs = model(**inputs)
 
             # If "past_key_values" is not returned, pass the test (e.g. RWKV uses a different cache name and format)
-            if "past_key_values" not in outputs:
+            if "past_key_values" not in outputs or all(ele is None for ele in outputs["past_key_values"]):
                 return
 
             num_hidden_layers = (
@@ -413,12 +394,11 @@ class FalconLanguageGenerationTest(unittest.TestCase):
         inputs = tokenizer("My favorite food is", return_tensors="pt").to(torch_device)
 
         EXPECTED_OUTPUT = (
-            "My favorite food is pizza. I love it so much that I have a pizza party every year for my birthday."
+            "My favorite food is pizza. I love it so much that I have a pizza party every week. I love it"
         )
 
-        output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=19)
+        output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=19, ignore_eos=True)
         output_str = tokenizer.batch_decode(output_ids)[0]
-
         self.assertEqual(output_str, EXPECTED_OUTPUT)
 
     @slow

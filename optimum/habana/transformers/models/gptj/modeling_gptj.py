@@ -5,6 +5,8 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gptj.modeling_gptj import (
+    GPTJMLP,
+    GPTJAttention,
     GPTJForCausalLM,
     apply_rotary_pos_emb,
     create_sinusoidal_positions,
@@ -12,68 +14,7 @@ from transformers.models.gptj.modeling_gptj import (
 )
 
 
-class GaudiGPTJAttention(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-
-        max_positions = config.max_position_embeddings
-        self.register_buffer(
-            "bias",
-            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.uint8)).view(
-                1, 1, max_positions, max_positions
-            ),
-        )
-        self.register_buffer("masked_bias", torch.tensor(-1e9))
-
-        self.attn_dropout = nn.Dropout(config.attn_pdrop)
-        self.resid_dropout = nn.Dropout(config.resid_pdrop)
-
-        self.embed_dim = config.hidden_size
-        self.num_attention_heads = config.num_attention_heads
-        self.head_dim = self.embed_dim // self.num_attention_heads
-        if self.head_dim * self.num_attention_heads != self.embed_dim:
-            raise ValueError(
-                f"embed_dim must be divisible by num_attention_heads (got `embed_dim`: {self.embed_dim} and"
-                f" `num_attention_heads`: {self.num_attention_heads})."
-            )
-        self.scale_attn = torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float32)).to(torch.get_default_dtype())
-
-        self.k_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
-        self.v_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
-        self.q_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
-        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
-        self.rotary_dim = config.rotary_dim
-        pos_embd_dim = self.rotary_dim or self.embed_dim
-        self.embed_positions = create_sinusoidal_positions(max_positions, pos_embd_dim)
-
-    def _split_heads(self, tensor, num_attention_heads, attn_head_size, rotary):
-        """
-        Splits hidden dim into attn_head_size and num_attention_heads
-        """
-        new_shape = tensor.size()[:-1] + (num_attention_heads, attn_head_size)
-        tensor = tensor.view(new_shape)
-        if rotary:
-            return tensor
-        if len(tensor.shape) == 5:
-            return tensor.permute(0, 1, 3, 2, 4)  # (batch, blocks, head, block_length, head_features)
-        elif len(tensor.shape) == 4:
-            return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
-        else:
-            raise ValueError(f"Input tensor rank should be one of [4, 5], but is: {len(tensor.shape)}")
-
-    def _merge_heads(self, tensor, num_attention_heads, attn_head_size):
-        """
-        Merges attn_head_size dim and num_attn_heads dim into hidden dim
-        """
-        if len(tensor.shape) == 5:
-            tensor = tensor.permute(0, 1, 3, 2, 4).contiguous()
-        elif len(tensor.shape) == 4:
-            tensor = tensor.permute(0, 2, 1, 3).contiguous()
-        else:
-            raise ValueError(f"Input tensor rank should be one of [4, 5], but is: {len(tensor.shape)}")
-        new_shape = tensor.size()[:-2] + (num_attention_heads * attn_head_size,)
-        return tensor.view(new_shape)
-
+class GaudiGPTJAttention(GPTJAttention):
     def _attn(
         self,
         query,
@@ -84,11 +25,10 @@ class GaudiGPTJAttention(nn.Module):
     ):
         # compute causal mask from causal mask buffer
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length]
 
-        # Keep the attention weights computation in fp32 to avoid overflow issues
-        query = query.to(torch.float32).contiguous()
-        key = key.to(torch.float32).contiguous()
+        query = query.contiguous()
+        key = key.contiguous()
         value = value.contiguous()
 
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
@@ -96,7 +36,7 @@ class GaudiGPTJAttention(nn.Module):
         mask_value = torch.finfo(attn_weights.dtype).min
         # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
         # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-        mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
+        mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype, device=attn_weights.device)
         attn_weights = torch.where(causal_mask, attn_weights, mask_value)
 
         attn_weights = attn_weights / self.scale_attn
@@ -117,13 +57,6 @@ class GaudiGPTJAttention(nn.Module):
 
         return attn_output, attn_weights
 
-    def _get_embed_positions(self, position_ids):
-        embed_positions = self.embed_positions
-        if embed_positions.device != position_ids.device:
-            embed_positions = embed_positions.to(position_ids.device)
-            self.embed_positions = embed_positions
-        return embed_positions.repeat(position_ids.shape[0], 1, 1)
-
     def forward(
         self,
         hidden_states: torch.FloatTensor,
@@ -134,6 +67,8 @@ class GaudiGPTJAttention(nn.Module):
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
         token_idx: Optional[torch.Tensor] = None,
+        sin: Optional[torch.Tensor] = None,
+        cos: Optional[torch.Tensor] = None,
     ) -> Union[
         Tuple[torch.Tensor, Tuple[torch.Tensor]],
         Optional[Tuple[torch.Tensor, Tuple[torch.Tensor], Tuple[torch.Tensor, ...]]],
@@ -144,6 +79,7 @@ class GaudiGPTJAttention(nn.Module):
         - add new args token_idx
         - remove is_torch_fx_proxy
         - optimize KV cache
+        - pass sin and cos from upper level as they are identical for each attn block
         """
         query = self.q_proj(hidden_states)
         key = self.k_proj(hidden_states)
@@ -153,30 +89,24 @@ class GaudiGPTJAttention(nn.Module):
         key = self._split_heads(key, self.num_attention_heads, self.head_dim, True).contiguous()
         value = self._split_heads(value, self.num_attention_heads, self.head_dim, False).contiguous()
 
-        embed_positions = self._get_embed_positions(position_ids)
-
-        repeated_position_ids = position_ids.unsqueeze(-1).repeat(1, 1, embed_positions.shape[-1])
-        sincos = torch.gather(embed_positions, 1, repeated_position_ids)
-        sin, cos = torch.split(sincos, sincos.shape[-1] // 2, dim=-1)
-
         if self.rotary_dim is not None:
             k_rot = key[:, :, :, : self.rotary_dim]
             k_pass = key[:, :, :, self.rotary_dim :]
 
             q_rot = query[:, :, :, : self.rotary_dim]
             q_pass = query[:, :, :, self.rotary_dim :]
-
-            k_rot = apply_rotary_pos_emb(k_rot, sin, cos)
-            q_rot = apply_rotary_pos_emb(q_rot, sin, cos)
+            # Note: it appears that if we use bf16 RoPE(whether use fused kernel or not), there could be acc issue, hence use fp32 RoPE here Fused kernel feasibility needs to be confirmed in the future
+            k_rot = apply_rotary_pos_emb(k_rot.to(torch.float32), sin, cos).to(torch.bfloat16)
+            q_rot = apply_rotary_pos_emb(q_rot.to(torch.float32), sin, cos).to(torch.bfloat16)
 
             key = torch.cat([k_rot, k_pass], dim=-1)
             query = torch.cat([q_rot, q_pass], dim=-1)
         else:
-            key = apply_rotary_pos_emb(key, sin, cos)
-            query = apply_rotary_pos_emb(query, sin, cos)
+            key = apply_rotary_pos_emb(key.to(torch.float32), sin, cos).to(torch.bfloat16)
+            query = apply_rotary_pos_emb(query.to(torch.float32), sin, cos).to(torch.bfloat16)
 
-        key = key.permute(0, 2, 1, 3)
-        query = query.permute(0, 2, 1, 3)
+        key = key.permute(0, 2, 1, 3).contiguous()
+        query = query.permute(0, 2, 1, 3).contiguous()
 
         if layer_past is not None:
             past_key = layer_past[0]
@@ -192,7 +122,9 @@ class GaudiGPTJAttention(nn.Module):
                 value = torch.cat([past_value, value], dim=-2)
 
         if use_cache is True:
-            present = (key, value)
+            # Note that this cast is quite ugly, but is not implemented before ROPE as the original codebase keeps the key in float32 all along the computation.
+            # Reference: https://github.com/kingoflolz/mesh-transformer-jax/blob/f8315e3003033b23f21d78361b288953064e0e76/mesh_transformer/layers.py#L128
+            present = (key.to(hidden_states.dtype), value)
         else:
             present = None
 
@@ -210,46 +142,59 @@ class GaudiGPTJAttention(nn.Module):
         return outputs  # a, present, (attentions)
 
 
-def gaudi_gptj_block_forward(
-    self,
-    hidden_states: Optional[torch.FloatTensor],
-    layer_past: Optional[Tuple[torch.Tensor]] = None,
-    attention_mask: Optional[torch.FloatTensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    head_mask: Optional[torch.FloatTensor] = None,
-    use_cache: Optional[bool] = False,
-    output_attentions: Optional[bool] = False,
-    token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
-    """
-    Copied from GPTJBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/modeling_gptj.py
-    The only differences are:
-    - add new args token_idx
-    """
-    residual = hidden_states
-    hidden_states = self.ln_1(hidden_states)
-    attn_outputs = self.attn(
-        hidden_states=hidden_states,
-        layer_past=layer_past,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        head_mask=head_mask,
-        use_cache=use_cache,
-        output_attentions=output_attentions,
-        token_idx=token_idx,
-    )
-    attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
-    outputs = attn_outputs[1:]
+class GaudiGPTJBlock(torch.nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        inner_dim = config.n_inner if config.n_inner is not None else 4 * config.n_embd
+        self.ln_1 = torch.nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
+        self.attn = GaudiGPTJAttention(config)
+        self.mlp = GPTJMLP(inner_dim, config)
 
-    feed_forward_hidden_states = self.mlp(hidden_states)
-    hidden_states = attn_output + feed_forward_hidden_states + residual
+    def forward(
+        self,
+        hidden_states: Optional[torch.FloatTensor],
+        layer_past: Optional[Tuple[torch.Tensor]] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = False,
+        output_attentions: Optional[bool] = False,
+        token_idx: Optional[torch.Tensor] = None,
+        sin: Optional[torch.Tensor] = None,
+        cos: Optional[torch.Tensor] = None,
+    ) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
+        """
+        Copied from GPTJBlock.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/modeling_gptj.py
+        The only differences are:
+        - add new args token_idx
+        - pass sin and cos from upper level as they are identical for each attn block
+        """
+        residual = hidden_states
+        hidden_states = self.ln_1(hidden_states)
+        attn_outputs = self.attn(
+            hidden_states=hidden_states,
+            layer_past=layer_past,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            token_idx=token_idx,
+            sin=sin,
+            cos=cos,
+        )
+        attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
+        outputs = attn_outputs[1:]
 
-    if use_cache:
-        outputs = (hidden_states,) + outputs
-    else:
-        outputs = (hidden_states,) + outputs[1:]
+        feed_forward_hidden_states = self.mlp(hidden_states)
+        hidden_states = attn_output + feed_forward_hidden_states + residual
 
-    return outputs  # hidden_states, present, (attentions)
+        if use_cache:
+            outputs = (hidden_states,) + outputs
+        else:
+            outputs = (hidden_states,) + outputs[1:]
+
+        return outputs  # hidden_states, present, (attentions)
 
 
 def gaudi_gptj_model_forward(
@@ -266,11 +211,14 @@ def gaudi_gptj_model_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
+    sin: Optional[torch.Tensor] = None,
+    cos: Optional[torch.Tensor] = None,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from GPTJModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/modeling_gptj.py
     The only differences are:
     - add new args token_idx
+    - pass sin and cos from upper level as they are identical for each attn block
     """
     output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
     output_hidden_states = (
@@ -297,9 +245,6 @@ def gaudi_gptj_model_forward(
     if token_type_ids is not None:
         token_type_ids = token_type_ids.view(-1, input_shape[-1])
 
-    if position_ids is not None:
-        position_ids = position_ids.view(-1, input_shape[-1]).long()
-
     if past_key_values is None:
         past_length = 0
         past_key_values = tuple([None] * len(self.h))
@@ -308,7 +253,7 @@ def gaudi_gptj_model_forward(
 
     if position_ids is None:
         position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
-        position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+        position_ids = position_ids.unsqueeze(0)
 
     # Attention mask.
     if attention_mask is not None:
@@ -359,6 +304,22 @@ def gaudi_gptj_model_forward(
     presents = () if use_cache else None
     all_self_attentions = () if output_attentions else None
     all_hidden_states = () if output_hidden_states else None
+
+    # replace original `_get_embed_positions` method and sin cos calculation in the attn block here to improve perf
+    rotary_dim = self.config.rotary_dim
+    embed_dim = self.config.hidden_size
+    pos_embd_dim = rotary_dim or embed_dim
+    max_positions = self.config.max_position_embeddings
+    embed_positions = create_sinusoidal_positions(max_positions, pos_embd_dim).to(torch.bfloat16)
+    embed_positions = embed_positions.repeat(position_ids.shape[0], 1, 1)
+    if embed_positions.device != position_ids.device:
+        embed_positions = embed_positions.to(position_ids.device)
+    repeated_position_ids = position_ids.unsqueeze(-1).repeat(1, 1, embed_positions.shape[-1])
+    sincos = torch.gather(embed_positions, 1, repeated_position_ids)
+    sin, cos = torch.split(sincos, sincos.shape[-1] // 2, dim=-1)
+    sin = sin.contiguous()
+    cos = cos.contiguous()
+
     for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
         # Model parallel
         if self.model_parallel:
@@ -375,21 +336,18 @@ def gaudi_gptj_model_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, use_cache, output_attentions)
-
-                return custom_forward
-
-            outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(block),
+            outputs = self._gradient_checkpointing_func(
+                block.__call__,
                 hidden_states,
                 None,
                 attention_mask,
                 position_ids,
                 head_mask[i],
+                use_cache,
+                output_attentions,
+                None,
+                sin,
+                cos,
             )
         else:
             outputs = block(
@@ -401,6 +359,8 @@ def gaudi_gptj_model_forward(
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 token_idx=token_idx,
+                sin=sin,
+                cos=cos,
             )
 
         hidden_states = outputs[0]
@@ -449,18 +409,27 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
         self, input_ids, past_key_values=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         token_type_ids = kwargs.get("token_type_ids", None)
-        # only last token for inputs_ids if past is defined in kwargs
+        # Omit tokens covered by past_key_values
         if past_key_values:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
-                input_ids = input_ids[:, -1].unsqueeze(-1)
+                past_length = past_key_values[0][0].shape[2]
+
+                # Some generation methods already pass only the last input ID
+                if input_ids.shape[1] > past_length:
+                    remove_prefix_length = past_length
+                else:
+                    # Default to old behavior: keep only final ID
+                    remove_prefix_length = input_ids.shape[1] - 1
+
+                input_ids = input_ids[:, remove_prefix_length:]
 
             if token_type_ids is not None:
                 if token_idx is not None:
                     token_type_ids = torch.index_select(token_type_ids, 1, token_idx - 1)
                 else:
-                    token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
+                    token_type_ids = token_type_ids[:, -input_ids.shape[1] :]
 
         attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
@@ -473,7 +442,7 @@ class GaudiGPTJForCausalLM(GPTJForCausalLM):
                 if token_idx is not None:
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -1].unsqueeze(-1)
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:

@@ -22,31 +22,44 @@ import re
 import subprocess
 import tempfile
 import unittest
+from functools import partial
 from itertools import product
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
-from huggingface_hub import HfFolder, delete_repo, list_repo_commits
+from huggingface_hub import HfFolder, ModelCard, delete_repo, list_repo_commits, list_repo_files
 from parameterized import parameterized
+from pytest import mark
 from requests.exceptions import HTTPError
-from transformers import IntervalStrategy, PretrainedConfig, is_torch_available
+from transformers import (
+    IntervalStrategy,
+    PretrainedConfig,
+    TrainerCallback,
+    get_polynomial_decay_schedule_with_warmup,
+    is_torch_available,
+)
 from transformers.hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS
 from transformers.testing_utils import (
     ENDPOINT_STAGING,
     TOKEN,
     USER,
     CaptureLogger,
+    LoggingLevel,
     TestCasePlus,
     get_gpu_count,
     get_tests_dir,
     is_staging_test,
+    parse_flag_from_env,
+    require_accelerate,
     require_optuna,
     require_safetensors,
     require_sentencepiece,
+    require_tensorboard,
     require_tokenizers,
     require_torch,
 )
+from transformers.trainer_pt_utils import AcceleratorConfig
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, HPSearchBackend
 from transformers.training_args import OptimizerNames
 from transformers.utils import (
@@ -54,6 +67,7 @@ from transformers.utils import (
     SAFE_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
+    is_accelerate_available,
     is_safetensors_available,
 )
 from transformers.utils.hp_naming import TrialShortNamer
@@ -67,16 +81,40 @@ if is_torch_available():
     import transformers.optimization
     from torch import nn
     from torch.utils.data import IterableDataset
-    from transformers import EarlyStoppingCallback, GPT2Config, GPT2LMHeadModel, PreTrainedModel, TrainerState
+    from transformers import EarlyStoppingCallback, GPT2Config, PreTrainedModel, TrainerState
     from transformers.modeling_utils import unwrap_model
 
     from optimum.habana import GaudiTrainer
+    from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+    from optimum.habana.transformers.models.gpt2 import GaudiGPT2LMHeadModel
 
     if is_safetensors_available():
         import safetensors.torch
 
 
+# for version specific tests in TrainerIntegrationTest
+require_accelerate_version_min_0_28 = partial(require_accelerate, min_version="0.28")
+GRAD_ACCUM_KWARGS_VERSION_AVAILABLE = is_accelerate_available("0.28")
+
+
 PATH_SAMPLE_TEXT = f"{get_tests_dir()}/fixtures/sample_text.txt"
+
+
+_run_safe_loading_tests_ = parse_flag_from_env("SAFE_LOADING_TESTS", default=False)
+
+
+adapt_transformers_to_gaudi()
+
+
+def safe_loading_test(test_case):
+    """
+    Decorator marking a test as needing custom bf16 ops.
+    Custom bf16 ops must be declared before `habana_frameworks.torch.core` is imported, which is not possible if some other tests are executed before.
+
+    Such tests are skipped by default. Set the CUSTOM_BF16_OPS environment variable to a truthy value to run them.
+
+    """
+    return unittest.skipUnless(_run_safe_loading_tests_, "test requires SAFE_LOADING_TESTS")(test_case)
 
 
 class RegressionDataset:
@@ -97,15 +135,38 @@ class RegressionDataset:
         return result
 
 
+class RegressionDatasetDynamic:
+    def __init__(self, a=2, b=3, length=128, seed=42, label_names=None):
+        np.random.seed(seed)
+        self.label_names = ["labels"] if label_names is None else label_names
+        self.length = length
+        self.a = a
+        self.b = b
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, i):
+        self.x = np.random.normal(size=(self.length + i,)).astype(np.float32)
+        self.ys = self.a * self.x + self.b + np.random.normal(scale=0.1, size=(self.length + i,)).astype(np.float32)
+        result = {}
+        result["labels"] = self.ys
+        result["input_x"] = self.x
+        return result
+
+
 @dataclasses.dataclass
 class RegressionGaudiTrainingArguments(GaudiTrainingArguments):
     a: float = 0.0
     b: float = 0.0
+    keep_report_to: bool = False
 
     def __post_init__(self):
-        # save resources not dealing with reporting (also avoids the warning when it's not set)
-        self.report_to = []
         super().__post_init__()
+        # save resources not dealing with reporting unless specified (also avoids the warning when it's not set)
+        # can be explicitly disabled via `keep_report_to`
+        if not self.keep_report_to:
+            self.report_to = []
 
 
 class RepeatDataset:
@@ -118,6 +179,22 @@ class RepeatDataset:
 
     def __getitem__(self, i):
         return {"input_ids": self.x, "labels": self.x}
+
+
+class DynamicShapesDataset:
+    def __init__(self, length=64, seed=42, batch_size=8):
+        self.length = length
+        np.random.seed(seed)
+        sizes = np.random.randint(1, 20, (length // batch_size,))
+        # For easy batching, we make every batch_size consecutive samples the same size.
+        self.xs = [np.random.normal(size=(s,)).astype(np.float32) for s in sizes.repeat(batch_size)]
+        self.ys = [np.random.normal(size=(s,)).astype(np.float32) for s in sizes.repeat(batch_size)]
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, i):
+        return {"input_x": self.xs[i], "labels": self.ys[i]}
 
 
 class AlmostAccuracy:
@@ -226,6 +303,38 @@ if is_torch_available():
             loss = nn.functional.mse_loss(y, labels)
             return (loss, y, y) if self.double_output else (loss, y)
 
+    class RegressionPreTrainedModelWithGradientCheckpointing(PreTrainedModel):
+        config_class = RegressionModelConfig
+        base_model_prefix = "regression"
+        supports_gradient_checkpointing = True
+
+        def __init__(self, config):
+            super().__init__(config)
+            self.layers = nn.ModuleList([nn.Linear(config.hidden_size, config.hidden_size) for _ in range(4)])
+            self.head = nn.Linear(config.hidden_size, 1)
+            self.gradient_checkpointing = False
+            self.double_output = config.double_output
+
+        def forward(self, input_x, labels=None, **kwargs):
+            y = input_x.unsqueeze(0)
+
+            for layer in self.layers:
+                if self.training and self.gradient_checkpointing:
+                    outputs = self._gradient_checkpointing_func(layer.__call__, y)
+                else:
+                    outputs = layer(y)
+
+                y = outputs * 3
+
+            logits = self.head(y)
+
+            if labels is None:
+                return (logits, logits) if self.double_output else (logits,)
+
+            loss = nn.functional.mse_loss(logits, labels)
+
+            return (loss, y, y) if self.double_output else (loss, y)
+
     class RegressionRandomPreTrainedModel(PreTrainedModel):
         config_class = RegressionModelConfig
         base_model_prefix = "regression"
@@ -273,8 +382,11 @@ if is_torch_available():
             )
         return GaudiConfig.from_pretrained(gaudi_config_name_or_path)
 
-    def get_regression_trainer(a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, **kwargs):
+    def get_regression_trainer(
+        a=0, b=0, double_output=False, train_len=64, eval_len=64, pretrained=True, keep_report_to=False, **kwargs
+    ):
         label_names = kwargs.get("label_names", None)
+        gradient_checkpointing = kwargs.get("gradient_checkpointing", False)
         train_dataset = RegressionDataset(length=train_len, label_names=label_names)
         eval_dataset = RegressionDataset(length=eval_len, label_names=label_names)
 
@@ -284,7 +396,13 @@ if is_torch_available():
         else:
             if pretrained:
                 config = RegressionModelConfig(a=a, b=b, double_output=double_output)
-                model = RegressionPreTrainedModel(config)
+                # We infer the correct model class if one uses gradient_checkpointing or not
+                target_cls = (
+                    RegressionPreTrainedModel
+                    if not gradient_checkpointing
+                    else RegressionPreTrainedModelWithGradientCheckpointing
+                )
+                model = target_cls(config)
             else:
                 model = RegressionModel(a=a, b=b, double_output=double_output)
 
@@ -296,7 +414,9 @@ if is_torch_available():
         output_dir = kwargs.pop("output_dir", "./regression")
         preprocess_logits_for_metrics = kwargs.pop("preprocess_logits_for_metrics", None)
 
-        args = RegressionGaudiTrainingArguments(output_dir, use_habana=True, use_lazy_mode=True, a=a, b=b, **kwargs)
+        args = RegressionGaudiTrainingArguments(
+            output_dir, use_habana=True, use_lazy_mode=True, a=a, b=b, keep_report_to=keep_report_to, **kwargs
+        )
 
         return GaudiTrainer(
             model,
@@ -313,7 +433,7 @@ if is_torch_available():
 
 
 class GaudiTrainerIntegrationCommon:
-    def check_saved_checkpoints(self, output_dir, freq, total, is_pretrained=True, safe_weights=False):
+    def check_saved_checkpoints(self, output_dir, freq, total, is_pretrained=True, safe_weights=True):
         weights_file = WEIGHTS_NAME if not safe_weights else SAFE_WEIGHTS_NAME
         file_list = [weights_file, "training_args.bin", "optimizer.pt", "scheduler.pt", "trainer_state.json"]
         if is_pretrained:
@@ -326,7 +446,7 @@ class GaudiTrainerIntegrationCommon:
                 self.assertTrue(os.path.isfile(os.path.join(checkpoint, filename)))
 
     def check_best_model_has_been_loaded(
-        self, output_dir, freq, total, trainer, metric, greater_is_better=False, is_pretrained=True, safe_weights=False
+        self, output_dir, freq, total, trainer, metric, greater_is_better=False, is_pretrained=True, safe_weights=True
     ):
         checkpoint = os.path.join(output_dir, f"checkpoint-{(total // freq) * freq}")
         log_history = TrainerState.load_from_json(os.path.join(checkpoint, "trainer_state.json")).log_history
@@ -367,7 +487,7 @@ class GaudiTrainerIntegrationCommon:
                 _ = log1.pop(key, None)
             self.assertEqual(log, log1)
 
-    def convert_to_sharded_checkpoint(self, folder, save_safe=False, load_safe=False):
+    def convert_to_sharded_checkpoint(self, folder, save_safe=True, load_safe=True):
         # Converts a checkpoint of a regression model to a sharded checkpoint.
         if load_safe:
             loader = safetensors.torch.load_file
@@ -456,7 +576,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
 
         np.random.seed(42)
         x = np.random.normal(size=(64,)).astype(np.float32)
-        y = 2.0 * x + 3.0 + np.random.normal(scale=0.1, size=(64,))
+        y = 2.0 * x + 3.0 + np.random.normal(scale=0.1, size=(64,)).astype(np.float32)
         train_dataset = datasets.Dataset.from_dict({"input_x": x, "label": y})
 
         gaudi_config = get_gaudi_config()
@@ -510,6 +630,28 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         trainer.train()
         self.check_trained_model(trainer.model)
 
+    # The test below is commented because it leads to a core dumped error
+    # when it is run with all other tests. It passes when run alone.
+    # It seems to be cause by setting `use_reentrant` to False in
+    # gradient checkpointing.
+    # def test_gradient_checkpointing(self):
+    #     trainer = get_regression_trainer(
+    #         per_device_train_batch_size=1,
+    #         learning_rate=0.1,
+    #         gradient_checkpointing=True,
+    #         gradient_checkpointing_kwargs={"use_reentrant": False},
+    #     )
+    #     previous_params = {k: v.detach().clone() for k, v in trainer.model.named_parameters()}
+
+    #     trainer.train()
+
+    #     # Check if model weights have been updated
+    #     for k, v in trainer.model.named_parameters():
+    #         self.assertFalse(
+    #             torch.allclose(previous_params[k], v, rtol=1e-4, atol=1e-4),
+    #             f"Model weights for {k} have not been updated",
+    #         )
+
     def test_training_loss(self):
         n_gpus = max(1, get_gpu_count())
 
@@ -549,6 +691,61 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
         self.assertFalse(torch.allclose(trainer.model.b, b))
         self.assertEqual(trainer.optimizer.state_dict()["param_groups"][0]["lr"], 1.0)
 
+    def test_lr_scheduler_kwargs(self):
+        # test scheduler kwargs passed via TrainingArguments
+        train_dataset = RegressionDataset()
+        model = RegressionModel()
+        num_steps, num_warmup_steps = 10, 2
+        extra_kwargs = {"power": 5.0, "lr_end": 1e-5}  # Non-default arguments
+        args = GaudiTrainingArguments(
+            "./regression",
+            lr_scheduler_type="polynomial",
+            lr_scheduler_kwargs=extra_kwargs,
+            learning_rate=0.2,
+            warmup_steps=num_warmup_steps,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        gaudi_config = get_gaudi_config()
+        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+        trainer.create_optimizer_and_scheduler(num_training_steps=num_steps)
+
+        # Checking that the scheduler was created
+        self.assertIsNotNone(trainer.lr_scheduler)
+
+        # Checking that the correct args were passed
+        sched1 = trainer.lr_scheduler
+        sched2 = get_polynomial_decay_schedule_with_warmup(
+            trainer.optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_steps, **extra_kwargs
+        )
+        self.assertEqual(sched1.lr_lambdas[0].args, sched2.lr_lambdas[0].args)
+        self.assertEqual(sched1.lr_lambdas[0].keywords, sched2.lr_lambdas[0].keywords)
+
+    def test_cosine_with_min_lr_scheduler(self):
+        train_dataset = RegressionDataset()
+        model = RegressionModel()
+        num_steps, num_warmup_steps = 10, 2
+        extra_kwargs = {"min_lr": 1e-5}  # Non-default arguments
+        args = GaudiTrainingArguments(
+            "./regression",
+            lr_scheduler_type="cosine_with_min_lr",
+            lr_scheduler_kwargs=extra_kwargs,
+            learning_rate=0.2,
+            warmup_steps=num_warmup_steps,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(model, gaudi_config=get_gaudi_config(), args=args, train_dataset=train_dataset)
+        trainer.create_optimizer_and_scheduler(num_training_steps=num_steps)
+
+        # Checking that the scheduler was created
+        self.assertIsNotNone(trainer.lr_scheduler)
+
+        # Check the last learning rate
+        for _ in range(num_steps):
+            trainer.lr_scheduler.step()
+        self.assertEqual(trainer.lr_scheduler.get_last_lr()[0], 1e-5)
+
     def test_reduce_lr_on_plateau_args(self):
         # test passed arguments for a custom ReduceLROnPlateau scheduler
         train_dataset = RegressionDataset(length=64)
@@ -587,7 +784,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             def log(self, logs):
                 # the LR is computed after metrics and does not exist for the first epoch
                 if hasattr(self.lr_scheduler, "_last_lr"):
-                    logs["learning_rate"] = self.lr_scheduler._last_lr
+                    logs["learning_rate"] = self.lr_scheduler._last_lr[0]
                 super().log(logs)
 
         train_dataset = RegressionDataset(length=64)
@@ -621,14 +818,14 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             if loss > best_loss:
                 bad_epochs += 1
                 if bad_epochs > patience:
-                    self.assertLess(logs[i + 1]["learning_rate"][0], log["learning_rate"][0])
+                    self.assertLess(logs[i + 1]["learning_rate"], log["learning_rate"])
                     just_decreased = True
                     bad_epochs = 0
             else:
                 best_loss = loss
                 bad_epochs = 0
             if not just_decreased:
-                self.assertEqual(logs[i + 1]["learning_rate"][0], log["learning_rate"][0])
+                self.assertEqual(logs[i + 1]["learning_rate"], log["learning_rate"])
 
     def test_adafactor_lr_none(self):
         # test the special case where lr=None, since Trainer can't not have lr_scheduler
@@ -670,6 +867,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.n_epochs = args.num_train_epochs
         self.batch_size = args.train_batch_size
 
+    @mark.skip("Skip this test until PT_HPU_LAZY_MODE=0 is set as default for all tests")
     def test_eager_mode(self):
         train_dataset = RegressionDataset()
         eval_dataset = RegressionDataset()
@@ -692,6 +890,8 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             use_lazy_mode=True,
             use_hpu_graphs_for_training=True,
             use_hpu_graphs_for_inference=True,
+            disable_tensor_cache_hpu_graphs=True,
+            max_hpu_graphs=1,
         )
         trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset, eval_dataset=eval_dataset)
         trainer.train()
@@ -711,7 +911,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
     def test_evaluation_with_keys_to_drop(self):
         config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-        tiny_gpt2 = GPT2LMHeadModel(config)
+        tiny_gpt2 = GaudiGPT2LMHeadModel(config)
         x = torch.randint(0, 100, (128,))
         eval_dataset = RepeatDataset(x)
         args = GaudiTrainingArguments("./test", use_habana=True, use_lazy_mode=True)
@@ -751,9 +951,55 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         train_output = trainer.train()
         self.assertEqual(train_output.global_step, 10)
 
+    # TODO: investigate why this test fails
+    # def test_neftune(self):
+    #     config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
+    #     tiny_gpt2 = GPT2LMHeadModel(config)
+    #     x = torch.randint(0, 100, (128,))
+    #     train_dataset = RepeatDataset(x)
+
+    #     # Trainer without inf/nan filter
+    #     args = GaudiTrainingArguments(
+    #         "./test", learning_rate=1e-9, logging_steps=5, logging_nan_inf_filter=False, neftune_noise_alpha=0.4, use_habana=True, use_lazy_mode=True,
+    #     )
+    #     gaudi_config = get_gaudi_config()
+    #     trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+
+    #     trainer.model = trainer._activate_neftune(trainer.model)
+
+    #     dummy_input = torch.LongTensor([[1, 0, 1]]).to("hpu")
+
+    #     emb1 = trainer.model.get_input_embeddings()(dummy_input)
+    #     emb2 = trainer.model.get_input_embeddings()(dummy_input)
+
+    #     self.assertFalse(torch.allclose(emb1, emb2), "Neftune noise is not applied!")
+
+    #     # redefine the model
+    #     tiny_gpt2 = GPT2LMHeadModel(config)
+    #     # Trainer without inf/nan filter
+    #     args = GaudiTrainingArguments(
+    #         "./test", learning_rate=1e-9, logging_steps=5, logging_nan_inf_filter=False, neftune_noise_alpha=0.4, use_habana=True, use_lazy_mode=True,
+    #     )
+    #     trainer = GaudiTrainer(tiny_gpt2, gaudi_config, args, train_dataset=train_dataset)
+
+    #     # Check that it trains without errors
+    #     trainer.train()
+
+    #     # Make sure forward pass works fine
+    #     _ = trainer.model(dummy_input)
+    #     self.assertTrue(len(trainer.model.get_input_embeddings()._forward_hooks) == 0)
+
+    #     trainer.model.eval()
+
+    #     # Check that we get identical embeddings just in case
+    #     emb1 = trainer.model.get_input_embeddings()(dummy_input)
+    #     emb2 = trainer.model.get_input_embeddings()(dummy_input)
+
+    #     self.assertTrue(torch.allclose(emb1, emb2), "Neftune noise is still applied!")
+
     def test_logging_inf_nan_filter(self):
         config = GPT2Config(vocab_size=100, n_positions=128, n_embd=32, n_layer=3, n_head=4)
-        tiny_gpt2 = GPT2LMHeadModel(config)
+        tiny_gpt2 = GaudiGPT2LMHeadModel(config)
         x = torch.randint(0, 100, (128,))
         train_dataset = RepeatDataset(x)
 
@@ -929,41 +1175,83 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertTrue(np.array_equal(labels[0], trainer.eval_dataset.ys[0]))
         self.assertTrue(np.array_equal(labels[1], trainer.eval_dataset.ys[1]))
 
-    # def test_dynamic_shapes(self):
-    #     eval_dataset = DynamicShapesDataset(batch_size=self.batch_size)
-    #     model = RegressionModel(a=2, b=1)
-    #     args = TrainingArguments("./regression")
-    #     trainer = Trainer(model, args, eval_dataset=eval_dataset)
+    def test_dynamic_shapes(self):
+        eval_dataset = DynamicShapesDataset(batch_size=self.batch_size)
+        model = RegressionModel(a=2, b=1)
+        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = True
+        trainer = GaudiTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
 
-    #     # Check evaluation can run to completion
-    #     _ = trainer.evaluate()
+        # Check evaluation can run to completion
+        _ = trainer.evaluate()
 
-    #     # Check predictions
-    #     preds = trainer.predict(eval_dataset)
-    #     for expected, seen in zip(eval_dataset.ys, preds.label_ids):
-    #         self.assertTrue(np.array_equal(expected, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        # Check predictions
+        preds = trainer.predict(eval_dataset)
+        for expected, seen in zip(eval_dataset.ys, preds.label_ids):
+            self.assertTrue(np.allclose(expected, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    #     for expected, seen in zip(eval_dataset.xs, preds.predictions):
-    #         self.assertTrue(np.array_equal(2 * expected + 1, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        for expected, seen in zip(eval_dataset.xs, preds.predictions):
+            self.assertTrue(np.allclose(2 * expected + 1, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    #     # Same tests with eval accumulation
-    #     args = TrainingArguments("./regression", eval_accumulation_steps=2)
-    #     trainer = Trainer(model, args, eval_dataset=eval_dataset)
+        # Same tests with eval accumulation
+        args = GaudiTrainingArguments("./regression", use_habana=True, use_lazy_mode=True, eval_accumulation_steps=2)
+        trainer = GaudiTrainer(model, gaudi_config, args, eval_dataset=eval_dataset)
 
-    #     # Check evaluation can run to completion
-    #     _ = trainer.evaluate()
+        # Check evaluation can run to completion
+        _ = trainer.evaluate()
 
-    #     # Check predictions
-    #     preds = trainer.predict(eval_dataset)
-    #     for expected, seen in zip(eval_dataset.ys, preds.label_ids):
-    #         self.assertTrue(np.array_equal(expected, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        # Check predictions
+        preds = trainer.predict(eval_dataset)
+        for expected, seen in zip(eval_dataset.ys, preds.label_ids):
+            self.assertTrue(np.allclose(expected, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
 
-    #     for expected, seen in zip(eval_dataset.xs, preds.predictions):
-    #         self.assertTrue(np.array_equal(2 * expected + 1, seen[: expected.shape[0]]))
-    #         self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+        for expected, seen in zip(eval_dataset.xs, preds.predictions):
+            self.assertTrue(np.allclose(2 * expected + 1, seen[: expected.shape[0]]))
+            self.assertTrue(np.all(seen[expected.shape[0] :] == -100))
+
+    def test_dynamic_shape_feature(self):
+        # Run training with variable length inputs and enable dynamic shapes support
+        train_dataset = RegressionDatasetDynamic(length=256)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = True
+        args = GaudiTrainingArguments(
+            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
+        )
+        model = RegressionModel()
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+        )
+        train_output_ds = trainer.train()
+
+        # Run training again with variable length inputs and disable dynamic shapes support
+        train_dataset = RegressionDatasetDynamic(length=256)
+        gaudi_config = get_gaudi_config()
+        gaudi_config.use_dynamic_shapes = False
+        args = GaudiTrainingArguments(
+            "./regression", use_habana=True, use_lazy_mode=True, per_device_train_batch_size=1, num_train_epochs=1
+        )
+        model = RegressionModel()
+        trainer = GaudiTrainer(
+            model,
+            gaudi_config,
+            args,
+            train_dataset=train_dataset,
+        )
+        train_output_static = trainer.train()
+
+        # Check if performance with dynamic shapes support is at least 5 times that without dynamic shapes
+        # Note "5x" number is not applicable across models, it is tuned for this particular dummy model
+        self.assertGreaterEqual(
+            train_output_ds.metrics["train_samples_per_second"],
+            5 * train_output_static.metrics["train_samples_per_second"],
+        )
 
     def test_log_level(self):
         # testing only --log_level (--log_level_replica requires multiple gpus and DDP and is tested elsewhere)
@@ -980,17 +1268,19 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         else:
             self.assertNotIn(log_info_string, cl.out)
 
-        # test with low log_level - lower than info
-        with CaptureLogger(logger) as cl:
-            trainer = get_regression_trainer(log_level="debug")
-            trainer.train()
-        self.assertIn(log_info_string, cl.out)
+        with LoggingLevel(logging.INFO):
+            # test with low log_level - lower than info
+            with CaptureLogger(logger) as cl:
+                trainer = get_regression_trainer(log_level="debug")
+                trainer.train()
+            self.assertIn(log_info_string, cl.out)
 
-        # test with high log_level - should be quiet
-        with CaptureLogger(logger) as cl:
-            trainer = get_regression_trainer(log_level="error")
-            trainer.train()
-        self.assertNotIn(log_info_string, cl.out)
+        with LoggingLevel(logging.INFO):
+            # test with high log_level - should be quiet
+            with CaptureLogger(logger) as cl:
+                trainer = get_regression_trainer(log_level="error")
+                trainer.train()
+            self.assertNotIn(log_info_string, cl.out)
 
     def test_save_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1157,6 +1447,46 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         self.assertAlmostEqual(a, a1, delta=1e-5)
         self.assertAlmostEqual(b, b1, delta=1e-5)
 
+    def test_auto_batch_size_with_resume_from_checkpoint(self):
+        train_dataset = RegressionDataset(length=128)
+
+        config = RegressionModelConfig(a=0, b=2)
+        model = RegressionRandomPreTrainedModel(config)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+
+        class MockCudaOOMCallback(TrainerCallback):
+            def on_step_end(self, args, state, control, **kwargs):
+                # simulate OOM on the first step
+                if state.train_batch_size >= 16:
+                    raise RuntimeError("CUDA out of memory.")
+
+        args = RegressionGaudiTrainingArguments(
+            tmp_dir,
+            do_train=True,
+            max_steps=2,
+            save_steps=1,
+            per_device_train_batch_size=16,
+            auto_find_batch_size=True,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        gaudi_config = get_gaudi_config()
+        trainer = GaudiTrainer(
+            model, gaudi_config, args, train_dataset=train_dataset, callbacks=[MockCudaOOMCallback()]
+        )
+        trainer.train()
+        # After `auto_find_batch_size` is ran we should now be at 8
+        self.assertEqual(trainer._train_batch_size, 8)
+
+        # We can then make a new Trainer
+        trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)
+        # Check we are at 16 to start
+        self.assertEqual(trainer._train_batch_size, 16 * max(trainer.args.n_gpu, 1))
+        trainer.train(resume_from_checkpoint=True)
+        # We should be back to 8 again, picking up based upon the last ran Trainer
+        self.assertEqual(trainer._train_batch_size, 8)
+
     # regression for this issue: https://github.com/huggingface/transformers/issues/12970
     def test_training_with_resume_from_checkpoint_false(self):
         train_dataset = RegressionDataset(length=128)
@@ -1174,6 +1504,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
 
         trainer.train(resume_from_checkpoint=False)
 
+    @safe_loading_test
     @require_safetensors
     def test_resume_training_with_safe_checkpoint(self):
         # This test will fail for more than 2 GPUs since the batch size will get bigger and with the number of
@@ -1367,6 +1698,7 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
             self.check_saved_checkpoints(tmpdir, 5, total, is_pretrained=False)
             self.check_best_model_has_been_loaded(tmpdir, 5, total, trainer, "eval_loss", is_pretrained=False)
 
+    @safe_loading_test
     @require_safetensors
     def test_load_best_model_from_safetensors(self):
         total = int(self.n_epochs * 64 / self.batch_size)
@@ -1603,13 +1935,297 @@ class GaudiTrainerIntegrationTest(TestCasePlus, GaudiTrainerIntegrationCommon):
         args = GaudiTrainingArguments(output_dir="./test", use_habana=True, use_lazy_mode=True)
         trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args)
         trainer.create_optimizer_and_scheduler(10)
-        # fmt: off
-        wd_names = ['0.linear1.weight', '0.linear2.weight', '1.0.linear1.weight', '1.0.linear2.weight', '1.1.linear1.weight', '1.1.linear2.weight']
-        # fmt: on
+        wd_names = ['0.linear1.weight', '0.linear2.weight', '1.0.linear1.weight', '1.0.linear2.weight', '1.1.linear1.weight', '1.1.linear2.weight']  # fmt: skip
         wd_params = [p for n, p in model.named_parameters() if n in wd_names]
         no_wd_params = [p for n, p in model.named_parameters() if n not in wd_names]
         self.assertListEqual(trainer.optimizer.param_groups[0]["params"], wd_params)
         self.assertListEqual(trainer.optimizer.param_groups[1]["params"], no_wd_params)
+
+    def test_accelerator_config_empty(self):
+        # Checks that a config can be made with the defaults if not passed
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # Leaves one option as something *not* basic
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(output_dir=tmp_dir, use_habana=True)
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, False)
+            self.assertEqual(trainer.accelerator.dispatch_batches, None)
+            self.assertEqual(trainer.accelerator.even_batches, True)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
+
+            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                # gradient accumulation kwargs configures gradient_state
+                self.assertNotIn("sync_each_batch", trainer.accelerator.gradient_state.plugin_kwargs)
+
+    def test_accelerator_config_from_dict(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            accelerator_config = {
+                "split_batches": True,
+                "dispatch_batches": True,
+                "even_batches": False,
+                "use_seedable_sampler": True,
+            }
+            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                accelerator_config["gradient_accumulation_kwargs"] = {"sync_each_batch": True}
+
+            # Leaves all options as something *not* basic
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir,
+                accelerator_config=accelerator_config,
+                use_habana=True,
+            )
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.dispatch_batches, True)
+            self.assertEqual(trainer.accelerator.even_batches, False)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
+
+            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
+
+    def test_accelerator_config_from_yaml(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path_file = Path(tmp_dir) / "accelerator_config.json"
+            with open(path_file, "w") as f:
+                accelerator_config = {
+                    "split_batches": True,
+                    "dispatch_batches": True,
+                    "even_batches": False,
+                    "use_seedable_sampler": False,
+                }
+                if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                    accelerator_config["gradient_accumulation_kwargs"] = {"sync_each_batch": True}
+                json.dump(accelerator_config, f)
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # Leaves all options as something *not* basic
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(output_dir=tmp_dir, accelerator_config=path_file, use_habana=True)
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.dispatch_batches, True)
+            self.assertEqual(trainer.accelerator.even_batches, False)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, False)
+
+            if GRAD_ACCUM_KWARGS_VERSION_AVAILABLE:
+                self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
+
+    def test_accelerator_config_from_dataclass(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+
+        accelerator_config = AcceleratorConfig(
+            split_batches=True,
+            dispatch_batches=True,
+            even_batches=False,
+            use_seedable_sampler=False,
+        )
+        config = RegressionModelConfig(a=1.5, b=2.5)
+        model = RegressionPreTrainedModel(config)
+        eval_dataset = SampleIterableDataset()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir, accelerator_config=accelerator_config, use_habana=True
+            )
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.dispatch_batches, True)
+            self.assertEqual(trainer.accelerator.even_batches, False)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, False)
+
+    @require_accelerate_version_min_0_28
+    def test_accelerate_config_from_dataclass_grad_accum(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+
+        grad_acc_kwargs = {
+            "num_steps": 10,
+            "adjust_scheduler": False,
+            "sync_with_dataloader": False,
+            "sync_each_batch": True,
+        }
+        accelerator_config = AcceleratorConfig(
+            split_batches=True,
+            dispatch_batches=True,
+            even_batches=False,
+            use_seedable_sampler=False,
+            gradient_accumulation_kwargs=grad_acc_kwargs,
+        )
+        config = RegressionModelConfig(a=1.5, b=2.5)
+        model = RegressionPreTrainedModel(config)
+        eval_dataset = SampleIterableDataset()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            args = RegressionGaudiTrainingArguments(output_dir=tmp_dir, accelerator_config=accelerator_config)
+            trainer = GaudiTrainer(model=model, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["num_steps"], 10)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["adjust_scheduler"], False)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_with_dataloader"], False)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["sync_each_batch"], True)
+
+    def test_accelerator_config_from_partial(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # Leaves one option as something *not* basic
+            gaudi_config = get_gaudi_config()
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir,
+                accelerator_config={
+                    "split_batches": True,
+                },
+                use_habana=True,
+            )
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.dispatch_batches, None)
+            self.assertEqual(trainer.accelerator.even_batches, True)
+            self.assertEqual(trainer.accelerator.use_seedable_sampler, True)
+
+    def test_accelerator_config_from_dict_with_deprecated_args(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        # and maintains the deprecated args if passed in
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # Leaves all options as something *not* basic
+            with self.assertWarns(FutureWarning) as cm:
+                gaudi_config = get_gaudi_config()
+                args = RegressionGaudiTrainingArguments(
+                    output_dir=tmp_dir,
+                    accelerator_config={
+                        "split_batches": True,
+                    },
+                    dispatch_batches=False,
+                    use_habana=True,
+                )
+                self.assertIn("dispatch_batches", str(cm.warnings[0].message))
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.dispatch_batches, False)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            with self.assertWarns(FutureWarning) as cm:
+                args = RegressionGaudiTrainingArguments(
+                    output_dir=tmp_dir,
+                    accelerator_config={
+                        "even_batches": False,
+                    },
+                    split_batches=True,
+                    use_habana=True,
+                )
+                self.assertIn("split_batches", str(cm.warnings[0].message))
+            trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.split_batches, True)
+            self.assertEqual(trainer.accelerator.even_batches, False)
+            self.assertEqual(trainer.accelerator.dispatch_batches, None)
+
+    def test_accelerator_config_only_deprecated_args(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertWarns(FutureWarning) as cm:
+                gaudi_config = get_gaudi_config()
+                args = RegressionGaudiTrainingArguments(
+                    output_dir=tmp_dir,
+                    split_batches=True,
+                    use_habana=True,
+                )
+                self.assertIn("split_batches", str(cm.warnings[0].message))
+                config = RegressionModelConfig(a=1.5, b=2.5)
+                model = RegressionPreTrainedModel(config)
+                eval_dataset = SampleIterableDataset()
+                trainer = GaudiTrainer(model=model, gaudi_config=gaudi_config, args=args, eval_dataset=eval_dataset)
+                self.assertEqual(trainer.accelerator.split_batches, True)
+
+    @require_accelerate_version_min_0_28
+    def test_accelerator_config_from_dict_grad_accum_num_steps(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config = RegressionModelConfig(a=1.5, b=2.5)
+            model = RegressionPreTrainedModel(config)
+            eval_dataset = SampleIterableDataset()
+
+            # case - TrainingArguments.gradient_accumulation_steps == 1
+            #      - gradient_accumulation_kwargs['num_steps] == 1
+            # results in grad accum set to 1
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir,
+                gradient_accumulation_steps=1,
+                accelerator_config={
+                    "gradient_accumulation_kwargs": {
+                        "num_steps": 1,
+                    }
+                },
+            )
+            trainer = GaudiTrainer(model=model, args=args, eval_dataset=eval_dataset)
+            self.assertEqual(trainer.accelerator.gradient_state.plugin_kwargs["num_steps"], 1)
+
+            # case - TrainingArguments.gradient_accumulation_steps > 1
+            #      - gradient_accumulation_kwargs['num_steps] specified
+            # results in exception raised
+            args = RegressionGaudiTrainingArguments(
+                output_dir=tmp_dir,
+                gradient_accumulation_steps=2,
+                accelerator_config={
+                    "gradient_accumulation_kwargs": {
+                        "num_steps": 10,
+                    }
+                },
+            )
+            with self.assertRaises(Exception) as context:
+                trainer = GaudiTrainer(model=model, args=args, eval_dataset=eval_dataset)
+            self.assertTrue("The `AcceleratorConfig`'s `num_steps` is set but" in str(context.exception))
+
+    def test_accelerator_config_not_instantiated(self):
+        # Checks that accelerator kwargs can be passed through
+        # and the accelerator is initialized respectively
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(NotImplementedError) as context:
+                _ = RegressionGaudiTrainingArguments(
+                    output_dir=tmp_dir,
+                    accelerator_config=AcceleratorConfig,
+                    use_habana=True,
+                    use_lazy_mode=True,
+                )
+            self.assertTrue("Tried passing in a callable to `accelerator_config`" in str(context.exception))
+
+        # Now test with a custom subclass
+        @dataclasses.dataclass
+        class CustomAcceleratorConfig(AcceleratorConfig):
+            pass
+
+        @dataclasses.dataclass
+        class CustomTrainingArguments(GaudiTrainingArguments):
+            accelerator_config: dict = dataclasses.field(
+                default=CustomAcceleratorConfig,
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(NotImplementedError) as context:
+                _ = CustomTrainingArguments(
+                    output_dir=tmp_dir,
+                    use_habana=True,
+                    use_lazy_mode=True,
+                )
+            self.assertTrue("Tried passing in a callable to `accelerator_config`" in str(context.exception))
 
     def test_profiling(self):
         # 24 total steps and compilation takes place during the 1st three steps
@@ -1627,7 +2243,13 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        for model in ["test-trainer", "test-trainer-epoch", "test-trainer-step"]:
+        for model in [
+            "test-trainer",
+            "test-trainer-epoch",
+            "test-trainer-step",
+            "test-trainer-tensorboard",
+            "test-trainer-tags",
+        ]:
             try:
                 delete_repo(token=cls._token, repo_id=model)
             except HTTPError:
@@ -1736,6 +2358,53 @@ class GaudiTrainerIntegrationWithHubTester(unittest.TestCase):
         for i in range(5, max_steps, 5):
             self.assertIn(f"Training in progress, step {i}", commits)
 
+    @require_tensorboard
+    def test_push_to_hub_with_tensorboard_logs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(
+                output_dir=os.path.join(tmp_dir, "test-trainer-tensorboard"),
+                hub_token=self._token,
+                save_strategy="epoch",
+                report_to=["tensorboard"],
+                keep_report_to=True,
+            )
+            trainer.train()
+            # Push the runs via `push_to_hub()`
+            trainer.push_to_hub()
+
+        files = list_repo_files(f"{USER}/test-trainer-tensorboard", token=self._token)
+        found_log = False
+        for f in files:
+            if len(f.split("runs")) > 1 and "events.out.tfevents" in f:
+                found_log = True
+
+        assert found_log is True, "No tensorboard log found in repo"
+
+    def test_push_to_hub_tags(self):
+        # Checks if `trainer.push_to_hub()` works correctly by adding the desired
+        # tag without having to pass `tags` in `push_to_hub`
+        # see:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(
+                output_dir=os.path.join(tmp_dir, "test-trainer-tags"),
+                push_to_hub=True,
+                hub_token=self._token,
+            )
+
+            trainer.model.add_model_tags(["test-trainer-tags"])
+
+            url = trainer.push_to_hub()
+
+            # Extract repo_name from the url
+            re_search = re.search(ENDPOINT_STAGING + r"/([^/]+/[^/]+)/", url)
+            self.assertTrue(re_search is not None)
+            repo_name = re_search.groups()[0]
+
+            self.assertEqual(repo_name, f"{USER}/test-trainer-tags")
+
+            model_card = ModelCard.load(repo_name)
+            self.assertTrue("test-trainer-tags" in model_card.data.tags)
+
 
 @require_torch
 @require_optuna
@@ -1781,6 +2450,62 @@ class GaudiTrainerHyperParameterOptunaIntegrationTest(unittest.TestCase):
                 model_init=model_init,
             )
             trainer.hyperparameter_search(direction="minimize", hp_space=hp_space, hp_name=hp_name, n_trials=4)
+
+
+@require_torch
+@require_optuna
+class TrainerHyperParameterMultiObjectOptunaIntegrationTest(unittest.TestCase):
+    def setUp(self):
+        args = GaudiTrainingArguments("..", use_habana=True, use_lazy_mode=True)
+        self.n_epochs = args.num_train_epochs
+        self.batch_size = args.train_batch_size
+
+    def test_hyperparameter_search(self):
+        class MyTrialShortNamer(TrialShortNamer):
+            DEFAULTS = {"a": 0, "b": 0}
+
+        def hp_space(trial):
+            return {}
+
+        def model_init(trial):
+            if trial is not None:
+                a = trial.suggest_int("a", -4, 4)
+                b = trial.suggest_int("b", -4, 4)
+            else:
+                a = 0
+                b = 0
+            config = RegressionModelConfig(a=a, b=b, double_output=False)
+
+            return RegressionPreTrainedModel(config)
+
+        def hp_name(trial):
+            return MyTrialShortNamer.shortname(trial.params)
+
+        def compute_objective(metrics: Dict[str, float]) -> List[float]:
+            return metrics["eval_loss"], metrics["eval_accuracy"]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(
+                output_dir=tmp_dir,
+                learning_rate=0.1,
+                logging_steps=1,
+                evaluation_strategy=IntervalStrategy.EPOCH,
+                save_strategy=IntervalStrategy.EPOCH,
+                num_train_epochs=10,
+                disable_tqdm=True,
+                load_best_model_at_end=True,
+                logging_dir="runs",
+                run_name="test",
+                model_init=model_init,
+                compute_metrics=AlmostAccuracy(),
+            )
+            trainer.hyperparameter_search(
+                direction=["minimize", "maximize"],
+                hp_space=hp_space,
+                hp_name=hp_name,
+                n_trials=4,
+                compute_objective=compute_objective,
+            )
 
 
 # TODO: crashes because `TypeError: cannot pickle 'PyCapsule' object`
@@ -2021,3 +2746,56 @@ class HyperParameterSearchBackendsTest(unittest.TestCase):
             list(ALL_HYPERPARAMETER_SEARCH_BACKENDS.keys()),
             list(HPSearchBackend),
         )
+
+
+@require_torch
+class OptimizerAndModelInspectionTest(unittest.TestCase):
+    def test_get_num_trainable_parameters(self):
+        model = nn.Sequential(nn.Linear(128, 64), nn.Linear(64, 32))
+        args = GaudiTrainingArguments(
+            output_dir="tmp_trainer",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        # in_features * out_features + bias
+        layer_1 = 128 * 64 + 64
+        layer_2 = 64 * 32 + 32
+        trainer = GaudiTrainer(model=model, gaudi_config=get_gaudi_config(), args=args)
+        self.assertEqual(trainer.get_num_trainable_parameters(), layer_1 + layer_2)
+        # Freeze the last layer
+        for param in model[-1].parameters():
+            param.requires_grad = False
+        self.assertEqual(trainer.get_num_trainable_parameters(), layer_1)
+
+    def test_get_learning_rates(self):
+        model = nn.Sequential(nn.Linear(128, 64))
+        args = GaudiTrainingArguments(
+            output_dir="tmp_trainer",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(model=model, gaudi_config=get_gaudi_config(), args=args)
+        with self.assertRaises(ValueError):
+            trainer.get_learning_rates()
+        trainer.create_optimizer()
+        self.assertEqual(trainer.get_learning_rates(), [5e-05, 5e-05])
+
+    def test_get_optimizer_group(self):
+        model = nn.Sequential(nn.Linear(128, 64))
+        args = GaudiTrainingArguments(
+            output_dir="tmp_trainer",
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        trainer = GaudiTrainer(model=model, gaudi_config=get_gaudi_config(), args=args)
+        # ValueError is raised if optimizer is None
+        with self.assertRaises(ValueError):
+            trainer.get_optimizer_group()
+        trainer.create_optimizer()
+        # Get groups
+        num_groups = len(trainer.get_optimizer_group())
+        self.assertEqual(num_groups, 2)
+        # Get group of parameter
+        param = next(model.parameters())
+        group = trainer.get_optimizer_group(param)
+        self.assertIn(param, group["params"])

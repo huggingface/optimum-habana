@@ -28,7 +28,6 @@ Multi node:
                arguments of your training script)
 """
 
-
 import sys
 from argparse import REMAINDER, ArgumentParser
 
@@ -56,6 +55,7 @@ def parse_args():
     parser.add_argument("--hostfile", type=str, default=None, help="Path to the file where hosts are specified.")
     parser.add_argument("--use_mpi", action="store_true", help="Use MPI for distributed training")
     parser.add_argument("--use_deepspeed", action="store_true", help="Use DeepSpeed for distributed training")
+    parser.add_argument("--master_port", type=int, default=29500, help="Master port used by DeepSpeed and MPI")
 
     # positional
     parser.add_argument(
@@ -84,7 +84,7 @@ def main():
         if not is_deepspeed_available():
             raise ImportError(
                 "--use_deepspeed requires deepspeed: `pip install"
-                " git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0`."
+                " git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0`."
             )
 
     # Patch sys.argv
@@ -99,6 +99,7 @@ def main():
         hostfile=args.hostfile,
         use_mpi=args.use_mpi,
         use_deepspeed=args.use_deepspeed,
+        master_port=args.master_port,
     )
 
     ret_code = distributed_runner.run()

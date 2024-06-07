@@ -27,6 +27,8 @@ from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttenti
 from transformers.models.bloom.modeling_bloom import BloomForCausalLM, BloomMLP, dropout_add
 from transformers.utils import logging
 
+from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
+
 
 logger = logging.get_logger(__name__)
 
@@ -85,8 +87,13 @@ def gaudi_bloom_build_alibi_tensor(
         ).unsqueeze(0).expand(num_heads, -1, -1)
 
         # Select the part of the tensor that corresponds to our tensor parallel index.
-        tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
-        tp_index = int(os.environ.get("RANK", 0))
+        # if inference_tp_size is set use it instead of world size
+        world = int(os.environ.get("WORLD_SIZE", 1))
+        tp_world_size = GaudiBloomForCausalLM.inference_tp_size if GaudiBloomForCausalLM.inference_tp_size else world
+        tp_index = 0  # if world size == 1 ignore rank and use 0 (for cases where WORLD_SIZE is not equal to tp size)
+        if tp_world_size > 1:
+            tp_index = int(os.environ.get("RANK", 0))
+
         alibi = alibi.reshape((tp_world_size, -1, *alibi.shape[1:]))[tp_index]
 
         alibi = alibi.repeat(batch_size, 1, 1)
@@ -282,7 +289,8 @@ def gaudi_bloom_convert_to_standard_cache(
     if training:
         num_heads = batch_size_times_num_heads // batch_size
     else:
-        tp_world_size = int(os.environ.get("WORLD_SIZE", 1))
+        world = int(os.environ.get("WORLD_SIZE", 1))
+        tp_world_size = GaudiBloomForCausalLM.inference_tp_size if GaudiBloomForCausalLM.inference_tp_size else world
         num_heads = self.config.n_head // tp_world_size
         batch_size = batch_size_times_num_heads // num_heads
     # key: [batch_size * num_heads, head_dim, seq_length] -> [batch_size, num_heads, head_dim, seq_length]
@@ -393,11 +401,13 @@ def gaudi_bloom_model_forward(
 
     alibi = gaudi_bloom_build_alibi_tensor(attention_mask, self.num_heads, hidden_states.dtype, self.training)
 
-    causal_mask = self._prepare_attn_mask(
+    causal_mask = _gaudi_prepare_4d_causal_attention_mask(
         attention_mask,
         input_shape=(batch_size, seq_length),
+        inputs_embeds=inputs_embeds,
         past_key_values_length=past_key_values_length,
     )
+    causal_mask = causal_mask.bool()
 
     if token_idx is not None and past_key_values[0] is not None and os.environ.get("WA_INDEX_COPY", "1") == "1":
         pkv = past_key_values[0][0]
@@ -410,20 +420,16 @@ def gaudi_bloom_model_forward(
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
-
-                return custom_forward
-
-            outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(block),
+            outputs = self._gradient_checkpointing_func(
+                block.__call__,
                 hidden_states,
                 alibi,
                 causal_mask,
+                layer_past,
                 head_mask[i],
+                use_cache,
+                output_attentions,
+                None,
             )
         else:
             outputs = block(
@@ -462,6 +468,13 @@ def gaudi_bloom_model_forward(
 
 
 class GaudiBloomForCausalLM(BloomForCausalLM):
+    inference_tp_size = None
+
+    def set_tp_for_inference(tp_for_inference: int):
+        world = int(os.environ.get("WORLD_SIZE", 1))
+        assert tp_for_inference == 1 or tp_for_inference == world, "only setting 1 (no tp) or world size is supported"
+        GaudiBloomForCausalLM.inference_tp_size = tp_for_inference
+
     def prepare_inputs_for_generation(
         self,
         input_ids: torch.LongTensor,
@@ -471,8 +484,8 @@ class GaudiBloomForCausalLM(BloomForCausalLM):
         token_idx: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> dict:
-        # only last token for input_ids if past is not None
-        if past_key_values:
+        # only last tokens for input_ids if past is not None
+        if past_key_values is not None:
             if token_idx is None:
                 input_ids = input_ids[:, -1].unsqueeze(-1)
             else:

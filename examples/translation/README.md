@@ -18,9 +18,15 @@ limitations under the License.
 
 `run_translation.py` is a lightweight example of how to download and preprocess a dataset from the [🤗 Datasets](https://github.com/huggingface/datasets) library or use your own files (jsonlines or csv), then fine-tune one of the architectures above on it.
 
-For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets.html#json-files.
+For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets#json-files.
 You will also find examples of these below.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
 
 ## Single-card Training
 
@@ -49,7 +55,8 @@ python run_translation.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 If you get a terrible BLEU score, make sure that you didn't forget to use the `--source_prefix` argument.
@@ -84,7 +91,8 @@ python run_translation.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 The task of translation supports only custom JSONLINES files, with each line being a dictionary with the key `"translation"` and its value another dictionary whose keys is the language pair. For example:
@@ -117,7 +125,8 @@ python run_translation.py \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
  ```
 
 
@@ -148,7 +157,8 @@ python ../gaudi_spawn.py \
     --ignore_pad_token_for_loss False \
     --pad_to_max_length \
     --save_strategy epoch \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16
 ```
 
 
@@ -228,5 +238,6 @@ python run_translation.py \
     --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/t5 \
     --ignore_pad_token_for_loss False \
-    --pad_to_max_length
+    --pad_to_max_length \
+    --bf16
 ```

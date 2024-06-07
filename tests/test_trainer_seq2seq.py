@@ -13,25 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from transformers import AutoTokenizer, T5ForConditionalGeneration
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, DataCollatorForSeq2Seq, T5ForConditionalGeneration
 from transformers.testing_utils import TestCasePlus, require_torch
 from transformers.utils import is_datasets_available
 
-from optimum.habana import GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
+from optimum.habana.transformers.generation import GaudiGenerationConfig
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 
 if is_datasets_available():
     import datasets
 
 
+adapt_transformers_to_gaudi()
+
+
 class GaudiSeq2seqTrainerTester(TestCasePlus):
     @require_torch
     def test_finetune_t5(self):
-        model = T5ForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-t5-v1.1")
-        tokenizer = AutoTokenizer.from_pretrained("t5-small")
-
-        model.config.max_length = 128
-
         train_dataset = datasets.load_dataset("cnn_dailymail", "3.0.0", split="train[:1%]")
         val_dataset = datasets.load_dataset("cnn_dailymail", "3.0.0", split="validation[:1%]")
 
@@ -39,6 +39,24 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
         val_dataset = val_dataset.select(range(16))
 
         batch_size = 4
+
+        training_args = GaudiSeq2SeqTrainingArguments(
+            output_dir=self.get_auto_remove_tmp_dir(),
+            gaudi_config_name="Habana/t5",
+            per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=batch_size,
+            predict_with_generate=True,
+            do_train=True,
+            do_eval=True,
+            use_habana=True,
+            use_lazy_mode=True,
+            use_hpu_graphs_for_inference=True,
+        )
+
+        model = T5ForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-t5-v1.1")
+        tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
+
+        model.config.max_length = 128
 
         def _map_to_encoder_decoder_inputs(batch):
             # Tokenizer will automatically set [BOS] <text> [EOS]
@@ -92,21 +110,6 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
             columns=["input_ids", "attention_mask", "decoder_input_ids", "labels"],
         )
 
-        output_dir = self.get_auto_remove_tmp_dir()
-
-        training_args = GaudiSeq2SeqTrainingArguments(
-            output_dir=output_dir,
-            gaudi_config_name="Habana/t5",
-            per_device_train_batch_size=batch_size,
-            per_device_eval_batch_size=batch_size,
-            predict_with_generate=True,
-            do_train=True,
-            do_eval=True,
-            use_habana=True,
-            use_lazy_mode=True,
-            use_hpu_graphs_for_inference=True,
-        )
-
         # instantiate trainer
         trainer = GaudiSeq2SeqTrainer(
             model=model,
@@ -125,3 +128,31 @@ class GaudiSeq2seqTrainerTester(TestCasePlus):
 
         # start evaluation using beam search
         trainer.evaluate(max_length=model.config.max_length, num_beams=2)
+
+    @require_torch
+    def test_bad_generation_config_fail_early(self):
+        # Tests that a bad geneartion config causes the trainer to fail early
+        model = AutoModelForSeq2SeqLM.from_pretrained("google-t5/t5-small")
+        tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
+        data_collator = DataCollatorForSeq2Seq(tokenizer, model=model, return_tensors="pt", padding="longest")
+        gen_config = GaudiGenerationConfig(
+            do_sample=False, top_p=0.9
+        )  # bad: top_p is not compatible with do_sample=False
+
+        training_args = GaudiSeq2SeqTrainingArguments(
+            output_dir="tmp_trainer",
+            predict_with_generate=True,
+            generation_config=gen_config,
+            use_habana=True,
+            use_lazy_mode=True,
+        )
+        with self.assertRaises(ValueError) as exc:
+            _ = GaudiSeq2SeqTrainer(
+                model=model,
+                gaudi_config=GaudiConfig(),
+                args=training_args,
+                tokenizer=tokenizer,
+                data_collator=data_collator,
+                compute_metrics=lambda x: {"samples": x[0].shape[0]},
+            )
+        self.assertIn("The loaded generation config instance is invalid", str(exc.exception))

@@ -16,6 +16,24 @@ limitations under the License.
 
 # Automatic Speech Recognition Examples
 
+## Table of Contents
+
+- [Automatic Speech Recognition with CTC](#connectionist-temporal-classification)
+	- [Single HPU example](#single-hpu-ctc)
+	- [Multi HPU example](#multi-hpu-ctc)
+- [Automatic Speech Recognition with Sequence-to-Sequence](#sequence-to-sequence)
+	- [Whisper Model](#whisper-model)
+	- [Fine tuning](#single-hpu-whisper-fine-tuning-with-seq2seq)
+	- [Inference](#single-hpu-seq2seq-inference)
+
+
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Connectionist Temporal Classification
 
 The script [`run_speech_recognition_ctc.py`](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition/run_speech_recognition_ctc.py) can be used to fine-tune any pretrained [Connectionist Temporal Classification Model](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForCTC) for automatic speech recognition on one of the [official speech recognition datasets](https://huggingface.co/datasets?task_ids=task_ids:automatic-speech-recognition) or a custom dataset.
@@ -65,15 +83,17 @@ python run_speech_recognition_ctc.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
     --gaudi_config_name="Habana/wav2vec2" \
-    --throughput_warmup_steps="3"
+    --throughput_warmup_steps="3" \
+    --bf16 \
+    --use_hpu_graphs_for_training \
+    --use_hpu_graphs_for_inference
 ```
 
 On a single HPU, this script should run in *ca.* 6 hours and yield a CTC loss of **0.059** and a word error rate of **0.0423**.
 
 > If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
-> Resampling with the `datasets` library is not supported on HPUs yet.
+> Resampling with the `datasets` library is not supported on HPUs yet. HPU graphs are supported only on Gaudi2 and from SynapseAI v1.15.
 
 ### Multi-HPU CTC
 
@@ -104,22 +124,24 @@ python ../gaudi_spawn.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 3
+    --throughput_warmup_steps 3 \
+    --bf16 \
+    --use_hpu_graphs_for_training \
+    --use_hpu_graphs_for_inference
 ```
 
 On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **0.0613** and a word error rate of **0.0458**.
 
 > If your data has a sampling rate which is different from the one of the data the model was trained on, this script will raise an error.
-> Resampling with the `datasets` library is not supported on HPUs yet.
+> Resampling with the `datasets` library is not supported on HPUs yet. HPU graphs are supported only on Gaudi2 and from SynapseAI v1.15.
 
 
 ## DeepSpeed
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.12.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:
@@ -152,9 +174,8 @@ python ../gaudi_spawn.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
     --gaudi_config_name Habana/wav2vec2 \
-    --throughput_warmup_steps 3\
+    --throughput_warmup_steps 3 \
     --deepspeed ../../tests/configs/deepspeed_zero_2.json
 ```
 
@@ -185,5 +206,124 @@ python run_speech_recognition_ctc.py \
     --do_eval \
     --use_habana \
     --use_lazy_mode \
-    --gaudi_config_name="Habana/wav2vec2"
+    --gaudi_config_name="Habana/wav2vec2" \
+    --bf16 \
+    --use_hpu_graphs_for_inference
+```
+## Sequence to Sequence
+
+The script [`run_speech_recognition_seq2seq.py`](https://github.com/huggingface/optimum-habana/examples/speech-recognition/run_speech_recognition_seq2seq.py) can be used to fine-tune any [Whisper Sequence-to-Sequence Model](https://huggingface.co/docs/transformers/main/en/model_doc/whisper#whisper) for automatic speech
+recognition on one of the well known speech recognition datasets similar to shown below or a custom dataset. Examples of two datasets using the Whisper model from OpenAI are included below.
+
+### Whisper Model
+We can load all components of the Whisper model directly from the pretrained checkpoint, including the pretrained model weights, feature extractor and tokenizer. We simply have to specify our fine-tuning dataset and training hyperparameters.
+
+### Single HPU Whisper Fine tuning with Seq2Seq
+The following example shows how to fine-tune the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using a single HPU device in bf16 precision:
+```bash
+python run_speech_recognition_seq2seq.py \
+    --model_name_or_path="openai/whisper-small" \
+    --dataset_name="mozilla-foundation/common_voice_11_0" \
+    --dataset_config_name="hi" \
+    --language="hindi" \
+    --task="transcribe" \
+    --train_split_name="train+validation" \
+    --eval_split_name="test" \
+    --gaudi_config_name="Habana/whisper" \
+    --max_steps="5000" \
+    --output_dir="/tmp/whisper-small-hi" \
+    --per_device_train_batch_size="48" \
+    --per_device_eval_batch_size="2" \
+    --logging_steps="25" \
+    --learning_rate="1e-5" \
+    --warmup_steps="500" \
+    --evaluation_strategy="steps" \
+    --eval_steps="1000" \
+    --save_strategy="steps" \
+    --save_steps="1000" \
+    --generation_max_length="225" \
+    --preprocessing_num_workers="1" \
+    --max_duration_in_seconds="30" \
+    --text_column_name="sentence" \
+    --freeze_feature_encoder="False" \
+    --bf16 \
+    --overwrite_output_dir \
+    --do_train \
+    --do_eval \
+    --predict_with_generate \
+    --use_habana \
+    --use_hpu_graphs_for_inference \
+    --label_features_max_length 128 \
+    --dataloader_num_workers 8 \
+    --throughput_warmup_steps 3
+```
+
+If training on a different language, you should be sure to change the `language` argument. The `language` and `task` arguments should be omitted for English speech recognition.
+
+
+### Multi HPU Whisper Training with Seq2Seq
+The following example shows how to fine-tune the [Whisper large](https://huggingface.co/openai/whisper-large) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 8 HPU devices in half-precision:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 8 --use_mpi run_speech_recognition_seq2seq.py \
+    --model_name_or_path="openai/whisper-large" \
+    --dataset_name="mozilla-foundation/common_voice_11_0" \
+    --dataset_config_name="hi" \
+    --language="hindi" \
+    --task="transcribe" \
+    --train_split_name="train+validation" \
+    --eval_split_name="test" \
+    --gaudi_config_name="Habana/whisper" \
+    --max_steps="625" \
+    --output_dir="/tmp/whisper-large-hi" \
+    --per_device_train_batch_size="16" \
+    --per_device_eval_batch_size="2" \
+    --logging_steps="25" \
+    --learning_rate="1e-5" \
+    --generation_max_length="225" \
+    --preprocessing_num_workers="1" \
+    --max_duration_in_seconds="30" \
+    --text_column_name="sentence" \
+    --freeze_feature_encoder="False" \
+    --bf16 \
+    --overwrite_output_dir \
+    --do_train \
+    --do_eval \
+    --predict_with_generate \
+    --use_habana \
+    --use_hpu_graphs_for_inference \
+    --label_features_max_length 128 \
+    --dataloader_num_workers 8 \
+    --gradient_checkpointing \
+    --throughput_warmup_steps 3
+```
+
+#### Single HPU Seq2Seq Inference
+
+The following example shows how to do inference with the [Whisper small](https://huggingface.co/openai/whisper-small) checkpoint on the Hindi subset of [Common Voice 11](https://huggingface.co/datasets/mozilla-foundation/common_voice_11_0) using 1 HPU devices in half-precision:
+
+```bash
+python run_speech_recognition_seq2seq.py \
+    --model_name_or_path="openai/whisper-small" \
+    --dataset_name="mozilla-foundation/common_voice_11_0" \
+    --dataset_config_name="hi" \
+    --language="hindi" \
+    --task="transcribe" \
+    --eval_split_name="test" \
+    --gaudi_config_name="Habana/whisper" \
+    --output_dir="./results/whisper-small-clean" \
+    --per_device_eval_batch_size="32" \
+    --generation_max_length="225" \
+    --preprocessing_num_workers="1" \
+    --max_duration_in_seconds="30" \
+    --text_column_name="sentence" \
+    --freeze_feature_encoder="False" \
+    --bf16 \
+    --overwrite_output_dir \
+    --do_eval \
+    --predict_with_generate \
+    --use_habana \
+    --use_hpu_graphs_for_inference \
+    --label_features_max_length 128 \
+    --dataloader_num_workers 8
 ```

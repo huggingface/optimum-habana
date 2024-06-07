@@ -3,8 +3,8 @@ name: Non-regression tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 21 * * 0-5'  # every Sunday to Friday at 11pm CET
-    - cron: '0 21 * * 6'  # every Saturday at 1am CET
+    - cron: '0 21 * * 0-5'  # every Sunday to Friday at 11pm CET (10pm winter time)
+    - cron: '0 21 * * 6'  # every Saturday at 1am CET (midnight winter time)
 
 concurrency:
   group: ${{ github.workflow }}
@@ -13,14 +13,12 @@ jobs:
   example-diff:
     name: Test examples differences
     runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       - name: Run tests
         run: |
             docker run \
@@ -32,7 +30,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
             /bin/bash tests/ci/example_diff_tests.sh
   stable-diffusion:
     name: Test Stable Diffusion
@@ -40,14 +38,12 @@ jobs:
     needs:
       - example-diff  # run the job when the previous test job is done
     runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       - name: Run tests
         run: |
             docker run \
@@ -59,7 +55,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
             /bin/bash tests/ci/slow_tests_diffusers.sh
   deepspeed:
     name: Test DeepSpeed models
@@ -68,14 +64,12 @@ jobs:
       - example-diff
       - stable-diffusion  # run the job when the previous test job is done
     runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       - name: Run tests
         run: |
             docker run \
@@ -87,7 +81,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
             /bin/bash tests/ci/slow_tests_deepspeed.sh
   multi-card:
     name: Test multi-card models
@@ -96,14 +90,12 @@ jobs:
       - example-diff
       - deepspeed  # run the job when the previous test job is done
     runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       - name: Run tests
         run: |
             docker run \
@@ -115,7 +107,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
             /bin/bash tests/ci/slow_tests_8x.sh
   single-card:
     name: Test single-card models
@@ -125,14 +117,12 @@ jobs:
       - deepspeed
       - multi-card  # run the job when the previous test jobs are done
     runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       - name: Run tests
         run: |
             docker run \
@@ -144,7 +134,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
             /bin/bash tests/ci/slow_tests_1x.sh
   albert-xxl-single-card:
     name: Test single-card ALBERT XXL
@@ -155,8 +145,6 @@ jobs:
       - multi-card
       - single-card  # run the job when the previous test jobs are done
     runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         if: github.event.schedule == '0 21 * * 6'
@@ -164,7 +152,7 @@ jobs:
       - name: Pull image
         if: github.event.schedule == '0 21 * * 6'
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       - name: Run test
         if: github.event.schedule == '0 21 * * 6'
         run: |
@@ -177,7 +165,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
             /bin/bash tests/ci/albert_xxl_1x.sh
       - name: Warning
         if: github.event.schedule != '0 21 * * 6'
@@ -192,14 +180,12 @@ jobs:
       - single-card
       - albert-xxl-single-card  # run the job when the previous test jobs are done
     runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
-    env:
-      AWS_REGION: us-west-2
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
       - name: Run tests
         run: |
             docker run \
@@ -211,5 +197,74 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.12.0/ubuntu20.04/habanalabs/pytorch-installer-2.0.1:latest \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
             make slow_tests_text_generation_example TOKEN=${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
+  trl:
+    name: Test TRL integration
+    if: ${{ !cancelled() && (success() || failure()) }}
+    needs:
+      - example-diff
+      - deepspeed
+      - multi-card
+      - single-card
+      - albert-xxl-single-card
+      - text-generation  # run the job when the previous test jobs are done
+    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Pull image
+        run: |
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+      - name: Run tests
+        run: |
+            docker run \
+            -v $PWD:/root/workspace \
+            --workdir=/root/workspace \
+            --runtime=habana \
+            -e HABANA_VISIBLE_DEVICES=all \
+            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            --cap-add=sys_nice \
+            --net=host \
+            --ipc=host \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            /bin/bash tests/ci/slow_tests_trl.sh
+  sentence-transformers:
+    name: Test Sentence Transformers integration
+    if: ${{ !cancelled() && (success() || failure()) }}
+    needs:
+      - example-diff
+      - deepspeed
+      - multi-card
+      - single-card
+      - albert-xxl-single-card
+      - text-generation
+      - trl  # run the job when the previous test jobs are done
+    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    steps:
+      - name: Checkout Optimum Habana
+        uses: actions/checkout@v2
+        with:
+          repository: 'huggingface/optimum-habana'
+          path: optimum-habana
+      - name: Checkout Sentence Transformers
+        uses: actions/checkout@v2
+        with:
+          repository: 'UKPLab/sentence-transformers'
+          path: sentence-transformers
+      - name: Pull image
+        run: |
+            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+      - name: Run tests
+        run: |
+            docker run \
+            -v $PWD:/root/workspace \
+            --workdir=/root/workspace \
+            --runtime=habana \
+            -e HABANA_VISIBLE_DEVICES=all \
+            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+            --cap-add=sys_nice \
+            --net=host \
+            --ipc=host \
+            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            /bin/bash optimum-habana/tests/ci/sentence_transformers.sh
