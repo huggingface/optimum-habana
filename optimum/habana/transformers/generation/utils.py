@@ -195,23 +195,25 @@ class GaudiGenerationMixin(GenerationMixin):
         decoder_start_token_id = self._get_decoder_start_token_id(decoder_start_token_id, bos_token_id)
         if device is None:
             device = self.device
-        if token_idx is None:
-            if isinstance(decoder_start_token_id, list):
-                if len(decoder_start_token_id) != batch_size:
-                    raise ValueError(
-                        f"`decoder_start_token_id` expected to have length {batch_size} but got {len(decoder_start_token_id)}"
-                    )
-                decoder_input_ids_start = torch.tensor(decoder_start_token_id, dtype=torch.long, device=device)
-                decoder_input_ids_start = decoder_input_ids_start.view(-1, 1)
-            else:
-                decoder_input_ids_start = (
-                    torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+
+        if isinstance(decoder_start_token_id, list):
+            if len(decoder_start_token_id) != batch_size:
+                raise ValueError(
+                    f"`decoder_start_token_id` expected to have length {batch_size} but got {len(decoder_start_token_id)}"
                 )
+            decoder_input_ids_start = torch.tensor(decoder_start_token_id, dtype=torch.long, device=device)
+            decoder_input_ids_start = decoder_input_ids_start.view(-1, 1)
         else:
-            # creating padded decoder_input_ids to achieve static shapes. Later new tokens once generated are copied in to decoder_input_ids based on token_idx
-            max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
             decoder_input_ids_start = (
                 torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_start_token_id
+            )
+
+        if token_idx is not None:
+            # creating padded decoder_input_ids to achieve static shapes.
+            # Later new tokens once generated are copied in to decoder_input_ids based on token_idx
+            max_length = max_new_tokens + 1 if max_new_tokens is not None else self.generation_config.max_length
+            decoder_input_ids_start = (
+                torch.ones((batch_size, 1), dtype=torch.long, device=device) * decoder_input_ids_start
             )
             decoder_input_ids_start = torch.nn.functional.pad(
                 decoder_input_ids_start, (0, max_length - 1), value=pad_token_id
