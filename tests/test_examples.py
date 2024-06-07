@@ -352,6 +352,9 @@ class ExampleTestMeta(type):
             path_to_baseline = BASELINE_DIRECTORY / Path(model_name.split("/")[-1].replace("-", "_")).with_suffix(
                 ".json"
             )
+            is_compile = False
+            if "compile" in self.TASK_NAME:
+                is_compile = True
             with path_to_baseline.open("r") as json_file:
                 device = "gaudi2" if IS_GAUDI2 else "gaudi"
                 baseline = json.load(json_file)[device]
@@ -392,6 +395,18 @@ class ExampleTestMeta(type):
 
             if os.environ.get("DATA_CACHE", None) is not None and self.EXAMPLE_NAME == "run_clip":
                 extra_command_line_arguments[0] = "--data_dir {}".format(os.environ["DATA_CACHE"])
+            elif (
+                self.EXAMPLE_NAME == "run_qa"
+                and is_compile
+                and (model_name == "bert-large-uncased-whole-word-masking" or model_name == "roberta-large")
+            ):
+                extra_command_line_arguments.append("--torch_compile_backend hpu_backend")
+                extra_command_line_arguments.append("--torch_compile")
+                if "--use_hpu_graphs_for_inference" in extra_command_line_arguments:
+                    extra_command_line_arguments.remove("--use_hpu_graphs_for_inference")
+                self.TASK_NAME = [self.TASK_NAME, "compile"]
+                env_variables["PT_HPU_LAZY_MODE"] = "0"
+                env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
 
             with TemporaryDirectory() as tmp_dir:
                 cmd_line = self._create_command_line(
@@ -609,13 +624,15 @@ class DeepSpeedTextClassificationExampleTester(
 
 
 class QuestionAnsweringExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa"):
-    TASK_NAME = "squad"
+    TASK_NAME = ["squad", "compile"]
+    DATASET_NAME = "squad"
 
 
 class MultiCardQuestionAnsweringExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_qa", multi_card=True
 ):
-    TASK_NAME = "squad"
+    TASK_NAME = ["squad", "compile"]
+    DATASET_NAME = "squad"
 
 
 class CausalLanguageModelingExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_clm"):
