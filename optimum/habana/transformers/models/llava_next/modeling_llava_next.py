@@ -70,15 +70,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
             return_dict = return_dict if return_dict is not None else self.config.use_return_dict
             if inputs_embeds is None:
                 inputs_embeds = self.get_input_embeddings()(input_ids)
-            print(f"attention_mask = {attention_mask.shape}")
-            print(f"attention_mask = {torch.sum(attention_mask)}")
-            print(f"position_ids={position_ids}")
-            print(f"token_idx={token_idx + self.image_offset}")
-            #print(f"pask_key_value={past_key_values}")
-            #torch.save(inputs_embeds, f"token_idx_{token_idx}_input_embeds.pt")
-            #np.save(f"{token_idx}_input_embeds.npy", inputs_embeds.float().cpu().numpy()) 
-            #np.savetxt(f"{token_idx}_attetion_mask.npy", attention_mask.float().cpu().numpy()) 
-            #np.savetxt(f"{token_idx}_position_ids.npy", position_ids.float().cpu().numpy()) 
+
             outputs = self.language_model(
                 attention_mask=attention_mask,
                 position_ids=position_ids,
@@ -150,7 +142,6 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         # Compute the maximum embed dimension
         max_embed_dim = (num_special_image_tokens.max() * (num_image_patches - 1)) + sequence_length
         batch_indices, non_image_indices = torch.where(input_ids != self.config.image_token_index)
-        #print(f"batch_indices={batch_indices},no_image_indices={non_image_indices}")
 
         # 2. Compute the positions where text should be written
         # Calculate new positions for text tokens in merged image-text sequence.
@@ -170,7 +161,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         final_attention_mask = torch.zeros(
             batch_size, max_embed_dim, dtype=attention_mask.dtype, device=inputs_embeds.device
         )
-        #print(f"final_attention={final_attention_mask.shape}")
+
         if labels is not None:
             final_labels = torch.full(
                 (batch_size, max_embed_dim), self.config.ignore_index, dtype=input_ids.dtype, device=input_ids.device
@@ -235,10 +226,9 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         - add the process of merging images into inputs_embeds
         """
         token_idx = kwargs.get("token_idx", None)
-        print(f"token_idx={token_idx}")
-        print(f"input_ids={input_ids}")
+
         if token_idx is None:
-            return super.prepare_inputs_for_generation(
+            return super().prepare_inputs_for_generation(
                 input_ids=input_ids,
                 past_key_values=past_key_values,
                 inputs_embeds=inputs_embeds,
