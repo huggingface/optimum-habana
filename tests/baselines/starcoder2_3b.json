@@ -1,0 +1,23 @@
+{
+    "gaudi2": {
+    "wikitext": {
+        "num_train_epochs": 2,
+        "eval_batch_size": 4,
+        "distribution": {
+            "multi_card": {
+                "learning_rate": 1e-4,
+                "train_batch_size": 16,
+                "perplexity": 13.0461,
+                "train_runtime": 190.696,
+                "train_samples_per_second": 89.877,
+                "extra_arguments": [
+                    "--dataset_config_name wikitext-2-raw-v1",
+                    "--dataset_concatenation",
+                    "--gradient_accumulation_steps 4",
+                    "--use_hpu_graphs_for_inference"
+                                ]
+                }
+        }
+    }
+}
+}

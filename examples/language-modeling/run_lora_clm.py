@@ -607,7 +607,7 @@ def main():
         padding_val = True
         add_special_tokens_val = True
         if tokenizer.pad_token is None:
-            tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+            tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
     def tokenize(prompt, add_eos_token=True):
         results = tokenizer(
