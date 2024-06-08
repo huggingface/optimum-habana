@@ -391,7 +391,7 @@ class ExampleTestMeta(type):
                     env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
             elif deepspeed and "gpt-neox-20b" in model_name:
-                os.unsetenv('LD_PRELOAD')
+                os.unsetenv("LD_PRELOAD")
 
             extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
 
