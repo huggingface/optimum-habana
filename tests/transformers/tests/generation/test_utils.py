@@ -18,11 +18,10 @@ import inspect
 import tempfile
 import unittest
 import warnings
-import pytest
 
 import numpy as np
+import pytest
 from parameterized import parameterized
-
 from transformers import is_torch_available, pipeline, set_seed
 from transformers.testing_utils import (
     is_flaky,
@@ -31,13 +30,13 @@ from transformers.testing_utils import (
     require_torch_multi_accelerator,
     slow,
 )
+
 from ..test_modeling_common import floats_tensor, ids_tensor, torch_device
 from .test_framework_agnostic import GenerationIntegrationTestsMixin
 
 
 if is_torch_available():
     import torch
-
     from transformers import (
         AutoModelForCausalLM,
         AutoModelForSeq2SeqLM,
@@ -50,6 +49,7 @@ if is_torch_available():
         GPT2LMHeadModel,
         GPT2Tokenizer,
         ImageGPTForCausalImageModeling,
+        PreTrainedModel,
         SpeechEncoderDecoderModel,
     )
     from transformers.cache_utils import DynamicCache
@@ -74,7 +74,9 @@ if is_torch_available():
         StoppingCriteria,
         StoppingCriteriaList,
     )
+    from transformers.generation.candidate_generator import AssistedCandidateGenerator, CandidateGenerator
     from transformers.generation.utils import _speculative_sampling
+    from transformers.streamers import BaseStreamer
 
 
 class GenerationTesterMixin:
@@ -2624,9 +2626,7 @@ class GenerationIntegrationTests(unittest.TestCase, GenerationIntegrationTestsMi
         model_inputs = tokenizer("I", return_tensors="pt")["input_ids"]
         model_inputs = model_inputs.to(torch_device)
 
-        low_output = model.generate(
-            model_inputs, max_new_tokens=40, num_beams=5, early_stopping=True, low_memory=True
-        )
+        low_output = model.generate(model_inputs, max_new_tokens=40, num_beams=5, early_stopping=True, low_memory=True)
 
         high_output = model.generate(
             model_inputs, max_new_tokens=40, num_beams=5, early_stopping=True, low_memory=False
