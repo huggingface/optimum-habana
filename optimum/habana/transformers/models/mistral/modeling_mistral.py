@@ -31,7 +31,6 @@ from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from .configuration_mistral import MistralConfig
 from transformers.models.mistral.modeling_mistral import (
     MistralAttention,
     MistralDecoderLayer,
@@ -51,6 +50,7 @@ from ..llama.modeling_llama import (
     GaudiLlamaLinearScalingRotaryEmbedding,
     GaudiLlamaRotaryEmbedding,
 )
+from .configuration_mistral import MistralConfig
 
 
 try:
