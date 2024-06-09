@@ -663,6 +663,7 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         iteration_times: Optional[List[float]] = None,
+        profiling_record_shapes: Optional[bool] = False,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -736,6 +737,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
+            profiling_record_shapes (`bool`, *optional*, defaults to False):
+                Record shapes when enabling profiling.
             kwargs (`Dict[str, Any]`, *optional*):
                 Ad hoc parametrization of `generation_config` and/or additional model-specific kwargs that will be
                 forwarded to the `forward` function of the model. If the model is an encoder-decoder model, encoder
@@ -1130,6 +1133,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
+                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1153,6 +1157,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
+                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1185,6 +1190,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
+                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1222,6 +1228,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
+                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1264,6 +1271,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
+                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1301,6 +1309,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
+                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1378,6 +1387,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 profiling_warmup_steps=profiling_warmup_steps,
                 profiling_steps=profiling_steps,
                 hb_gen_time=hb_gen_time,
+                profiling_record_shapes=profiling_record_shapes,
                 **model_kwargs,
             )
 
@@ -1414,6 +1424,7 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
+        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -1473,6 +1484,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
+            profiling_record_shapes (`bool`, *optional*, defaults to False):
+                Record shapes when enabling profiling.
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1530,6 +1543,7 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
+        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -1587,6 +1601,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
+            profiling_record_shapes (`bool`, *optional*, defaults to False):
+                Record shapes when enabling profiling.
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -1707,7 +1723,9 @@ class GaudiGenerationMixin(GenerationMixin):
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
             model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer = HabanaProfile(
+            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        )
         hb_profer.start()
         bucket_size = model_kwargs.get("bucket_size", -1)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
@@ -1924,6 +1942,7 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
+        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -1984,6 +2003,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
+            profiling_record_shapes (`bool`, *optional*, defaults to False):
+                Record shapes when enabling profiling.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -2128,7 +2149,9 @@ class GaudiGenerationMixin(GenerationMixin):
         bucket_internal = model_kwargs.get("bucket_internal", None)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer = HabanaProfile(
+            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        )
         hb_profer.start()
 
         if not bucket_internal:
@@ -2338,6 +2361,7 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
+        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
         r"""
@@ -2396,6 +2420,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
+            profiling_record_shapes (`bool`, *optional*, defaults to False):
+                Record shapes when enabling profiling.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -2638,7 +2664,9 @@ class GaudiGenerationMixin(GenerationMixin):
             input_ids = torch.stack(result)
             return input_ids
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer = HabanaProfile(
+            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        )
         hb_profer.start()
         this_peer_finished = False
 
@@ -2962,6 +2990,7 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
+        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
         r"""
@@ -3020,6 +3049,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
+            profiling_record_shapes (`bool`, *optional*, defaults to False):
+                Record shapes when enabling profiling.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -3113,6 +3144,7 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
+        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ):
         r"""
@@ -3167,6 +3199,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
+            profiling_record_shapes (`bool`, *optional*, defaults to False):
+                Record shapes when enabling profiling.
             model_kwargs:
                 Additional model specific kwargs that will be forwarded to the `forward` function of the model. If
                 model is an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -3256,6 +3290,7 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
+        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
         r"""
@@ -3315,6 +3350,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
+            profiling_record_shapes (`bool`, *optional*, defaults to False):
+                Record shapes when enabling profiling.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the `forward` function of the model. If model is
                 an encoder-decoder model the kwargs should include `encoder_outputs`.
@@ -3477,7 +3514,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
         decoder_prompt_len = input_ids.shape[-1]  # record the prompt length of decoder
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer = HabanaProfile(
+            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        )
         hb_profer.start()
 
         time_to_first_token_done = False
@@ -3675,6 +3714,7 @@ class GaudiGenerationMixin(GenerationMixin):
         profiling_warmup_steps: Optional[int] = 0,
         profiling_steps: Optional[int] = 0,
         hb_gen_time: Optional[HabanaGenerationtime] = None,
+        profiling_record_shapes: Optional[bool] = False,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -3737,6 +3777,8 @@ class GaudiGenerationMixin(GenerationMixin):
                 Number of steps to ignore for profling.
             profiling_steps (`int`, *optional*, defaults to 0):
                 Number of steps to be captured when enabling profiling.
+            profiling_record_shapes (`bool`, *optional*, defaults to False):
+                Record shapes when enabling profiling.
             model_kwargs:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.

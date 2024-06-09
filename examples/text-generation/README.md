@@ -365,7 +365,10 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --trim_logits \
 --batch_size 1 \
 --bf16 \
---reuse_cache
+--reuse_cache \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask
 ```
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
@@ -381,7 +384,10 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --batch_size 110 \
 --bf16 \
 --reuse_cache \
---trim_logits
+--trim_logits \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask
 ```
 
 Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:
