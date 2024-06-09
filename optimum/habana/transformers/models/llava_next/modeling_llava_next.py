@@ -34,7 +34,7 @@ from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
-import numpy as np
+
 
 class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
     def forward(
@@ -80,13 +80,15 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
-                token_idx=token_idx+self.image_offset,
+                token_idx=token_idx + self.image_offset,
             )
 
             if inputs_embeds.shape[1] != 1 and pixel_values is not None:
                 batch_size, seq_len = self.text_tokens_pos.shape
                 batch_indices = torch.arange(batch_size).repeat_interleave(seq_len)
-                logits = outputs[0][batch_indices, self.text_tokens_pos.reshape(-1), :].reshape(batch_size, seq_len, -1)
+                logits = outputs[0][batch_indices, self.text_tokens_pos.reshape(-1), :].reshape(
+                    batch_size, seq_len, -1
+                )
             else:
                 logits = outputs[0]
 
@@ -214,7 +216,6 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
 
         return final_embedding, final_attention_mask, final_labels, position_ids, text_tokens_pos
 
-
     def prepare_inputs_for_generation(
         self,
         input_ids,
@@ -245,7 +246,6 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         else:
             position_ids = kwargs.get("position_ids", None)
             labels = kwargs.get("labels", None)
-            token_pos=None
             if past_key_values is None and pixel_values is not None and input_ids.shape[1] != 1:
                 vision_feature_select_strategy = kwargs.get("vision_feature_select_strategy", None)
                 vision_feature_layer = kwargs.get("vision_feature_layer", None)
@@ -314,10 +314,12 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                         image_feature = torch.cat((image_feature, self.image_newline[None]), dim=0)
                     new_image_features.append(image_feature)
                 image_features = torch.stack(new_image_features, dim=0)
-                inputs_embeds, attention_mask, labels, position_ids, self.text_tokens_pos = self._merge_input_ids_with_image_features(
-                    image_features, inputs_embeds, input_ids, attention_mask, labels
+                inputs_embeds, attention_mask, labels, position_ids, self.text_tokens_pos = (
+                    self._merge_input_ids_with_image_features(
+                        image_features, inputs_embeds, input_ids, attention_mask, labels
+                    )
                 )
-                self.image_offset = image_features.shape[1]-1 #image_token has occupied 1 token position.
+                self.image_offset = image_features.shape[1] - 1  # image_token has occupied 1 token position.
                 if labels is None:
                     labels = torch.full_like(attention_mask, self.config.ignore_index).to(torch.long)
 
