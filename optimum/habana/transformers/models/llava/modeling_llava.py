@@ -169,9 +169,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 inputs_embeds = _merge_input_ids_with_image_features(
                     image_features, inputs_embeds, input_ids, self.config.image_token_index
                 )
-            print(f"token_idx={token_idx + image_offset}")
-            print(f"attention_mask={attention_mask.shape}")
-            print(f"attention_mask={torch.sum(attention_mask)}")
+
             outputs = self.language_model(
                 attention_mask=attention_mask,
                 position_ids=position_ids,

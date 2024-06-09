@@ -80,10 +80,15 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
-                token_idx=token_idx + self.image_offset,
+                token_idx=token_idx+self.image_offset,
             )
 
-            logits = outputs[0]
+            if inputs_embeds.shape[1] != 1 and pixel_values is not None:
+                batch_size, seq_len = self.text_tokens_pos.shape
+                batch_indices = torch.arange(batch_size).repeat_interleave(seq_len)
+                logits = outputs[0][batch_indices, self.text_tokens_pos.reshape(-1), :].reshape(batch_size, seq_len, -1)
+            else:
+                logits = outputs[0]
 
             loss = None
             if labels is not None:
@@ -131,7 +136,8 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 return_dict=return_dict,
             )
 
-    # Copied from transformers.models.llava.modeling_llava.LlavaForConditionalGeneration._merge_input_ids_with_image_features
+    # Copied from https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L356
+    # Remove the step 6: Mask out the embedding at padding positions
     def _merge_input_ids_with_image_features(self, image_features, inputs_embeds, input_ids, attention_mask, labels):
         num_images, num_image_patches, embed_dim = image_features.shape
         batch_size, sequence_length = input_ids.shape
@@ -149,6 +155,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         # `torch.cumsum` computes how each image token shifts subsequent text token positions.
         # - 1 to adjust for zero-based indexing, as `cumsum` inherently increases indices by one.
         new_token_positions = torch.cumsum((special_image_token_mask * (num_image_patches - 1) + 1), -1) - 1
+        text_tokens_pos = new_token_positions
         nb_image_pad = max_embed_dim - 1 - new_token_positions[:, -1]
         if left_padding:
             new_token_positions += nb_image_pad[:, None]  # offset for left padding
@@ -202,11 +209,10 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         # indices_to_mask = new_token_positions[batch_indices, pad_indices]
 
         # final_embedding[batch_indices, indices_to_mask] = 0
-
         if labels is None:
             final_labels = None
 
-        return final_embedding, final_attention_mask, final_labels, position_ids
+        return final_embedding, final_attention_mask, final_labels, position_ids, text_tokens_pos
 
 
     def prepare_inputs_for_generation(
@@ -226,7 +232,6 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         - add the process of merging images into inputs_embeds
         """
         token_idx = kwargs.get("token_idx", None)
-
         if token_idx is None:
             return super().prepare_inputs_for_generation(
                 input_ids=input_ids,
@@ -240,6 +245,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         else:
             position_ids = kwargs.get("position_ids", None)
             labels = kwargs.get("labels", None)
+            token_pos=None
             if past_key_values is None and pixel_values is not None and input_ids.shape[1] != 1:
                 vision_feature_select_strategy = kwargs.get("vision_feature_select_strategy", None)
                 vision_feature_layer = kwargs.get("vision_feature_layer", None)
@@ -308,7 +314,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                         image_feature = torch.cat((image_feature, self.image_newline[None]), dim=0)
                     new_image_features.append(image_feature)
                 image_features = torch.stack(new_image_features, dim=0)
-                inputs_embeds, attention_mask, labels, position_ids = self._merge_input_ids_with_image_features(
+                inputs_embeds, attention_mask, labels, position_ids, self.text_tokens_pos = self._merge_input_ids_with_image_features(
                     image_features, inputs_embeds, input_ids, attention_mask, labels
                 )
                 self.image_offset = image_features.shape[1]-1 #image_token has occupied 1 token position.
