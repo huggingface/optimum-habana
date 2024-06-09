@@ -5,7 +5,7 @@ from utils import initialize_model
 
 class GaudiTextGenerationPipeline(TextGenerationPipeline):
     def __init__(self, args, logger, use_with_langchain=False, warmup_on_init=True):
-        self.model, self.tokenizer, self.generation_config = initialize_model(args, logger)
+        self.model, _, self.tokenizer, self.generation_config = initialize_model(args, logger)
 
         self.task = "text-generation"
         self.device = args.device
