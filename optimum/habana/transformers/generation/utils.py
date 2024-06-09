@@ -1723,7 +1723,9 @@ class GaudiGenerationMixin(GenerationMixin):
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
             model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes)
+        hb_profer = HabanaProfile(
+            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        )
         hb_profer.start()
         bucket_size = model_kwargs.get("bucket_size", -1)
         prev_idx = -1  # avoiding calculate cache_idx when its value is not changing
@@ -2147,7 +2149,9 @@ class GaudiGenerationMixin(GenerationMixin):
         bucket_internal = model_kwargs.get("bucket_internal", None)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes)
+        hb_profer = HabanaProfile(
+            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        )
         hb_profer.start()
 
         if not bucket_internal:
@@ -2660,7 +2664,9 @@ class GaudiGenerationMixin(GenerationMixin):
             input_ids = torch.stack(result)
             return input_ids
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes)
+        hb_profer = HabanaProfile(
+            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        )
         hb_profer.start()
         this_peer_finished = False
 
@@ -3508,7 +3514,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
         decoder_prompt_len = input_ids.shape[-1]  # record the prompt length of decoder
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes)
+        hb_profer = HabanaProfile(
+            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        )
         hb_profer.start()
 
         time_to_first_token_done = False
