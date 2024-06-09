@@ -220,7 +220,8 @@ class GaudiMixtralAttentionLongSequence:
 class GaudiMixtralAttention(MixtralAttention):
     def __init__(self, config: MixtralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
-        self.config = MixtralConfig(config)
+        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
+        self.config = config
         self._init_rope()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
