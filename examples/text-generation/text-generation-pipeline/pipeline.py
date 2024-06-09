@@ -18,6 +18,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
         self.use_hpu_graphs = args.use_hpu_graphs
         self.profiling_steps = args.profiling_steps
         self.profiling_warmup_steps = args.profiling_warmup_steps
+        self.profiling_record_shapes = args.profiling_record_shapes
 
         self.use_with_langchain = use_with_langchain
         if self.use_with_langchain:
@@ -56,6 +57,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
             hpu_graphs=self.use_hpu_graphs,
             profiling_steps=self.profiling_steps,
             profiling_warmup_steps=self.profiling_warmup_steps,
+            profiling_record_shapes=self.profiling_record_shapes,
         ).cpu()
 
         if use_batch:
