@@ -475,6 +475,10 @@ def main():
         )
 
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
+            if not data_args.validation_split_percentage:
+                raise ValueError(
+                    "Cannot find 'validation' key in dataset, please set --validation_split_percentage or use a different dataset"
+                )
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
@@ -604,10 +608,11 @@ def main():
     add_special_tokens_val = False
 
     if model.config.model_type == "starcoder2":
+        add_special_tokens_val = False
         padding_val = True
-        add_special_tokens_val = True
         if tokenizer.pad_token is None:
             tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+            add_special_tokens_val = True
 
     def tokenize(prompt, add_eos_token=True):
         results = tokenizer(

@@ -206,6 +206,7 @@ class ExampleTestMeta(type):
             "codellama/CodeLlama-13b-Instruct-hf",
             "MIT/ast-finetuned-speech-commands-v2",
             "meta-llama/LlamaGuard-7b",
+            "bigcode/starcoder2-3b",
         ]
 
         if fsdp and not IS_GAUDI2:
@@ -248,6 +249,8 @@ class ExampleTestMeta(type):
         elif "LlamaGuard" in model_name and deepspeed and IS_GAUDI2:
             return True
         elif "ast-finetuned-speech-commands-v2" in model_name and IS_GAUDI2:
+            return True
+        elif "starcoder2" in model_name and IS_GAUDI2 and not fsdp:
             return True
 
         return False

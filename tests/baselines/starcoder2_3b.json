@@ -1,20 +1,28 @@
 {
     "gaudi2": {
-    "wikitext": {
+    "timdettmers/openassistant-guanaco": {
         "num_train_epochs": 2,
         "eval_batch_size": 4,
         "distribution": {
             "multi_card": {
                 "learning_rate": 1e-4,
                 "train_batch_size": 16,
-                "perplexity": 13.0461,
-                "train_runtime": 190.696,
-                "train_samples_per_second": 89.877,
+                "perplexity": 4.9335,
+                "train_runtime": 266.99,
+                "train_samples_per_second": 66.376,
                 "extra_arguments": [
-                    "--dataset_config_name wikitext-2-raw-v1",
                     "--dataset_concatenation",
                     "--gradient_accumulation_steps 4",
-                    "--use_hpu_graphs_for_inference"
+                    "--bf16 True ",
+                    "--num_train_epochs 2 ",
+                    "--per_device_train_batch_size 2 ",
+                    "--per_device_eval_batch_size 2 ",
+                    "--gradient_accumulation_steps 4 ",
+                    "--dataset_concatenation ",
+                    "--use_habana ",
+                    "--use_lazy_mode ",
+                    "--lora_target_modules q_proj o_proj k_proj v_proj gate_proj up_proj down_proj",
+                    "--validation_split_percentage 10"
                                 ]
                 }
         }
