@@ -30,6 +30,7 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
+from .clip import GaudiCLIPVisionEmbeddings
 from .codegen import (
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
@@ -85,6 +86,7 @@ from .llama import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    LlamaConfig,
     gaudi_llama_rmsnorm_forward,
 )
 from .llava import GaudiLlavaForConditionalGeneration
@@ -140,10 +142,24 @@ from .phi import (
     GaudiPhiModel,
 )
 from .qwen2 import (
+    GaudiQwen2Attention,
     GaudiQwen2DecoderLayer,
     GaudiQwen2ForCausalLM,
-    gaudi_qwen2_attention_forward,
-    gaudi_qwen2_model_forward,
+    GaudiQwen2MLP,
+    GaudiQwen2Model,
+    gaudi_qwen2_rmsnorm_forward,
+)
+from .seamless_m4t import (
+    gaudi_SeamlessM4TAttention_forward,
+    gaudi_SeamlessM4TCodeHifiGan_get_output_hifigan_lengths,
+    gaudi_SeamlessM4TDecoder_forward,
+    gaudi_SeamlessM4TDecoderLayer_forward,
+    gaudi_SeamlessM4TForTextToSpeech_forward,
+    gaudi_SeamlessM4TForTextToSpeech_generate,
+    gaudi_SeamlessM4TForTextToSpeech_prepare_inputs_for_generation,
+    gaudi_SeamlessM4TTextToUnitForConditionalGeneration_forward,
+    gaudi_SeamlessM4TTextToUnitForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_SeamlessM4TTextToUnitModel_forward,
 )
 from .speecht5 import (
     gaudi_generate_speech,
@@ -156,6 +172,12 @@ from .stablelm import (
     GaudiStableLmForCausalLM,
     gaudi_stablelm_attention_forward,
     gaudi_stablelm_model_forward,
+)
+from .starcoder2 import (
+    GaudiStarcoder2DecoderLayer,
+    GaudiStarcoder2ForCausalLM,
+    gaudi_starcoder2_attention_forward,
+    gaudi_starcoder2_model_forward,
 )
 from .swin import gaudi_swin_get_attn_mask
 from .t5 import (
@@ -171,6 +193,10 @@ from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
 from .vit import gaudi_vit_self_attention_forward
+from .vits import (
+    gaudi_unconstrained_rational_quadratic_spline,
+    gaudi_VitsResidualCouplingLayer_forward,
+)
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,

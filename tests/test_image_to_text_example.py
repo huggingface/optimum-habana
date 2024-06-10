@@ -15,6 +15,11 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "bf16": [
             ("llava-hf/llava-1.5-7b-hf", 1, 87.2901500056982),
+            ("llava-hf/llava-1.5-13b-hf", 1, 54.41252589197953),
+        ],
+        "fp8": [
+            ("llava-hf/llava-1.5-7b-hf", 1, 123.00953973789325),
+            ("llava-hf/llava-1.5-13b-hf", 1, 82.81132373492122),
         ],
     }
 else:
@@ -31,6 +36,7 @@ def _test_image_to_text(
     baseline: float,
     token: str,
     batch_size: int = 1,
+    fp8: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -58,6 +64,16 @@ def _test_image_to_text(
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
         command = [x for y in command for x in re.split(pattern, y) if x]
 
+        if fp8:
+            print(f"\n\nCommand to test: {' '.join(command)}\n")
+            env_variables["QUANT_CONFIG"] = os.path.join(
+                path_to_example_dir, "image-to-text/quantization_config/maxabs_measure_include_outputs.json"
+            )
+            subprocess.run(command, env=env_variables)
+            env_variables["QUANT_CONFIG"] = os.path.join(
+                path_to_example_dir, "image-to-text/quantization_config/maxabs_quant.json"
+            )
+
         proc = subprocess.run(command, env=env_variables)
 
         # Ensure the run finished without any issue
@@ -79,3 +95,8 @@ def _test_image_to_text(
 @pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["bf16"])
 def test_image_to_text_bf16(model_name: str, baseline: float, batch_size: int, token: str):
     _test_image_to_text(model_name, baseline, token, batch_size)
+
+
+@pytest.mark.parametrize("model_name, batch_size, baseline", MODELS_TO_TEST["fp8"])
+def test_image_to_text_fp8(model_name: str, baseline: float, batch_size: int, token: str):
+    _test_image_to_text(model_name, baseline, token, batch_size, fp8=True)
