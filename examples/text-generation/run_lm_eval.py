@@ -81,10 +81,15 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
                     "reuse_cache": self.options.reuse_cache,
                 }
             )
-        if self.model.config.model_type in ["llama", "mistral"]:
+        if self.model.config.model_type in ["llama", "mistral", "falcon"]:
+            if self.model.config.model_type != "falcon":
+                self.model_inputs.update(
+                    {
+                        "attn_softmax_bf16": self.options.attn_softmax_bf16,
+                    }
+                )
             self.model_inputs.update(
                 {
-                    "attn_softmax_bf16": self.options.attn_softmax_bf16,
                     "use_flash_attention": self.options.use_flash_attention,
                     "flash_attention_recompute": self.options.flash_attention_recompute,
                     "flash_attention_causal_mask": self.options.flash_attention_causal_mask,
