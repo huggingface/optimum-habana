@@ -1871,14 +1871,14 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if ignore_eos:
                 this_peer_finished = stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids, scores, token_idx=cur_len + token_fill_offset, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 # stop when each sentence is finished
                 if not ignore_eos and unfinished_sequences.max() == 0:
                     this_peer_finished = True
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids, scores, token_idx=cur_len + token_fill_offset, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
             hb_profer.step()
@@ -1889,10 +1889,6 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
-
-            # stop if we exceed the maximum length
-            if stopping_criteria(input_ids, scores, token_idx=cur_len + token_fill_offset):
-                this_peer_finished = True
 
             if (
                 not model_kwargs.get("pad_done", False)
