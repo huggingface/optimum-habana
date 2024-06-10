@@ -759,6 +759,11 @@ def main():
 
     # Override the decoding parameters of Seq2SeqTrainer
     training_args.generation_config = copy.deepcopy(model.generation_config)
+    try:
+        # unset length_penalty since it is not used in this example
+        training_args.generation_config.length_penalty = None
+    except AttributeError:
+        pass
     if training_args.generation_max_length is not None:
         training_args.generation_config.max_length = training_args.generation_max_length
     else:
