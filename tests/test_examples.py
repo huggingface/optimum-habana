@@ -713,6 +713,12 @@ class ProteinFoldingExampleTester2(ExampleTesterBase, metaclass=ExampleTestMeta,
     pass
 
 
+class CausalLanguageModelingLORAExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm"
+):
+    TASK_NAME = "databricks/databricks-dolly-15k"
+
+
 class MultiCardCausalLanguageModelingLORAExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
 ):
