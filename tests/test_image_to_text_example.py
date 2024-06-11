@@ -29,7 +29,11 @@ else:
     MODELS_TO_TEST = {
         "bf16": [
             ("llava-hf/llava-1.5-7b-hf", 1, 28.04096918512148),
+            ("llava-hf/llava-1.5-13b-hf", 1, 16.704731010481538),
+            ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 10.759228696741),
+            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 6.96732060769783),
         ],
+        "fp8": [],
     }
 
 
