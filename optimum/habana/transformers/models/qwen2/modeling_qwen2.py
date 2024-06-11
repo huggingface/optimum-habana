@@ -228,6 +228,7 @@ class GaudiQwen2Attention(Qwen2Attention):
         self.reorder(self.v_cache.cache, beam_idx, seq_length, head_dim)
         return (self.k_cache.cache.shape, self.v_cache.cache.shape)
 
+    # TODO test with this function as well
     def gaudi_flash_attn_v1(self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, is_casual, scale, softmax_mode):
         """
         Gaudi version of Flash Attention V1 to support long sequence at prompt phase
@@ -342,53 +343,6 @@ class GaudiQwen2Attention(Qwen2Attention):
                 kv_seq_len = key_states.shape[-2]
         else:
             past_key_value = None
-            
-        '''    
-        if use_flash_attention or train_with_flash_attention:
-            is_causal = self.is_causal and query_length > 1 and flash_attention_causal_mask
-            if self.is_fp8:
-                attn_mask = None if is_causal else attention_mask
-                flash_attention_fast_softmax = True  # TODO pass this along
-                softmax_mode = "fast" if flash_attention_fast_softmax else "None"
-                enable_recompute = query_length == 1 or flash_attention_recompute
-                with sdp_kernel(enable_recompute=enable_recompute):
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_layer, key_layer, value_layer, attn_mask, 0.0, is_causal, None, softmax_mode
-                      )
-            else:
-                # TODO very similar to the fp8 case above, could be merged.
-                with sdp_kernel(
-                    enable_recompute=flash_attention_recompute
-                ) if SDPContext else contextlib.nullcontext():
-                    attn_output = FusedSDPA.apply(
-                        query_layer,
-                        key_layer,
-                        value_layer,
-                        attention_mask,
-                        0.0,
-                        # The query_length > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case query_length == 1.
-                        is_causal and attention_mask is None,
-                    )
-        else:
-            if self.is_fp8:
-                attn_output = self.unfused_scaled_dot_product_attention(
-                    query_layer, key_layer, value_layer, attention_mask, 0.0, is_causal=False
-                )
-            else:
-                # Workaround util scaled_dot_product_attention support broadcast.
-                if self.training is True and query_layer.shape != key_layer.shape:
-                    key_layer = torch.broadcast_to(key_layer, query_layer.shape)
-                    value_layer = torch.broadcast_to(value_layer, query_layer.shape)
-                attn_output = F.scaled_dot_product_attention(
-                    query_layer,
-                    key_layer,
-                    value_layer,
-                    attention_mask,
-                    0.0,
-                    # The query_length > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case query_length == 1.
-                    is_causal=self.is_causal and attention_mask is None and query_length > 1,
-                )
-        '''    
 
         flash_attention_fast_softmax = True  # TODO pass this along
         softmax_mode = "fast" if flash_attention_fast_softmax else "None"
@@ -406,48 +360,6 @@ class GaudiQwen2Attention(Qwen2Attention):
                 else:
                     attn_output = self.gaudi_flash_attn_v1(*args)
                     htcore.mark_step()
-            
-            '''
-            if q_len == 1:
-                # next token
-                #with ht.sdp_kernel(enable_recompute=False):
-                #    attn_output = FusedSDPA.apply(
-                #        query_states, key_states, value_states, attention_mask, 0.0, False, None
-                #    )
-                with ht.sdp_kernel(enable_recompute=True):
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
-                    )
-            else:
-            
-                attn_mask = None if flash_attention_causal_mask else attention_mask
-                args = (query_states, key_states, value_states, attn_mask, 0.0, flash_attention_causal_mask, None, softmax_mode)
-                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    if flash_attention_causal_mask:
-                        attn_output = self.fused_scaled_dot_product_attention(*args)
-                    else:
-                        attn_output = self.gaudi_flash_attn_v1(*args)
-                        htcore.mark_step()
-            '''     
-            '''
-            # first token
-            if flash_attention_causal_mask:
-                # causal masking on first token requires inputs to be of the same length
-                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    attn_output = self.fused_scaled_dot_product_attention(query_states, key_states, value_states, attn_mask, 0.0, True, None, softmax_mode)
-            else:
-                with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                    if q_len > 8192:
-                        attn_output = self.gaudi_flash_attn_v1(
-                            query_states, key_states, value_states, attn_mask, 0.0, False, None, softmax_mode
-                        )
-                        htcore.mark_step()
-                    else:
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_states, key_states, value_states, attn_mask, 0.0, False, None, softmax_mode
-                        )
-            '''
-
         else:
             query_states, key_states, value_states, attention_mask = gaudi_qwen2_repeat_kv(
                 query_states, key_states, value_states, attention_mask, self.num_key_value_groups
