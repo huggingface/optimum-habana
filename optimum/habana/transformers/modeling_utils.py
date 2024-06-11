@@ -55,6 +55,7 @@ from .models import (
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
     GaudiLlavaForConditionalGeneration,
+    GaudiLlavaNextForConditionalGeneration,
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
@@ -362,6 +363,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
+    transformers.models.llava_next.modeling_llava_next.LlavaNextForConditionalGeneration = (
+        GaudiLlavaNextForConditionalGeneration
+    )
 
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
