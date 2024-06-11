@@ -19,6 +19,7 @@ There are two main steps to the DPO training process:
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
         --model_name_or_path meta-llama/Llama-2-7b-hf \
+        --dataset_name "lvwerra/stack-exchange-paired" \
         --output_dir="./sft" \
         --max_steps=500 \
         --logging_steps=10 \
@@ -60,6 +61,7 @@ steps like:
     ```
     DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
         --model_name_or_path meta-llama/Llama-2-70b-hf \
+        --dataset_name "lvwerra/stack-exchange-paired" \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
         --output_dir="./sft" \
         --max_steps=500 \
@@ -133,6 +135,7 @@ There are three main steps to the PPO training process:
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
         --model_name_or_path meta-llama/Llama-2-7b-hf \
+        --dataset_name "lvwerra/stack-exchange-paired" \
         --output_dir="./sft" \
         --max_steps=500 \
         --logging_steps=10 \

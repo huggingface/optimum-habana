@@ -13,7 +13,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
 from transformers.integrations.deepspeed import (
     is_deepspeed_available,
 )
-from trl.trainer import ConstantLengthDataset
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
 from optimum.habana.trl import GaudiSFTTrainer
@@ -26,15 +25,25 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ScriptArguments:
     model_name_or_path: Optional[str] = field(default="meta-llama/Llama-2-7b-hf", metadata={"help": "the model name"})
-    dataset_name: Optional[str] = field(default="lvwerra/stack-exchange-paired", metadata={"help": "the dataset name"})
+    dataset_name: Optional[str] = field(default=None, metadata={"help": "the dataset name"})
+    dataset_path: Optional[str] = field(default=None, metadata={"help": "the dataset path"})
     subset: Optional[str] = field(default="data/finetune", metadata={"help": "the subset to use"})
     split: Optional[str] = field(default="train", metadata={"help": "the split to use"})
     size_valid_set: Optional[int] = field(default=4000, metadata={"help": "the size of the validation set"})
     streaming: Optional[bool] = field(default=True, metadata={"help": "whether to stream the dataset"})
     shuffle_buffer: Optional[int] = field(default=5000, metadata={"help": "the shuffle buffer size"})
-    seq_length: Optional[int] = field(default=1024, metadata={"help": "the sequence length"})
+    max_seq_length: Optional[int] = field(default=1024, metadata={"help": "the max sequence length"})
     num_workers: Optional[int] = field(default=4, metadata={"help": "the number of workers"})
     packing: Optional[bool] = field(default=True, metadata={"help": "whether to use packing for SFTTrainer"})
+    use_flash_attention: Optional[bool] = field(
+        default=False, metadata={"help": "Whether to use Habana flash attention for fine-tuning."}
+    )
+    flash_attention_recompute: Optional[bool] = field(
+        default=False, metadata={"help": "Whether to enable recompute in Habana flash attention for fine-tuning."}
+    )
+    flash_attention_causal_mask: Optional[bool] = field(
+        default=False, metadata={"help": "Whether to enable causal mask in Habana flash attention for fine-tuning."}
+    )
 
     # LoraConfig
     lora_alpha: Optional[float] = field(default=16, metadata={"help": "the lora alpha parameter"})
@@ -73,6 +82,12 @@ if training_args.group_by_length and script_args.packing:
 set_seed(training_args.seed)
 
 
+def prepare_sample_text(example):
+    """Prepare the text from a sample of the dataset."""
+    text = f"Question: {example['question']}\n\nAnswer: {example['response_j']}"
+    return text
+
+
 def chars_token_ratio(dataset, tokenizer, nb_examples=400):
     """
     Estimate the average number of characters per token in the dataset.
@@ -89,22 +104,23 @@ def chars_token_ratio(dataset, tokenizer, nb_examples=400):
     return total_characters / total_tokens
 
 
-def prepare_sample_text(example):
-    """Prepare the text from a sample of the dataset."""
-    text = f"Question: {example['question']}\n\nAnswer: {example['response_j']}"
-    return text
-
-
 def create_datasets(tokenizer, args, seed=None):
-    dataset = load_dataset(
-        args.dataset_name,
-        data_dir=args.subset,
-        split=args.split,
-        token=script_args.token,
-        num_proc=args.num_workers if not args.streaming else None,
-        streaming=args.streaming,
-    )
-    if args.streaming:
+    if args.dataset_name:
+        dataset = load_dataset(
+            args.dataset_name,
+            data_dir=args.subset,
+            split=args.split,
+            token=script_args.token,
+            num_proc=args.num_workers if not args.streaming else None,
+            streaming=args.streaming,
+        )
+    elif args.dataset_path:
+        ext = args.dataset_path.split(".")[-1]
+        dataset = load_dataset(ext, data_files=args.dataset_path, split=args.split, token=script_args.token)
+    else:
+        print("No dataset_name or dataset_path")
+        exit()
+    if not args.dataset_path and args.streaming:
         print("Loading the dataset in streaming mode")
         valid_data = dataset.take(args.size_valid_set)
         train_data = dataset.skip(args.size_valid_set)
@@ -114,27 +130,10 @@ def create_datasets(tokenizer, args, seed=None):
         train_data = dataset["train"]
         valid_data = dataset["test"]
         print(f"Size of the train set: {len(train_data)}. Size of the validation set: {len(valid_data)}")
-
-    chars_per_token = chars_token_ratio(train_data, tokenizer)
-    print(f"The character to token ratio of the dataset is: {chars_per_token:.2f}")
-
-    train_dataset = ConstantLengthDataset(
-        tokenizer,
-        train_data,
-        formatting_func=prepare_sample_text,
-        infinite=True,
-        seq_length=args.seq_length,
-        chars_per_token=chars_per_token,
-    )
-    valid_dataset = ConstantLengthDataset(
-        tokenizer,
-        valid_data,
-        formatting_func=prepare_sample_text,
-        infinite=False,
-        seq_length=args.seq_length,
-        chars_per_token=chars_per_token,
-    )
-    return train_dataset, valid_dataset
+    if args.dataset == "lvwerra/stack-exchange-paired":
+        chars_per_token = chars_token_ratio(train_data, tokenizer)
+        print(f"The character to token ratio of the dataset is: {chars_per_token:.2f}")
+    return train_data, valid_data
 
 
 low_cpu_mem_usage = True
@@ -151,6 +150,13 @@ base_model = AutoModelForCausalLM.from_pretrained(
     token=script_args.token,
 )
 base_model.config.use_cache = False
+if not script_args.use_flash_attentio and (
+    script_args.flash_attention_recompute or script_args.flash_attention_recompute
+):
+    assert "Need to enable use_flash_attention"
+base_model.generation_config.use_flash_attention = script_args.use_flash_attention
+base_model.generation_config.flash_attention_recompute = script_args.flash_attention_recompute
+base_model.generation_config.flash_attention_causal_mask = script_args.flash_attention_causal_mask
 
 tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
 tokenizer.pad_token = tokenizer.eos_token
@@ -161,6 +167,7 @@ logger.setLevel(log_level)
 transformers.utils.logging.set_verbosity(log_level)
 transformers.utils.logging.enable_default_handler()
 transformers.utils.logging.enable_explicit_format()
+
 
 train_dataset, eval_dataset = create_datasets(tokenizer, script_args, seed=training_args.seed)
 
@@ -175,9 +182,10 @@ trainer = GaudiSFTTrainer(
     eval_dataset=eval_dataset,
     peft_config=peft_config,
     packing=script_args.packing,
-    max_seq_length=None,
+    max_seq_length=script_args.max_seq_length,
     tokenizer=tokenizer,
     args=training_args,
+    formatting_func=None,
 )
 train_result = trainer.train()
 trainer.save_model(training_args.output_dir)
