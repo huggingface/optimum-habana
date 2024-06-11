@@ -200,6 +200,10 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         max_memory = {"cpu": "10GiB"}
         device_map = infer_auto_device_map(model, max_memory=max_memory, dtype=model_dtype)
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, device_map=device_map, offload_folder="/tmp/offload_folder/", offload_state_dict=True, torch_dtype=model_dtype, **model_kwargs)  
+    elif args.gptq:
+        from transformers import GPTQConfig
+        quantization_config = GPTQConfig(bits=4, use_exllama=False)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs)
     else:
         if args.peft_model is not None:
             model = peft_model(args, model_dtype, logger, **model_kwargs)
