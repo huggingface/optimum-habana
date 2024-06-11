@@ -50,7 +50,7 @@ TESTS_REQUIRE = [
 
 QUALITY_REQUIRES = [
     "ruff",
-    "hf_doc_builder @ git+https://github.com/huggingface/doc-builder.git",
+    "hf_doc_builder",
 ]
 
 EXTRAS_REQUIRE = {
