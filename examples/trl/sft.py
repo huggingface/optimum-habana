@@ -82,12 +82,6 @@ if training_args.group_by_length and script_args.packing:
 set_seed(training_args.seed)
 
 
-def prepare_sample_text(example):
-    """Prepare the text from a sample of the dataset."""
-    text = f"Question: {example['question']}\n\nAnswer: {example['response_j']}"
-    return text
-
-
 def chars_token_ratio(dataset, tokenizer, nb_examples=400):
     """
     Estimate the average number of characters per token in the dataset.
@@ -102,6 +96,12 @@ def chars_token_ratio(dataset, tokenizer, nb_examples=400):
             total_tokens += len(tokenizer.tokenize(text))
 
     return total_characters / total_tokens
+
+
+def prepare_sample_text(example):
+    """Prepare the text from a sample of the dataset."""
+    text = f"Question: {example['question']}\n\nAnswer: {example['response_j']}"
+    return text
 
 
 def create_datasets(tokenizer, args, seed=None):
@@ -130,7 +130,7 @@ def create_datasets(tokenizer, args, seed=None):
         train_data = dataset["train"]
         valid_data = dataset["test"]
         print(f"Size of the train set: {len(train_data)}. Size of the validation set: {len(valid_data)}")
-    if args.dataset == "lvwerra/stack-exchange-paired":
+    if args.dataset_name == "lvwerra/stack-exchange-paired":
         chars_per_token = chars_token_ratio(train_data, tokenizer)
         print(f"The character to token ratio of the dataset is: {chars_per_token:.2f}")
     return train_data, valid_data
@@ -150,7 +150,7 @@ base_model = AutoModelForCausalLM.from_pretrained(
     token=script_args.token,
 )
 base_model.config.use_cache = False
-if not script_args.use_flash_attentio and (
+if not script_args.use_flash_attention and (
     script_args.flash_attention_recompute or script_args.flash_attention_recompute
 ):
     assert "Need to enable use_flash_attention"
