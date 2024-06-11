@@ -203,6 +203,10 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             torch_dtype=model_dtype,
             **model_kwargs,
         )
+    elif args.gptq:
+        from transformers import GPTQConfig
+        quantization_config = GPTQConfig(bits=4, use_exllama=False)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs)
     else:
         if args.assistant_model is not None:
             assistant_model = AutoModelForCausalLM.from_pretrained(

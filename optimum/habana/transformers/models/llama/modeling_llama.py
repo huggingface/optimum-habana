@@ -293,9 +293,15 @@ class GaudiLlamaAttention(LlamaAttention):
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
+    def get_k_proj_weight(self):
+        """ 4bit quantization in GPTQ replaces the k_proj.weight with qweight. """
+        if hasattr(self.k_proj, 'qweight'):
+            return self.k_proj.qweight
+        return self.k_proj.weight
+
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
-        device = self.k_proj.weight.device
+        device = self.get_k_proj_weight().device
         dtype = self.config.torch_dtype
         self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
         self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
@@ -306,7 +312,7 @@ class GaudiLlamaAttention(LlamaAttention):
         # reduce memory consumption and improve performance.
         if seq_len > self.max_position_embeddings:
             self.max_position_embeddings = seq_len
-            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
+            _, _ = self.rotary_emb(self.get_k_proj_weight(), seq_len=seq_len)
 
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
@@ -362,7 +368,7 @@ class GaudiLlamaAttention(LlamaAttention):
             query_slices = self.q_proj.weight.split(
                 (self.num_heads * self.head_dim) // self.config.pretraining_tp, dim=0
             )
-            key_slices = self.k_proj.weight.split(key_value_slicing, dim=0)
+            key_slices = self.get_k_proj_weight().split(key_value_slicing, dim=0)
             value_slices = self.v_proj.weight.split(key_value_slicing, dim=0)
 
             query_states = [F.linear(hidden_states, query_slices[i]) for i in range(self.config.pretraining_tp)]
