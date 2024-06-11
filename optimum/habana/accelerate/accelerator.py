@@ -37,7 +37,6 @@ from accelerate.utils import (
     DeepSpeedPlugin,
     DistributedDataParallelKwargs,
     DistributedType,
-    FP8RecipeKwargs,
     GradientAccumulationPlugin,
     GradScalerKwargs,
     InitProcessGroupKwargs,
@@ -73,10 +72,12 @@ from .state import GaudiAcceleratorState, GaudiPartialState
 from .utils import (
     GaudiDistributedType,
     GaudiDynamoBackend,
+    GaudiFP8RecipeKwargs,
     GaudiFullyShardedDataParallelPlugin,
     GaudiTorchDynamoPlugin,
+    convert_model,
+    get_fp8_recipe,
 )
-
 
 logger = get_logger(__name__)
 
@@ -197,9 +198,9 @@ class GaudiAccelerator(Accelerator):
                         raise ValueError("You can only pass one `InitProcessGroupKwargs` in `kwargs_handler`.")
                     else:
                         self.init_handler = handler
-                elif isinstance(handler, FP8RecipeKwargs):
+                elif isinstance(handler, GaudiFP8RecipeKwargs):
                     if self.fp8_recipe_handler is not None:
-                        raise ValueError("You can only pass one `FP8RecipeKwargs` in `kwargs_handler`.")
+                        raise ValueError("You can only pass one `GaudiFP8RecipeKwargs` in `kwargs_handler`.")
                     else:
                         self.fp8_recipe_handler = handler
                 elif isinstance(handler, AutocastKwargs):
@@ -219,6 +220,13 @@ class GaudiAccelerator(Accelerator):
             _from_accelerator=True,
             **kwargs,
         )
+
+        if self.state.is_fp8_enabled:
+            if self.fp8_recipe_handler is None:
+                self.fp8_recipe_handler = GaudiFP8RecipeKwargs()
+            # Handling FP8 recipe creation in init since both `prepare_model` and `_prepare_deepspeed` require it.
+            # (Base accelerator handles this in `prepare_model` function)
+            self.fp8_recipe_handler = get_fp8_recipe(self.fp8_recipe_handler)
 
         trackers = filter_trackers(log_with, self.logging_dir)
         if len(trackers) < 1 and log_with is not None:
@@ -342,29 +350,8 @@ class GaudiAccelerator(Accelerator):
                 model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
-        # FP8 is not supported on Gaudi2 yet
-        # elif self.mixed_precision == "fp8":
-        #     if not has_transformer_engine_layers(model):
-        #         with torch.no_grad():
-        #             convert_model(model)
-        #         model._converted_to_transformer_engine = True
-        #     model._original_forward = model.forward
-
-        #     kwargs = self.fp8_recipe_handler.to_kwargs() if self.fp8_recipe_handler is not None else {}
-        #     if "fp8_format" in kwargs:
-        #         kwargs["fp8_format"] = getattr(te_recipe.Format, kwargs["fp8_format"])
-        #     fp8_recipe = te_recipe.DelayedScaling(**kwargs)
-        #     cuda_device_capacity = torch.cuda.get_device_capability()
-        #     fp8_enabled = cuda_device_capacity[0] >= 9 or (
-        #         cuda_device_capacity[0] == 8 and cuda_device_capacity[1] >= 9
-        #     )
-        #     if not fp8_enabled:
-        #         logger.warn(
-        #             f"The current device has compute capability of {cuda_device_capacity} which is "
-        #             "insufficient for FP8 mixed precision training (requires a GPU Hopper/Ada Lovelace "
-        #             "or higher, compute capability of 8.9 or higher). Will use FP16 instead."
-        #         )
-        #     model.forward = fp8_autocast(enabled=fp8_enabled, fp8_recipe=fp8_recipe)(model.forward)
+        if self.state.is_fp8_enabled:
+            model = convert_model(model)
 
         if (getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)) and getattr(
             model, "hf_device_map", False
@@ -458,7 +445,7 @@ class GaudiAccelerator(Accelerator):
 
         is_dataloader_present = any(isinstance(obj, torch.utils.data.DataLoader) for obj in args)
         result = [
-            self._prepare_one(obj, first_pass=True) if isinstance(obj, torch.utils.data.DataLoader) else obj
+            self._prepare_one(obj, first_pass=True) if isinstance(obj, torch.utils.data.DataLoader) else convert_model(obj) if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled  else obj
             for obj in args
         ]
 

@@ -295,6 +295,11 @@ class GaudiTrainingArguments(TrainingArguments):
         },
     )
 
+    fp8: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use fp8 for training."},
+    )
+
     def __post_init__(self):
         if self.use_hpu_graphs:
             warnings.warn(
@@ -489,7 +494,9 @@ class GaudiTrainingArguments(TrainingArguments):
 
         # if training args is specified, it will override the one specified in the accelerate config
         mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
-        if self.bf16:
+        if self.fp8:
+            mixed_precision_dtype = "fp8"
+        elif self.bf16:
             mixed_precision_dtype = "bf16"
         os.environ["ACCELERATE_MIXED_PRECISION"] = mixed_precision_dtype
 
