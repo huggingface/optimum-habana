@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -30,7 +30,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/example_diff_tests.sh
   stable-diffusion:
     name: Test Stable Diffusion
@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -55,7 +55,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/slow_tests_diffusers.sh
   deepspeed:
     name: Test DeepSpeed models
@@ -69,7 +69,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -81,7 +81,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/slow_tests_deepspeed.sh
   multi-card:
     name: Test multi-card models
@@ -95,7 +95,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -107,7 +107,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/slow_tests_8x.sh
   single-card:
     name: Test single-card models
@@ -122,7 +122,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -134,7 +134,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/slow_tests_1x.sh
   albert-xxl-single-card:
     name: Test single-card ALBERT XXL
@@ -152,7 +152,7 @@ jobs:
       - name: Pull image
         if: github.event.schedule == '0 21 * * 6'
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run test
         if: github.event.schedule == '0 21 * * 6'
         run: |
@@ -165,7 +165,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/albert_xxl_1x.sh
       - name: Warning
         if: github.event.schedule != '0 21 * * 6'
@@ -185,7 +185,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -197,7 +197,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             make slow_tests_text_generation_example TOKEN=${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
   trl:
     name: Test TRL integration
@@ -215,7 +215,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -227,7 +227,7 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/slow_tests_trl.sh
   sentence-transformers:
     name: Test Sentence Transformers integration
@@ -254,7 +254,7 @@ jobs:
           path: sentence-transformers
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -266,5 +266,5 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash optimum-habana/tests/ci/sentence_transformers.sh
