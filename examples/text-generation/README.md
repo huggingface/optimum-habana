@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 ```
 
 
@@ -170,7 +170,9 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --use_hpu_graphs \
 --use_kv_cache \
 --batch_size 1 \
---do_sample
+--do_sample \
+--use_flash_attention \
+--flash_attention_causal_mask
 ```
 
 > To be able to run gated models like [StarCoder](https://huggingface.co/bigcode/starcoder), you should:
@@ -280,7 +282,10 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python ../gaudi_spawn.py 
 --use_hpu_graphs \
 --trim_logits \
 --use_kv_cache \
---reuse_cache \
+--bucket_size=128 \
+--bucket_internal \
+--use_flash_attention \
+--flash_attention_recompute \
 --bf16 \
 --batch_size 1
 ```
@@ -295,7 +300,10 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --use_hpu_graphs \
 --trim_logits \
 --use_kv_cache \
---reuse_cache \
+--bucket_size=128 \
+--bucket_internal \
+--use_flash_attention \
+--flash_attention_recompute \
 --bf16 \
 --batch_size 1
 ```
@@ -310,8 +318,10 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --trim_logits \
 --use_kv_cache \
 --reuse_cache \
+--use_flash_attention \
+--flash_attention_recompute \
 --bf16 \
---batch_size 277 \
+--batch_size 350 \
 --max_new_tokens 2048 \
 --max_input_tokens 2048 \
 --limit_hpu_graphs
@@ -355,7 +365,10 @@ QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ..
 --trim_logits \
 --batch_size 1 \
 --bf16 \
---reuse_cache
+--reuse_cache \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask
 ```
 
 Here is an example to quantize the model based on previous measurements for Falcon-180B with 8 cards:
@@ -371,7 +384,10 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
 --batch_size 110 \
 --bf16 \
 --reuse_cache \
---trim_logits
+--trim_logits \
+--use_flash_attention \
+--flash_attention_recompute \
+--flash_attention_causal_mask
 ```
 
 Here is an example to measure the tensor quantization statistics on phi-2 with 1 card:

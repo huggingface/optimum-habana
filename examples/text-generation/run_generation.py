@@ -126,6 +126,12 @@ def setup_parser(parser):
         help="Number of steps to capture for profiling.",
     )
     parser.add_argument(
+        "--profiling_record_shapes",
+        default=False,
+        type=bool,
+        help="Record shapes when enabling profiling.",
+    )
+    parser.add_argument(
         "--prompt",
         default=None,
         type=str,
@@ -241,6 +247,11 @@ def setup_parser(parser):
         "--flash_attention_causal_mask",
         action="store_true",
         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
+    )
+    parser.add_argument(
+        "--flash_attention_fast_softmax",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
         "--book_source",
@@ -400,6 +411,7 @@ def main():
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
                 iteration_times=iteration_times,
+                profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             first_token_time = iteration_times[0] + encode_duration
             logger.info(f"Time to first token = {first_token_time*1000}ms")
@@ -583,6 +595,7 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
+                profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             return prompt, outputs
 
