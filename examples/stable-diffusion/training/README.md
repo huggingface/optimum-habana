@@ -230,11 +230,11 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py
 
 ### Single-card Training on Gaudi1
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
+python train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
   --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
   --dataset_name lambdalabs/naruto-blip-captions \
-  --resolution 512 \
+  --resolution 256 \
   --center_crop \
   --random_flip \
   --proportion_empty_prompts=0.2 \
