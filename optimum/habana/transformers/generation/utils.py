@@ -1856,11 +1856,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if ignore_eos:
                 this_peer_finished = stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids, scores, token_idx=token_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids, scores, token_idx=token_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
@@ -2275,11 +2275,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
             if ignore_eos:
                 this_peer_finished = stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids, scores, token_idx=token_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
-                    input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids, scores, token_idx=token_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
@@ -2887,7 +2887,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     and num_eos_tokens >= num_beams_tensor
                 ):
                     break
-                elif get_final_stopping_criteria(stopping_criteria(input_ids, scores, token_idx=cur_len)):
+                elif get_final_stopping_criteria(stopping_criteria(input_ids, scores, token_idx=token_idx)):
                     break
             elif get_final_stopping_criteria(stopping_criteria(input_ids, scores)) or (
                 beam_scorer.is_done and not lazy_mode
@@ -3637,7 +3637,7 @@ class GaudiGenerationMixin(GenerationMixin):
             hb_profer.step()
 
             if constrained_beam_scorer.is_done or get_final_stopping_criteria(
-                stopping_criteria(input_ids, scores, token_idx=cur_len)
+                stopping_criteria(input_ids, scores, token_idx=token_idx)
             ):
                 this_peer_finished = True
 
