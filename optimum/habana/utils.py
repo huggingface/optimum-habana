@@ -31,7 +31,7 @@ from .version import __version__
 logger = logging.get_logger(__name__)
 
 
-CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.15.0")
+CURRENTLY_VALIDATED_SYNAPSE_VERSION = version.parse("1.16.0")
 
 
 def to_device_dtype(my_input: Any, target_device: torch.device = None, target_dtype: torch.dtype = None):
@@ -115,6 +115,33 @@ def speed_metrics(
         result[f"{split}_tokens_per_second"] = round(tokens_per_second, 3)
 
     return result
+
+
+def warmup_inference_steps_time_adjustment(
+    start_time_after_warmup, start_time_after_inference_steps_warmup, num_inference_steps, warmup_steps
+):
+    """
+    Adjust start time after warmup to account for warmup inference steps.
+
+    When warmup is applied to multiple inference steps within a single sample generation we need to account for
+    skipped inference steps time to estimate "per sample generation time".  This function computes the average
+    inference time per step and adjusts the start time after warmup accordingly.
+
+    Args:
+        start_time_after_warmup: time after warmup steps have been performed
+        start_time_after_inference_steps_warmup: time after warmup inference steps have been performed
+        num_inference_steps: total number of inference steps per sample generation
+        warmup_steps: number of warmup steps
+
+    Returns:
+        [float]: adjusted start time after warmup which accounts for warmup inference steps based on average non-warmup steps time
+    """
+    if num_inference_steps > warmup_steps:
+        avg_time_per_inference_step = (time.time() - start_time_after_inference_steps_warmup) / (
+            num_inference_steps - warmup_steps
+        )
+        start_time_after_warmup -= avg_time_per_inference_step * warmup_steps
+    return start_time_after_warmup
 
 
 def to_gb_rounded(mem: float) -> float:
@@ -279,7 +306,7 @@ class HabanaProfile(object):
                 activities=activities,
                 on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
                 record_shapes=record_shapes,
-                with_stack=True,
+                with_stack=False,
             )
             self.start = profiler.start
             self.stop = profiler.stop

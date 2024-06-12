@@ -75,6 +75,10 @@ from .utils import (
     GaudiDynamoBackend,
     GaudiFullyShardedDataParallelPlugin,
     GaudiTorchDynamoPlugin,
+    te_forward_convert,
+    te_setup_fp8_recipe_handler,
+    te_wrap_fp8,
+    te_wrap_fp8_forward_convert,
 )
 
 
@@ -109,6 +113,7 @@ class GaudiAccelerator(Accelerator):
         dynamo_backend: GaudiDynamoBackend | str | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
+        fp8_recipe_format: str = None,
     ):
         self.trackers = []
         if project_config is not None:
@@ -141,7 +146,7 @@ class GaudiAccelerator(Accelerator):
         if deepspeed_plugin:
             if not is_deepspeed_available():
                 raise ImportError(
-                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0`."
+                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0`."
                 )
 
             mixed_precision = (
@@ -176,6 +181,7 @@ class GaudiAccelerator(Accelerator):
         self.scaler_handler = None
         self.init_handler = None
         self.fp8_recipe_handler = None
+        self.fp8_recipe_format = None
         self.autocast_handler = None
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
@@ -219,7 +225,8 @@ class GaudiAccelerator(Accelerator):
             _from_accelerator=True,
             **kwargs,
         )
-
+        if self.fp8_recipe_handler is None and self.state.is_fp8_enabled:
+            self.fp8_recipe_handler = te_setup_fp8_recipe_handler(self.fp8_recipe_format)
         trackers = filter_trackers(log_with, self.logging_dir)
         if len(trackers) < 1 and log_with is not None:
             warnings.warn(f"`log_with={log_with}` was passed but no supported trackers are currently installed.")
@@ -342,6 +349,8 @@ class GaudiAccelerator(Accelerator):
                 model.forward = MethodType(convert_outputs_to_fp32(model.forward.__func__), model)
             else:
                 model.forward = convert_outputs_to_fp32(new_forward)
+        elif self.state.is_fp8_enabled:
+            model = te_wrap_fp8_forward_convert(model, self.fp8_recipe_handler)
         # FP8 is not supported on Gaudi2 yet
         # elif self.mixed_precision == "fp8":
         #     if not has_transformer_engine_layers(model):
@@ -458,7 +467,11 @@ class GaudiAccelerator(Accelerator):
 
         is_dataloader_present = any(isinstance(obj, torch.utils.data.DataLoader) for obj in args)
         result = [
-            self._prepare_one(obj, first_pass=True) if isinstance(obj, torch.utils.data.DataLoader) else obj
+            self._prepare_one(obj, first_pass=True)
+            if isinstance(obj, torch.utils.data.DataLoader)
+            else te_wrap_fp8(obj)
+            if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled
+            else obj
             for obj in args
         ]
 
@@ -672,6 +685,8 @@ class GaudiAccelerator(Accelerator):
                     result[i] = scheduler
             # pointing for deepspeed_engine_wrapped.backward()
             self.deepspeed_engine_wrapped = DeepSpeedEngineWrapper(engine)
+            if self.state.is_fp8_enabled:
+                model = te_forward_convert(engine, self.fp8_recipe_handler)
             self._models.append(engine)
             if optimizer is not None:
                 self._optimizers.append(optimizer)

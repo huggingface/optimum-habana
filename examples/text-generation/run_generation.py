@@ -126,6 +126,12 @@ def setup_parser(parser):
         help="Number of steps to capture for profiling.",
     )
     parser.add_argument(
+        "--profiling_record_shapes",
+        default=False,
+        type=bool,
+        help="Record shapes when enabling profiling.",
+    )
+    parser.add_argument(
         "--prompt",
         default=None,
         type=str,
@@ -145,6 +151,12 @@ def setup_parser(parser):
         type=str,
         nargs="+",
         help="Optional argument list of words that must be generated.",
+    )
+    parser.add_argument(
+        "--assistant_model",
+        default=None,
+        type=str,
+        help="Optional argument to give a path to a draft/assistant model for assisted decoding.",
     )
     parser.add_argument(
         "--peft_model",
@@ -221,7 +233,6 @@ def setup_parser(parser):
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
 
-    parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
@@ -236,6 +247,11 @@ def setup_parser(parser):
         "--flash_attention_causal_mask",
         action="store_true",
         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
+    )
+    parser.add_argument(
+        "--flash_attention_fast_softmax",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
         "--book_source",
@@ -280,13 +296,17 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config == "" and args.disk_offload:
+        logger.warning(
+            "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
+        )
     return args
 
 
 def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
-    model, tokenizer, generation_config = initialize_model(args, logger)
+    model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
     if args.torch_compile and model.config.model_type == "llama":
@@ -384,12 +404,14 @@ def main():
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
+                assistant_model=assistant_model,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
                 iteration_times=iteration_times,
+                profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             first_token_time = iteration_times[0] + encode_duration
             logger.info(f"Time to first token = {first_token_time*1000}ms")
@@ -487,7 +509,7 @@ def main():
         from datasets import load_dataset
         from torch.utils.data import DataLoader
 
-        assert args.simulate_dyn_prompt == "", "Both dataset_name and simulate_dyn_prompt are set"
+        assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
         raw_dataset = load_dataset(args.dataset_name)
         if "test" in raw_dataset:
@@ -573,6 +595,7 @@ def main():
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 ignore_eos=args.ignore_eos,
+                profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             return prompt, outputs
 

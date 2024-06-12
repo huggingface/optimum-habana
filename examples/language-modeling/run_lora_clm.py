@@ -100,12 +100,6 @@ class ModelArguments:
         default="main",
         metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
     )
-    use_auth_token: bool = field(
-        default=False,
-        metadata={
-            "help": "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead."
-        },
-    )
     trust_remote_code: bool = field(
         default=False,
         metadata={
@@ -265,6 +259,27 @@ class DataArguments:
     save_last_ckpt: bool = field(
         default=True, metadata={"help": "Whether to save checkpoint at the end of the training."}
     )
+    instruction_column_name: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Name of the column in the dataset that describes the task that the model should perform. By "
+            "default, the 'instruction' column is used for non-SQL prompts and the 'question' column is used for SQL prompts."
+        },
+    )
+    input_column_name: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Name of the column in the dataset that optionally provides context or input for the task. By "
+            "default, the 'input' column is used for non-SQL prompts and the 'context' column is used for SQL prompts."
+        },
+    )
+    output_column_name: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Name of the column in the dataset with the answer to the instruction. By default, the "
+            "'output' column is used for non-SQL prompts and the 'answer' column is used for SQL prompts."
+        },
+    )
 
 
 @dataclass
@@ -363,7 +378,7 @@ def create_prompts(examples):
     prompts["target"] = []
     for example in examples:
         prompt_template = (
-            PROMPT_DICT["prompt_with_input"] if example["input"] != "" else PROMPT_DICT["prompt_without_input"]
+            PROMPT_DICT["prompt_with_input"] if example.get("input", "") != "" else PROMPT_DICT["prompt_without_input"]
         )
         source = prompt_template.format_map(example)
         prompts["source"].append(source)
@@ -435,7 +450,6 @@ def main():
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
         "trust_remote_code": True if model_args.trust_remote_code else None,
         "use_cache": False if training_args.gradient_checkpointing else model_args.use_cache,
         "token": model_args.token,
@@ -451,7 +465,6 @@ def main():
         "cache_dir": model_args.cache_dir,
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
         "token": model_args.token,
     }
     if model_args.tokenizer_name:
@@ -479,7 +492,7 @@ def main():
             data_args.dataset_name,
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
         )
 
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
@@ -488,14 +501,14 @@ def main():
                 data_args.dataset_config_name,
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
-                use_auth_token=True if model_args.use_auth_token else None,
+                token=model_args.token,
             )
             raw_datasets["train"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
-                use_auth_token=True if model_args.use_auth_token else None,
+                token=model_args.token,
             )
     else:
         data_files = {}
@@ -516,7 +529,7 @@ def main():
             extension,
             data_files=data_files,
             cache_dir=model_args.cache_dir,
-            use_auth_token=True if model_args.use_auth_token else None,
+            token=model_args.token,
             **dataset_args,
         )
 
@@ -527,7 +540,7 @@ def main():
                 data_files=data_files,
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
-                use_auth_token=True if model_args.use_auth_token else None,
+                token=model_args.token,
                 **dataset_args,
             )
             raw_datasets["train"] = load_dataset(
@@ -535,23 +548,11 @@ def main():
                 data_files=data_files,
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
-                use_auth_token=True if model_args.use_auth_token else None,
+                token=model_args.token,
                 **dataset_args,
             )
 
-    if data_args.dataset_name == "tatsu-lab/alpaca" or data_args.sql_prompt:
-        # Preprocessing the datasets.
-        for key in raw_datasets:
-            prompts = (
-                create_prompts(raw_datasets[key])
-                if not data_args.sql_prompt
-                else create_sql_prompts(raw_datasets[key])
-            )
-            columns_to_be_removed = list(raw_datasets[key].features.keys())
-            raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
-            raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
-            raw_datasets[key] = raw_datasets[key].remove_columns(columns_to_be_removed)
-    elif (
+    if (
         data_args.dataset_name == "timdettmers/openassistant-guanaco"
     ):  # from https://github.com/artidoro/qlora/blob/main/qlora.py#L621
         raw_datasets = raw_datasets.map(
@@ -565,7 +566,33 @@ def main():
             [col for col in raw_datasets.column_names["train"] if col not in ["input", "output"]]
         )
     else:
-        raise ValueError("Unsupported dataset")
+        # Preprocessing the datasets.
+        for key in raw_datasets:
+            if data_args.instruction_column_name:
+                raw_datasets[key] = raw_datasets[key].rename_column(
+                    data_args.instruction_column_name, "question" if data_args.sql_prompt else "instruction"
+                )
+
+            if data_args.input_column_name:
+                raw_datasets[key] = raw_datasets[key].rename_column(
+                    data_args.input_column_name, "context" if data_args.sql_prompt else "input"
+                )
+
+            if data_args.output_column_name:
+                raw_datasets[key] = raw_datasets[key].rename_column(
+                    data_args.output_column_name, "answer" if data_args.sql_prompt else "output"
+                )
+
+            prompts = (
+                create_prompts(raw_datasets[key])
+                if not data_args.sql_prompt
+                else create_sql_prompts(raw_datasets[key])
+            )
+            columns_to_be_removed = list(raw_datasets[key].features.keys())
+            raw_datasets[key] = raw_datasets[key].add_column("prompt_sources", prompts["source"])
+            raw_datasets[key] = raw_datasets[key].add_column("prompt_targets", prompts["target"])
+            raw_datasets[key] = raw_datasets[key].remove_columns(columns_to_be_removed)
+
     # Load model
     if model_args.model_name_or_path:
         model_dtype = torch.bfloat16 if training_args.bf16 else None
@@ -575,7 +602,6 @@ def main():
             config=config,
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
             trust_remote_code=True if model_args.trust_remote_code else None,
             torch_dtype=model_dtype,
             low_cpu_mem_usage=model_args.low_cpu_mem_usage,
@@ -670,18 +696,16 @@ def main():
                 concatenated_dataset[column] = reshaped_data
             return datasets.Dataset.from_dict(concatenated_dataset)
 
-        if data_args.dataset_name == "tatsu-lab/alpaca" or data_args.sql_prompt:
+        if data_args.dataset_name == "timdettmers/openassistant-guanaco":
+            tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
+            if training_args.do_eval:
+                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
+        else:
             tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["prompt_sources", "prompt_targets"])
             if training_args.do_eval:
                 tokenized_datasets_eval_ = tokenized_datasets["validation"].remove_columns(
                     ["prompt_sources", "prompt_targets"]
                 )
-        elif data_args.dataset_name == "timdettmers/openassistant-guanaco":
-            tokenized_datasets_ = tokenized_datasets["train"].remove_columns(["input", "output"])
-            if training_args.do_eval:
-                tokenized_datasets_eval_ = tokenized_datasets["test"].remove_columns(["input", "output"])
-        else:
-            raise ValueError("Unsupported dataset")
         tokenized_datasets["train"] = concatenate_data(tokenized_datasets_, data_args.max_seq_length)
         if training_args.do_eval:
             tokenized_datasets["validation"] = concatenate_data(tokenized_datasets_eval_, data_args.max_seq_length)
@@ -757,10 +781,6 @@ def main():
             )
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
-        if training_args.torch_compile:
-            from optimum.habana.peft.layer import GaudiLoraLayerLinearForward
-
-            tuners.lora.layer.Linear.forward = GaudiLoraLayerLinearForward
         lora_model = get_peft_model(model, peft_config)
         if training_args.bf16 and finetune_args.peft_type != "ia3":
             lora_model = lora_model.to(torch.bfloat16)
