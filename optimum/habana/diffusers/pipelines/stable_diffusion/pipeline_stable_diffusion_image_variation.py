@@ -331,7 +331,7 @@ class GaudiStableDiffusionImageVariationPipeline(GaudiDiffusionPipeline, StableD
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
                 image_embeddings_batch = image_embeddings_batches[0]
                 image_embeddings_batches = torch.roll(image_embeddings_batches, shifts=-1, dims=0)
-                for i in range(num_inference_steps):
+                for i in range(len(timesteps)):
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
                     # expand the latents if we are doing classifier free guidance

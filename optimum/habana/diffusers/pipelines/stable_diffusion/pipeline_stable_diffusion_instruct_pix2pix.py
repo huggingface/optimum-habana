@@ -417,7 +417,7 @@ class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, Stable
                 prompt_embeds_batch = prompt_embeds_batches[0]
                 prompt_embeds_batches = torch.roll(prompt_embeds_batches, shifts=-1, dims=0)
 
-                for i in range(num_inference_steps):
+                for i in range(len(timesteps)):
                     t = timesteps[0]
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
                     # expand the latents if we are doing classifier free guidance

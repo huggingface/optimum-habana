@@ -2385,7 +2385,7 @@ class GaudiStableDiffusionInstructPix2PixPipelineTests(TestCase):
         self.assertEqual(image.shape, (1, 32, 32, 3))
         expected_slice = np.array([0.7417, 0.3842, 0.4732, 0.5776, 0.5891, 0.5139, 0.4052, 0.5673, 0.4986])
 
-        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-3)
 
 
 class GaudiStableDiffusionImageVariationPipelineTests(TestCase):
@@ -2651,5 +2651,4 @@ class GaudiStableDiffusionXLImg2ImgPipelineTests(TestCase):
         self.assertEqual(image.shape, (1, 32, 32, 3))
 
         expected_slice = np.array([0.4664, 0.4886, 0.4403, 0.6902, 0.5592, 0.4534, 0.5931, 0.5951, 0.5224])
-
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
