@@ -238,7 +238,7 @@ def main():
                 transforms.Normalize([0.48145466, 0.4578275, 0.40821073], [0.26862954, 0.26130258, 0.27577711]),
             ]
         )
-        image = tform(im).to("hpu").unsqueeze(0)
+        image = tform(im).unsqueeze(0)
     else:
         image = PIL.Image.open(requests.get(args.src_image_path, stream=True).raw)
         image = PIL.ImageOps.exif_transpose(image)
