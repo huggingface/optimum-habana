@@ -24,6 +24,7 @@ There are two main steps to the DPO training process:
         --max_steps=500 \
         --logging_steps=10 \
         --save_steps=100 \
+        --do_train \
         --per_device_train_batch_size=4 \
         --per_device_eval_batch_size=1 \
         --gradient_accumulation_steps=2 \
@@ -64,6 +65,7 @@ steps like:
         --dataset_name "lvwerra/stack-exchange-paired" \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
         --output_dir="./sft" \
+        --do_train \
         --max_steps=500 \
         --logging_steps=10 \
         --save_steps=100 \
@@ -137,6 +139,7 @@ There are three main steps to the PPO training process:
         --model_name_or_path meta-llama/Llama-2-7b-hf \
         --dataset_name "lvwerra/stack-exchange-paired" \
         --output_dir="./sft" \
+        --do_train \
         --max_steps=500 \
         --logging_steps=10 \
         --save_steps=100 \
