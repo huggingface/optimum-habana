@@ -94,6 +94,7 @@ else:
             ("adept/persimmon-8b-base", 1, False, 34.53559807384106),
             ("bigcode/starcoder2-3b", 1, False, 82.09655684566117),
             ("state-spaces/mamba-130m-hf", 224, False, 794.542),
+            ("mosaicml/mpt-7b", 1, True, 147.98258566975915),
         ],
         "fp8": [],
         "deepspeed": [

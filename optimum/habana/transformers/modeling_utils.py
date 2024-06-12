@@ -50,6 +50,7 @@ from .models import (
     GaudiGPTJAttention,
     GaudiGPTJBlock,
     GaudiGPTJForCausalLM,
+    GaudiGPTJModel,
     GaudiGPTNeoXForCausalLM,
     GaudiLlamaAttention,
     GaudiLlamaDecoderLayer,
@@ -137,7 +138,6 @@ from .models import (
     gaudi_gpt_neox_layer_forward,
     gaudi_gpt_neox_model_forward,
     gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache,
-    gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
     gaudi_MambaForCausalLM_prepare_inputs_for_generation,
@@ -341,7 +341,7 @@ def adapt_transformers_to_gaudi():
     transformers.models.gptj.modeling_gptj.GPTJAttention = GaudiGPTJAttention
     transformers.models.gptj.modeling_gptj.GPTJForCausalLM = GaudiGPTJForCausalLM
     transformers.models.gptj.modeling_gptj.GPTJBlock = GaudiGPTJBlock
-    transformers.models.gptj.modeling_gptj.GPTJModel.forward = gaudi_gptj_model_forward
+    transformers.models.gptj.modeling_gptj.GPTJModel = GaudiGPTJModel
 
     # Optimization for GPTBigCode on Gaudi
     transformers.models.gpt_bigcode.modeling_gpt_bigcode.GPTBigCodeAttention.forward = (
