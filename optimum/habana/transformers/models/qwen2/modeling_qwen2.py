@@ -17,7 +17,6 @@
 ###############################################################################
 
 import math
-import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -188,7 +187,6 @@ class GaudiQwen2Attention(Qwen2Attention):
     def __init__(self, config: Qwen2Config, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
 
-        self.is_fp8 = os.getenv("QUANT_CONFIG", "") != ""
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA)
 
         self.matmul_qk = Matmul()
