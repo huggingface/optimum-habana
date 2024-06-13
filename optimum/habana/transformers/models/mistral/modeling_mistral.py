@@ -222,6 +222,8 @@ def gaudi_mistral_rmsnorm_forward(self, hidden_states):
 class GaudiMistralAttention(MistralAttention):
     def __init__(self, config: MistralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
+        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
+        self.config = config
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.matmul_qk = Matmul()
