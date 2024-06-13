@@ -88,9 +88,8 @@ def main():
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
     parser.add_argument(
         "--ignore_eos",
-        default=True,
-        action=argparse.BooleanOptionalAction,
-        help="Whether to ignore eos, set False to disable it",
+        action="store_true",
+        help="Whether to ignore eos, set False to disable it.",
     )
     args = parser.parse_args()
 
