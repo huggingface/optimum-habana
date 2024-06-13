@@ -1858,9 +1858,9 @@ class GaudiGenerationMixin(GenerationMixin):
             cur_len = cur_len + 1
 
             if ignore_eos:
-                this_peer_finished = stopping_criteria(
+                this_peer_finished = get_final_stopping_criteria(stopping_criteria(
                     input_ids, scores, token_idx=token_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
-                )
+                ))
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
                     input_ids, scores, token_idx=token_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
@@ -2277,9 +2277,9 @@ class GaudiGenerationMixin(GenerationMixin):
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
             if ignore_eos:
-                this_peer_finished = stopping_criteria(
+                this_peer_finished = get_final_stopping_criteria(stopping_criteria(
                     input_ids, scores, token_idx=token_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
-                )
+                ))
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
                     input_ids, scores, token_idx=token_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
@@ -4078,9 +4078,9 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
             if ignore_eos:
-                this_peer_finished = stopping_criteria(
+                this_peer_finished = get_final_stopping_criteria(stopping_criteria(
                     input_ids, scores, token_idx=None, ignore_eos=ignore_eos, eos_token_id=eos_token_id
-                )
+                ))
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
                     input_ids, scores, token_idx=None, ignore_eos=ignore_eos, eos_token_id=eos_token_id
