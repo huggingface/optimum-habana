@@ -227,7 +227,9 @@ class GaudiQwen2Attention(Qwen2Attention):
         return (self.k_cache.cache.shape, self.v_cache.cache.shape)
 
     # TODO test with this function as well
-    def gaudi_flash_attn_v1(self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, is_casual, scale, softmax_mode):
+    def gaudi_flash_attn_v1(
+        self, query_layer, key_layer, value_layer, attention_mask, dropout_rate, is_casual, scale, softmax_mode
+    ):
         """
         Gaudi version of Flash Attention V1 to support long sequence at prompt phase
         Causal mask is not supported in this optimization
@@ -245,7 +247,9 @@ class GaudiQwen2Attention(Qwen2Attention):
             s, e = i * self.block_size, (i + 1) * self.block_size
             row_q = query_layer[:, :, s:e, :]
             row_mask = attention_mask[:, :, s:e, :]
-            attn_output_partial = self.fused_scaled_dot_product_attention(row_q, key_layer, value_layer, row_mask, dropout_rate, False, None, softmax_mode)
+            attn_output_partial = self.fused_scaled_dot_product_attention(
+                row_q, key_layer, value_layer, row_mask, dropout_rate, False, None, softmax_mode
+            )
             row_o_list.append(attn_output_partial)
         attn_output = torch.cat(row_o_list, dim=-2)
 
@@ -285,7 +289,6 @@ class GaudiQwen2Attention(Qwen2Attention):
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
-        train_with_flash_attention = self.training and self._use_sdpa and not output_attentions and head_mask is None
 
         bsz, q_len, _ = hidden_states.size()
 
@@ -325,7 +328,7 @@ class GaudiQwen2Attention(Qwen2Attention):
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
-                    #past_key_value = (past_key, past_value)
+                    # past_key_value = (past_key, past_value)
                     # Return list instead of tuple
                     past_key_value = [past_key, past_value]
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
