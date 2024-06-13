@@ -250,6 +250,7 @@ python train_text_to_image_sdxl.py \
   --throughput_warmup_steps 3 \
   --use_hpu_graphs_for_training \
   --use_hpu_graphs_for_inference \
+  --checkpointing_steps 3000 \
   --bf16
 ```
 
