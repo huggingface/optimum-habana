@@ -86,6 +86,11 @@ def main():
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
+    parser.add_argument(
+        "--ignore_eos",
+        action="store_true",
+        help="Whether to ignore eos, set False to disable it.",
+    )
     args = parser.parse_args()
 
     # set args.quant_config with env variable if it is set
@@ -143,7 +148,7 @@ def main():
         "lazy_mode": True,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
-        "ignore_eos": True,
+        "ignore_eos": args.ignore_eos,
     }
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -171,7 +176,14 @@ def main():
     end = time.perf_counter()
     duration = end - start
 
-    total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+    # Let's calculate the number of generated tokens
+    n_input_tokens = len(generator.tokenizer(args.prompt).input_ids) if args.prompt is not None else 0
+    n_output_tokens = 0
+    for sequence in result:
+        # We have to subtract the number of input tokens as they are part of the returned sequence
+        n_output_tokens += len(generator.tokenizer(sequence[0]["generated_text"]).input_ids) - n_input_tokens
+
+    total_new_tokens_generated = args.n_iterations * n_output_tokens
     throughput = total_new_tokens_generated / duration
     logger.info(
         f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
