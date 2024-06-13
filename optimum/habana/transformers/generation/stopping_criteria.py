@@ -39,7 +39,7 @@ def gaudi_MaxLengthCriteria_call(
     token_idx = kwargs.get("token_idx", None)
     if token_idx is not None:
         assert not kwargs["needs_tensor_output"]
-        is_done = token_idx >= self.max_length
+        return token_idx >= self.max_length
     else:
         cur_len = input_ids.shape[-1]
         is_done = cur_len >= self.max_length
@@ -49,7 +49,7 @@ def gaudi_MaxLengthCriteria_call(
                 f"maximum length ({self.max_position_embeddings}). Depending on the model, you may observe "
                 "exceptions, performance degradation, or nothing at all."
             )
-    return create_return_const_tensor(input_ids, is_done)
+        return create_return_const_tensor(input_ids, is_done)
 
 
 def gaudi_MaxNewTokensCriteria_call(
@@ -58,10 +58,10 @@ def gaudi_MaxNewTokensCriteria_call(
     token_idx = kwargs.get("token_idx", None)
     if token_idx is not None:
         assert not kwargs["needs_tensor_output"]
-        is_done = token_idx >= self.max_length
+        return token_idx >= self.max_length
     else:
         is_done = input_ids.shape[-1] >= self.max_length
-    return create_return_const_tensor(input_ids, is_done)
+        return create_return_const_tensor(input_ids, is_done)
 
 
 def gaudi_MaxTimeCriteria_call(

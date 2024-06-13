@@ -132,7 +132,10 @@ def get_final_stopping_criteria(x):
     if isinstance(x, bool):
         return x
     elif torch.is_tensor(x):
-        return all(x)
+        if x.dim() > 0:
+            return all(x)
+        else:
+            return x
     else:
         raise TypeError(f"The stopping criteria should be either a boolean or a torch.tensor but got {type(x)}.")
 
