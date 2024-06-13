@@ -164,7 +164,7 @@ _SCRIPT_TO_MODEL_MAPPING = {
     "sft": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
-        ["llama"],
+        ["llama", "qwen2"],
     ),
     "dpo": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
@@ -192,7 +192,8 @@ class ExampleTestMeta(type):
     """
 
     @staticmethod
-    def to_test(model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool):
+    def to_test(model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool, task_name: str):
+        print("libin debug test ", model_name, example_name, task_name)
         models_with_specific_rules = [
             "albert-xxlarge-v1",
             "gpt2-xl",
@@ -216,6 +217,8 @@ class ExampleTestMeta(type):
             or "prompt_tuning" in example_name
             or example_name == "run_sequence_classification"
         ) and not IS_GAUDI2:
+            return False
+        elif "llama" in model_name and "trl-sft-chat" in task_name:
             return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
@@ -274,7 +277,7 @@ class ExampleTestMeta(type):
                     )
 
         for model_name, gaudi_config_name in models_to_test:
-            if cls.to_test(model_name, multi_card, deepspeed, example_name, fsdp):
+            if cls.to_test(model_name, multi_card, deepspeed, example_name, fsdp, attrs["TASK_NAME"]):
                 attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
                     model_name, gaudi_config_name, multi_card, deepspeed, fsdp, torch_compile
                 )
@@ -745,6 +748,18 @@ class MultiCardCausalLanguageModelingLORAFSDPCompileExampleTester(
 class MultiCardSFTExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", multi_card=True):
     TASK_NAME = "trl-sft"
     DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardSFTChatExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", multi_card=True):
+    TASK_NAME = "trl-sft-chat"
+    DATASET_NAME = "philschmid/dolly-15k-oai-style"
+
+
+class MultiCardSFTChatPeftExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="sft", multi_card=True
+):
+    TASK_NAME = "trl-sft-chat-peft"
+    DATASET_NAME = "philschmid/dolly-15k-oai-style"
 
 
 class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="dpo", multi_card=True):

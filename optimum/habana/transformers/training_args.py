@@ -101,6 +101,7 @@ class GaudiTrainingArguments(TrainingArguments):
             Whether to disable tensor cache when using hpu graphs. If True, tensors won't be cached in hpu graph and memory can be saved.
         max_hpu_graphs (`int`, *optional*):
             Maximum number of hpu graphs to be cached. Reduce to save device memory.
+        allow_unused_input((`bool`, *optional*, defaults to `False`):
         distribution_strategy (`str`, *optional*, defaults to `ddp`):
             Determines how data parallel distributed training is achieved. May be: `ddp` or `fast_ddp`.
         throughput_warmup_steps (`int`, *optional*, defaults to 0):
@@ -164,6 +165,11 @@ class GaudiTrainingArguments(TrainingArguments):
     max_hpu_graphs: Optional[int] = field(
         default=None,
         metadata={"help": "Maximum number of HPU graphs to use."},
+    )
+
+    allow_unused_input: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to allow unused input for HPU graphs for performing torch.autograd.grad"},
     )
 
     distribution_strategy: Optional[str] = field(

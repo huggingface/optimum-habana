@@ -7,6 +7,38 @@ First, you should install the requirements:
 ```
 $ pip install -U -r requirements.txt
 ```
+## Supervised Finetune
+The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset
+    ```
+    python3 sft.py \
+        --model_name_or_path "Qwen/Qwen2-7B" \
+        --dataset_name "philschmid/dolly-15k-oai-style" \
+        --streaming False \
+        --bf16 True \
+        --subset '' \
+        --output_dir ./model_qwen \
+        --num_train_epochs 1 \
+        --per_device_train_batch_size 16 \
+        --evaluation_strategy "no" \
+        --save_strategy "no" \
+        --learning_rate 3e-4 \
+        --warmup_ratio  0.03 \
+        --lr_scheduler_type "cosine" \
+        --max_grad_norm  0.3 \
+        --logging_steps 1 \
+        --do_train \
+        --do_eval \
+        --use_habana \
+        --use_lazy_mode \
+        --throughput_warmup_steps 3 \
+        --use_peft True \
+        --lora_r 4 \
+        --lora_alpha=16 \
+        --lora_dropout=0.05 \
+        --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
+        --max_seq_length 512 \
+        --adam_epsilon 1e-08
+    ```
 
 ## DPO pipeline
 

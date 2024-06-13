@@ -21,7 +21,6 @@
 import warnings
 from typing import Any, Iterable, Tuple
 
-import habana_frameworks.torch.core as htcore
 import habana_frameworks.torch.hpu as hthpu
 import torch
 
@@ -100,15 +99,17 @@ class CheckpointFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *args):
-        if not torch.autograd._is_checkpoint_valid():
-            raise RuntimeError(
-                "Checkpointing is not compatible with .grad() or when an `inputs` parameter"
-                " is passed to .backward(). Please use .backward() and do not pass its `inputs`"
-                " argument."
-            )
+        """
+        if True: #args.allow_unused_input:
+            if not torch.autograd._is_checkpoint_valid():
+                raise RuntimeError(
+                    "Checkpointing is not compatible with .grad() or when an `inputs` parameter"
+                    " is passed to .backward(). Please use .backward() and do not pass its `inputs`"
+                    " argument."
+                )
 
-        htcore.mark_step()
-
+            htcore.mark_step()
+        """
         # Copy the list to avoid modifying original list.
         inputs = list(ctx.inputs)
         tensor_indices = ctx.tensor_indices

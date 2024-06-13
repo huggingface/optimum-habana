@@ -432,7 +432,7 @@ class GaudiTrainer(Trainer):
         if self.args.use_hpu_graphs_for_training:
             import habana_frameworks.torch as ht
 
-            ht.hpu.ModuleCacher()(model=model, inplace=True)
+            ht.hpu.ModuleCacher()(model=model, inplace=True, allow_unused_input=self.args.allow_unused_input)
 
         return model
 
