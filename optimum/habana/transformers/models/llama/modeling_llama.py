@@ -429,7 +429,7 @@ class GaudiLlamaAttention(LlamaAttention):
             if q_len == 1:
                 # next token
                 attn_output = self.fused_scaled_dot_product_attention(
-                    query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode, self.use_recompute
+                    query_states, key_states, value_states, attention_mask, 0.0, False, None, 'None', self.use_recompute
                 )
             else:
                 # first token
