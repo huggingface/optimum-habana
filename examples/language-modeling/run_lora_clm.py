@@ -514,7 +514,9 @@ def main():
 
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
             if not data_args.validation_split_percentage:
-                raise ValueError("Please set --validation_split_percentage as dataset does not contain `validation` key")
+                raise ValueError(
+                    "Please set --validation_split_percentage as dataset does not contain `validation` key"
+                )
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
@@ -556,11 +558,12 @@ def main():
             **dataset_args,
         )
 
-
         # If no validation data is there, validation_split_percentage will be used to divide the dataset.
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
             if not data_args.validation_split_percentage:
-                raise ValueError("Please set --validation_split_percentage as dataset does not contain `validation` key")
+                raise ValueError(
+                    "Please set --validation_split_percentage as dataset does not contain `validation` key"
+                )
             raw_datasets["validation"] = load_dataset(
                 extension,
                 data_files=data_files,
@@ -579,7 +582,12 @@ def main():
             )
     single_column_dataset = False
     # For named dataset (timdettmers/openassistant-guanaco) or custom dataset with a single column "text"
-    if training_args.do_train and raw_datasets["train"].num_columns == 1 or training_args.do_eval and raw_datasets["validation"].num_columns == 1:
+    if (
+        training_args.do_train
+        and raw_datasets["train"].num_columns == 1
+        or training_args.do_eval
+        and raw_datasets["validation"].num_columns == 1
+    ):
         single_column_dataset = True
         raw_datasets = raw_datasets.map(
             lambda x: {
