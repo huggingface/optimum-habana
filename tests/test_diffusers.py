@@ -26,7 +26,6 @@ from typing import Union
 from unittest import TestCase, skipUnless
 
 import numpy as np
-import pytest
 import requests
 import safetensors
 import torch
@@ -1795,8 +1794,11 @@ class TrainTextToImage(TestCase):
             self.assertEqual(return_code, 0)
 
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "checkpoint-2", "unet", "diffusion_pytorch_model.safetensors")))
+            self.assertTrue(
+                os.path.isfile(os.path.join(tmpdir, "checkpoint-2", "unet", "diffusion_pytorch_model.safetensors"))
+            )
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "checkpoint-2", "unet", "config.json")))
+
 
 class TrainControlNet(TestCase):
     """
