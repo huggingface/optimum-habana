@@ -314,7 +314,6 @@ class TextGenPipeline(TestCase):
             / "text-generation-pipeline"
             / "run_pipeline.py"
         )
-        # os.environ["PYTHONPATH"] += os.pathsep +
         sys.path.append((Path(os.path.dirname(__file__)).parent / "examples" / "text-generation"))
         cmd_line = f"""
                  python3
@@ -326,7 +325,6 @@ class TextGenPipeline(TestCase):
                  --use_kv_cache
                  --do_sample
                  """.split()
-        # Run train_text_to_image_sdxl.y
         p = subprocess.Popen(cmd_line)
         return_code = p.wait()
 
