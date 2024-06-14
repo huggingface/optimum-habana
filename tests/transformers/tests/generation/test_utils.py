@@ -76,7 +76,7 @@ if is_torch_available():
     )
     from transformers.generation.candidate_generator import AssistedCandidateGenerator, CandidateGenerator
     from transformers.generation.utils import _speculative_sampling
-    from transformers.streamers import BaseStreamer
+    from transformers.generation.streamers import BaseStreamer
 
 
 class GenerationTesterMixin:
