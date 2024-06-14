@@ -31,7 +31,10 @@ pip install -r requirements.txt
 python3 run_pipeline.py \
     --model_name_or_path microsoft/speecht5_tts \
     --text "Hello, my dog is cooler than you!" \
+    --use_hpu_graphs \
     --bf16
 ```
 Models that have been validated:
   - [microsoft/speecht5_tts](https://huggingface.co/microsoft/speecht5_tts)
+  - [facebook/hf-seamless-m4t-medium](https://huggingface.co/facebook/hf-seamless-m4t-medium)
+  - [facebook/mms-tts-eng](https://huggingface.co/facebook/mms-tts-eng)

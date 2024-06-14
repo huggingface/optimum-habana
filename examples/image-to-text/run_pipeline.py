@@ -16,6 +16,7 @@
 import argparse
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -85,15 +86,31 @@ def main():
     parser.add_argument("--batch_size", type=int, default=1, help="Input batch size.")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
     parser.add_argument("--n_iterations", type=int, default=5, help="Number of inference iterations for benchmarking.")
+    parser.add_argument(
+        "--ignore_eos",
+        action="store_true",
+        help="Whether to ignore eos, set False to disable it.",
+    )
     args = parser.parse_args()
+
+    # set args.quant_config with env variable if it is set
+    args.quant_config = os.getenv("QUANT_CONFIG", "")
 
     adapt_transformers_to_gaudi()
 
     model_type = AutoConfig.from_pretrained(args.model_name_or_path).model_type
     if args.image_path is None and model_type == "llava":
         args.image_path = ["https://llava-vl.github.io/static/images/view.jpg"]
+    elif args.image_path is None and model_type == "llava_next":
+        args.image_path = [
+            "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
+        ]
     if args.prompt is None and model_type == "llava":
         args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
+    elif args.prompt is None and model_type == "llava_next":
+        args.prompt = "[INST] <image>\nWhat is shown in this image? [/INST]"
+        if args.model_name_or_path == "llava-hf/llava-v1.6-vicuna-13b-hf":
+            args.prompt = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nWhat is shown in this image? ASSISTANT:"
 
     image_paths = args.image_path
     image_paths_len = len(image_paths)
@@ -116,6 +133,11 @@ def main():
     else:
         model_dtype = torch.float32
 
+    if args.quant_config:
+        import habana_frameworks.torch.core as htcore
+
+        htcore.hpu_set_env()
+
     generator = pipeline(
         "image-to-text",
         model=args.model_name_or_path,
@@ -126,16 +148,27 @@ def main():
         "lazy_mode": True,
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
-        "ignore_eos": False,
+        "ignore_eos": args.ignore_eos,
     }
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
 
         generator.model = wrap_in_hpu_graph(generator.model)
 
+    if args.quant_config:
+        import habana_quantization_toolkit
+
+        habana_quantization_toolkit.prep_model(generator.model)
+
+        htcore.hpu_initialize(generator.model)
+
     # warm up
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
+
+    torch.hpu.synchronize()
+    if args.quant_config:
+        habana_quantization_toolkit.finish_measurements(generator.model)
 
     start = time.perf_counter()
     for i in range(args.n_iterations):
@@ -143,7 +176,14 @@ def main():
     end = time.perf_counter()
     duration = end - start
 
-    total_new_tokens_generated = args.n_iterations * args.batch_size * args.max_new_tokens
+    # Let's calculate the number of generated tokens
+    n_input_tokens = len(generator.tokenizer(args.prompt).input_ids) if args.prompt is not None else 0
+    n_output_tokens = 0
+    for sequence in result:
+        # We have to subtract the number of input tokens as they are part of the returned sequence
+        n_output_tokens += len(generator.tokenizer(sequence[0]["generated_text"]).input_ids) - n_input_tokens
+
+    total_new_tokens_generated = args.n_iterations * n_output_tokens
     throughput = total_new_tokens_generated / duration
     logger.info(
         f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"

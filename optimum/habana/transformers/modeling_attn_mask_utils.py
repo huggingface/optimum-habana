@@ -50,16 +50,14 @@ class GaudiAttentionMaskConverter(AttentionMaskConverter):
 
         # add lower triangular sliding window mask if necessary
         if sliding_window is not None:
-            diagonal = past_key_values_length - sliding_window + 1
+            diagonal = past_key_values_length - sliding_window - 1
 
-            # Replace triu with below
+            # Replace tril with below
             row_indices = torch.arange(mask.size(0), device=mask.device).view(-1, 1)  # Reshape to column vector
             col_indices = torch.arange(mask.size(1), device=mask.device)
-            context_mask = 1 - (col_indices >= row_indices + diagonal).int().expand_as(
-                mask
-            )  # Expand to match mask shape
+            context_mask = (col_indices <= row_indices + diagonal).bool().expand_as(mask)  # Expand to match mask shape
 
-            mask.masked_fill_(context_mask.bool(), torch.finfo(dtype).min)
+            mask.masked_fill_(context_mask, torch.finfo(dtype).min)
 
         return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len + past_key_values_length)
 

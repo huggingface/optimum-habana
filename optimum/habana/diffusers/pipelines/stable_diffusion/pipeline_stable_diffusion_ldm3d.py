@@ -357,7 +357,7 @@ class GaudiStableDiffusionLDM3DPipeline(GaudiDiffusionPipeline, StableDiffusionL
                 text_embeddings_batch = text_embeddings_batches[0]
                 text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
 
-                for i in range(num_inference_steps):
+                for i in range(len(timesteps)):
                     if use_warmup_inference_steps and i == throughput_warmup_steps:
                         t1_inf = time.time()
                         t1 += t1_inf - t0_inf
