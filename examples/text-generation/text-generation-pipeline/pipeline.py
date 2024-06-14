@@ -1,6 +1,10 @@
 import torch
 from transformers import TextGenerationPipeline
-from utils import initialize_model
+import sys
+import os
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
+from  utils import initialize_model
 
 
 class GaudiTextGenerationPipeline(TextGenerationPipeline):
