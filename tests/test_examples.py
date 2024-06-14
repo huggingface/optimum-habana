@@ -193,7 +193,6 @@ class ExampleTestMeta(type):
 
     @staticmethod
     def to_test(model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool, task_name: str):
-        print("libin debug test ", model_name, example_name, task_name)
         models_with_specific_rules = [
             "albert-xxlarge-v1",
             "gpt2-xl",

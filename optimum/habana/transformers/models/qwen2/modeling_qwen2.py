@@ -659,7 +659,7 @@ class GaudiQwen2Model(Qwen2Model):
                     position_ids,
                     past_key_values,
                     output_attentions,
-                    use_cache,
+                    False,
                     cache_position,
                     None,
                     attn_softmax_bf16,
@@ -667,7 +667,7 @@ class GaudiQwen2Model(Qwen2Model):
                     use_flash_attention,
                     flash_attention_recompute,
                     flash_attention_causal_mask,
-                    cache_idx,
+                    None,
                 )
             else:
                 layer_outputs = decoder_layer(
