@@ -18,6 +18,7 @@ limitations under the License.
 
 Conditional text generation on Intel® Gaudi® AI Accelerators. You can find more information about it in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom).
 
+To replicate the performance for the FP8 based Llama 2 and Mistral models posted on the Intel Gaudi [Devleloper website](https://www.intel.com/content/www/us/en/developer/platform/gaudi/model-performance.html) please go to the [Performance for Infernece](https://github.com/huggingface/optimum-habana/blob/main/performance_inference.md) page. 
 
 ## Requirements
 
