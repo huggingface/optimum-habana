@@ -1,5 +1,5 @@
 # Replicating Large Language Model Inference Performance on the Intel&reg; Gaudi&reg; AI Accelerators
-This page provides instructions on how to run the exact configuration to replicate the Intel Gaudi Max Throughput Performance Numbers posted on the Intel Gaudi [Devleloper website](https://www.intel.com/content/www/us/en/developer/platform/gaudi/model-performance.html) for the following Transformer based models:  
+This page provides instructions on how to run the exact configuration to replicate the Intel Gaudi Throughput Performance Numbers posted on the Intel Gaudi [Devleloper website](https://www.intel.com/content/www/us/en/developer/platform/gaudi/model-performance.html) for the following Transformer based models:  
 
 <div align="left">
 
