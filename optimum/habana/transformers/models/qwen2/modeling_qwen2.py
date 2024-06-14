@@ -457,7 +457,6 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
             cache_idx=cache_idx,
-            **kwargs,
         )
         self.self_attn.attention_all_reduce(hidden_states)
         hidden_states, residual = self.post_attn_pre_mlp(hidden_states, residual)
@@ -659,11 +658,11 @@ class GaudiQwen2Model(Qwen2Model):
                     position_ids,
                     past_key_values,
                     output_attentions,
-                    False,
+                    use_cache,
                     cache_position,
                     None,
                     attn_softmax_bf16,
-                    reuse_cache,
+                    False,
                     use_flash_attention,
                     flash_attention_recompute,
                     flash_attention_causal_mask,
