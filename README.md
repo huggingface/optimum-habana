@@ -172,7 +172,7 @@ Check out [the documentation of Optimum for Intel Gaudi](https://huggingface.co/
 
 The following model architectures, tasks and device distributions have been validated for Optimum for Intel Gaudi:
 
-To replicate the [published performance](https://www.intel.com/content/www/us/en/developer/platform/gaudi/model-performance.html) numbers of the Large Language Models for text-generation Infernece, please refer to the [performance_inference](https://github.com/huggingface/optimum-habana/tree/main/performance_inference.md) page 
+To replicate the [published performance](https://www.intel.com/content/www/us/en/developer/platform/gaudi/model-performance.html) numbers of the Large Language Models for text-generation inference, please refer to the [performance_inference](https://github.com/huggingface/optimum-habana/tree/main/performance_inference.md) page.
 
 > In the tables below, :heavy_check_mark: means single-card, multi-card and DeepSpeed have all been validated.
 
