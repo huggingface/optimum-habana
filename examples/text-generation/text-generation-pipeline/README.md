@@ -20,12 +20,6 @@ The text-generation pipeline can be used to perform text-generation by providing
 
 ## Requirements
 
-Update `PYTHONPATH` as follows.
-```bash
-export OPTIMUM_HABANA_PATH=/path/to/optimum-habana
-export PYTHONPATH=${PYTHONPATH}:${OPTIMUM_HABANA_PATH}/examples/text-generation
-```
-
 If you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html), you should install DeepSpeed as follows:
 ```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
