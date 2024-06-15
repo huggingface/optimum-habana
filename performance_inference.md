@@ -38,7 +38,7 @@ install DeepSpeed:
 ```bash
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 ```
-## Run the exapmles -  Measure first then run Quantization Second
+## Run the examples -  Measure first then run Quantization Second
 Since these are using FP8 precision, you will first run the model one time to make the measurement and quantization settings using `QUANT_CONFIG=./quantization_config/maxabs_measure.json` and then you will run the model a second time with the `QUANT_CONFIG=./quantization_config/maxabs_quant.json`, where the existing measurement files will be used from the `./hqt_output` folder. These examples are taking advantage of several tecniques such as maximizing batch size, bucket size and using Flash Attention.
 
 ### How to access and Use the Llama 2 and Mistral models
