@@ -398,13 +398,12 @@ def main():
             )
             pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
         set_seed(args.seed)
-  
+
     if args.distributed:
         with distributed_state.split_between_processes(args.prompts) as prompt:
             outputs = pipeline(prompt=prompt, **infer_kwargs, **res)
     else:
         outputs = pipeline(prompt=args.prompts, **infer_kwargs, **res)
-
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
