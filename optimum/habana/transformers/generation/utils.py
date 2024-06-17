@@ -1720,9 +1720,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # keep track of which sequences are already finished
         batch_size, cur_len = input_ids.shape
-        has_inputs_embeds = "inputs_embeds" in model_kwargs
-        if has_inputs_embeds:
+        inputs_embeds_offset = 0
+        if "inputs_embeds" in model_kwargs:
             cur_len = model_kwargs["inputs_embeds"].shape[1]
+            inputs_embeds_offset = input_ids.shape[1] - cur_len
+
         this_peer_finished = False
         if not ignore_eos:
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
@@ -1857,14 +1859,17 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
             cur_len = cur_len + 1
+            stop_tkn_idx = cur_len + inputs_embeds_offset
 
             if ignore_eos:
-                this_peer_finished = get_final_stopping_criteria(stopping_criteria(
-                    input_ids, scores, token_idx=token_idx if has_inputs_embeds else cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
-                ))
+                this_peer_finished = get_final_stopping_criteria(
+                    stopping_criteria(
+                        input_ids, scores, token_idx=stop_tkn_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    )
+                )
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
-                    input_ids, scores, token_idx=token_idx if has_inputs_embeds else cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids, scores, token_idx=stop_tkn_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
@@ -2143,9 +2148,11 @@ class GaudiGenerationMixin(GenerationMixin):
         # keep track of which sequences are already finished
         # TODO: no ignore_eos check here since there is a compilation error, will add ignore_eos here if fixed
         batch_size, cur_len = input_ids.shape
-        has_inputs_embeds = "inputs_embeds" in model_kwargs
-        if has_inputs_embeds:
+        inputs_embeds_offset = 0
+        if "inputs_embeds" in model_kwargs:
             cur_len = model_kwargs["inputs_embeds"].shape[1]
+            inputs_embeds_offset = input_ids.shape[1] - cur_len
+
         this_peer_finished = False
         unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
         model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
@@ -2278,13 +2285,17 @@ class GaudiGenerationMixin(GenerationMixin):
                 else:
                     model_kwargs["cache_idx"] = model_kwargs["kv_cache_len"]
 
+            stop_tkn_idx = cur_len + inputs_embeds_offset
+
             if ignore_eos:
-                this_peer_finished = get_final_stopping_criteria(stopping_criteria(
-                    input_ids, scores, token_idx=token_idx if has_inputs_embeds else cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
-                ))
+                this_peer_finished = get_final_stopping_criteria(
+                    stopping_criteria(
+                        input_ids, scores, token_idx=stop_tkn_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    )
+                )
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
-                    input_ids, scores, token_idx=token_idx if has_inputs_embeds else cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    input_ids, scores, token_idx=stop_tkn_idx, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
@@ -2547,9 +2558,11 @@ class GaudiGenerationMixin(GenerationMixin):
         num_beams = beam_scorer.num_beams
 
         batch_beam_size, cur_len = input_ids.shape
-        has_inputs_embeds = "inputs_embeds" in model_kwargs
-        if has_inputs_embeds:
+        inputs_embeds_offset = 0
+        if "inputs_embeds" in model_kwargs:
             cur_len = model_kwargs["inputs_embeds"].shape[1]
+            inputs_embeds_offset = input_ids.shape[1] - cur_len
+
         token_idx = model_kwargs.get("token_idx", None)
         if token_idx is not None:
             # Update cur_len in case of static shapes
@@ -2881,6 +2894,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # increase cur_len
             cur_len = cur_len + 1
+            stop_tkn_idx = cur_len + inputs_embeds_offset
 
             hb_profer.step()
             if self.generation_config.static_shapes:
@@ -2893,7 +2907,7 @@ class GaudiGenerationMixin(GenerationMixin):
                     and num_eos_tokens >= num_beams_tensor
                 ):
                     break
-                elif get_final_stopping_criteria(stopping_criteria(input_ids, scores, token_idx=token_idx if has_inputs_embeds else cur_len)):
+                elif get_final_stopping_criteria(stopping_criteria(input_ids, scores, token_idx=stop_tkn_idx)):
                     break
             elif get_final_stopping_criteria(stopping_criteria(input_ids, scores)) or (
                 beam_scorer.is_done and not lazy_mode
@@ -3481,9 +3495,11 @@ class GaudiGenerationMixin(GenerationMixin):
         num_beams = constrained_beam_scorer.num_beams
 
         batch_beam_size, cur_len = input_ids.shape
-        has_inputs_embeds = "inputs_embeds" in model_kwargs
-        if has_inputs_embeds:
+        inputs_embeds_offset = 0
+        if "inputs_embeds" in model_kwargs:
             cur_len = model_kwargs["inputs_embeds"].shape[1]
+            inputs_embeds_offset = input_ids.shape[1] - cur_len
+
         token_idx = model_kwargs.get("token_idx", None)
         if token_idx is not None:
             # Update cur_len in case of static shapes
@@ -3640,11 +3656,12 @@ class GaudiGenerationMixin(GenerationMixin):
 
             # increase cur_len
             cur_len = cur_len + 1
+            stop_tkn_idx = cur_len + inputs_embeds_offset
 
             hb_profer.step()
 
             if constrained_beam_scorer.is_done or get_final_stopping_criteria(
-                stopping_criteria(input_ids, scores, token_idx=token_idx if has_inputs_embeds else cur_len)
+                stopping_criteria(input_ids, scores, token_idx=stop_tkn_idx)
             ):
                 this_peer_finished = True
 
@@ -3898,8 +3915,11 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # keep track of which sequences are already finished
         batch_size, cur_len = input_ids.shape
+        inputs_embeds_offset = 0
         if "inputs_embeds" in model_kwargs:
             cur_len = model_kwargs["inputs_embeds"].shape[1]
+            inputs_embeds_offset = input_ids.shape[1] - cur_len
+
         if not ignore_eos:
             unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
         model_kwargs["cache_position"] = torch.arange(cur_len, device=input_ids.device)
@@ -4082,9 +4102,11 @@ class GaudiGenerationMixin(GenerationMixin):
             )
 
             if ignore_eos:
-                this_peer_finished = get_final_stopping_criteria(stopping_criteria(
-                    input_ids, scores, token_idx=None, ignore_eos=ignore_eos, eos_token_id=eos_token_id
-                ))
+                this_peer_finished = get_final_stopping_criteria(
+                    stopping_criteria(
+                        input_ids, scores, token_idx=None, ignore_eos=ignore_eos, eos_token_id=eos_token_id
+                    )
+                )
             else:
                 unfinished_sequences = unfinished_sequences & ~stopping_criteria(
                     input_ids, scores, token_idx=None, ignore_eos=ignore_eos, eos_token_id=eos_token_id
