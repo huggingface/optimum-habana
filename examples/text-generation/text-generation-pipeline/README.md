@@ -140,4 +140,4 @@ python run_pipeline_langchain.py \
     --device=hpu
 ```
 
-> The pipeline class has been validated for LangChain version 0.1.16 and may not work with other versions of the package.
+> The pipeline class has been validated for LangChain version 0.2.5 and may not work with other versions of the package.
