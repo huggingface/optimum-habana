@@ -34,6 +34,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
             ("Qwen/Qwen1.5-7B", 4, False, 451.7454544774087),
             ("google/gemma-7b", 1, False, 109.70751574382221),
+            ("state-spaces/mamba-130m-hf", 1536, False, 7209.46),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 52.85086442722326),

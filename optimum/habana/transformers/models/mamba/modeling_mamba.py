@@ -12,6 +12,17 @@ from transformers.utils import (
 
 logger = logging.get_logger(__name__)
 
+def gaudi_MambaForCausalLM_update_model_kwargs_for_generation(
+    self, outputs: ModelOutput, model_kwargs: Dict[str, Any], **kwargs
+) -> Dict[str, Any]:
+    model_kwargs["cache_params"] = outputs.get("cache_params", None)
+    token_idx = model_kwargs.get("token_idx", None)
+    if token_idx is not None:
+        token_idx.add_(1)
+        if "token_idx_cpu" in model_kwargs:
+            model_kwargs["token_idx_cpu"] += 1
+    return model_kwargs
+
 
 def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
     self, input_ids, cache_params: Optional[MambaCache] = None, inputs_embeds=None, attention_mask=None, **kwargs
@@ -32,15 +43,3 @@ def gaudi_MambaForCausalLM_prepare_inputs_for_generation(
         model_inputs = {"input_ids": input_ids}
     model_inputs["cache_params"] = cache_params
     return model_inputs
-
-
-def gaudi_MambaForCausalLM_update_model_kwargs_for_generation(
-    self, outputs: ModelOutput, model_kwargs: Dict[str, Any], **kwargs
-) -> Dict[str, Any]:
-    model_kwargs["cache_params"] = outputs.get("cache_params", None)
-    token_idx = model_kwargs.get("token_idx", None)
-    if token_idx is not None:
-        token_idx.add_(1)
-        if "token_idx_cpu" in model_kwargs:
-            model_kwargs["token_idx_cpu"] += 1
-    return model_kwargs
