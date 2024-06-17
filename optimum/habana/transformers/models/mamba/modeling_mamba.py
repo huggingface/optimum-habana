@@ -12,6 +12,7 @@ from transformers.utils import (
 
 logger = logging.get_logger(__name__)
 
+
 def gaudi_MambaForCausalLM_update_model_kwargs_for_generation(
     self, outputs: ModelOutput, model_kwargs: Dict[str, Any], **kwargs
 ) -> Dict[str, Any]:
