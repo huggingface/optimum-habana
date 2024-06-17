@@ -135,6 +135,7 @@ python run_pipeline_langchain.py \
     --use_hpu_graphs \
     --use_kv_cache \
     --batch_size 32 \
+    --max_input_tokens 200 \
     --max_new_tokens 1024 \
     --do_sample \
     --device=hpu
