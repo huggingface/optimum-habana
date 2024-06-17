@@ -126,6 +126,12 @@ def setup_parser(parser):
         help="Number of steps to capture for profiling.",
     )
     parser.add_argument(
+        "--profiling_record_shapes",
+        default=False,
+        type=bool,
+        help="Record shapes when enabling profiling.",
+    )
+    parser.add_argument(
         "--prompt",
         default=None,
         type=str,
@@ -145,6 +151,12 @@ def setup_parser(parser):
         type=str,
         nargs="+",
         help="Optional argument list of words that must be generated.",
+    )
+    parser.add_argument(
+        "--assistant_model",
+        default=None,
+        type=str,
+        help="Optional argument to give a path to a draft/assistant model for assisted decoding.",
     )
     parser.add_argument(
         "--peft_model",
@@ -221,7 +233,6 @@ def setup_parser(parser):
         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
     )
 
-    parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
     parser.add_argument(
         "--use_flash_attention",
         action="store_true",
@@ -238,6 +249,11 @@ def setup_parser(parser):
         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
     )
     parser.add_argument(
+        "--flash_attention_fast_softmax",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention in fast softmax mode.",
+    )
+    parser.add_argument(
         "--book_source",
         action="store_true",
         help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
@@ -246,6 +262,12 @@ def setup_parser(parser):
         "--torch_compile",
         action="store_true",
         help="Whether to use torch compiled model or not.",
+    )
+    parser.add_argument(
+        "--ignore_eos",
+        default=True,
+        action=argparse.BooleanOptionalAction,
+        help="Whether to ignore eos, set False to disable it",
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")
@@ -260,6 +282,11 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
     )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
+    )
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -269,13 +296,17 @@ def setup_parser(parser):
         args.limit_hpu_graphs = False
 
     args.quant_config = os.getenv("QUANT_CONFIG", "")
+    if args.quant_config == "" and args.disk_offload:
+        logger.warning(
+            "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
+        )
     return args
 
 
 def main():
     parser = argparse.ArgumentParser()
     args = setup_parser(parser)
-    model, tokenizer, generation_config = initialize_model(args, logger)
+    model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
     if args.torch_compile and model.config.model_type == "llama":
@@ -348,7 +379,7 @@ def main():
 
         def generate(size=None, reduce_recompile=False):
             """Generates sequences from the input sentences and returns them."""
-
+            encode_t0 = time.perf_counter()
             # Tokenization
             if args.max_input_tokens > 0:
                 input_tokens = tokenizer.batch_encode_plus(
@@ -360,6 +391,7 @@ def main():
                 )
             else:
                 input_tokens = tokenizer.batch_encode_plus(input_sentences, return_tensors="pt", padding=True)
+            encode_duration = time.perf_counter() - encode_t0
 
             if size is not None:
                 input_tokens = adjust_batch(input_tokens, size)
@@ -368,15 +400,21 @@ def main():
                 for t in input_tokens:
                     if torch.is_tensor(input_tokens[t]):
                         input_tokens[t] = input_tokens[t].to(args.device)
-
+            iteration_times = []
             outputs = model.generate(
                 **input_tokens,
                 generation_config=generation_config,
+                assistant_model=assistant_model,
                 lazy_mode=use_lazy_mode,
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                ignore_eos=args.ignore_eos,
+                iteration_times=iteration_times,
+                profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
+            first_token_time = iteration_times[0] + encode_duration
+            logger.info(f"Time to first token = {first_token_time*1000}ms")
             return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
         from optimum.habana.utils import HabanaProfile
@@ -471,7 +509,7 @@ def main():
         from datasets import load_dataset
         from torch.utils.data import DataLoader
 
-        assert args.simulate_dyn_prompt == "", "Both dataset_name and simulate_dyn_prompt are set"
+        assert not args.simulate_dyn_prompt, "Both dataset_name and simulate_dyn_prompt are set"
 
         raw_dataset = load_dataset(args.dataset_name)
         if "test" in raw_dataset:
@@ -556,6 +594,8 @@ def main():
                 hpu_graphs=args.use_hpu_graphs,
                 profiling_steps=args.profiling_steps,
                 profiling_warmup_steps=args.profiling_warmup_steps,
+                ignore_eos=args.ignore_eos,
+                profiling_record_shapes=args.profiling_record_shapes,
             ).cpu()
             return prompt, outputs
 

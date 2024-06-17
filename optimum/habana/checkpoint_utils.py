@@ -28,6 +28,8 @@ def get_repo_root(model_name_or_path, local_rank=-1, token=None):
             allow_patterns = ["*.safetensors"]
         elif any(".bin" in filename for filename in list_repo_files(model_name_or_path, token=token)):
             allow_patterns = ["*.bin"]
+        else:
+            raise TypeError("Only PyTorch models are supported")
 
         # Download only on first process
         if local_rank in [-1, 0]:
@@ -92,7 +94,7 @@ def model_on_meta(config):
     """
     Checks if load the model to meta.
     """
-    return config.model_type in ["bloom", "llama", "falcon"]
+    return config.model_type in ["bloom", "llama", "falcon", "mixtral"]
 
 
 def get_optimized_model_name(config):

@@ -25,6 +25,42 @@
         }
     },
     "gaudi2": {
+        "databricks/databricks-dolly-15k": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 8,
+            "distribution": {
+                "single_card": {
+                    "learning_rate": 2e-4,
+                    "train_batch_size": 16,
+                    "perplexity": 3.8436,
+                    "train_runtime": 113.9713,
+                    "train_samples_per_second": 18.428,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 1",
+                        "--evaluation_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio 0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm 0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.1",
+                        "--lora_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--validation_split_percentage 20",
+                        "--attn_softmax_bf16",
+                        "--max_steps 100",
+                        "--input_column_name context",
+                        "--output_column_name response"
+                    ]
+                }
+            }
+        },
         "tatsu-lab/alpaca": {
             "num_train_epochs": 3,
             "eval_batch_size": 4,
@@ -157,6 +193,84 @@
                         "--beta 0.1",
                         "--gradient_accumulation_steps 4",
                         "--sanity_check"
+                    ]
+                }
+            }
+        },
+        "prompt-tuning": {
+            "num_train_epochs": 20,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 16.5,
+                    "train_samples_per_second": 63.161,
+                    "perplexity": 1.224,
+                    "extra_arguments": [
+                        "--num_virtual_tokens 8",
+                        "--max_seq_length 64",
+                        "--logging_steps 1",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--peft_type prompt_tuning",
+                        "--max_seq_length 64",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 1"
+                    ]
+                }
+            }
+        },
+        "prefix-tuning": {
+            "num_train_epochs": 20,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 16.1,
+                    "train_samples_per_second": 63.249,
+                    "perplexity": 1.172,
+                    "extra_arguments": [
+                        "--num_virtual_tokens 8",
+                        "--max_seq_length 64",
+                        "--logging_steps 1",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--peft_type prefix_tuning",
+                        "--max_seq_length 64",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 1"
+                    ]
+                }
+            }
+        },
+        "p-tuning": {
+            "num_train_epochs": 20,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 18.7,
+                    "train_samples_per_second": 63.161,
+                    "perplexity": 1.047,
+                    "extra_arguments": [
+                        "--num_virtual_tokens 8",
+                        "--max_seq_length 64",
+                        "--logging_steps 1",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--peft_type p_tuning",
+                        "--max_seq_length 64",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 1"
                     ]
                 }
             }

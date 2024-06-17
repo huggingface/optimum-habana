@@ -20,7 +20,6 @@ import logging
 import os
 import random
 import sys
-import warnings
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -58,8 +57,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.38.0")
-check_optimum_habana_min_version("1.10.0")
+check_min_version("4.40.0")
+check_optimum_habana_min_version("1.11.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/text-classification/requirements.txt")
 
@@ -210,12 +209,6 @@ class ModelArguments:
             )
         },
     )
-    use_auth_token: bool = field(
-        default=None,
-        metadata={
-            "help": "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead."
-        },
-    )
     trust_remote_code: bool = field(
         default=False,
         metadata={
@@ -229,6 +222,10 @@ class ModelArguments:
     ignore_mismatched_sizes: bool = field(
         default=False,
         metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
+    )
+    add_pad_token: bool = field(
+        default=False,
+        metadata={"help": "Will add `pad_token` to tokenizer and model's config as `eos_token` if it's not defined."},
     )
 
 
@@ -244,15 +241,6 @@ def main():
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-
-    if model_args.use_auth_token is not None:
-        warnings.warn(
-            "The `use_auth_token` argument is deprecated and will be removed in v4.34. Please use `token` instead.",
-            FutureWarning,
-        )
-        if model_args.token is not None:
-            raise ValueError("`token` and `use_auth_token` are both specified. Please set only the argument `token`.")
-        model_args.token = model_args.use_auth_token
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -280,7 +268,7 @@ def main():
         training_args.gaudi_config_name,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
+        token=model_args.token,
     )
 
     # Log on each process the small summary:
@@ -451,6 +439,11 @@ def main():
     else:
         # We will pad later, dynamically at batch creation, to the max sequence length in each batch
         padding = False
+
+    if model_args.add_pad_token:
+        if not model.config.pad_token_id and not tokenizer.pad_token:
+            tokenizer.pad_token = tokenizer.eos_token
+            model.config.pad_token_id = tokenizer.eos_token_id
 
     # Some models have set the order of the labels to use, so let's make sure we do use it.
     label_to_id = None

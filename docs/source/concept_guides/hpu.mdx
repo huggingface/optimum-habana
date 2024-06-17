@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# What are Habana's first-generation Gaudi, Gaudi2 and HPUs?
+# What are Intel® Gaudi® 1, Intel® Gaudi® 2 and HPUs?
 
-[Gaudi](https://habana.ai/training/gaudi/) and [Gaudi2](https://habana.ai/training/gaudi2/) are the first- and second-generation AI hardware accelerators designed by Habana Labs.
+[Intel Gaudi 1](https://habana.ai/training/gaudi/) and [Intel Gaudi 2](https://habana.ai/training/gaudi2/) are the first- and second-generation AI hardware accelerators designed by Habana Labs and Intel.
 A single server contains 8 devices called Habana Processing Units (HPUs) with 96GB of memory each on Gaudi2 and 32GB on first-gen Gaudi.
 Check out [here](https://docs.habana.ai/en/latest/Gaudi_Overview/Gaudi_Architecture.html) for more information about the underlying hardware architecture.
 
@@ -31,7 +31,7 @@ Two execution modes are supported on HPUs for PyTorch, which is the main deep le
 - *Eager mode* execution, where the framework executes one operation at a time as defined in [standard PyTorch eager mode](https://pytorch.org/tutorials/beginner/hybrid_frontend/learning_hybrid_frontend_through_example_tutorial.html).
 - *Lazy mode* execution, where operations are internally accumulated in a graph. The execution of the operations in the accumulated graph is triggered in a lazy manner, only when a tensor value is required by the user or when it is explicitly required in the script. The [SynapseAI graph compiler](https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html#graph-compiler-and-runtime) will optimize the execution of the operations accumulated in the graph (e.g. operator fusion, data layout management, parallelization, pipelining and memory management, graph-level optimizations).
 
-See [here](../usage_guides/accelerate_training#lazy-mode) how to use these execution modes in 🤗 Optimum Habana.
+See [here](../usage_guides/accelerate_training#lazy-mode) how to use these execution modes in Optimum for Intel Gaudi.
 
 
 ## Distributed training

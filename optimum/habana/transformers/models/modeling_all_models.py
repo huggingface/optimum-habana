@@ -107,10 +107,7 @@ def gaudi_conv1d_forward(self, x):
     size_out = x.size()[:-1] + (self.nf,)
     x = torch.mm(x.view(-1, x.size(-1)), self.weight)
     x = x.view(size_out)
-    bias_shape = [1 for _ in x.shape]
-    bias_shape[-1] = self.nf
-    bias = self.bias.view(bias_shape)
-    x = x + bias
+    x = x + self.bias
     return x
 
 

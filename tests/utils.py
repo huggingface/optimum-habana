@@ -16,6 +16,9 @@
 
 # Mapping between model families and specific model names with their configuration
 MODELS_TO_TEST_MAPPING = {
+    "audio-spectrogram-transformer": [
+        ("MIT/ast-finetuned-speech-commands-v2", "Habana/wav2vec2"),
+    ],
     "bert": [
         # ("bert-base-uncased", "Habana/bert-base-uncased"),
         ("bert-large-uncased-whole-word-masking", "Habana/bert-large-uncased-whole-word-masking"),
@@ -50,11 +53,13 @@ MODELS_TO_TEST_MAPPING = {
     "clip": [("./clip-roberta", "Habana/clip")],
     "bridgetower": [("BridgeTower/bridgetower-large-itm-mlm-itc", "Habana/clip")],
     "gpt_neox": [("EleutherAI/gpt-neox-20b", "Habana/gpt2")],
-    "llama": [("huggyllama/llama-7b", "Habana/gpt2")],
-    "falcon": [("tiiuae/falcon-40b", "Habana/gpt2")],
+    "llama": [("huggyllama/llama-7b", "Habana/llama")],
+    "falcon": [("tiiuae/falcon-40b", "Habana/falcon")],
     "bloom": [("bigscience/bloom-7b1", "Habana/roberta-base")],
     "whisper": [("openai/whisper-small", "Habana/whisper")],
-    "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/gpt2")],
+    "llama_guard": [("meta-llama/LlamaGuard-7b", "Habana/llama")],
+    "code_llama": [("codellama/CodeLlama-13b-Instruct-hf", "Habana/llama")],
+    "protst": [("mila-intel/protst-esm1b-for-sequential-classification", "Habana/gpt2")],
 }
 
 MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
@@ -67,6 +72,7 @@ MODELS_TO_TEST_FOR_QUESTION_ANSWERING = [
 # Only BERT has been officially validated for sequence classification
 MODELS_TO_TEST_FOR_SEQUENCE_CLASSIFICATION = [
     "bert",
+    "llama_guard",
     # "roberta",
     # "albert",
     # "distilbert",
@@ -86,7 +92,7 @@ MODELS_TO_TEST_FOR_MASKED_LANGUAGE_MODELING = [
     # "distilbert",
 ]
 
-MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION = ["wav2vec2"]
+MODELS_TO_TEST_FOR_AUDIO_CLASSIFICATION = ["wav2vec2", "audio-spectrogram-transformer"]
 
 MODELS_TO_TEST_FOR_SPEECH_RECOGNITION = ["wav2vec2", "whisper"]
 
