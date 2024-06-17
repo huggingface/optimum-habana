@@ -27,7 +27,8 @@ pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 
 If you would like to use the pipeline with LangChain classes, you can install LangChain as follows:
 ```bash
-pip install langchain==0.1.16
+pip install langchain==0.2.5
+pip install langchain-huggingface
 ```
 
 ## Usage
