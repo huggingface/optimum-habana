@@ -328,7 +328,6 @@ class GaudiQwen2Attention(Qwen2Attention):
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
-                    # past_key_value = (past_key, past_value)
                     # Return list instead of tuple
                     past_key_value = [past_key, past_value]
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
