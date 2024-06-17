@@ -121,7 +121,7 @@ def main():
     torch.hpu.synchronize()
     end_time = time.time()
     logger.info(f"Total time: {end_time - start_time:.5f} s")
-    logger.info(f"Average time per batch: {(end_time - start_time) * 1000 / args.n_iterations:.5f} ms")
+    logger.info(f"Average time per iteration: {(end_time - start_time) * 1000 / args.n_iterations:.5f} ms")
     embeddings = F.normalize(embeddings, p=2, dim=1)
     scores = (embeddings[:1] @ embeddings[1:].T) * 100
     logger.info(f"Scores for input texts relating to the source sentence: {scores.tolist()}")
