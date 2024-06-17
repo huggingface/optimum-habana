@@ -474,13 +474,16 @@ Below example uses `flash_attention_recompute` mode in order to reduce memory co
 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --model_name_or_path meta-llama/Llama-2-70b-hf \
 --use_hpu_graphs \
+--limit_hpu_graphs \
 --use_kv_cache \
---reuse_cache \
+--bf16 \
 --trim_logits \
 --attn_softmax_bf16 \
---max_input_tokens 31744 \
---max_new_tokens 1024 \
---batch_size=12 \
+--bucket_size=128 \
+--bucket_internal \
+--batch_size 10 \
+--max_input_tokens 40960 \
+--max_new_tokens 5120 \
 --use_flash_attention \
 --flash_attention_recompute \
 --flash_attention_causal_mask \
@@ -497,7 +500,7 @@ The evaluation of LLMs can be done using the `lm_eval.py` script. It utilizes th
 
 For a more detailed description of parameters, please see the help message:
 ```
-./run_lm_eval.py -h
+python run_lm_eval.py --help
 ```
 
 
