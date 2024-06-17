@@ -336,9 +336,10 @@ def main():
         "output_type": args.output_type,
         "profiling_warmup_steps": args.profiling_warmup_steps,
         "profiling_steps": args.profiling_steps,
-        "throughput_warmup_steps": args.throughput_warmup_steps,
     }
 
+    if args.throughput_warmup_steps is not None:
+        infer_kwargs["throughput_warmup_steps"] = args.throughput_warmup_steps
 
     # Generate images
     if args.control_image is not None:
