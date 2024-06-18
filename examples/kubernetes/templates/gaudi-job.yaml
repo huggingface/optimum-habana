@@ -66,3 +66,4 @@ spec:
         secret:
           secretName: {{ .Release.Name }}-secret
       {{- end }}
+
