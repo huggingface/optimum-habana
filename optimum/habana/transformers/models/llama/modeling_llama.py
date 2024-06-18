@@ -773,6 +773,10 @@ class GaudiLlamaModel(LlamaModel):
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
+        if hasattr(self.config, "use_fused_rope") and self.config.use_fused_rope is False:
+            global has_fused_rope
+            has_fused_rope = False
+
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
                 "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
@@ -970,7 +974,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        if self.generation_config.use_fused_rope is False or self.config.use_fused_rope is False:
+        if self.generation_config.use_fused_rope is False:
             global has_fused_rope
             has_fused_rope = False
 

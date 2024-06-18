@@ -201,7 +201,7 @@ model = AutoModelForCausalLMWithValueHead.from_pretrained(
     torch_dtype=torch.bfloat16,
     low_cpu_mem_usage=True,
 )
-
+model.config.use_fused_rope = False
 optimizer = None
 model = model.to(torch.bfloat16)
 
