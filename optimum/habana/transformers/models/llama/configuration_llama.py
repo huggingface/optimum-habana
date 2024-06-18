@@ -26,6 +26,7 @@ class LlamaConfig(LlamaConfig):
         attention_bias=False,
         attention_dropout=0.0,
         mlp_bias=False,
+        use_fused_rope=False,
         **kwargs,
     ):
         super().__init__(
@@ -53,3 +54,5 @@ class LlamaConfig(LlamaConfig):
         )
 
         self.mlp_bias = mlp_bias
+        # Adding fused_rope flag for TRL nan issue
+        self.use_fused_rope = use_fused_rope
