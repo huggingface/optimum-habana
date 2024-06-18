@@ -83,6 +83,10 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
         precompute_ref_log_probs: bool = False,
         model_init_kwargs: Optional[Dict] = None,
         ref_model_init_kwargs: Optional[Dict] = None,
+        model_adapter_name: Optional[str] = None,
+        ref_adapter_name: Optional[str] = None,
+        reference_free: bool = False,
+        force_use_ref_model: bool = False,
     ):
         """
         Copied from DPOTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/dpo_trainer.py#L127
@@ -117,6 +121,10 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
                 "`AutoModelForCausalLM`"
             )
             ref_model = AutoModelForCausalLM.from_pretrained(ref_model, **ref_model_init_kwargs)
+
+        # Initialize this variable to False. This helps tracking the case when `peft_module_casting_to_bf16`
+        # has been called in order to properly call autocast if needed.
+        self._peft_has_been_casted_to_bf16 = False
 
         if not is_peft_available() and peft_config is not None:
             raise ValueError(
@@ -184,6 +192,9 @@ class GaudiDPOTrainer(DPOTrainer, GaudiTrainer):
             self.is_encoder_decoder = is_encoder_decoder
 
         self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)
+        self.model_adapter_name = model_adapter_name
+        self.ref_adapter_name = ref_adapter_name
+        self.reference_free = reference_free
 
         if ref_model:
             self.ref_model = ref_model

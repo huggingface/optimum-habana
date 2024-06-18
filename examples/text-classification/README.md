@@ -27,6 +27,12 @@ and can also be used for a dataset hosted on our [hub](https://huggingface.co/da
 
 GLUE is made up of a total of 9 different tasks where the task name can be cola, sst2, mrpc, stsb, qqp, mnli, qnli, rte or wnli.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
 
 ## Fine-tuning BERT on MRPC
 

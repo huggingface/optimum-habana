@@ -26,6 +26,13 @@ uses special features of those tokenizers. You can check if your favorite model 
 
 Note that if your dataset contains samples with no possible answers (like SQUAD version 2), you need to pass along the flag `--version_2_with_negative`.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Fine-tuning BERT on SQuAD1.1
 
 For the following cases, an example of a Gaudi configuration file is given
@@ -37,7 +44,7 @@ For the following cases, an example of a Gaudi configuration file is given
 This example code fine-tunes BERT on the SQuAD1.1 dataset.
 
 ```bash
-python run_qa.py \
+PT_HPU_LAZY_MODE=0 python run_qa.py \
   --model_name_or_path bert-large-uncased-whole-word-masking \
   --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
   --dataset_name squad \
@@ -51,8 +58,9 @@ python run_qa.py \
   --doc_stride 128 \
   --output_dir /tmp/squad/ \
   --use_habana \
-  --use_lazy_mode \
-  --use_hpu_graphs_for_inference \
+  --torch_compile_backend hpu_backend \
+  --torch_compile \
+  --use_lazy_mode false \
   --throughput_warmup_steps 3 \
   --bf16
 ```
@@ -63,7 +71,7 @@ python run_qa.py \
 Here is how you would fine-tune the BERT large model (with whole word masking) on the SQuAD dataset using the `run_qa` script, with 8 HPUs:
 
 ```bash
-python ../gaudi_spawn.py \
+PT_HPU_LAZY_MODE=0 python ../gaudi_spawn.py \
     --world_size 8 --use_mpi run_qa.py \
     --model_name_or_path bert-large-uncased-whole-word-masking \
     --gaudi_config_name Habana/bert-large-uncased-whole-word-masking \
@@ -78,8 +86,9 @@ python ../gaudi_spawn.py \
     --doc_stride 128 \
     --output_dir /tmp/squad_output/ \
     --use_habana \
-    --use_lazy_mode \
-    --use_hpu_graphs_for_inference \
+    --torch_compile_backend hpu_backend \
+    --torch_compile \
+    --use_lazy_mode false \
     --throughput_warmup_steps 3 \
     --bf16
 ```
@@ -131,6 +140,13 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
     }
 }
 ```
+
+
+### Training in torch.compile mode
+
+Albert XXL model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command, \
+a) Set the following environment variables `PT_HPU_LAZY_MODE=0` and `PT_ENABLE_INT64_SUPPORT=1`. \
+b) Run the above commands with `--model_name_or_path albert-xxlarge-v1`, `--use_lazy_mode False` and add `--torch_compile`, `--torch_compile_backend hpu_backend` and remove `--use_hpu_graphs_for_inference` flags.
 
 
 ## Fine-tuning Llama on SQuAD1.1
@@ -195,8 +211,8 @@ python run_qa.py \
 | RoBERTa large              | 3e-5 | 2 | 12 | 8 |
 | ALBERT large (single-card) | 5e-5 | 2 | 32 | 4 |
 | ALBERT large (multi-card)  | 6e-5 | 2 | 32 | 4 |
-| ALBERT XXL (single-card)   | 5e-6 | 2 | 12 | 2 |
-| ALBERT XXL (multi-card)    | 5e-5 | 2 | 12 | 2 |
+| ALBERT XXL (single-card)   | 5e-6 | 2 | 16 | 2 |
+| ALBERT XXL (multi-card)    | 5e-5 | 2 | 16 | 2 |
 | DistilBERT                 | 5e-5 | 3 | 8  | 8 |
 | meta-llama/Llama-2-13b-chat-hf (multi-card) | 3e-5 | 2 | 8 | 8 |
 | FlagAlpha/Llama2-Chinese-13b-Chat (multi-card) | 3e-5 | 2 | 8 | 8 |

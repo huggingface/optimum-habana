@@ -34,6 +34,13 @@ The predicted protein structure will be stored in save-hpu.pdb file. We can use 
 
 # Mila-Intel protST example
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Single-HPU inference for zero shot evaluation
 Here we show how to run zero shot evaluation of protein ST model on HPU:
 

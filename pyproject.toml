@@ -13,10 +13,12 @@
 #  limitations under the License.
 
 [tool.ruff]
-# Never enforce `E501` (line length violations).
-lint.ignore = ["C901", "E501", "E741", "F402", "F823"]
-lint.select = ["C", "E", "F", "I", "W"]
 line-length = 119
+
+[tool.ruff.lint]
+# Never enforce `E501` (line length violations).
+ignore = ["C901", "E501", "E741", "F402", "F823"]
+select = ["C", "E", "F", "I", "W"]
 exclude = ["text-generation-inference"]
 
 # Ignore import violations in all `__init__.py` files.

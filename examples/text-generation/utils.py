@@ -36,7 +36,12 @@ from optimum.habana.checkpoint_utils import (
     model_on_meta,
     write_checkpoints_json,
 )
-from optimum.habana.utils import check_habana_frameworks_version, check_optimum_habana_min_version, set_seed
+from optimum.habana.utils import (
+    check_habana_frameworks_version,
+    check_optimum_habana_min_version,
+    get_habana_frameworks_version,
+    set_seed,
+)
 
 
 def adjust_batch(batch, size):
@@ -96,6 +101,22 @@ def setup_distributed(args):
     args.global_rank = int(os.getenv("RANK", "0"))
 
 
+def setup_inference(args, model):
+    import habana_frameworks.torch.core as htcore
+
+    habana_version = get_habana_frameworks_version()
+
+    print("Initializing inference mode")
+    # Keeping the if-else here for back compat. TODO remove later
+    if habana_version.major >= 1 and habana_version.minor >= 16:
+        htcore.hpu_initialize(model, mark_only_scales_as_const=True)
+    else:
+        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
+        if const_marking == "True":
+            htcore.hpu_initialize(model)
+    return model
+
+
 def setup_const_serialization(const_serialization_path):
     import uuid
 
@@ -122,6 +143,11 @@ def setup_env(args):
         os.environ.setdefault("PT_HPU_LAZY_ACC_PAR_MODE", "0")
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
+    if args.use_hpu_graphs and args.limit_hpu_graphs and not args.reuse_cache and args.bucket_internal:
+        # Based upon above conditions and below env variable,
+        # we can call HPU graphs clear_inputs().
+        os.environ.setdefault("PT_HPUGRAPH_DISABLE_TENSOR_CACHE", "1")
+
     # Tweak generation so that it runs faster on Gaudi
     from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -132,7 +158,7 @@ def setup_device(args):
     if args.device == "hpu":
         import habana_frameworks.torch.core as htcore
 
-        if args.fp8:
+        if args.quant_config:
             htcore.hpu_set_env()
     return torch.device(args.device)
 
@@ -151,13 +177,16 @@ def patch_scoped_linear_all_reduce(model):
 
 
 def get_torch_compiled_model(model):
-    model.model = torch.compile(model.model, backend="hpu_backend")
+    model.model = torch.compile(model.model, backend="hpu_backend", options={"keep_input_mutations": True})
     return model
 
 
 def setup_model(args, model_dtype, model_kwargs, logger):
     logger.info("Single-device run.")
-
+    if args.assistant_model is None:
+        assistant_model = None
+    else:
+        logger.info(f"Using asssitant model {args.assistant_model}.")
     if args.disk_offload:
         from accelerate import infer_auto_device_map, init_empty_weights
 
@@ -175,6 +204,10 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             **model_kwargs,
         )
     else:
+        if args.assistant_model is not None:
+            assistant_model = AutoModelForCausalLM.from_pretrained(
+                args.assistant_model, torch_dtype=model_dtype, **model_kwargs
+            )
         if args.peft_model is not None:
             model = peft_model(args, model_dtype, logger, **model_kwargs)
         else:
@@ -185,7 +218,12 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.prep_model(model)
+        if args.assistant_model is not None:
+            habana_quantization_toolkit.quantize_model(assistant_model)
+
     model = model.eval().to(args.device)
+    if args.assistant_model is not None:
+        assistant_model = assistant_model.eval().to(args.device)
 
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -196,13 +234,16 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             model = wrap_in_hpu_graph(model, hash_with_views=False)
         else:
             model = wrap_in_hpu_graph(model)
+        if args.assistant_model is not None:
+            assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
             model.base_model = wrap_in_hpu_graph(model.base_model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
-
-    return model
+        # if args.assistant_model is not None:
+        #     assistant_model = get_torch_compiled_model(assistant_model)
+    return model, assistant_model
 
 
 def setup_distributed_model(args, model_dtype, model_kwargs, logger):
@@ -212,6 +253,11 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     deepspeed.init_distributed(dist_backend="hccl")
     config = AutoConfig.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     load_to_meta = model_on_meta(config)
+
+    if args.assistant_model is None:
+        assistant_model = None
+    else:
+        logger.info(f"Using asssitant model {args.assistant_model}.")
 
     if load_to_meta:
         # Construct model with fake meta tensors, later will be replaced on devices during ds-inference ckpt load
@@ -247,6 +293,11 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
                 )
     model.eval()
 
+    if args.assistant_model is not None:
+        assistant_model = AutoModelForCausalLM.from_pretrained(
+            args.assistant_model, torch_dtype=model_dtype, **model_kwargs
+        ).eval()
+
     # Initialize the model
     ds_inference_kwargs = {"dtype": model_dtype}
     ds_inference_kwargs["tensor_parallel"] = {"tp_size": args.world_size}
@@ -257,18 +308,21 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
 
     model = deepspeed.init_inference(model, **ds_inference_kwargs)
     model = model.module
-    if model.config.model_type in ["llama", "falcon"]:
+    if model.config.model_type in ["llama", "falcon", "qwen2"]:
         patch_scoped_linear_all_reduce(model)
 
     if args.quant_config:
         import habana_quantization_toolkit
 
         habana_quantization_toolkit.prep_model(model)
+        if args.assistant_model is not None:
+            habana_quantization_toolkit.prep_model(assistant_model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
-
-    return model
+        # if args.assistant_model is not None:
+        #     assistant_model = get_torch_compiled_model(assistant_model)
+    return model, assistant_model
 
 
 def peft_model(args, model_dtype, logger, **model_kwargs):
@@ -321,7 +375,7 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
         return model
 
 
-def setup_tokenizer(args, model):
+def setup_tokenizer(args, model, assistant_model):
     tokenizer_kwargs = {
         "revision": args.model_revision,
         "token": args.token,
@@ -338,6 +392,10 @@ def setup_tokenizer(args, model):
         model.generation_config.pad_token_id = 0
         model.generation_config.bos_token_id = 1
         model.generation_config.eos_token_id = 2
+        if assistant_model is not None:
+            assistant_model.generation_config.pad_token_id = 0
+            assistant_model.generation_config.bos_token_id = 1
+            assistant_model.generation_config.eos_token_id = 2
         tokenizer.bos_token_id = model.generation_config.bos_token_id
         tokenizer.eos_token_id = model.generation_config.eos_token_id
         tokenizer.pad_token_id = model.generation_config.pad_token_id
@@ -346,6 +404,8 @@ def setup_tokenizer(args, model):
         tokenizer.bos_token = tokenizer.decode(tokenizer.bos_token_id)
     if model.config.model_type == "persimmon":
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
+        if assistant_model is not None:
+            assistant_model.generation_config.pad_token_id = assistant_model.generation_config.eos_token_id
         tokenizer.bos_token_id = model.generation_config.bos_token_id
         tokenizer.eos_token_id = model.generation_config.eos_token_id
         tokenizer.pad_token_id = model.generation_config.pad_token_id
@@ -357,11 +417,13 @@ def setup_tokenizer(args, model):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
+        if assistant_model is not None:
+            assistant_model.generation_config.pad_token_id = assistant_model.generation_config.eos_token_id
 
-    return tokenizer, model
+    return tokenizer, model, assistant_model
 
 
-def setup_generation_config(args, model, tokenizer):
+def setup_generation_config(args, model, assistant_model, tokenizer):
     bad_words_ids = None
     force_words_ids = None
     if args.bad_words is not None:
@@ -370,11 +432,12 @@ def setup_generation_config(args, model, tokenizer):
         force_words_ids = [tokenizer.encode(force_word, add_special_tokens=False) for force_word in args.force_words]
 
     is_optimized = model_is_optimized(model.config)
+
     # Generation configuration
     generation_config = copy.deepcopy(model.generation_config)
     generation_config.max_new_tokens = args.max_new_tokens
     generation_config.use_cache = args.use_kv_cache
-    generation_config.static_shapes = is_optimized
+    generation_config.static_shapes = is_optimized and assistant_model is None
     generation_config.bucket_size = args.bucket_size if is_optimized else -1
     generation_config.bucket_internal = args.bucket_internal
     generation_config.do_sample = args.do_sample
@@ -392,7 +455,9 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.use_flash_attention = args.use_flash_attention
     generation_config.flash_attention_recompute = args.flash_attention_recompute
     generation_config.flash_attention_causal_mask = args.flash_attention_causal_mask
+    generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     generation_config.trust_remote_code = args.trust_remote_code
+
     return generation_config
 
 
@@ -404,8 +469,10 @@ def initialize_model(args, logger):
     setup_device(args)
     set_seed(args.seed)
     get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
+    if args.assistant_model is not None:
+        get_repo_root(args.assistant_model, local_rank=args.local_rank, token=args.token)
     use_deepspeed = args.world_size > 0
-    if use_deepspeed or args.bf16 or args.fp8:
+    if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
         model_dtype = torch.float
@@ -419,25 +486,20 @@ def initialize_model(args, logger):
     if args.trust_remote_code:
         logger.warning("`trust_remote_code` is set, there is no guarantee this model works properly and it may fail")
 
-    model = (
+    model, assistant_model = (
         setup_model(args, model_dtype, model_kwargs, logger)
         if not use_deepspeed
         else setup_distributed_model(args, model_dtype, model_kwargs, logger)
     )
-    tokenizer, model = setup_tokenizer(args, model)
-    generation_config = setup_generation_config(args, model, tokenizer)
+    tokenizer, model, assistant_model = setup_tokenizer(args, model, assistant_model)
+    generation_config = setup_generation_config(args, model, assistant_model, tokenizer)
 
     if args.const_serialization_path:
         setup_const_serialization(args.const_serialization_path)
-    if args.fp8:
-        import habana_frameworks.torch.core as htcore
-
-        print("Initializing inference mode")
-        const_marking = os.getenv("ENABLE_CONST_MARKING", "True")
-        if const_marking == "True":
-            htcore.hpu_initialize(model)
+    if args.quant_config:
+        model = setup_inference(args, model)
     init_end = time.perf_counter()
     logger.info(f"Args: {args}")
     logger.info(f"device: {args.device}, n_hpu: {args.world_size}, bf16: {model_dtype == torch.bfloat16}")
     logger.info(f"Model initialization took {(init_end - init_start):.3f}s")
-    return model, tokenizer, generation_config
+    return model, assistant_model, tokenizer, generation_config
