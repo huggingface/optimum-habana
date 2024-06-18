@@ -80,6 +80,7 @@ from .llama import (
     GaudiLlamaMLP,
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
+    LlamaConfig,
     gaudi_llama_rmsnorm_forward,
 )
 from .mistral import (
