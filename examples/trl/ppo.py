@@ -202,6 +202,7 @@ model = AutoModelForCausalLMWithValueHead.from_pretrained(
     low_cpu_mem_usage=True,
 )
 model.config.use_fused_rope = False
+model.config.use_fused_rms_norm = False
 optimizer = None
 model = model.to(torch.bfloat16)
 
@@ -241,7 +242,6 @@ reward_model = AutoModelForSequenceClassification.from_pretrained(
     reward_model_name,
     num_labels=1,
     low_cpu_mem_usage=True,
-    torch_dtype=torch.bfloat16,
 )
 
 if config.use_habana:
