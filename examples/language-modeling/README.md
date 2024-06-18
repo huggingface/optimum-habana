@@ -611,7 +611,9 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_lora_clm.py \
   --use_fused_rope False \
   --torch_compile_backend hpu_backend \
   --torch_compile \
-  --gradient_accumulation_steps 2
+  --gradient_accumulation_steps 2 \
+  --use_flash_attention True \
+  --flash_attention_causal_mask True
 ```
 
 - Multi-card finetuning of Falcon-180B:
@@ -714,7 +716,7 @@ python3 ../text-generation/run_generation.py \
 
 ## Streaming
 
-To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified in the command line. This is currently supported by `run_mlm.py` and `run_clm.py`.
+To use the streaming dataset mode which can be very useful for large datasets, add `--streaming` with `--max_steps` specified in the command line. This is supported by `run_mlm.py` and `run_clm.py`.
 
 For example:
 ```bash

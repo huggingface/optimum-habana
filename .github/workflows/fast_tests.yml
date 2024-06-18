@@ -1,12 +1,10 @@
 name: Unit and integration tests
 
 
-# WARNING: As this workflow supports the pull_request_target event, please exercise extra care when editing it.
 on:
   workflow_dispatch:
-  pull_request_target:
+  pull_request:
     branches: [ main ]
-    types: [ opened, synchronize, reopened, labeled ]
   push:
     branches: [ main ]
 
@@ -15,69 +13,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  authorize:
-    if: (github.event.action == 'labeled' && github.event.label.name == 'run-test') || github.event_name != 'pull_request_target' || (! github.event.pull_request.head.repo.fork)
-    runs-on: ubuntu-latest
-    steps:
-      - run: true
-
-  start-runner:
-    name: Start self-hosted EC2 runner
-    needs: authorize
-    runs-on: ubuntu-22.04
-    env:
-      AWS_REGION: us-east-1
-      EC2_AMI_ID: ami-04fe9856174d852b8
-      EC2_INSTANCE_TYPE: dl1.24xlarge
-      EC2_SUBNET_ID: subnet-b7533b96
-      EC2_SECURITY_GROUP: sg-08af7938042271373
-    outputs:
-      label: ${{ steps.start-ec2-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Start EC2 runner
-        id: start-ec2-runner
-        uses: philschmid/philschmid-ec2-github-runner@main
-        with:
-          mode: start
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          ec2-image-id: ${{ env.EC2_AMI_ID }}
-          ec2-instance-type: ${{ env.EC2_INSTANCE_TYPE }}
-          subnet-id: ${{ env.EC2_SUBNET_ID }}
-          security-group-id: ${{ env.EC2_SECURITY_GROUP }}
-          aws-resource-tags: > # optional, requires additional permissions
-            [
-              {"Key": "Name", "Value": "optimum-habana-ci-fast-tests"},
-              {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
-            ]
   transformers:
     name: Run tests for optimum.habana.transformers
-    needs:
-      - authorize
-      - start-runner # required to start the main job when the runner is ready
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
-    env:
-      AWS_REGION: us-east-1
+    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
     steps:
-      - name: Checkout on branch
-        if: github.event_name != 'pull_request_target'
+      - name: Checkout
         uses: actions/checkout@v2
-        with:
-          ref: ${{ github.ref }}
-      - name: Checkout on PR merge commit
-        if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@v2
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -89,31 +33,19 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
     name: Run tests for optimum.habana.diffusers
     needs:
-      - authorize
-      - start-runner # required to get output from the start-runner job
       - transformers # required to wait for the previous tests to finish
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
-    env:
-      AWS_REGION: us-east-1
+    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
     steps:
-      - name: Checkout on branch
-        if: github.event_name != 'pull_request_target'
+      - name: Checkout
         uses: actions/checkout@v2
-        with:
-          ref: ${{ github.ref }}
-      - name: Checkout on PR merge commit
-        if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@v2
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: Pull image
         run: |
-            docker pull vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest
+            docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
             docker run \
@@ -125,30 +57,5 @@ jobs:
             --cap-add=sys_nice \
             --net=host \
             --ipc=host \
-            vault.habana.ai/gaudi-docker/1.15.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest \
+            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/fast_tests_diffusers.sh
-  stop-runner:
-    name: Stop self-hosted EC2 runner
-    needs:
-      - authorize
-      - start-runner # required to get output from the start-runner job
-      - transformers # required to wait for the tests to be finished
-      - diffusers # required to wait for the tests to be finished
-    runs-on: ubuntu-22.04
-    env:
-      AWS_REGION: us-east-1
-    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Stop EC2 runner
-        uses: philschmid/philschmid-ec2-github-runner@main
-        with:
-          mode: stop
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          label: ${{ needs.start-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}

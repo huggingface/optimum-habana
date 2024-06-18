@@ -19,7 +19,7 @@ import importlib
 import inspect
 import os
 import sys
-from typing import Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import torch
 from diffusers.pipelines import DiffusionPipeline
@@ -28,6 +28,7 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 from diffusers.utils.torch_utils import is_compiled_module
 from huggingface_hub import create_repo
 
+from optimum.habana.utils import to_device_dtype
 from optimum.utils import logging
 
 from ...transformers.gaudi_configuration import GaudiConfig
@@ -358,4 +359,34 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
         return super().from_pretrained(
             pretrained_model_name_or_path,
             **kwargs,
+        )
+
+    @classmethod
+    def save_lora_weights(
+        cls,
+        save_directory: Union[str, os.PathLike],
+        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+    ):
+        # Move the state dict from HPU to CPU before saving
+        if unet_lora_layers:
+            unet_lora_layers = to_device_dtype(unet_lora_layers, target_device=torch.device("cpu"))
+        if text_encoder_lora_layers:
+            text_encoder_lora_layers = to_device_dtype(text_encoder_lora_layers, target_device=torch.device("cpu"))
+        if text_encoder_2_lora_layers:
+            text_encoder_2_lora_layers = to_device_dtype(text_encoder_2_lora_layers, target_device=torch.device("cpu"))
+        return super().save_lora_weights(
+            save_directory,
+            unet_lora_layers,
+            text_encoder_lora_layers,
+            text_encoder_2_lora_layers,
+            is_main_process,
+            weight_name,
+            save_function,
+            safe_serialization,
         )
