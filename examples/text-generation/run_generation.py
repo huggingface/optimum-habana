@@ -333,7 +333,7 @@ def main():
     model, tokenizer, generation_config = initialize_model(args, logger)
 
     use_lazy_mode = True
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu

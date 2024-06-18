@@ -103,6 +103,7 @@ def setup_inference(args, model):
     htcore.hpu_initialize(model, mark_only_scales_as_const=True)
     return model
 
+
 def setup_const_serialization(const_serialization_path):
     import uuid
     const_serialization_path = os.path.join(const_serialization_path + uuid.uuid4().hex)
@@ -110,6 +111,7 @@ def setup_const_serialization(const_serialization_path):
     from habana_frameworks.torch.hpu import enable_const_section_serialization
     print("Serializing const params to {}".format(const_serialization_path))
     enable_const_section_serialization(const_serialization_path, True)
+
 
 def setup_env(args):
     # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -127,7 +129,7 @@ def setup_env(args):
         os.environ.setdefault("PT_HPU_ENABLE_LAZY_COLLECTIVES", "true")
 
     if args.use_hpu_graphs and args.limit_hpu_graphs and not args.reuse_cache \
-        and args.bucket_internal:
+            and args.bucket_internal:
         # Based upon above conditions and below env variable,
         # we can call HPU graphs clear_inputs().
         os.environ.setdefault("PT_HPUGRAPH_DISABLE_TENSOR_CACHE", "1")
@@ -199,16 +201,20 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             model = AutoModelForCausalLM.from_config(config)
         max_memory = {"cpu": "10GiB"}
         device_map = infer_auto_device_map(model, max_memory=max_memory, dtype=model_dtype)
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, device_map=device_map, offload_folder="/tmp/offload_folder/", offload_state_dict=True, torch_dtype=model_dtype, **model_kwargs)  
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, device_map=device_map,
+                                                     offload_folder="/tmp/offload_folder/", offload_state_dict=True,
+                                                     torch_dtype=model_dtype, **model_kwargs)
     elif args.gptq:
         from transformers import GPTQConfig
         quantization_config = GPTQConfig(bits=4, use_exllama=False)
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs)
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name_or_path, torch_dtype=model_dtype, quantization_config=quantization_config, **model_kwargs)
     else:
         if args.peft_model is not None:
             model = peft_model(args, model_dtype, logger, **model_kwargs)
         else:
-            model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
+            model = AutoModelForCausalLM.from_pretrained(
+                args.model_name_or_path, torch_dtype=model_dtype, **model_kwargs)
     if args.quant_config:
         model = setup_quantization(model, args)
 
@@ -222,7 +228,7 @@ def setup_model(args, model_dtype, model_kwargs, logger):
         else:
             model = wrap_in_hpu_graph(model)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
 
     return model
@@ -286,7 +292,7 @@ def setup_distributed_model(args, model_dtype, model_kwargs, logger):
     if args.quant_config:
         model = setup_quantization(model, args)
 
-    if args.torch_compile and model.config.model_type == "llama":
+    if args.torch_compile:
         model = get_torch_compiled_model(model)
 
     return model
@@ -399,6 +405,7 @@ def setup_generation_config(args, model, tokenizer):
     generation_config.flash_attention_fast_softmax = args.flash_attention_fast_softmax
     return generation_config
 
+
 def exclude_hpu_graph_configs(args):
     # Excluded configs for batch size 1 for hpu graph
     if args.batch_size == 1 and args.limit_hpu_graphs:
@@ -415,6 +422,7 @@ def exclude_hpu_graph_configs(args):
         return True
     else:
         return False
+
 
 def initialize_model(args, logger):
     init_start = time.perf_counter()
