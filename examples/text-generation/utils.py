@@ -169,9 +169,9 @@ def get_torch_compiled_model(model):
 
 def setup_quantization(model, args):
     if os.getenv("USE_INC", ""):
-        from neural_compressor.torch import FP8QuantConfig, convert, prepare
-        config = FP8QuantConfig.from_json_file(args.quant_config)
-        if config.calibrate:
+        from neural_compressor.torch.quantization import FP8Config, convert, prepare
+        config = FP8Config.from_json_file(args.quant_config)
+        if config.measure:
             model = prepare(model, config)
         elif config.quantize:
             model = convert(model, config)
@@ -184,7 +184,7 @@ def setup_quantization(model, args):
 
 def finalize_quantization(model):
     if os.getenv("USE_INC", ""):
-        from neural_compressor.torch import finalize_calibration
+        from neural_compressor.torch.quantization import finalize_calibration
         finalize_calibration(model)
     else:
         import habana_quantization_toolkit
