@@ -283,11 +283,14 @@ class GaudiLlamaAttention(LlamaAttention):
             self.head_dim = config.hidden_size // self.num_heads
             self.dim1 = self.num_heads * self.head_dim
             self.dim2 = config.num_key_value_heads * self.head_dim
-            self.qkv_proj = F.Linear(
+            self.qkv_proj = torch.nn.Linear(
                 self.hidden_size,
                 self.dim1 + 2 * self.dim2,
                 bias=config.attention_bias,
             )
+            self.q_proj = None
+            self.k_proj = None
+            self.v_proj = None
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
