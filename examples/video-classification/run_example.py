@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Loosely adapted from https://github.com/huggingface/optimum-habana/pull/783/files#diff-8361a5cbb8a1de8387eaff47125cce70f695f2a5994c66725c942c071835e82b
 
 import argparse
 import io
