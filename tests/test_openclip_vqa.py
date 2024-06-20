@@ -18,6 +18,15 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224", 1816)
         ],
     }
+else:
+    # Gaudi1 CI baselines
+    MODELS_TO_TEST = {
+        "bf16": [
+            ("laion/CLIP-ViT-g-14-laion2B-s12B-b42K", 550),
+            ("microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224", 1200),
+         ],
+     }
+
 
 def _install_requirements():
         PATH_TO_EXAMPLE_DIR = Path(__file__).resolve().parent.parent / "examples"
@@ -64,7 +73,6 @@ def _test_openclip_vqa(
             results = json.load(fp)
 
         # Ensure performance requirements (throughput) are met
-        t= results["throughput"]
         assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
 
 

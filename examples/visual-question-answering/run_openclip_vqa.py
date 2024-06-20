@@ -11,7 +11,7 @@ from urllib.request import urlopen
 import matplotlib.pyplot as plt
 import numpy
 import torch
-from open_clip import create_model_from_pretrained, get_tokenizer
+from open_clip import create_model_from_pretrained, get_tokenizer, model
 from PIL import Image
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -49,7 +49,9 @@ TEST_IMGS = [
         'pie_chart.png'
     ]
 
-def plot_images_with_metadata(images, metadata, output_dir, plot_name):
+def plot_images_with_metadata(images:list, metadata, output_dir: str, plot_name: str) -> None:
+    print(f"plottypes {type(images)} {type(metadata)} {type(output_dir)} {type(plot_name)}")
+
     num_images = len(images)
     fig, axes = plt.subplots(nrows=num_images, ncols=1, figsize=(5, 5 * num_images))
 
@@ -67,7 +69,7 @@ def plot_images_with_metadata(images, metadata, output_dir, plot_name):
     plt.savefig(f'{output_dir}/{plot_name}.png')
 
 
-def run_qa(model, images, texts, device):
+def run_qa(model: model, images: torch.Tensor, texts: torch.Tensor, device: torch.device) -> tuple:
     with torch.no_grad():
         image_features, text_features, logit_scale = model(images, texts)
         logits = (logit_scale * image_features @ text_features.t()).detach().softmax(dim=-1)
@@ -75,7 +77,7 @@ def run_qa(model, images, texts, device):
     return sorted_indices, logits
 
 
-def postprocess(args, sorted_indices, logits, topk):
+def postprocess(args: argparse.Namespace, sorted_indices: torch.Tensor, logits: torch.Tensor , topk: int) -> list:
     logits = logits.float().cpu().numpy()
     sorted_indices = sorted_indices.int().cpu().numpy()
     metadata_list = []
