@@ -13,8 +13,7 @@ services:
         REPO: ${REPO}
       context: .
       labels:
-        org.opencontainers.base.name: "vault.habana.ai/gaudi-docker/1.15.1/ubuntu22.04/habanalabs/pytorch-installer-2.2.0:latest"
-        org.opencontainers.image.name: "intel/ai-workflows"
+        org.opencontainers.base.name: "${BASE_IMAGE_NAME:-vault.habana.ai/gaudi-docker/1.15.1/ubuntu22.04/habanalabs/pytorch-installer-2.2.0}:${BASE_IMAGE_TAG:-latest}" 
         org.opencontainers.image.title: "Optimum for Intel® Gaudi® Accelerators"
         org.opencontainers.image.version: gaudi-${GAUDI_SW_VER:-1.15.1}-optimum-habana-${OPTIMUM_HABANA_VER:-1.11.1}
     command: >
@@ -24,7 +23,7 @@ services:
   optimum-habana-examples:
     build:
       labels:
-        org.opencontainers.base.name: "intel/ai-workflows:gaudi-${GAUDI_SW_VER:-1.15.1}-optimum-habana-${OPTIMUM_HABANA_VER:-1.11.1}"
+        org.opencontainers.base.name: "${REGISTRY}/${REPO}:gaudi-${GAUDI_SW_VER:-1.15.1}-optimum-habana-${OPTIMUM_HABANA_VER:-1.11.1}"
         org.opencontainers.image.title: "Optimum for Intel® Gaudi® Accelerators Examples"
         org.opencontainers.image.version: gaudi-${GAUDI_SW_VER:-1.15.1}-optimum-habana-examples-${OPTIMUM_HABANA_VER:-1.11.1}
       target: optimum-habana-examples
