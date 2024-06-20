@@ -105,7 +105,7 @@ your job, the name and tag of your Docker image, the number of HPU cards to use 
 | resources.requests.memory | string | `"128Gi"` | Specify [memory resource](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-memory) requests for the job |
 | secret.encodedToken | string | `nil` | Hugging Face token encoded using base64. |
 | secret.secretMountPath | string | `"/tmp/hf_token"` | If a token is provided, specify a mount path that will be used to set HF_TOKEN_PATH |
-| securityContext.privileged | bool | `true` | Run as privileged or unprivileged |
+| securityContext.privileged | bool | `false` | Run as privileged or unprivileged. Certain deployments may require running as privileged, check with your system admin. |
 | storage.accessModes | list | `["ReadWriteMany"]` | [Access modes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes) for the persistent volume. |
 | storage.deployDataAccessPod | bool | `true` | A data access pod will be deployed when set to true. This allows accessing the data from the PVC after the worker pod has completed. |
 | storage.pvcMountPath | string | `"/tmp/pvc-mount"` | Locaton where the PVC will be mounted in the pod |
