@@ -192,7 +192,7 @@ class ExampleTestMeta(type):
     """
 
     @staticmethod
-    def to_test(model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool):
+    def to_test(model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool, fp8: bool):
         models_with_specific_rules = [
             "albert-xxlarge-v1",
             "gpt2-xl",
@@ -241,7 +241,7 @@ class ExampleTestMeta(type):
             return True
         elif "bridgetower" in model_name and IS_GAUDI2:
             return True
-        elif "falcon" in model_name and IS_GAUDI2 and not fsdp:
+        elif "falcon" in model_name and IS_GAUDI2 and not fsdp and not fp8:
             return True
         elif "bloom" in model_name and deepspeed and not IS_GAUDI2:
             return True
@@ -253,7 +253,16 @@ class ExampleTestMeta(type):
         return False
 
     def __new__(
-        cls, name, bases, attrs, example_name=None, multi_card=False, deepspeed=False, fsdp=False, torch_compile=False
+        cls,
+        name,
+        bases,
+        attrs,
+        example_name=None,
+        multi_card=False,
+        deepspeed=False,
+        fsdp=False,
+        torch_compile=False,
+        fp8=False,
     ):
         distribution = "single_card"
         if multi_card:
@@ -274,9 +283,9 @@ class ExampleTestMeta(type):
                     )
 
         for model_name, gaudi_config_name in models_to_test:
-            if cls.to_test(model_name, multi_card, deepspeed, example_name, fsdp):
+            if cls.to_test(model_name, multi_card, deepspeed, example_name, fsdp, fp8):
                 attrs[f"test_{example_name}_{model_name.split('/')[-1]}_{distribution}"] = cls._create_test(
-                    model_name, gaudi_config_name, multi_card, deepspeed, fsdp, torch_compile
+                    model_name, gaudi_config_name, multi_card, deepspeed, fsdp, torch_compile, fp8
                 )
         attrs["EXAMPLE_NAME"] = example_name
         return super().__new__(cls, name, bases, attrs)
@@ -290,6 +299,7 @@ class ExampleTestMeta(type):
         deepspeed: bool = False,
         fsdp: bool = False,
         torch_compile: bool = False,
+        fp8: bool = False,
     ) -> Callable[[], None]:
         """
         Create a test function that runs an example for a specific (model_name, gaudi_config_name) pair.
@@ -392,6 +402,9 @@ class ExampleTestMeta(type):
                 env_variables["PT_HPU_LAZY_MODE"] = "0"
             elif deepspeed and "gpt-neox-20b" in model_name:
                 env_variables["LD_PRELOAD"] = ""
+
+            if fp8 and "llama" in model_name:
+                env_variables["LOWER_LIST"] = str(example_script.parent / "ops_bf16.txt")
 
             extra_command_line_arguments = baseline.get("distribution").get(distribution).get("extra_arguments", [])
 
@@ -784,3 +797,10 @@ class MultiCardCausalLanguageModelingPTuningExampleTester(
 ):
     TASK_NAME = ["p-tuning"]
     DATASET_NAME = "ought/raft"
+
+
+class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True, fp8=True
+):
+    TASK_NAME = "tatsu-lab/alpaca_fp8"
+    DATASET_NAME = "tatsu-lab/alpaca"
