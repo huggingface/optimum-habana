@@ -183,6 +183,7 @@ tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = "right"
 model.config.pad_token_id = tokenizer.eos_token_id
 model.config.use_cache = not script_args.gradient_checkpointing
+model.config.use_fused_rope = False
 num_proc = 24  # Can adjust to be higher if you have more processors.
 original_columns = train_dataset.column_names
 
