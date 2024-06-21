@@ -204,8 +204,8 @@
                 "multi_card": {
                     "learning_rate": 5e-4,
                     "train_batch_size": 1,
-                    "train_runtime": 167,
-                    "train_samples_per_second": 2.4,
+                    "train_runtime": 200,
+                    "train_samples_per_second": 2,
                     "extra_arguments": [
                         "--logging_steps 1",
                         "--lora_r 8",
@@ -230,8 +230,8 @@
                 "multi_card": {
                     "learning_rate": 5e-4,
                     "train_batch_size": 8,
-                    "train_runtime": 45,
-                    "train_samples_per_second": 0.70,
+                    "train_runtime": 55,
+                    "train_samples_per_second": 0.50,
                     "extra_arguments": [
                         "--lora_r 8",
                         "--lora_alpha 16",
