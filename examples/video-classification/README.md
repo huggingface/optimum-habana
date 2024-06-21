@@ -18,7 +18,16 @@ limitations under the License.
 
 This directory contains an example script to showcase usage of classifying video data.
 
+## Requirements
+
+First, install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Single-HPU inference
+
+### Single video example
 
 ```bash
 python3 run_example.py \
@@ -26,6 +35,35 @@ python3 run_example.py \
     --video_paths "https://ak.picdn.net/shutterstock/videos/21179416/preview/stock-footage-aerial-shot-winter-forest.mp4" \
     --use_hpu_graphs \
     --bf16
+```
+
+Outputs:
+```
+Predicted class for stock-footage-aerial-shot-winter-forest.mp4 is sled dog racing and took 1.243e+00 seconds
+```
+
+### Multi-video example
+
+```bash
+python3 run_example.py \
+    --model_name_or_path MCG-NJU/videomae-base-finetuned-kinetics \
+    --use_hpu_graphs \
+    --bf16 \
+    --warm_up_epochs 3 \
+    --video_paths "https://ak.picdn.net/shutterstock/videos/5629184/preview/stock-footage-senior-couple-looking-through-binoculars-on-sailboat-together-shot-on-red-epic-for-high-quality-k.mp4" \
+    "https://ak.picdn.net/shutterstock/videos/21179416/preview/stock-footage-aerial-shot-winter-forest.mp4" \
+    "https://ak.picdn.net/shutterstock/videos/1063125190/preview/stock-footage-a-beautiful-cookie-with-oranges-lies-on-a-green-tablecloth.mp4" \
+    "https://ak.picdn.net/shutterstock/videos/1039695998/preview/stock-footage-japanese-highrise-office-skyscrapers-tokyo-square.mp4" \
+    "https://ak.picdn.net/shutterstock/videos/9607838/preview/stock-footage-zrenjanin-serbia-march-fans-watching-live-concert-bokeh-blur-urban-background-x.mp4"
+```
+
+Outputs: 
+```
+Predicted class for stock-footage-senior-couple-looking-through-binoculars-on-sailboat-together-shot-on-red-epic-for-high-quality-k.mp4 is sailing and took 3.372e-01 seconds
+Predicted class for stock-footage-aerial-shot-winter-forest.mp4 is sled dog racing and took 3.360e-01 seconds
+Predicted class for stock-footage-a-beautiful-cookie-with-oranges-lies-on-a-green-tablecloth.mp4 is cooking sausages and took 3.349e-01 seconds
+Predicted class for stock-footage-japanese-highrise-office-skyscrapers-tokyo-square.mp4 is marching and took 3.362e-01 seconds
+Predicted class for stock-footage-zrenjanin-serbia-march-fans-watching-live-concert-bokeh-blur-urban-background-x.mp4 is slacklining and took 3.358e-01 seconds
 ```
 
 Models that have been validated:
