@@ -1,7 +1,7 @@
-datasets >= 2.4.0
+datasets >= 2.4.0, <= 2.19.2
 sentencepiece != 0.1.92
-scipy
-scikit-learn
-protobuf
-torch >= 1.3
-evaluate
+scipy == 1.13.1
+scikit-learn == 1.5.0
+protobuf == 5.27.1
+torch >= 1.3, <= 2.3.1
+evaluate == 0.4.2

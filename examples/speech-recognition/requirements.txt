@@ -1,4 +1,4 @@
-datasets >= 1.18.0
-librosa
-jiwer
-evaluate
+datasets >= 1.18.0, <= 2.19.2
+librosa == 0.10.2.post1
+jiwer == 3.0.4
+evaluate == 0.4.2
