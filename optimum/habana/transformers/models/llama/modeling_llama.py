@@ -60,12 +60,10 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
         # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
         if hidden_states.dtype != self.weight.dtype:
             orig_dtype = hidden_states.dtype
-            hidden_states = FusedRMSNorm.apply(
-                hidden_states.clone().to(self.weight.dtype), self.weight, self.variance_epsilon
-            )
+            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
             return hidden_states.to(orig_dtype)
         else:
-            hidden_states = FusedRMSNorm.apply(hidden_states.clone(), self.weight, self.variance_epsilon)
+            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
             return hidden_states
     else:
         input_dtype = hidden_states.dtype
@@ -485,6 +483,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 if cache_position is not None:
                     causal_mask = attention_mask[:, :, cache_position, : key_states.shape[-2]]
                 attn_weights = attn_weights + causal_mask
+
             if attn_softmax_bf16:
                 attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=query_states.dtype)
             else:
