@@ -12,20 +12,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Testing suite for the PyTorch LLaMA model."""
+""" Testing suite for the PyTorch LLaMA model. """
 
+import tempfile
 import unittest
 
+import pytest
 from parameterized import parameterized
-from transformers import LlamaConfig, is_torch_available
-from transformers.testing_utils import require_torch, slow
+
+from transformers import LlamaConfig, is_torch_available, set_seed
+from transformers.testing_utils import (
+    require_bitsandbytes,
+    require_flash_attn,
+    require_torch,
+    require_torch_accelerator,
+    require_torch_gpu,
+    require_torch_sdpa,
+    slow,
+    torch_device,
+)
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 from optimum.habana.utils import set_seed
 
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
-from ...test_modeling_common import ModelTesterMixin, ids_tensor, random_attention_mask
+from ...test_modeling_common import ModelTesterMixin, ids_tensor
 
 
 torch_device = "hpu"
@@ -33,7 +45,14 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-    from transformers import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel, LlamaTokenizer
+
+    from transformers import (
+        CodeLlamaTokenizer,
+        LlamaForCausalLM,
+        LlamaForSequenceClassification,
+        LlamaModel,
+        LlamaTokenizer,
+    )
 
 
 class LlamaModelTester:
@@ -92,7 +111,7 @@ class LlamaModelTester:
 
         input_mask = None
         if self.use_input_mask:
-            input_mask = random_attention_mask([self.batch_size, self.seq_length])
+            input_mask = torch.tril(torch.ones(self.batch_size, self.seq_length)).to(torch_device)
 
         token_type_ids = None
         if self.use_token_type_ids:
@@ -278,6 +297,7 @@ class LlamaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
     )
     test_headmasking = False
     test_pruning = False
+    fx_compatible = True
 
     def setUp(self):
         self.model_tester = LlamaModelTester(self)
@@ -336,7 +356,7 @@ class LlamaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
         result = model(input_ids, attention_mask=attention_mask, labels=sequence_labels)
         self.assertEqual(result.logits.shape, (self.model_tester.batch_size, self.model_tester.num_labels))
 
-    @unittest.skip("LLaMA buffers include complex numbers, which breaks this test")
+    @unittest.skip("Llama buffers include complex numbers, which breaks this test")
     def test_save_load_fast_init_from_base(self):
         pass
 
@@ -370,6 +390,125 @@ class LlamaModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
 
         # The output should be different for long inputs
         self.assertFalse(torch.allclose(original_long_output, scaled_long_output, atol=1e-5))
+
+    @require_flash_attn
+    @require_torch_gpu
+    @require_bitsandbytes
+    @pytest.mark.flash_attn_test
+    @slow
+    def test_flash_attn_2_generate_padding_right(self):
+        """
+        Overwritting the common test as the test is flaky on tiny models
+        """
+        model = LlamaForCausalLM.from_pretrained(
+            "meta-llama/Llama-2-7b-hf",
+            load_in_4bit=True,
+            device_map={"": 0},
+        )
+
+        tokenizer = LlamaTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
+
+        texts = ["hi", "Hello this is a very long sentence"]
+
+        tokenizer.padding_side = "right"
+        tokenizer.pad_token = tokenizer.eos_token
+
+        inputs = tokenizer(texts, return_tensors="pt", padding=True).to(0)
+
+        output_native = model.generate(**inputs, max_new_tokens=20, do_sample=False)
+        output_native = tokenizer.batch_decode(output_native)
+
+        model = LlamaForCausalLM.from_pretrained(
+            "meta-llama/Llama-2-7b-hf", load_in_4bit=True, device_map={"": 0}, attn_implementation="flash_attention_2"
+        )
+
+        output_fa_2 = model.generate(**inputs, max_new_tokens=20, do_sample=False)
+        output_fa_2 = tokenizer.batch_decode(output_fa_2)
+
+        self.assertListEqual(output_native, output_fa_2)
+
+    @require_flash_attn
+    @require_torch_gpu
+    @slow
+    def test_use_flash_attention_2_true(self):
+        """
+        NOTE: this is the only test testing that the legacy `use_flash_attention=2` argument still works as intended.
+        """
+        config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
+        for model_class in self.all_model_classes:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                model = model_class(config)
+                model.save_pretrained(tmp_dir)
+
+                new_model = LlamaForCausalLM.from_pretrained(
+                    tmp_dir, use_flash_attention_2=True, torch_dtype=torch.float16
+                ).to("cuda")
+
+                self.assertTrue(new_model.config._attn_implementation == "flash_attention_2")
+
+                has_flash = False
+                for name, submodule in new_model.named_modules():
+                    if "FlashAttention" in submodule.__class__.__name__:
+                        has_flash = True
+                        break
+                if not has_flash:
+                    raise ValueError("The flash model should have flash attention layers")
+
+    @require_torch_sdpa
+    @slow
+    def test_eager_matches_sdpa_generate(self):
+        """
+        Overwritting the common test as the test is flaky on tiny models
+        """
+        max_new_tokens = 30
+
+        tokenizer = LlamaTokenizer.from_pretrained("saibo/llama-1B")
+
+        model_sdpa = LlamaForCausalLM.from_pretrained(
+            "saibo/llama-1B",
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+        ).to(torch_device)
+
+        self.assertTrue(model_sdpa.config._attn_implementation == "sdpa")
+
+        model_eager = LlamaForCausalLM.from_pretrained(
+            "saibo/llama-1B",
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+            attn_implementation="eager",
+        ).to(torch_device)
+
+        self.assertTrue(model_eager.config._attn_implementation == "eager")
+
+        for name, submodule in model_eager.named_modules():
+            if "SdpaAttention" in submodule.__class__.__name__:
+                raise ValueError("The eager model should not have SDPA attention layers")
+
+        has_sdpa = False
+        for name, submodule in model_sdpa.named_modules():
+            if "SdpaAttention" in submodule.__class__.__name__:
+                has_sdpa = True
+                break
+        if not has_sdpa:
+            raise ValueError("The SDPA model should have SDPA attention layers")
+
+        texts = [
+            "hi here's a longer context, getting longer and",
+            "Hello this is a very long sentence my friend, very long for real",
+            "Today I am in Paris and",
+        ]
+
+        for padding_side in ["left", "right"]:
+            tokenizer.padding_side = padding_side
+            tokenizer.pad_token = tokenizer.eos_token
+
+            inputs = tokenizer(texts, return_tensors="pt", padding=True).to(torch_device)
+
+            res_eager = model_eager.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+
+            res_sdpa = model_sdpa.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+            self.assertTrue(torch.allclose(res_eager, res_sdpa))
 
 
 @require_torch
@@ -444,3 +583,85 @@ class LlamaIntegrationTest(unittest.TestCase):
         generated_ids = model.generate(input_ids, max_new_tokens=64, top_p=None, temperature=1, do_sample=False)
         text = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
         self.assertEqual(EXPECTED_TEXT_COMPLETION, text)
+
+
+@require_torch
+class CodeLlamaIntegrationTest(unittest.TestCase):
+    PROMPTS = [
+        '''def remove_non_ascii(s: str) -> str:
+    """ <FILL_ME>
+    return result
+''',
+        """# Installation instructions:
+    ```bash
+<FILL_ME>
+    ```
+This downloads the LLaMA inference code and installs the repository as a local pip package.
+""",
+        """class InterfaceManagerFactory(AbstractManagerFactory):
+    def __init__(<FILL_ME>
+def main():
+    factory = InterfaceManagerFactory(start=datetime.now())
+    managers = []
+    for i in range(10):
+        managers.append(factory.build(id=i))
+""",
+        """/-- A quasi-prefunctoid is 1-connected iff all its etalisations are 1-connected. -/
+theorem connected_iff_etalisation [C D : precategoroid] (P : quasi_prefunctoid C D) :
+π₁ P = 0 ↔ <FILL_ME> = 0 :=
+begin
+split,
+{ intros h f,
+    rw pi_1_etalisation at h,
+    simp [h],
+    refl
+},
+{ intro h,
+    have := @quasi_adjoint C D P,
+    simp [←pi_1_etalisation, this, h],
+    refl
+}
+end
+""",
+    ]
+
+    @require_torch_accelerator
+    @slow
+    def test_model_7b_logits(self):
+        model = LlamaForCausalLM.from_pretrained("codellama/CodeLlama-7b-hf").to(torch_device)
+        tokenizer = CodeLlamaTokenizer.from_pretrained("codellama/CodeLlama-7b-hf")
+        # Tokenize and prepare for the model a list of sequences or a list of pairs of sequences.
+        # meaning by default this supports passing splitted list of inputs
+        processed_text = tokenizer.batch_decode(tokenizer(self.PROMPTS)["input_ids"], add_special_tokens=False)
+        # fmt: off
+        EXPECTED_TEXT = [
+            '<s> <PRE> def remove_non_ascii(s: str) -> str:\n    """  <SUF>\n    return result\n <MID>',
+            '<s> <PRE> # Installation instructions:\n    ```bash\n <SUF>\n    ```\nThis downloads the LLaMA inference code and installs the repository as a local pip package.\n <MID>',
+            '<s> <PRE> class InterfaceManagerFactory(AbstractManagerFactory):\n    def __init__( <SUF>\ndef main():\n    factory = InterfaceManagerFactory(start=datetime.now())\n    managers = []\n    for i in range(10):\n        managers.append(factory.build(id=i))\n <MID>',
+            '<s> <PRE> /-- A quasi-prefunctoid is 1-connected iff all its etalisations are 1-connected. -/\ntheorem connected_iff_etalisation [C D : precategoroid] (P : quasi_prefunctoid C D) :\nπ₁ P = 0 ↔  <SUF> = 0 :=\nbegin\nsplit,\n{ intros h f,\n    rw pi_1_etalisation at h,\n    simp [h],\n    refl\n},\n{ intro h,\n    have := @quasi_adjoint C D P,\n    simp [←pi_1_etalisation, this, h],\n    refl\n}\nend\n <MID>'
+        ]
+        # fmt: on
+        self.assertEqual(processed_text, EXPECTED_TEXT)
+        processed_text_suffix_first = tokenizer.batch_decode(
+            tokenizer(self.PROMPTS, suffix_first=True, add_special_tokens=False)["input_ids"]
+        )
+
+        # fmt: off
+        EXPECTED_TEXT = [
+            '<PRE> <SUF>\n    return result\n <MID> def remove_non_ascii(s: str) -> str:\n    """ ',
+            '<PRE> <SUF>\n    ```\nThis downloads the LLaMA inference code and installs the repository as a local pip package.\n <MID> # Installation instructions:\n    ```bash\n',
+            '<PRE> <SUF>\ndef main():\n    factory = InterfaceManagerFactory(start=datetime.now())\n    managers = []\n    for i in range(10):\n        managers.append(factory.build(id=i))\n <MID> class InterfaceManagerFactory(AbstractManagerFactory):\n    def __init__(',
+            '<PRE> <SUF> = 0 :=\nbegin\nsplit,\n{ intros h f,\n    rw pi_1_etalisation at h,\n    simp [h],\n    refl\n},\n{ intro h,\n    have := @quasi_adjoint C D P,\n    simp [←pi_1_etalisation, this, h],\n    refl\n}\nend\n <MID> /-- A quasi-prefunctoid is 1-connected iff all its etalisations are 1-connected. -/\ntheorem connected_iff_etalisation [C D : precategoroid] (P : quasi_prefunctoid C D) :\nπ₁ P = 0 ↔ '
+        ]
+        EXPECTED_IDS = torch.tensor([[    1, 32007, 822, 3349, 29918, 5464, 29918, 294, 18869, 29898,29879, 29901, 851, 29897, 1599, 851, 29901, 13, 1678, 9995, 29871, 32008, 13, 1678, 736, 1121, 13, 32009, 15941, 1661, 29899, 28599, 2687, 4890, 515, 263, 1347, 29889, 13, 13, 1678, 826, 3174, 29901, 13, 4706, 269, 29901, 450, 1347, 304, 3349, 1661, 29899, 28599, 2687, 4890, 515, 29889, 13, 13, 1678, 16969, 29901, 13, 4706, 450, 1347, 411, 1661, 29899, 28599, 2687, 4890, 6206, 29889, 13, 1678, 9995, 13, 1678, 1121, 353, 5124, 13, 1678, 363, 274, 297, 269, 29901, 13, 4706, 565, 4356, 29898, 29883, 29897, 529, 29871, 29896, 29906, 29947, 29901, 13, 9651, 1121, 4619, 274, 32010, 2]])
+        # fmt: on
+        self.assertEqual(processed_text_suffix_first, EXPECTED_TEXT)
+        input_ids = tokenizer(self.PROMPTS[0], return_tensors="pt")["input_ids"]
+        generated_ids = model.generate(input_ids.to(torch_device), max_new_tokens=128)
+        torch.testing.assert_close(generated_ids, EXPECTED_IDS)
+
+        EXPECTED_INFILLING = [
+            '<s> <PRE> def remove_non_ascii(s: str) -> str:\n    """  <SUF>\n    return result\n <MID>Remove non-ASCII characters from a string.\n\n    Args:\n        s: The string to remove non-ASCII characters from.\n\n    Returns:\n        The string with non-ASCII characters removed.\n    """\n    result = ""\n    for c in s:\n        if ord(c) < 128:\n            result += c <EOT></s>'
+        ]
+        infilling = tokenizer.batch_decode(generated_ids)
+        self.assertEqual(infilling, EXPECTED_INFILLING)
