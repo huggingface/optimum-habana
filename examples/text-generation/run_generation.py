@@ -369,6 +369,11 @@ def main():
                 "Peace is the only way",
             ]
 
+        if model.config.model_type == "cohere":
+            for i, sentence in enumerate(input_sentences):
+                message = [{"role": "user", "content": sentence}]
+                input_sentences[i] = tokenizer.apply_chat_template(message, tokenize=False)
+
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes
             num_sentences_to_add = args.batch_size - len(input_sentences)
