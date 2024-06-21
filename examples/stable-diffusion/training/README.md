@@ -168,8 +168,8 @@ pip install -r requirements.txt
 ```bash
 python train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
-  --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
-  --dataset_name lambdalabs/pokemon-blip-captions \
+  --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
+  --dataset_name lambdalabs/naruto-blip-captions \
   --resolution 512 \
   --crop_resolution 512 \
   --center_crop \
@@ -181,14 +181,14 @@ python train_text_to_image_sdxl.py \
   --max_grad_norm 1 \
   --lr_scheduler constant \
   --lr_warmup_steps 0 \
-  --output_dir sdxl-pokemon-model \
+  --output_dir sdxl_model_output \
   --gaudi_config_name Habana/stable-diffusion \
   --throughput_warmup_steps 3 \
   --dataloader_num_workers 8 \
   --bf16 \
   --use_hpu_graphs_for_training \
   --use_hpu_graphs_for_inference \
-  --validation_prompt="a robotic cat with wings" \
+  --validation_prompt="a cute naruto creature" \
   --validation_epochs 48 \
   --checkpointing_steps 2500 \
   --logging_step 10 \
@@ -201,8 +201,8 @@ python train_text_to_image_sdxl.py \
 PT_HPU_RECIPE_CACHE_CONFIG=/tmp/stdxl_recipe_cache,True,1024  \
 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
-  --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
-  --dataset_name lambdalabs/pokemon-blip-captions \
+  --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
+  --dataset_name lambdalabs/naruto-blip-captions \
   --resolution 512 \
   --crop_resolution 512 \
   --center_crop \
@@ -214,27 +214,27 @@ python ../../gaudi_spawn.py --world_size 8 --use_mpi train_text_to_image_sdxl.py
   --max_grad_norm 1 \
   --lr_scheduler constant \
   --lr_warmup_steps 0 \
-  --output_dir sdxl-pokemon-model \
+  --output_dir sdxl_model_output \
   --gaudi_config_name Habana/stable-diffusion \
   --throughput_warmup_steps 3 \
   --dataloader_num_workers 8 \
   --bf16 \
   --use_hpu_graphs_for_training \
   --use_hpu_graphs_for_inference \
-  --validation_prompt="a robotic cat with wings" \
+  --validation_prompt="a cute naruto creature" \
   --validation_epochs 48 \
   --checkpointing_steps 336 \
-  --mediapipe dataset_sdxl_pokemon \
+  --mediapipe dataset_sdxl_mediapipe \
   --adjust_throughput
 ```
 
 ### Single-card Training on Gaudi1
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
+python train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
-  --pretrained_vae_model_name_or_path stabilityai/sdxl-vae \
-  --dataset_name lambdalabs/pokemon-blip-captions \
-  --resolution 512 \
+  --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
+  --dataset_name lambdalabs/naruto-blip-captions \
+  --resolution 256 \
   --center_crop \
   --random_flip \
   --proportion_empty_prompts=0.2 \
@@ -245,11 +245,12 @@ PT_HPU_MAX_COMPOUND_OP_SIZE=5 python train_text_to_image_sdxl.py \
   --max_grad_norm 1 \
   --lr_scheduler constant \
   --lr_warmup_steps 0 \
-  --output_dir sdxl-pokemon-model \
+  --output_dir sdxl_model_output \
   --gaudi_config_name Habana/stable-diffusion \
   --throughput_warmup_steps 3 \
   --use_hpu_graphs_for_training \
   --use_hpu_graphs_for_inference \
+  --checkpointing_steps 3000 \
   --bf16
 ```
 
@@ -387,7 +388,7 @@ You can launch training using:
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="lora-trained-xl"
-export VAE_PATH="stabilityai/sdxl-vae"
+export VAE_PATH="madebyollin/sdxl-vae-fp16-fix"
 
 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth_lora_sdxl.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \

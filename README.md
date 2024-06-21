@@ -42,7 +42,7 @@ Please refer to the Intel Gaudi AI Accelerator official [installation guide](htt
 
 > Tests should be run in a Docker container based on Intel Gaudi Docker images.
 >
-> The current version has been validated for SynapseAI 1.15.
+> The current version has been validated for SynapseAI 1.16.
 
 
 ## Install the library and get example scripts
@@ -59,9 +59,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 > ```
 > git clone https://github.com/huggingface/optimum-habana
-> cd optimum-habana && git checkout v1.11.1
+> cd optimum-habana && git checkout v1.12.0
 > ```
-> with `v1.11.1` the version number of this release.
+> with `v1.12.0` the version number of this release.
 
 ### Option 2: Use the latest main branch under development
 
@@ -76,7 +76,7 @@ git clone https://github.com/huggingface/optimum-habana
 
 To use DeepSpeed on HPUs, you also need to run the following command:
 >```bash
->pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
+>pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 >```
 
 To install the requirements for every example:
@@ -213,6 +213,7 @@ The following model architectures, tasks and device distributions have been vali
 | Blip |   | <div style="text-align:left"><li>Single card</li></div> | <li>[visual question answering](https://github.com/huggingface/optimum-habana/tree/main/examples/visual-question-answering)</li><li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | OWLViT |   | <div style="text-align:left"><li>Single card</li></div> | <li>[zero shot object detection](https://github.com/huggingface/optimum-habana/tree/main/examples/zero-shot-object-detection)</li> |
 | ClipSeg |   | <div style="text-align:left"><li>Single card</li></div> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/main/examples/object-segementation)</li> |
+| Llava / Llava-next |    | <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 
 </div>
 

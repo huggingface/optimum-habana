@@ -934,21 +934,16 @@ def main(args):
         for image in images:
             original_sizes.append((image.height, image.width))
             image = train_resize(image)
-            if args.crop_resolution < args.resolution:
-                if args.center_crop:
-                    y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
-                    x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
-                    image = train_crop(image)
-                else:
-                    y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
-                    image = crop(image, y1, x1, h, w)
-            else:
-                x1 = 0
-                y1 = 0
             if args.random_flip and random.random() < 0.5:
                 # flip
-                x1 = image.width - x1
                 image = train_flip(image)
+            if args.center_crop:
+                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
+                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+                image = train_crop(image)
+            else:
+                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                image = crop(image, y1, x1, h, w)
             crop_top_left = (y1, x1)
             crop_top_lefts.append(crop_top_left)
             image = train_transforms(image)

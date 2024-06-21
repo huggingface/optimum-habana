@@ -160,6 +160,7 @@ if __name__ == "__main__":
         torch_dtype=torch.bfloat16,
         token=script_args.token,
     )
+
     base_model.config.use_cache = False
     if not script_args.use_flash_attention and (
         script_args.flash_attention_recompute or script_args.flash_attention_recompute
@@ -219,3 +220,4 @@ if __name__ == "__main__":
 
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+
