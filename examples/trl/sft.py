@@ -151,6 +151,7 @@ base_model = AutoModelForCausalLM.from_pretrained(
     token=script_args.token,
 )
 base_model.config.use_cache = False
+base_model.config.use_fused_rope = False
 
 tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
 tokenizer.pad_token = tokenizer.eos_token
@@ -167,7 +168,6 @@ train_dataset, eval_dataset = create_datasets(tokenizer, script_args, seed=train
 gaudi_config = GaudiConfig()
 gaudi_config.use_fused_adam = True
 gaudi_config.use_fused_clip_norm = True
-
 trainer = GaudiSFTTrainer(
     model=base_model,
     gaudi_config=gaudi_config,

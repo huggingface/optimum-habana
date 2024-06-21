@@ -78,6 +78,7 @@ python run_pipeline.py \
 --use_kv_cache \
 --max_new_tokens 100 \
 --do_sample \
+--batch_size 2 \
 --prompt "Hello world" "How are you?"
 ```
 
@@ -101,6 +102,7 @@ python run_pipeline.py \
 --do_sample \
 --temperature 0.5 \
 --top_p 0.95 \
+--batch_size 2 \
 --prompt "Hello world" "How are you?"
 ```
 
@@ -114,6 +116,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --bf16 \
 --use_hpu_graphs \
 --use_kv_cache \
+--batch_size 4 \
 --prompt "Hello world" "How are you?" "Here is my prompt" "Once upon a time"
 ```
 
@@ -128,6 +131,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --do_sample \
 --temperature 0.5 \
 --top_p 0.95 \
+--batch_size 4 \
 --prompt "Hello world" "How are you?" "Here is my prompt" "Once upon a time"
 ```
 
