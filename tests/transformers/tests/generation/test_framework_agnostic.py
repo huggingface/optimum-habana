@@ -3,8 +3,11 @@ Framework agnostic tests for generate()-related methods.
 """
 
 import numpy as np
+import pytest
 from transformers import AutoTokenizer
-from transformers.testing_utils import slow, torch_device
+from transformers.testing_utils import slow
+
+from ..test_modeling_common import torch_device
 
 
 class GenerationIntegrationTestsMixin:
@@ -63,7 +66,7 @@ class GenerationIntegrationTestsMixin:
         with self.assertRaises(ValueError):
             bart_model.generate(input_ids, logits_processor=logits_processor)
 
-        bart_model.config.min_length = None
+        bart_model.generation_config.min_length = None
         bart_model.generate(input_ids, logits_processor=logits_processor)
 
     def test_max_new_tokens_encoder_decoder(self):
@@ -156,10 +159,10 @@ class GenerationIntegrationTestsMixin:
         is_pt = not model_cls.__name__.startswith("TF")
 
         articles = ["Justin Timberlake", "Michael Phelps"]
-        tokenizer = AutoTokenizer.from_pretrained("distilgpt2", padding_side="left")
+        tokenizer = AutoTokenizer.from_pretrained("distilbert/distilgpt2", padding_side="left")
         tokenizer.pad_token = tokenizer.eos_token
 
-        model = model_cls.from_pretrained("distilgpt2")
+        model = model_cls.from_pretrained("distilbert/distilgpt2")
         input_ids = tokenizer(articles, return_tensors=return_tensors, padding=True).input_ids
         if is_pt:
             model = model.to(torch_device)
@@ -192,10 +195,10 @@ class GenerationIntegrationTestsMixin:
         is_pt = not model_cls.__name__.startswith("TF")
 
         articles = ["Justin Timberlake", "Michael Phelps"]
-        tokenizer = AutoTokenizer.from_pretrained("distilgpt2", padding_side="left")
+        tokenizer = AutoTokenizer.from_pretrained("distilbert/distilgpt2", padding_side="left")
         tokenizer.pad_token = tokenizer.eos_token
 
-        model = model_cls.from_pretrained("distilgpt2")
+        model = model_cls.from_pretrained("distilbert/distilgpt2")
         input_ids = tokenizer(articles, return_tensors=return_tensors, padding=True).input_ids
         if is_pt:
             model = model.to(torch_device)
@@ -222,6 +225,7 @@ class GenerationIntegrationTestsMixin:
         )
         self.assertTrue(np.allclose(transition_scores, expected_scores, atol=1e-3))
 
+    @pytest.mark.xfail(reason="optimum-habana does not support return_dict_in_generate with static_shapes")
     def test_transition_scores_beam_search_encoder_decoder(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -257,6 +261,7 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
+    @pytest.mark.xfail(reason="optimum-habana does not support return_dict_in_generate with static_shapes")
     def test_transition_scores_beam_search_encoder_decoder_with_eos(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -291,6 +296,7 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
+    @pytest.mark.xfail(reason="optimum-habana does not support return_dict_in_generate with static_shapes")
     def test_transition_scores_beam_search_decoder_only(self):
         model_cls = self.framework_dependent_parameters["AutoModelForCausalLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -328,6 +334,7 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores, atol=1e-3))
 
+    @pytest.mark.xfail(reason="Beam search sampling is not supported by optimum-habana yet")
     def test_transition_scores_beam_sample_encoder_decoder(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
@@ -374,7 +381,7 @@ class GenerationIntegrationTestsMixin:
         is_pt = not model_cls.__name__.startswith("TF")
 
         input_ids = create_tensor_fn(2 * [[822, 10, 571, 33, 25, 58, 2625, 10, 27, 141, 3, 9, 307, 239, 6, 1]])
-        model = model_cls.from_pretrained("t5-small")
+        model = model_cls.from_pretrained("google-t5/t5-small")
         if is_pt:
             model = model.to(torch_device)
             input_ids = input_ids.to(torch_device)
@@ -400,6 +407,7 @@ class GenerationIntegrationTestsMixin:
 
         self.assertTrue(np.allclose(np.sum(transition_scores, axis=-1), outputs.sequences_scores))
 
+    @pytest.mark.xfail(reason="optimum-habana does not support return_dict_in_generate with static_shapes")
     def test_encoder_decoder_generate_attention_mask(self):
         model_cls = self.framework_dependent_parameters["AutoModelForSeq2SeqLM"]
         return_tensors = self.framework_dependent_parameters["return_tensors"]
