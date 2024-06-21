@@ -1,4 +1,6 @@
 # copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama/scripts/rl_training.py, enable it for Gaudi2
+import json
+import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -26,8 +28,10 @@ class ScriptArguments:
 
     # NOTE: gpt2 models use Conv1D instead of Linear layers which are not yet supported in 8 bit mode
     # models like gpt-neo* models are more suitable.
-    model_name: Optional[str] = field(default="meta-llama/Llama-2-7b-hf", metadata={"help": "the model name"})
-    tokenizer_name: Optional[str] = field(default="meta-llama/Llama-2-7b-hf", metadata={"help": "the tokenizer name"})
+    model_name_or_path: Optional[str] = field(default="meta-llama/Llama-2-7b-hf", metadata={"help": "the model name"})
+    tokenizer_name_or_path: Optional[str] = field(
+        default="meta-llama/Llama-2-7b-hf", metadata={"help": "the tokenizer name"}
+    )
     reward_model_name: Optional[str] = field(default="", metadata={"help": "the reward model name"})
     log_with: Optional[str] = field(default=None, metadata={"help": "use 'wandb' to log with wandb"})
     learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
@@ -83,7 +87,7 @@ reward_model_name = script_args.reward_model_name
 dataset_name = "lvwerra/stack-exchange-paired"
 config = GaudiPPOConfig(
     steps=script_args.steps,
-    model_name=script_args.model_name,
+    model_name=script_args.model_name_or_path,
     learning_rate=script_args.learning_rate,
     log_with=script_args.log_with,
     batch_size=script_args.batch_size,
@@ -119,7 +123,7 @@ if config.pad_for_acceleration:
     sent_kwargs["padding"] = "max_length"
     sent_kwargs["max_length"] = script_args.input_max_length + script_args.output_max_length
 
-tokenizer = AutoTokenizer.from_pretrained(script_args.tokenizer_name)
+tokenizer = AutoTokenizer.from_pretrained(script_args.tokenizer_name_or_path)
 # GPT-2 tokenizer has a pad token, but it is not eos_token by default. We need to set it to eos_token.
 # only for this model.
 
@@ -133,6 +137,7 @@ if getattr(tokenizer, "pad_token", None) is None:
 def build_dataset(
     tokenizer,
     dataset_name="lvwerra/stack-exchange-paired",
+    input_max_length=512,
 ):
     """
     Build dataset for training. This builds the dataset from `load_dataset`, one should
@@ -168,14 +173,14 @@ def build_dataset(
         num_proc=num_proc,
         remove_columns=original_columns,
     )
-    ds = ds.filter(lambda x: len(x["input_ids"]) < 512, batched=False)
+    ds = ds.filter(lambda x: len(x["input_ids"]) < input_max_length, batched=False)
 
     ds.set_format(type="torch")
     return ds
 
 
 # We retrieve the dataloader by calling the `build_dataset` function.
-dataset = build_dataset(tokenizer)
+dataset = build_dataset(tokenizer, input_max_length=script_args.input_max_length)
 
 
 def collator(data):
@@ -232,7 +237,6 @@ ppo_trainer = GaudiPPOTrainer(
     data_collator=collator,
     optimizer=optimizer,
 )
-
 # We then build the sentiment analysis pipeline using our reward model, passing the
 # model name and the sentiment analysis pipeline arguments. Let's also make sure to
 # set the device to the same device as the PPOTrainer.
@@ -283,12 +287,13 @@ if not config.pad_for_acceleration:
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
 else:
     output_length_sampler = LengthSampler(output_max_length, output_max_length + 1)
+s0 = time.time()
+sample = 0
 for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
     if epoch >= config.total_ppo_epochs:
         break
-
     question_tensors = batch["input_ids"]
-
+    sample = sample + len(question_tensors)
     response_tensors = ppo_trainer.generate(
         question_tensors,
         return_prompt=False,
@@ -308,5 +313,9 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
 
     if script_args.save_freq and epoch and epoch % script_args.save_freq == 0:
         ppo_trainer.save_pretrained(script_args.output_dir + f"step_{epoch}")
+s1 = time.time()
 
 ppo_trainer.save_pretrained(script_args.output_dir)
+metrics = {"train_runtime": s1 - s0, "train_samples_per_second": sample / (s1 - s0)}
+with open(f"{script_args.output_dir}/all_results.json", mode="w") as file:
+    json.dump(metrics, file)
