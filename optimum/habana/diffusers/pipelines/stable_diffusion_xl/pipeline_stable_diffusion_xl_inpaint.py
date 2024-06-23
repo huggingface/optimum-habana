@@ -36,7 +36,7 @@ from transformers import (
 )
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
+from ....utils import speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
 from .pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipelineOutput
 
@@ -750,9 +750,20 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
             }
             t0 = time.time()
             t1 = t0
+            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+            use_warmup_inference_steps = (
+                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+            )
+
+
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
+                if j == throughput_warmup_steps:
+                    t1 = time.time()
+                if use_warmup_inference_steps:
+                    t0_inf = time.time()
+
                 latents_batch = latents_batches[0]
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
                 noise_batch = noise_batches[0]
@@ -772,14 +783,15 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                     image_latents_batch = image_latents_batches[0]
                     image_latents_batches = torch.roll(image_latents_batches, shifts=-1, dims=0)
 
-                if j == throughput_warmup_steps:
-                    t1 = time.time()
-
                 # If use the diffuser's scheduler of non-Gaudi version, the timesteps need to reset every batch in order to avoid index overflow of timesteps.
                 if j > 0 and "Gaudi" not in self.scheduler.__class__.__name__:
                     self.scheduler._init_step_index(timesteps[0])
 
                 for i, _ in enumerate(timesteps):
+                    if use_warmup_inference_steps and i == throughput_warmup_steps:
+                        t1_inf = time.time()
+                        t1 += t1_inf - t0_inf
+
                     if self.interrupt:
                         continue
 
@@ -859,13 +871,8 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
 
                         latents_batch = callback_outputs.pop("latents", latents_batch)
                         prompt_embeds_batch = callback_outputs.pop("prompt_embeds", prompt_embeds_batch)
-                        # negative_prompt_embeds_batch = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds_batch)
                         add_text_embeds_batch = callback_outputs.pop("add_text_embeds", add_text_embeds_batch)
-                        # negative_pooled_prompt_embeds = callback_outputs.pop(
-                        #     "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
-                        # )
                         add_time_ids_batch = callback_outputs.pop("add_time_ids", add_time_ids_batch)
-                        # add_neg_time_ids_batch = callback_outputs.pop("add_neg_time_ids", add_neg_time_ids_batch)
                         mask_batch = callback_outputs.pop("mask", mask_batch)
                         masked_image_latents_batch = callback_outputs.pop(
                             "masked_image_latents", masked_image_latents_batch
@@ -876,6 +883,12 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                         if callback is not None and i % callback_steps == 0:
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, t, latents)
+
+                if use_warmup_inference_steps:
+                    t1 = warmup_inference_steps_time_adjustment(
+                        t1, t1_inf, num_inference_steps, throughput_warmup_steps
+                    )
+
 
                 if not output_type == "latent":
                     # make sure the VAE is in float32 mode, as it overflows in float16
@@ -907,7 +920,7 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                 split=speed_metrics_prefix,
                 start_time=t0,
                 num_samples=num_batches * batch_size
-                if t1 == t0
+                if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
                 num_steps=num_batches,
                 start_time_after_warmup=t1,

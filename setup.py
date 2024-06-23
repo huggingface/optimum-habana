@@ -48,6 +48,7 @@ TESTS_REQUIRE = [
     "datasets",
     "safetensors",
     "pytest < 8.0.0",
+    "scipy",
 ]
 
 QUALITY_REQUIRES = [

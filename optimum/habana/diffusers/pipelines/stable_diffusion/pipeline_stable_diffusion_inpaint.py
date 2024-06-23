@@ -27,7 +27,7 @@ from diffusers.utils import deprecate, logging
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
+from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
 from .pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
 
@@ -554,8 +554,13 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 ).to(device=device, dtype=latents.dtype)
 
             # 10. Denoising loop
-            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 0)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+            use_warmup_inference_steps = (
+                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+            )
+
+
             self._num_timesteps = len(timesteps)
 
             # 11. Split into batches (HPU-specific step)
@@ -580,6 +585,11 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
+                if j == throughput_warmup_steps:
+                    t1 = time.time()
+                if use_warmup_inference_steps:
+                    t0_inf = time.time()
+
 
                 latents_batch = latents_batches[0]
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
@@ -589,10 +599,12 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 mask_batches = torch.roll(mask_batches, shifts=-1, dims=0)
                 masked_image_latents_batch = masked_image_latents_batches[0]
                 masked_image_latents_batches = torch.roll(masked_image_latents_batches, shifts=-1, dims=0)
-                if j == throughput_warmup_steps:
-                    t1 = time.time()
 
                 for i in range(len(timesteps)):
+                    if use_warmup_inference_steps and i == throughput_warmup_steps:
+                        t1_inf = time.time()
+                        t1 += t1_inf - t0_inf
+
                     if self.interrupt:
                         continue
 
@@ -674,6 +686,11 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, timestep, latents_batch)
 
+                if use_warmup_inference_steps:
+                    t1 = warmup_inference_steps_time_adjustment(
+                        t1, t1_inf, num_inference_steps, throughput_warmup_steps
+                    )
+
                 if not output_type == "latent":
                     condition_kwargs = {}
                     if isinstance(self.vae, AsymmetricAutoencoderKL):
@@ -705,7 +722,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 split=speed_metrics_prefix,
                 start_time=t0,
                 num_samples=num_batches * batch_size
-                if t1 == t0
+                if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
                 num_steps=num_batches,
                 start_time_after_warmup=t1,
