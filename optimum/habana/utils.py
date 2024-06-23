@@ -89,6 +89,7 @@ def speed_metrics(
     Returns:
         Dict[str, float]: dictionary with performance metrics.
     """
+
     runtime = time.time() - start_time
     result = {f"{split}_runtime": round(runtime, 4)}
     if runtime == 0:

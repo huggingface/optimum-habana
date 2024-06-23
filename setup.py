@@ -38,8 +38,8 @@ INSTALL_REQUIRES = [
     "datasets < 2.20.0",
 ]
 
+#    "diffusers[test] >= 0.26.0, < 0.27.0",
 TESTS_REQUIRE = [
-    "diffusers[test] >= 0.26.0, < 0.27.0",
     "psutil",
     "parameterized",
     "GitPython",
