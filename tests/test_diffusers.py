@@ -88,7 +88,7 @@ from .clip_coco_utils import calculate_clip_score, download_files
 from .test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "0"
+IS_GAUDI2 = os.environ.get("GAUDI2_CI", "0") == "1"
 
 
 if IS_GAUDI2:

@@ -38,7 +38,6 @@ INSTALL_REQUIRES = [
     "datasets < 2.20.0",
 ]
 
-#    "diffusers[test] >= 0.26.0, < 0.27.0",
 TESTS_REQUIRE = [
     "psutil",
     "parameterized",
@@ -49,6 +48,7 @@ TESTS_REQUIRE = [
     "safetensors",
     "pytest < 8.0.0",
     "scipy",
+    "torchsde",
 ]
 
 QUALITY_REQUIRES = [
