@@ -225,8 +225,6 @@ python ../gaudi_spawn.py \
     --bf16 \
     --distributed
 ```
-
-
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
