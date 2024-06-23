@@ -14,12 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+import gc
 import json
 import os
 import random
 import re
-import gc
-import copy
 import subprocess
 import tempfile
 from io import BytesIO
@@ -35,22 +35,21 @@ from diffusers import (
     AutoencoderKL,
     AutoencoderKLTemporalDecoder,
     ControlNetModel,
-    UNet2DConditionModel,
-    UNetSpatioTemporalConditionModel,
-    UniPCMultistepScheduler,
-    PNDMScheduler,
     DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
     LCMScheduler,
+    PNDMScheduler,
+    UNet2DConditionModel,
+    UNetSpatioTemporalConditionModel,
+    UniPCMultistepScheduler,
 )
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
-from diffusers.utils import load_image, numpy_to_pil
+from diffusers.utils import numpy_to_pil
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
-    slow,
 )
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import snapshot_download
@@ -74,13 +73,13 @@ from optimum.habana.diffusers import (
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
     GaudiStableDiffusionControlNetPipeline,
+    GaudiStableDiffusionInpaintPipeline,
     GaudiStableDiffusionLDM3DPipeline,
     GaudiStableDiffusionPipeline,
     GaudiStableDiffusionUpscalePipeline,
+    GaudiStableDiffusionXLInpaintPipeline,
     GaudiStableDiffusionXLPipeline,
     GaudiStableVideoDiffusionPipeline,
-    GaudiStableDiffusionInpaintPipeline,
-    GaudiStableDiffusionXLInpaintPipeline,
 )
 from optimum.habana.utils import set_seed
 
@@ -2370,6 +2369,7 @@ Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelin
 
 enable_full_determinism()
 
+
 class StableDiffusionInpaintPipelineFastTests(
     PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, TestCase
 ):
@@ -2749,6 +2749,7 @@ Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelin
 - Modified the get_dummy_components to add the Gaudi pipeline parameters: use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval
 - added test_stable_diffusion_xl_inpaint_no_throughput_regression
 """
+
 
 class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, TestCase):
     pipeline_class = GaudiStableDiffusionXLInpaintPipeline

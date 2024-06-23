@@ -27,7 +27,7 @@ from diffusers.utils import deprecate, logging
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
+from ....utils import speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
 from .pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
 
@@ -560,7 +560,6 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                 num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
 
-
             self._num_timesteps = len(timesteps)
 
             # 11. Split into batches (HPU-specific step)
@@ -589,7 +588,6 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                     t1 = time.time()
                 if use_warmup_inference_steps:
                     t0_inf = time.time()
-
 
                 latents_batch = latents_batches[0]
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)

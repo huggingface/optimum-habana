@@ -755,7 +755,6 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                 num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
             )
 
-
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
@@ -888,7 +887,6 @@ class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffus
                     t1 = warmup_inference_steps_time_adjustment(
                         t1, t1_inf, num_inference_steps, throughput_warmup_steps
                     )
-
 
                 if not output_type == "latent":
                     # make sure the VAE is in float32 mode, as it overflows in float16
