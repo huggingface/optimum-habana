@@ -669,9 +669,6 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
 
                         latents_batch = callback_outputs.pop("latents", latents_batch)
                         prompt_embeds_batch = callback_outputs.pop("prompt_embeds", prompt_embeds_batch)
-                        # negative_prompt_embeds_batch = callback_outputs.pop("negative_prompt_embeds", None)
-                        # if negative_prompt_embeds_batch is not None:
-                        #     prompt_embeds_batch = torch.cat([prompt_embeds_batch, negative_prompt_embeds_batch])
 
                         mask_batch = callback_outputs.pop("mask", mask_batch)
                         masked_image_latents_batch = callback_outputs.pop(
