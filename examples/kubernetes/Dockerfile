@@ -1,4 +1,3 @@
-ARG BASE_IMAGE_NAME=vault.habana.ai/gaudi-docker/1.15.1/ubuntu22.04/habanalabs/pytorch-installer-2.2.0
 ARG BASE_IMAGE_NAME=vault.habana.ai/gaudi-docker/1.16.1/ubuntu22.04/habanalabs/pytorch-installer-2.2.2
 ARG BASE_IMAGE_TAG=latest
 
