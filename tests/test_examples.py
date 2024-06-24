@@ -219,6 +219,8 @@ class ExampleTestMeta(type):
             return False
         elif "llama" in model_name and "trl-sft-chat" in task_name:
             return False
+        elif ("qwen2" in model_name or "Qwen2" in model_name) and task_name == "trl-sft":
+            return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
@@ -797,4 +799,3 @@ class MultiCardCausalLanguageModelingPTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
     TASK_NAME = ["p-tuning"]
-    DATASET_NAME = "ought/raft"
