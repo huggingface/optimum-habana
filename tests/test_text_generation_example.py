@@ -85,7 +85,7 @@ else:
             ("tiiuae/falcon-7b", 1, True, 44.82870145718665),
             ("bigcode/starcoder", 1, False, 15.945023767901013),
             ("Salesforce/codegen2-1B", 1, False, 155.32071248826423),
-            ("mosaicml/mpt-7b", 1, False, 45.45168927038262),
+            ("mosaicml/mpt-7b", 1, True, 147.8478347198753),
             ("mistralai/Mistral-7B-v0.1", 1, True, 41.21906841459711),
             ("microsoft/phi-2", 1, False, 92.53083167241344),
             ("google/gemma-7b", 1, False, 28.84284625836978),

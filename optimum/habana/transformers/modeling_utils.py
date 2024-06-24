@@ -69,6 +69,8 @@ from .models import (
     GaudiMixtralDecoderLayer,
     GaudiMixtralForCausalLM,
     GaudiMixtralModel,
+    GaudiMptAttention,
+    GaudiMptBlock,
     GaudiMptForCausalLM,
     GaudiMptModel,
     GaudiOPTForCausalLM,
@@ -144,8 +146,6 @@ from .models import (
     gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
-    gaudi_mpt_attention_forward,
-    gaudi_mpt_block_forward,
     gaudi_opt_attention_forward,
     gaudi_opt_decoder_forward,
     gaudi_opt_decoder_layer_forward,
@@ -408,8 +408,8 @@ def adapt_transformers_to_gaudi():
     # Optimization for mpt on Gaudi
     transformers.models.mpt.modeling_mpt.MptForCausalLM = GaudiMptForCausalLM
     transformers.models.mpt.modeling_mpt.MptModel = GaudiMptModel
-    transformers.models.mpt.modeling_mpt.MptAttention.forward = gaudi_mpt_attention_forward
-    transformers.models.mpt.modeling_mpt.MptBlock.forward = gaudi_mpt_block_forward
+    transformers.models.mpt.modeling_mpt.MptAttention = GaudiMptAttention
+    transformers.models.mpt.modeling_mpt.MptBlock = GaudiMptBlock
 
     # Optimization for mistral on Gaudi
     transformers.models.mistral.modeling_mistral.MistralForCausalLM = GaudiMistralForCausalLM
