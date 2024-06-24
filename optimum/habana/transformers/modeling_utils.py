@@ -177,7 +177,6 @@ from .models import (
     gaudi_unconstrained_rational_quadratic_spline,
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
     gaudi_vit_self_attention_forward,
-    gaudi_VitsResidualCouplingLayer_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
@@ -490,7 +489,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.vits.modeling_vits._unconstrained_rational_quadratic_spline = (
         gaudi_unconstrained_rational_quadratic_spline
     )
-    transformers.models.vits.modeling_vits.VitsResidualCouplingLayer.forward = gaudi_VitsResidualCouplingLayer_forward
 
     # Optimization for starcoder2 on Gaudi
     transformers.models.starcoder2.modeling_starcoder2.Starcoder2ForCausalLM = GaudiStarcoder2ForCausalLM

@@ -52,26 +52,3 @@ def gaudi_unconstrained_rational_quadratic_spline(
     outputs = outputs_i * inside_interval_mask + outputs * outside_interval_mask
     log_abs_det = log_abs_det_i * inside_interval_mask + log_abs_det * outside_interval_mask
     return outputs, log_abs_det
-
-
-def gaudi_VitsResidualCouplingLayer_forward(self, inputs, padding_mask, global_conditioning=None, reverse=False):
-    """
-    Copied from VitsResidualCouplingLayer:forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/vits/modeling_vits.py
-    The only differences are:
-    - WA to fix torch.flip issue after conv1d
-    """
-    first_half, second_half = torch.split(inputs, [self.half_channels] * 2, dim=1)
-    hidden_states = self.conv_pre(first_half) * padding_mask
-    hidden_states = self.wavenet(hidden_states, padding_mask, global_conditioning)
-    mean = self.conv_post(hidden_states) * padding_mask
-    log_stddev = torch.zeros_like(mean)
-
-    if not reverse:
-        second_half = mean.cpu() + second_half * torch.exp(log_stddev) * padding_mask
-        outputs = torch.cat([first_half, second_half], dim=1)
-        log_determinant = torch.sum(log_stddev, [1, 2])
-        return outputs, log_determinant
-    else:
-        second_half = (second_half - mean.cpu()) * torch.exp(-log_stddev) * padding_mask
-        outputs = torch.cat([first_half, second_half], dim=1)
-        return outputs, None
