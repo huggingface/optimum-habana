@@ -14,20 +14,14 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import logging
-import sys
 from pathlib import Path
 
-import numpy as np
 import torch
 
 from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
-    GaudiEulerAncestralDiscreteScheduler,
-    GaudiEulerDiscreteScheduler,
+    GaudiStableDiffusionPipeline,
 )
-from optimum.habana.utils import set_seed
-from optimum.habana.diffusers import GaudiStableDiffusionPipeline
 
 
 def main():
@@ -166,8 +160,8 @@ def main():
     # HPU-specific arguments
     parser.add_argument("--use_habana", action="store_true", help="Use HPU.")
     parser.add_argument(
-        "--use_hpu_graphs", 
-        action="store_true", 
+        "--use_hpu_graphs",
+        action="store_true",
         help="Use HPU graphs on HPU. This should lead to faster generations."
     )
     parser.add_argument(
@@ -211,7 +205,7 @@ def main():
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": args.gaudi_config_name,
     }
-    
+
     pipeline = GaudiStableDiffusionPipeline.from_pretrained(
         args.model_name_or_path,
         **kwargs,
@@ -238,7 +232,6 @@ def main():
         if args.output_type == "pil":
             image_save_dir = Path(args.image_save_dir)
             image_save_dir.mkdir(parents=True, exist_ok=True)
-            #logger.info(f"Saving images in {image_save_dir.resolve()}...")
             if args.ldm3d:
                 for i, rgb in enumerate(outputs.rgb):
                     rgb.save(image_save_dir / f"rgb_{i+1}.png")
@@ -247,8 +240,6 @@ def main():
             else:
                 for i, image in enumerate(outputs.images):
                     image.save(image_save_dir / f"image_{i+1}.png")
-        else:
-            logger.warning("--output_type should be equal to 'pil' to save images in --image_save_dir.")
 
 if __name__ == "__main__":
     main()
