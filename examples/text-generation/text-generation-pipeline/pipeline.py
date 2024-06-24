@@ -1,11 +1,19 @@
+import os
+import sys
+
 import torch
 from transformers import TextGenerationPipeline
-from utils import initialize_model
+
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 
 class GaudiTextGenerationPipeline(TextGenerationPipeline):
     def __init__(self, args, logger, use_with_langchain=False, warmup_on_init=True):
-        self.model, self.tokenizer, self.generation_config = initialize_model(args, logger)
+        from utils import initialize_model
+
+        self.model, _, self.tokenizer, self.generation_config = initialize_model(args, logger)
 
         self.task = "text-generation"
         self.device = args.device
@@ -18,6 +26,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
         self.use_hpu_graphs = args.use_hpu_graphs
         self.profiling_steps = args.profiling_steps
         self.profiling_warmup_steps = args.profiling_warmup_steps
+        self.profiling_record_shapes = args.profiling_record_shapes
 
         self.use_with_langchain = use_with_langchain
         if self.use_with_langchain:
@@ -56,6 +65,7 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
             hpu_graphs=self.use_hpu_graphs,
             profiling_steps=self.profiling_steps,
             profiling_warmup_steps=self.profiling_warmup_steps,
+            profiling_record_shapes=self.profiling_record_shapes,
         ).cpu()
 
         if use_batch:
@@ -64,9 +74,9 @@ class GaudiTextGenerationPipeline(TextGenerationPipeline):
             output_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
 
         if self.use_with_langchain:
-            if not use_batch:
-                return [{"generated_text": output_text}]
-            elif use_batch:
+            if use_batch:
                 return [{"generated_text": unbatched_output_text} for unbatched_output_text in output_text]
+            else:
+                return [{"generated_text": output_text}]
 
         return output_text

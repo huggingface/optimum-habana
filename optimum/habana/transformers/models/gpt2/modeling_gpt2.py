@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2LMHeadModel, logger
+from transformers.models.gpt2.modeling_gpt2 import GPT2MLP, GPT2Attention, GPT2LMHeadModel, logger
 
 
 class GaudiGPT2Attention(GPT2Attention):
@@ -168,76 +168,93 @@ class GaudiGPT2Attention(GPT2Attention):
         return outputs  # a, present, (attentions)
 
 
-def gaudi_gpt2_block_forward(
-    self,
-    hidden_states: Optional[Tuple[torch.FloatTensor]],
-    layer_past: Optional[Tuple[torch.Tensor]] = None,
-    attention_mask: Optional[torch.FloatTensor] = None,
-    head_mask: Optional[torch.FloatTensor] = None,
-    encoder_hidden_states: Optional[torch.Tensor] = None,
-    encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    use_cache: Optional[bool] = False,
-    output_attentions: Optional[bool] = False,
-    token_idx: Optional[torch.Tensor] = None,
-) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
-    """
-    Copied from GPT2Block.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
-    The only differences are:
-    - add new args token_idx
-    """
+class GaudiGPT2Block(torch.nn.Module):
+    def __init__(self, config, layer_idx=None):
+        super().__init__()
+        hidden_size = config.hidden_size
+        inner_dim = config.n_inner if config.n_inner is not None else 4 * hidden_size
+        attention_class = GaudiGPT2Attention
 
-    residual = hidden_states
-    hidden_states = self.ln_1(hidden_states)
+        self.ln_1 = torch.nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+        self.attn = attention_class(config=config, layer_idx=layer_idx)
+        self.ln_2 = torch.nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
-    attn_outputs = self.attn(
-        hidden_states,
-        layer_past=layer_past,
-        attention_mask=attention_mask,
-        head_mask=head_mask,
-        use_cache=use_cache,
-        output_attentions=output_attentions,
-        token_idx=token_idx,
-    )
-    attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
-    outputs = attn_outputs[1:]
-    # residual connection
-    hidden_states = attn_output + residual
+        if config.add_cross_attention:
+            self.crossattention = attention_class(config=config, is_cross_attention=True, layer_idx=layer_idx)
+            self.ln_cross_attn = torch.nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
-    if encoder_hidden_states is not None:
-        # add one self-attention block for cross-attention
-        if not hasattr(self, "crossattention"):
-            raise ValueError(
-                f"If `encoder_hidden_states` are passed, {self} has to be instantiated with "
-                "cross-attention layers by setting `config.add_cross_attention=True`"
-            )
+        self.mlp = GPT2MLP(inner_dim, config)
+
+    def forward(
+        self,
+        hidden_states: Optional[Tuple[torch.FloatTensor]],
+        layer_past: Optional[Tuple[torch.Tensor]] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = False,
+        output_attentions: Optional[bool] = False,
+        token_idx: Optional[torch.Tensor] = None,
+    ) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
+        """
+        Copied from GPT2Block.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
+        The only differences are:
+        - add new args token_idx
+        """
+
         residual = hidden_states
-        hidden_states = self.ln_cross_attn(hidden_states)
-        cross_attn_outputs = self.crossattention(
+        hidden_states = self.ln_1(hidden_states)
+
+        attn_outputs = self.attn(
             hidden_states,
+            layer_past=layer_past,
             attention_mask=attention_mask,
             head_mask=head_mask,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
+            use_cache=use_cache,
             output_attentions=output_attentions,
+            token_idx=token_idx,
         )
-        attn_output = cross_attn_outputs[0]
+        attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
+        outputs = attn_outputs[1:]
         # residual connection
-        hidden_states = residual + attn_output
-        outputs = outputs + cross_attn_outputs[2:]  # add cross attentions if we output attention weights
+        hidden_states = attn_output + residual
 
-    residual = hidden_states
-    hidden_states = self.ln_2(hidden_states)
+        if encoder_hidden_states is not None:
+            # add one self-attention block for cross-attention
+            if not hasattr(self, "crossattention"):
+                raise ValueError(
+                    f"If `encoder_hidden_states` are passed, {self} has to be instantiated with "
+                    "cross-attention layers by setting `config.add_cross_attention=True`"
+                )
+            residual = hidden_states
+            hidden_states = self.ln_cross_attn(hidden_states)
+            cross_attn_outputs = self.crossattention(
+                hidden_states,
+                attention_mask=attention_mask,
+                head_mask=head_mask,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attention_mask=encoder_attention_mask,
+                output_attentions=output_attentions,
+            )
+            attn_output = cross_attn_outputs[0]
+            # residual connection
+            hidden_states = residual + attn_output
+            outputs = outputs + cross_attn_outputs[2:]  # add cross attentions if we output attention weights
 
-    feed_forward_hidden_states = self.mlp(hidden_states)
-    # residual connection
-    hidden_states = residual + feed_forward_hidden_states
+        residual = hidden_states
+        hidden_states = self.ln_2(hidden_states)
 
-    if use_cache:
-        outputs = (hidden_states,) + outputs
-    else:
-        outputs = (hidden_states,) + outputs[1:]
+        feed_forward_hidden_states = self.mlp(hidden_states)
+        # residual connection
+        hidden_states = residual + feed_forward_hidden_states
 
-    return outputs  # hidden_states, present, (attentions, cross_attentions)
+        if use_cache:
+            outputs = (hidden_states,) + outputs
+        else:
+            outputs = (hidden_states,) + outputs[1:]
+
+        return outputs  # hidden_states, present, (attentions, cross_attentions)
 
 
 def gaudi_gpt2_forward(
@@ -300,8 +317,6 @@ def gaudi_gpt2_forward(
 
     # GPT2Attention mask.
     if attention_mask is not None:
-        if batch_size <= 0:
-            raise ValueError("batch_size has to be defined and > 0")
         attention_mask = attention_mask.view(batch_size, -1)
         # We create a 3D attention mask from a 2D tensor mask.
         # Sizes are [batch_size, 1, 1, to_seq_length]

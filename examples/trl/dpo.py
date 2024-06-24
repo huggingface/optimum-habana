@@ -185,6 +185,7 @@ if __name__ == "__main__":
         torch_dtype=torch.bfloat16,
     )
     model.config.use_cache = False
+    model.config.use_fused_rope = False
 
     if script_args.ignore_bias_buffers:
         # torch distributed hack

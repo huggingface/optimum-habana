@@ -6,7 +6,14 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.stablelm.modeling_stablelm import StableLmForCausalLM, apply_rotary_pos_emb, repeat_kv
+from transformers.models.stablelm.configuration_stablelm import StableLmConfig
+from transformers.models.stablelm.modeling_stablelm import (
+    StableLmAttention,
+    StableLmForCausalLM,
+    StableLmMLP,
+    apply_rotary_pos_emb,
+    repeat_kv,
+)
 from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
@@ -42,6 +49,10 @@ def gaudi_stablelm_attention_forward(
     query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
     key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
     value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+    if self.qk_layernorm:
+        query_states = self.q_layernorm(query_states)
+        key_states = self.k_layernorm(key_states)
 
     kv_seq_len = key_states.shape[-2]
     if past_key_value is not None:
@@ -131,54 +142,74 @@ def gaudi_stablelm_attention_forward(
     return attn_output, attn_weights, past_key_value
 
 
-def gaudi_stablelm_decoder_layer_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
-    output_attentions: Optional[bool] = False,
-    use_cache: Optional[bool] = False,
-    token_idx: Optional[torch.Tensor] = None,
-) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-    """
-    Copied from StableLmDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/stablelm/modeling_stablelm.py
-    The only differences are:
-    - add new args token_idx
-    """
-    residual = hidden_states
+class GaudiStableLmDecoderLayer(torch.nn.Module):
+    def __init__(self, config: StableLmConfig, layer_idx: int):
+        super().__init__()
+        self.use_parallel_residual = config.use_parallel_residual
+        self.hidden_size = config.hidden_size
+        self.self_attn = StableLmAttention(config, layer_idx=layer_idx)
+        self.mlp = StableLmMLP(config)
+        self.input_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.post_attention_layernorm = None
+        if not self.use_parallel_residual:
+            self.post_attention_layernorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.dropout = torch.nn.Dropout(config.hidden_dropout)
 
-    hidden_states = self.input_layernorm(hidden_states)
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        token_idx: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        """
+        Copied from StableLmDecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/stablelm/modeling_stablelm.py
+        The only differences are:
+        - add new args token_idx
+        """
+        residual = hidden_states
 
-    # Self Attention
-    hidden_states, self_attn_weights, present_key_value = self.self_attn(
-        hidden_states=hidden_states,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        past_key_value=past_key_value,
-        output_attentions=output_attentions,
-        use_cache=use_cache,
-        token_idx=token_idx,
-    )
-    hidden_states = residual + hidden_states
+        hidden_states = self.input_layernorm(hidden_states)
 
-    # Fully Connected
-    residual = hidden_states
-    hidden_states = self.post_attention_layernorm(hidden_states)
-    hidden_states = self.mlp(hidden_states)
+        # Self Attention
+        self_attn_output, self_attn_weights, present_key_value = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            token_idx=token_idx,
+        )
 
-    hidden_states = self.dropout(hidden_states)
-    hidden_states = hidden_states + residual
+        # copied from transformers.models.gpt_neox.modeling_gpt_neox.GPTNeoXLayer.forward
+        if self.use_parallel_residual:
+            # x = x + attn(ln1(x)) + mlp(ln1(x))
+            # Fully Connected
+            mlp_output = self.mlp(hidden_states)
+            mlp_output = self.dropout(mlp_output)
+            hidden_states = residual + self_attn_output + mlp_output
+        else:
+            # x = x + attn(ln1(x))
+            # x = x + mlp(ln2(x))
+            residual = residual + self_attn_output
+            # Fully Connected
+            mlp_output = self.mlp(self.post_attention_layernorm(residual))
+            mlp_output = self.dropout(mlp_output)
+            hidden_states = residual + mlp_output
 
-    outputs = (hidden_states,)
+        outputs = (hidden_states,)
 
-    if output_attentions:
-        outputs += (self_attn_weights,)
+        if output_attentions:
+            outputs += (self_attn_weights,)
 
-    if use_cache:
-        outputs += (present_key_value,)
+        if use_cache:
+            outputs += (present_key_value,)
 
-    return outputs
+        return outputs
 
 
 def gaudi_stablelm_model_forward(

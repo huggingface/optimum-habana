@@ -1,1 +1,1 @@
-git+https://github.com/polisettyvarma/lm-evaluation-harness.git@lm_harness_fixes
+https://github.com/polisettyvarma/lm-evaluation-harness/archive/3cdc8daadad9f4559ae6cdfae96f1d83d6b3c1f4.zip

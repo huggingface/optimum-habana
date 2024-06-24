@@ -91,7 +91,7 @@ def gaudi_gemma_attention_forward(
                 past_key_value.key_cache.append(key_states)
                 past_key_value.value_cache.append(value_states)
         else:
-            # sin and cos are specific to RoPE models; position_ids needed for the static cache
+            # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
@@ -392,7 +392,7 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
+        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, cache_position=None, **kwargs
     ):
         """
         Inherits from GemmaForCausalLM: https://github.com/huggingface/transformers/blob/v4.38.1/src/transformers/models/gemma/modeling_gemma.py
@@ -409,9 +409,16 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
         if past_key_values is not None:
             if token_idx is None:
                 if isinstance(past_key_values, Cache):
-                    cache_length = past_key_values.get_seq_length()
-                    past_length = past_key_values.seen_tokens
-                    max_cache_length = past_key_values.get_max_length()
+                    past_length = cache_position[0] if cache_position is not None else past_key_values.get_seq_length()
+                    max_cache_length = (
+                        torch.tensor(past_key_values.get_max_length(), device=input_ids.device)
+                        if past_key_values.get_max_length() is not None
+                        else None
+                    )
+                    cache_length = (
+                        past_length if max_cache_length is None else torch.min(max_cache_length, past_length)
+                    )
+                # TODO joao: remove this `else` after `generate` prioritizes `Cache` objects
                 else:
                     cache_length = past_length = past_key_values[0][0].shape[2]
                     max_cache_length = None
@@ -457,29 +464,21 @@ class GaudiGemmaForCausalLM(GemmaForCausalLM):
                 input_ids = input_ids[:, past_length:]
                 position_ids = position_ids[:, past_length:]
 
-        if self.generation_config.cache_implementation == "static":
-            # generation with static cache
-            cache_position = kwargs.get("cache_position", None)
-            if cache_position is None:
-                past_length = 0
-            else:
-                past_length = cache_position[-1] + 1
-            input_ids = input_ids[:, past_length:]
-            position_ids = position_ids[:, past_length:]
-
-        # TODO @gante we should only keep a `cache_position` in generate, and do +=1.
-        # same goes for position ids. Could also help with continued generation.
-        cache_position = torch.arange(past_length, past_length + position_ids.shape[-1], device=position_ids.device)
-
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
             model_inputs = {"input_ids": input_ids.contiguous()}
 
+        input_length = position_ids.shape[-1] if position_ids is not None else input_ids.shape[-1]
+        if cache_position is None:
+            cache_position = torch.arange(past_length, past_length + input_length, device=input_ids.device)
+        else:
+            cache_position = cache_position[-input_length:]
+
         model_inputs.update(
             {
-                "position_ids": position_ids.contiguous(),
+                "position_ids": position_ids,
                 "cache_position": cache_position,
                 "past_key_values": past_key_values,
                 "use_cache": kwargs.get("use_cache"),

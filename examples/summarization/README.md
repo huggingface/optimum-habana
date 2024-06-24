@@ -23,6 +23,13 @@ This directory contains examples for finetuning and evaluating transformers on s
 For custom datasets in `jsonlines` format please see: https://huggingface.co/docs/datasets/loading_datasets#json-files.
 You will also find examples of these below.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Single-card Training
 
 Here is an example of a summarization task with T5:

@@ -28,7 +28,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             (
                 "meta-llama/Llama-2-7b-hf",
                 "",
-                87.016,
+                85.016,
                 0.9093,
                 "language-modeling",
                 8,
@@ -123,6 +123,8 @@ def _test_fsdp(
             "--low_cpu_mem_usage True",
             "--attn_softmax_bf16 True",
             "--num_train_epochs 3",
+            "--use_flash_attention True",
+            "--flash_attention_causal_mask True",
             f"--token {token.value}",
         ]
 

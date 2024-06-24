@@ -32,6 +32,7 @@ class MixtralConfig(MixtralConfig):
         num_local_experts=8,
         output_router_logits=False,
         router_aux_loss_coef=0.001,
+        router_jitter_noise=0.0,
         rope_scaling=None,
         **kwargs,
     ):
@@ -58,6 +59,7 @@ class MixtralConfig(MixtralConfig):
             num_local_experts,
             output_router_logits,
             router_aux_loss_coef,
+            router_jitter_noise,
             **kwargs,
         )
 

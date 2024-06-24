@@ -55,7 +55,7 @@ class GaudiPartialState(PartialState):
                     if not is_deepspeed_available():
                         raise ImportError(
                             "DeepSpeed is not available, install it with: `pip install"
-                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0`."
+                            " git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0`."
                         )
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
                     import deepspeed
@@ -173,6 +173,7 @@ class GaudiAcceleratorState(AcceleratorState):
                 if mixed_precision is None
                 else mixed_precision.lower()
             )
+            self.is_fp8_enabled = mixed_precision == "fp8"
             self.dynamo_plugin = dynamo_plugin
             # deepspeed handles mixed_precision using deepspeed_config
             self._mixed_precision = (

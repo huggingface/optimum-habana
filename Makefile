@@ -44,6 +44,7 @@ fast_tests_diffusers:
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
+	python -m pytest tests/test_pipeline.py
 
 # Run multi-card non-regression tests
 slow_tests_8x: test_installs
@@ -51,7 +52,7 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
@@ -63,7 +64,7 @@ slow_tests_diffusers: test_installs
 
 # Run text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
 # Run image-to-text non-regression tests
@@ -74,9 +75,12 @@ slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
 slow_tests_trl: test_installs
-	python -m pip install trl==0.7.8
+	python -m pip install trl==0.8.6
 	python -m pip install peft==0.7.0
 	python -m pytest tests/test_trl.py -v -s -k "test_calculate_loss"
+
+slow_tests_object_segmentation: test_installs
+	python -m pytest tests/test_object_segmentation.py
 
 # Check if examples are up to date with the Transformers library
 example_diff_tests: test_installs

@@ -30,3 +30,56 @@ Here we show how to predict the folding of a single chain on HPU:
 python run_esmfold.py
 ```
 The predicted protein structure will be stored in save-hpu.pdb file. We can use some tools like py3Dmol to visualize it.
+
+
+# Mila-Intel protST example
+
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
+## Single-HPU inference for zero shot evaluation
+Here we show how to run zero shot evaluation of protein ST model on HPU:
+
+```bash
+python run_zero_shot_eval.py --bf16 --max_seq_length 1024
+```
+## Multi-HPU finetune for sequence classification task
+
+```bash
+python ../gaudi_spawn.py --world_size 8 --use_mpi run_sequence_classification.py \
+    --output_dir ./out \
+    --model_name_or_path mila-intel/protst-esm1b-for-sequential-classification \
+    --tokenizer_name facebook/esm1b_t33_650M_UR50S \
+    --trust_remote_code \
+    --dataset_name mila-intel/ProtST-BinaryLocalization \
+    --torch_dtype bfloat16 \
+    --overwrite_output_dir \
+    --do_train \
+    --per_device_train_batch_size 32 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 5e-05 \
+    --weight_decay 0 \
+    --num_train_epochs 100 \
+    --lr_scheduler_type constant \
+    --do_eval \
+    --evaluation_strategy epoch \
+    --per_device_eval_batch_size 32 \
+    --logging_strategy epoch \
+    --save_strategy epoch \
+    --save_steps 820 \
+    --dataloader_num_workers 0 \
+    --report_to none \
+    --optim adamw_torch \
+    --label_names labels \
+    --load_best_model_at_end \
+    --metric_for_best_model accuracy \
+    --use_habana \
+    --use_lazy_mode \
+    --use_hpu_graphs_for_inference \
+    --use_hpu_graphs_for_training
+```
+
