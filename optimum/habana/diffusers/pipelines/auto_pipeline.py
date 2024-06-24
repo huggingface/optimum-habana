@@ -19,19 +19,19 @@ Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffuser
 - Only AutoPipelineForText2Image and AutoPipelineForInpainting are retained, and reimplement the from_pretrained and from_pipe to support the Gaudi pipelines.
 """
 
-from diffusers.pipelines import auto_pipeline
 from collections import OrderedDict
+
 from diffusers.pipelines import (
-    AutoPipelineForText2Image,
     AutoPipelineForInpainting,
+    AutoPipelineForText2Image,
+    auto_pipeline,
 )
-from diffusers.configuration_utils import ConfigMixin
 from huggingface_hub.utils import validate_hf_hub_args
 
-from .stable_diffusion.pipeline_stable_diffusion_inpaint import GaudiStableDiffusionInpaintPipeline
 from .stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
-from .stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline
+from .stable_diffusion.pipeline_stable_diffusion_inpaint import GaudiStableDiffusionInpaintPipeline
 from .stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline
+from .stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline
 
 
 GAUDI_PREFIX_NAME = "Gaudi"
@@ -76,8 +76,8 @@ def _gaudi_get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist
     if throw_error_if_not_exist:
         raise ValueError(f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name}")
 
-class AutoPipelineForText2Image(AutoPipelineForText2Image):
 
+class AutoPipelineForText2Image(AutoPipelineForText2Image):
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
@@ -107,8 +107,8 @@ class AutoPipelineForText2Image(AutoPipelineForText2Image):
         auto_pipeline._get_task_class = orig_func
         return model
 
-class AutoPipelineForInpainting(AutoPipelineForInpainting):
 
+class AutoPipelineForInpainting(AutoPipelineForInpainting):
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
