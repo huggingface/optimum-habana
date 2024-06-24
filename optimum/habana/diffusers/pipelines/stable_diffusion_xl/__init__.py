@@ -1,2 +1,0 @@
-from .pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline
-from .pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline

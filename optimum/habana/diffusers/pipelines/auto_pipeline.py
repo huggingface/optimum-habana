@@ -24,14 +24,10 @@ from collections import OrderedDict
 from diffusers.configuration_utils import ConfigMixin
 from huggingface_hub.utils import validate_hf_hub_args
 
-from .stable_diffusion import (
-    GaudiStableDiffusionInpaintPipeline,
-    GaudiStableDiffusionPipeline,
-)
-from .stable_diffusion_xl import (
-    GaudiStableDiffusionXLInpaintPipeline,
-    GaudiStableDiffusionXLPipeline,
-)
+from .stable_diffusion.pipeline_stable_diffusion_inpaint import GaudiStableDiffusionInpaintPipeline
+from .stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
+from .stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline
+from .stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline
 
 
 GAUDI_PREFIX_NAME = "Gaudi"
