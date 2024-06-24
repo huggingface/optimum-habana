@@ -14,8 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import copy
 import gc
+import inspect
 import json
 import os
 import random
@@ -24,21 +26,19 @@ import subprocess
 import tempfile
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Union
-from unittest import TestCase, skipUnless, skipIf
-import contextlib
-import inspect
 from typing import Callable, Union
+from unittest import TestCase, skipIf, skipUnless
 
+import diffusers
 import numpy as np
 import requests
 import safetensors
 import torch
-import diffusers
 from diffusers import (
     AutoencoderKL,
     AutoencoderKLTemporalDecoder,
     ControlNetModel,
+    DiffusionPipeline,
     DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
     LCMScheduler,
@@ -47,23 +47,17 @@ from diffusers import (
     UNetSpatioTemporalConditionModel,
     UniPCMultistepScheduler,
 )
-
-from diffusers import (
-    DiffusionPipeline,
-)
-from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import require_torch
-
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import logging
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
-from diffusers.utils import numpy_to_pil
+from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import logging, numpy_to_pil
+from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
+    require_torch,
 )
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import snapshot_download
@@ -2243,6 +2237,7 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         if IS_GAUDI2:
             self.assertGreaterEqual(outputs.throughput, 0.95 * 0.012)
 
+
 """
 Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/test_pipelines_common.py
 - Remove PipelinePushToHubTester testcase.
@@ -2297,7 +2292,7 @@ class PipelineLatentTesterMixin:
                 input_image = image
             elif isinstance(image, np.ndarray):
                 input_image = VaeImageProcessor.numpy_to_pt(image)
-            elif isinstance(image, PIL.Image.Image):
+            elif isinstance(image, Image.Image):
                 input_image = VaeImageProcessor.pil_to_numpy(image)
                 input_image = VaeImageProcessor.numpy_to_pt(input_image)
             else:
@@ -3268,6 +3263,7 @@ def assert_mean_pixel_difference(image, expected_image, expected_max_diff=10):
     avg_diff = np.abs(image - expected_image).mean()
     assert avg_diff < expected_max_diff, f"Error image deviates {avg_diff} pixels on average"
 
+
 """
 Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/pipeline_params.py
 """
@@ -3537,7 +3533,6 @@ class StableDiffusionInpaintPipelineIntegrationTests(TestCase):
         disable_safety_checker=False,
         torch_dtype=torch.bfloat16,
     ):
-
         if scheduler is None:
             scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
