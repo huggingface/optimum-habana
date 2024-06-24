@@ -35,14 +35,14 @@ Use the the following commands to build the containers:
 
 ```bash
 # Specify the base image name/tag
-export BASE_IMAGE_NAME=vault.habana.ai/gaudi-docker/1.15.1/ubuntu22.04/habanalabs/pytorch-installer-2.2.0
+export BASE_IMAGE_NAME=vault.habana.ai/gaudi-docker/1.16.1/ubuntu22.04/habanalabs/pytorch-installer-2.2.2
 export BASE_IMAGE_TAG=latest
 
 # Specify your Gaudi Software version and Optimum Habana version
-export GAUDI_SW_VER=1.15.1
-export OPTIMUM_HABANA_VER=1.11.1
+export GAUDI_SW_VER=1.16.1
+export OPTIMUM_HABANA_VER=1.12.0
 
-git clone https://github.com/huggingface/optimum-habana.git --single-branch --branch v${OPTIMUM_HABANA_VER}
+git clone https://github.com/huggingface/optimum-habana.git
 
 # Note: Modify the requirements.txt file in the kubernetes directory for the specific example(s) that you want to run
 cd optimum-habana/examples/kubernetes
