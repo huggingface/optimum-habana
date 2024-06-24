@@ -2211,3 +2211,75 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.frames[0]), 25)
         if IS_GAUDI2:
             self.assertGreaterEqual(outputs.throughput, 0.95 * 0.012)
+
+
+class GaudiDeterministicImageGenerationTester(TestCase):
+    """
+    Test the deterministic_image_generation.py in stable-diffusion folder.
+    """
+
+    def test_deterministic_image_generation(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "deterministic_image_generation.py"
+        )
+        install_requirements(path_to_script.parent / "requirements.txt")
+
+        with tempfile.TemporaryDirectory(): #as tmpdir:
+            test_args = f"""
+                python3
+                {path_to_script}
+                --model_name_or_path runwayml/stable-diffusion-v1-5
+                --num_images_per_prompt 20
+                --batch_size 4
+                --image_save_dir /tmp/stable_diffusion_images
+                --use_habana
+                --use_hpu_graphs
+                --gaudi_config Habana/stable-diffusion
+                --bf16
+                """.split()
+            test_args.append("--prompts")
+            test_args.append("An image of a squirrel in Picasso style")
+            p = subprocess.Popen(test_args)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+
+    def test_deterministic_image_generation_no_throughput_regression_bf16(self):
+        kwargs = {"timestep_spacing": "linspace"}
+        scheduler = GaudiDDIMScheduler.from_pretrained("runwayml/stable-diffusion-v1-5" , **kwargs, subfolder="scheduler")
+
+        kwargs = {
+            "scheduler": scheduler,
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": "Habana/stable-diffusion",
+        }
+
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            **kwargs,
+        )
+
+        # Patch for the deterministic generation - Need to specify CPU as the torch generator
+        num_images_per_prompt = 20
+        res = {}
+        generator = [torch.Generator(device="cpu").manual_seed(i) for i in range(num_images_per_prompt)]
+        outputs = pipeline(
+            prompt="An image of a squirrel in Picasso style",
+            num_images_per_prompt=num_images_per_prompt,
+            batch_size=4,
+            num_inference_steps=50,
+            guidance_scale=7.5,
+            negative_prompt=None,
+            eta=0.0,
+            output_type="pil",
+            generator=generator,
+            **res,
+        )
+
+        if IS_GAUDI2:
+            self.assertGreaterEqual(outputs.throughput, 0.95 * 0.946)
