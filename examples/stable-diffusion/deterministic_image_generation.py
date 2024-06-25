@@ -22,6 +22,7 @@ from optimum.habana.diffusers import (
     GaudiDDIMScheduler,
     GaudiStableDiffusionPipeline,
 )
+from optimum.habana.utils import set_seed
 
 
 def main():
@@ -156,13 +157,12 @@ def main():
     )
 
     parser.add_argument("--seed", type=int, default=42, help="Random seed for initialization.")
+    parser.add_argument("--use_cpu_seed", action="store_true", help="Use CPU torch for randomized initialization.")
 
     # HPU-specific arguments
     parser.add_argument("--use_habana", action="store_true", help="Use HPU.")
     parser.add_argument(
-        "--use_hpu_graphs",
-        action="store_true",
-        help="Use HPU graphs on HPU. This should lead to faster generations."
+        "--use_hpu_graphs", action="store_true", help="Use HPU graphs on HPU. This should lead to faster generations."
     )
     parser.add_argument(
         "--gaudi_config_name",
@@ -197,7 +197,7 @@ def main():
         res["height"] = args.height
 
     kwargs = {"timestep_spacing": args.timestep_spacing}
-    scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path , **kwargs, subfolder="scheduler")
+    scheduler = GaudiDDIMScheduler.from_pretrained(args.model_name_or_path, **kwargs, subfolder="scheduler")
 
     kwargs = {
         "scheduler": scheduler,
@@ -211,8 +211,11 @@ def main():
         **kwargs,
     )
 
-    # Patch for the deterministic generation - Need to specify CPU as the torch generator
-    generator = [torch.Generator(device="cpu").manual_seed(i) for i in range(args.num_images_per_prompt)]
+    if args.use_cpu_seed:
+        # Patch for the deterministic generation - Need to specify CPU as the torch generator
+        generator = [torch.Generator(device="cpu").manual_seed(i) for i in range(args.num_images_per_prompt)]
+    else:
+        generator = [set_seed(args.seed) for i in range(args.num_images_per_prompt)]
 
     outputs = pipeline(
         prompt=args.prompts,
@@ -240,6 +243,7 @@ def main():
             else:
                 for i, image in enumerate(outputs.images):
                     image.save(image_save_dir / f"image_{i+1}.png")
+
 
 if __name__ == "__main__":
     main()

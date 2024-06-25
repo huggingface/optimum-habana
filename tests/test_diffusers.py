@@ -83,6 +83,7 @@ if IS_GAUDI2:
     TEXTUAL_INVERSION_RUNTIME = 114.1344320399221
     CONTROLNET_THROUGHPUT = 92.886919836857
     CONTROLNET_RUNTIME = 537.4276602957398
+    DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -90,7 +91,7 @@ else:
     TEXTUAL_INVERSION_RUNTIME = 196.43840550999994
     CONTROLNET_THROUGHPUT = 44.7278034963213
     CONTROLNET_RUNTIME = 1116.084316640001
-
+    DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
 
@@ -2218,6 +2219,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
     Test the deterministic_image_generation.py in stable-diffusion folder.
     """
 
+    @slow
     def test_deterministic_image_generation(self):
         path_to_script = (
             Path(os.path.dirname(__file__)).parent
@@ -2227,7 +2229,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
         )
         install_requirements(path_to_script.parent / "requirements.txt")
 
-        with tempfile.TemporaryDirectory(): #as tmpdir:
+        with tempfile.TemporaryDirectory():
             test_args = f"""
                 python3
                 {path_to_script}
@@ -2239,6 +2241,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
                 --use_hpu_graphs
                 --gaudi_config Habana/stable-diffusion
                 --bf16
+                --use_cpu_seed
                 """.split()
             test_args.append("--prompts")
             test_args.append("An image of a squirrel in Picasso style")
@@ -2248,9 +2251,12 @@ class GaudiDeterministicImageGenerationTester(TestCase):
             # Ensure the run finished without any issue
             self.assertEqual(return_code, 0)
 
+    @slow
     def test_deterministic_image_generation_no_throughput_regression_bf16(self):
         kwargs = {"timestep_spacing": "linspace"}
-        scheduler = GaudiDDIMScheduler.from_pretrained("runwayml/stable-diffusion-v1-5" , **kwargs, subfolder="scheduler")
+        scheduler = GaudiDDIMScheduler.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", **kwargs, subfolder="scheduler"
+        )
 
         kwargs = {
             "scheduler": scheduler,
@@ -2264,10 +2270,9 @@ class GaudiDeterministicImageGenerationTester(TestCase):
             **kwargs,
         )
 
-        # Patch for the deterministic generation - Need to specify CPU as the torch generator
         num_images_per_prompt = 20
         res = {}
-        generator = [torch.Generator(device="cpu").manual_seed(i) for i in range(num_images_per_prompt)]
+        generator = [set_seed(27) for i in range(num_images_per_prompt)]
         outputs = pipeline(
             prompt="An image of a squirrel in Picasso style",
             num_images_per_prompt=num_images_per_prompt,
@@ -2281,5 +2286,4 @@ class GaudiDeterministicImageGenerationTester(TestCase):
             **res,
         )
 
-        if IS_GAUDI2:
-            self.assertGreaterEqual(outputs.throughput, 0.95 * 0.946)
+        self.assertGreaterEqual(outputs.throughput, 0.95 * DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT)
