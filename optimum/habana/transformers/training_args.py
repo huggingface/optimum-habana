@@ -28,9 +28,11 @@ from transformers.file_utils import cached_property, is_torch_available, require
 from transformers.trainer_pt_utils import AcceleratorConfig
 from transformers.trainer_utils import EvaluationStrategy, FSDPOption, HubStrategy, IntervalStrategy, SchedulerType
 from transformers.training_args import (
+    _VALID_DICT_FIELDS,
     OptimizerNames,
     ParallelMode,
     TrainingArguments,
+    _convert_str_dict,
     default_logdir,
 )
 from transformers.utils import (
@@ -344,6 +346,17 @@ class GaudiTrainingArguments(TrainingArguments):
         if self.throughput_warmup_steps < 0:
             raise ValueError("--throughput_warmup_steps must be positive.")
 
+        # Parse in args that could be `dict` sent in from the CLI as a string
+        for field in _VALID_DICT_FIELDS:
+            passed_value = getattr(self, field)
+            # We only want to do this if the str starts with a bracket to indiciate a `dict`
+            # else its likely a filename if supported
+            if isinstance(passed_value, str) and passed_value.startswith("{"):
+                loaded_dict = json.loads(passed_value)
+                # Convert str values to types if applicable
+                loaded_dict = _convert_str_dict(loaded_dict)
+                setattr(self, field, loaded_dict)
+
         # expand paths, if not os.makedirs("~/bar") will make directory
         # in the current directory instead of the actual home
         # see https://github.com/huggingface/transformers/issues/10628
@@ -611,7 +624,7 @@ class GaudiTrainingArguments(TrainingArguments):
                         )
             prefetch_policy = self.fsdp_config.get("backward_prefetch", "NO_PREFETCH")
             os.environ[f"{prefix}BACKWARD_PREFETCH"] = prefetch_policy.upper()
-            os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefect", "false"))
+            os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefetch", "false"))
             os.environ[f"{prefix}SYNC_MODULE_STATES"] = str(self.fsdp_config.get("sync_module_states", "true"))
             os.environ[f"{prefix}USE_ORIG_PARAMS"] = str(self.fsdp_config.get("use_orig_params", "true"))
             os.environ[f"{prefix}ACTIVATION_CHECKPOINTING"] = str(
@@ -624,6 +637,13 @@ class GaudiTrainingArguments(TrainingArguments):
                     self.accelerator_config = AcceleratorConfig()
                 elif isinstance(self.accelerator_config, dict):
                     self.accelerator_config = AcceleratorConfig(**self.accelerator_config)
+                # Check that a user didn't pass in the class instantiator
+                # such as `accelerator_config = AcceleratorConfig`
+                elif isinstance(self.accelerator_config, type):
+                    raise NotImplementedError(
+                        "Tried passing in a callable to `accelerator_config`, but this is not supported. "
+                        "Please pass in a fully constructed `AcceleratorConfig` object instead."
+                    )
                 else:
                     self.accelerator_config = AcceleratorConfig.from_json_file(self.accelerator_config)
             if self.dispatch_batches is not None:

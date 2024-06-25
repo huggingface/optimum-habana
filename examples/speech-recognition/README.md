@@ -27,6 +27,13 @@ limitations under the License.
 	- [Inference](#single-hpu-seq2seq-inference)
 
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Connectionist Temporal Classification
 
 The script [`run_speech_recognition_ctc.py`](https://github.com/huggingface/optimum-habana/tree/main/examples/speech-recognition/run_speech_recognition_ctc.py) can be used to fine-tune any pretrained [Connectionist Temporal Classification Model](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForCTC) for automatic speech recognition on one of the [official speech recognition datasets](https://huggingface.co/datasets?task_ids=task_ids:automatic-speech-recognition) or a custom dataset.
@@ -134,7 +141,7 @@ On 8 HPUs, this script should run in *ca.* 49 minutes and yield a CTC loss of **
 
 > You need to install DeepSpeed with:
 > ```bash
-> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
+> pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 > ```
 
 DeepSpeed can be used with almost the same command as for a multi-card run:

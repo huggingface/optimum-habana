@@ -65,8 +65,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-check_min_version("4.38.0")
-check_optimum_habana_min_version("1.10.0")
+check_min_version("4.40.0")
+check_optimum_habana_min_version("1.11.0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
@@ -764,6 +764,9 @@ def main():
     else:
         training_args.generation_config.max_length = data_args.val_max_target_length
     if data_args.num_beams is not None:
+        if data_args.num_beams == 1:
+            training_args.generation_config.length_penalty = None
+            training_args.generation_config.early_stopping = False
         training_args.generation_config.num_beams = data_args.num_beams
     elif training_args.generation_num_beams is not None:
         training_args.generation_config.num_beams = training_args.generation_num_beams
