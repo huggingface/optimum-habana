@@ -2,7 +2,7 @@
 
 ![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.11.1](https://img.shields.io/badge/AppVersion-1.11.1-informational?style=flat-square)
 
-This folder contains a Dockerfile and [Helm chart](https://helm.sh) demonstrating how to run 🤗 Optimum Habana examples
+This folder contains a Dockerfile and [Helm chart](https://helm.sh) demonstrating how 🤗 Optimum Habana examples
 can be run using Intel® Gaudi® AI accelerator nodes from a vanilla Kubernetes cluster. The instructions below
 explain how to build the docker image and deploy the job to a Kubernetes cluster using Helm.
 
@@ -19,16 +19,17 @@ In order to build the docker images and deploy a job to Kubernetes you will need
 
 ### Cluster Requirements
 
-Your Kubernetes cluster will need the [Intel Gaudi Device Plugin for Kubernetes](https://docs.habana.ai/en/latest/Orchestration/Gaudi_Kubernetes/Device_Plugin_for_Kubernetes.html) in order to request and utilize the accelerators
-in the Kubernetes job. Also, ensure that your Kubernetes version is supported based on the
+Your Kubernetes cluster will need the [Intel Gaudi Device Plugin for Kubernetes](https://docs.habana.ai/en/latest/Orchestration/Gaudi_Kubernetes/Device_Plugin_for_Kubernetes.html)
+in order to request and utilize the accelerators in the Kubernetes job. Also, ensure that your Kubernetes version is supported based on the
 [support matrix](https://docs.habana.ai/en/latest/Support_Matrix/Support_Matrix.html#support-matrix).
 
 ## Container
 
-The [Dockerfile](Dockerfile) and [docker-compose.yaml](docker-compose.yaml) builds the following images:
+The [Dockerfile](Dockerfile) and [docker-compose.yaml](docker-compose.yaml) build the following images:
 
-* An `optimum-habana` base image that uses the [PyTorch Docker images for Gaudi](https://developer.habana.ai/catalog/pytorch-container/) as it's base, then installs optimum-habana and Deep Speed.
-* A `optimum-habana-examples` image is built on top of the `optimum-habana` base to includes installations from
+* An `optimum-habana` base image that uses the [PyTorch Docker images for Gaudi](https://developer.habana.ai/catalog/pytorch-container/) as it's base, and then installs
+optimum-habana and the Habana fork of Deep Speed.
+* An `optimum-habana-examples` image is built on top of the `optimum-habana` base to includes installations from
 `requirements.txt` files in the example directories and a clone of [this GitHub repository](https://github.com/huggingface/optimum-habana/) in order to run example scripts.
 
 Use the the following commands to build the containers:
