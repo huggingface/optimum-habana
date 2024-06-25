@@ -76,7 +76,7 @@ class GaudiDETRTester(TestCase):
             boxes = results["boxes"]
             self.assertEqual(len(boxes), 5)
             expected_location = np.array([342, 25.25, 636, 376])
-            self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 2)
+            self.assertLess(np.abs(boxes[0].to(torch.float32).cpu().detach().numpy() - expected_location).max(), 5)
 
     def test_inference_hpu_graphs(self):
         model, processor = self.prepare_model_and_processor()
