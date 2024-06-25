@@ -300,6 +300,13 @@ class GaudiLlamaAttention(LlamaAttention):
             return self.k_proj.qweight
         return self.k_proj.weight
 
+    def get_k_proj_weight_dtype(self):
+        """ 4bit quantization in GPTQ replaces the k_proj.weight with qweight.
+            Scales tensor gets the weight dtype. """
+        if hasattr(self.k_proj, 'qweight'):
+            return self.k_proj.scales.dtype
+        return self.k_proj.weight.dtype
+
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         cache_shape = (batch_size, self.num_key_value_heads, max_seq_len, self.head_dim)
         device = self.get_k_proj_weight().device
@@ -418,9 +425,9 @@ class GaudiLlamaAttention(LlamaAttention):
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device)
+                    past_key = torch.zeros(key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device)
                     past_value = torch.zeros(
-                        key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
+                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
                     )
                     # Return list instead of tuple
                     past_key_value = [past_key, past_value]
