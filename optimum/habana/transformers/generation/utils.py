@@ -85,6 +85,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "qwen2",
     "llava",
     "stablelm",
+    "mamba",
 ]
 
 
