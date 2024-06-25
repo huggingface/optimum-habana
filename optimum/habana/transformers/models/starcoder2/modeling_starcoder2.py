@@ -54,7 +54,7 @@ def gaudi_starcoder2_attention_forward(
             "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
         )
     bsz, q_len, _ = hidden_states.size()
-    self.norm_factor = 1.0 / math.sqrt(self.head_dim)
+    norm_factor = 1.0 / math.sqrt(self.head_dim)
 
     query_states = self.q_proj(hidden_states)
     key_states = self.k_proj(hidden_states)
@@ -98,7 +98,7 @@ def gaudi_starcoder2_attention_forward(
     key_states = repeat_kv(key_states, self.num_key_value_groups)
     value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-    attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.norm_factor
+    attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * norm_factor
 
     if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
         raise ValueError(
