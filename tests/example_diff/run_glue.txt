@@ -1,18 +1,14 @@
-16c16
-< """ Finetuning the library models for sequence classification on GLUE."""
----
-> """Finetuning the library models for sequence classification on GLUE."""
-30,31d29
+29,30d28
 < from datasets import load_dataset
 < 
-32a31
+31a30
 > from datasets import load_dataset
-41,42d39
+40,41d38
 <     Trainer,
 <     TrainingArguments,
-44d40
+43d39
 <     set_seed,
-49a46,55
+48a45,54
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
 > 
@@ -23,65 +19,65 @@
 > 
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-51,52c57,62
+50,51c56,61
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.41.0.dev0")
+< check_min_version("4.42.0.dev0")
 ---
 > 
 > logger = logging.getLogger(__name__)
 > 
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.38.0")
-> check_optimum_habana_min_version("1.10.0")
-68,69d77
+> check_min_version("4.40.0")
+> check_optimum_habana_min_version("1.11.0")
+67,68d76
 < logger = logging.getLogger(__name__)
 < 
-144a153,156
+143a152,155
 >     problem_type: Optional[str] = field(
 >         default="single_label_classification",
 >         metadata={"help": "Problem type, such as single_label_classification or multi_label_classification"},
 >     )
-220a233,236
+213a226,229
 >     add_pad_token: bool = field(
 >         default=False,
 >         metadata={"help": "Will add `pad_token` to tokenizer and model's config as `eos_token` if it's not defined."},
 >     )
-228c244
+221c237
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-266a283,289
+250a267,273
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
 >         revision=model_args.model_revision,
->         use_auth_token=True if model_args.use_auth_token else None,
+>         token=model_args.token,
 >     )
 > 
-267a291
+251a275
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-269,270c293,295
+253,254c277,279
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-391a417
+375a401
 >         problem_type=data_args.problem_type,
-432a459,463
+416a443,447
 >     if model_args.add_pad_token:
 >         if not model.config.pad_token_id and not tokenizer.pad_token:
 >             tokenizer.pad_token = tokenizer.eos_token
 >             model.config.pad_token_id = tokenizer.eos_token_id
 > 
-543c574
+527c558
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-544a576
+528a560
 >         gaudi_config=gaudi_config,
-644,648d675
+628,632d659
 < 
 < 
 < def _mp_fn(index):

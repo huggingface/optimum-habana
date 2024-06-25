@@ -33,7 +33,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import HabanaProfile, speed_metrics
+from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
 
 
@@ -495,18 +495,28 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
 
             # 8. Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+            use_warmup_inference_steps = (
+                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+            )
+
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
                 if j == throughput_warmup_steps:
                     t1 = time.time()
+                if use_warmup_inference_steps:
+                    t0_inf = time.time()
 
                 latents_batch = latents_batches[0]
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
                 text_embeddings_batch = text_embeddings_batches[0]
                 text_embeddings_batches = torch.roll(text_embeddings_batches, shifts=-1, dims=0)
 
-                for i in range(num_inference_steps):
+                for i in range(len(timesteps)):
+                    if use_warmup_inference_steps and i == throughput_warmup_steps:
+                        t1_inf = time.time()
+                        t1 += t1_inf - t0_inf
+
                     if self.interrupt:
                         continue
                     timestep = timesteps[0]
@@ -564,6 +574,11 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
 
                     hb_profiler.step()
 
+                if use_warmup_inference_steps:
+                    t1 = warmup_inference_steps_time_adjustment(
+                        t1, t1_inf, num_inference_steps, throughput_warmup_steps
+                    )
+
                 if not output_type == "latent":
                     # 8. Post-processing
                     image = self.vae.decode(
@@ -583,7 +598,7 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
                 split=speed_metrics_prefix,
                 start_time=t0,
                 num_samples=num_batches * batch_size
-                if t1 == t0
+                if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
                 num_steps=num_batches,
                 start_time_after_warmup=t1,
@@ -611,10 +626,18 @@ class GaudiStableDiffusionPipeline(GaudiDiffusionPipeline, StableDiffusionPipeli
 
                 image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-                if output_type == "pil":
+                if output_type == "pil" and isinstance(image, list):
                     outputs["images"] += image
+                elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = np.concatenate((outputs["images"], image), axis=0)
                 else:
-                    outputs["images"] += [*image]
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = torch.cat((outputs["images"], image), 0)
 
                 if has_nsfw_concept is not None:
                     outputs["has_nsfw_concept"] += has_nsfw_concept

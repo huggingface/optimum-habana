@@ -31,3 +31,28 @@ Models that have been validated:
   - [nlpconnect/vit-gpt2-image-captioning](https://huggingface.co/nlpconnect/vit-gpt2-image-captioning)
   - [Salesforce/blip-image-captioning-large](https://huggingface.co/Salesforce/blip-image-captioning-large)
   - [Salesforce/blip-image-captioning-base](https://huggingface.co/Salesforce/blip-image-captioning-base)
+
+### Running with FP8
+
+Llava-1.5-7b and Llava-1.5-13b in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+
+More information on enabling fp8 in SynapseAI is available here:
+https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
+
+Here is an example to measure the tensor quantization statistics on Llava-1.5-7b:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
+--model_name_or_path llava-hf/llava-1.5-7b-hf \
+--image_path "https://llava-vl.github.io/static/images/view.jpg" \
+--use_hpu_graphs \
+--bf16
+```
+
+Here is an example to quantize the model based on previous measurements for Llava-1.5-7b:
+```bash
+QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
+--model_name_or_path llava-hf/llava-1.5-7b-hf \
+--image_path "https://llava-vl.github.io/static/images/view.jpg" \
+--use_hpu_graphs \
+--bf16
+```
