@@ -397,8 +397,6 @@ python image_to_video_generation.py \
 
 # Deterministic Image Generation Example
 
-Users may wish to generate deterministic images by providing a defined seed and a generator. This example demonstrates that how users generate those images on Gaudi platform using a CPU generator.
-
 ```bash
 python deterministic_image_generation.py \
     --model_name_or_path runwayml/stable-diffusion-v1-5 \
@@ -411,4 +409,4 @@ python deterministic_image_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --bf16
 ```
-
+> Note: Users may wish to use CPU generator by passing `--use_cpu_seed` argument
