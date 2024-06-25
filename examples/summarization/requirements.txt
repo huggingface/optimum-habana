@@ -1,7 +1,7 @@
 datasets >= 2.4.0, <= 2.19.2
 sentencepiece != 0.1.92
-protobuf == 5.27.1
-rouge-score
+protobuf == 3.20.3
+rouge-score == 0.1.2
 nltk == 3.8.1
 py7zr == 0.21.0
 torch >= 1.3, <= 2.3.1
