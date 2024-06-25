@@ -794,16 +794,12 @@ def main():
                 task_type=TaskType.CAUSAL_LM,
             )
             from optimum.habana.peft.layer import (
-                GaudiAdaptedAttentionAttentionAllReduce,
-                GaudiAdaptedAttentionPostAttnForward,
+                GaudiAdaptedAttention_getattr,
                 GaudiAdaptedAttentionPreAttnForward,
             )
 
             tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
-            tuners.adaption_prompt.layer.AdaptedAttention.post_attn_forward = GaudiAdaptedAttentionPostAttnForward
-            tuners.adaption_prompt.layer.AdaptedAttention.attention_all_reduce = (
-                GaudiAdaptedAttentionAttentionAllReduce
-            )
+            tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
         lora_model = get_peft_model(model, peft_config)

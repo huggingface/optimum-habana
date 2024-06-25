@@ -378,16 +378,12 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
             from peft import tuners
 
             from optimum.habana.peft.layer import (
-                GaudiAdaptedAttentionAttentionAllReduce,
-                GaudiAdaptedAttentionPostAttnForward,
+                GaudiAdaptedAttention_getattr,
                 GaudiAdaptedAttentionPreAttnForward,
             )
 
             tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
-            tuners.adaption_prompt.layer.AdaptedAttention.post_attn_forward = GaudiAdaptedAttentionPostAttnForward
-            tuners.adaption_prompt.layer.AdaptedAttention.attention_all_reduce = (
-                GaudiAdaptedAttentionAttentionAllReduce
-            )
+            tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
 
         return model
 

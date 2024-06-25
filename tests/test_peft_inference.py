@@ -46,6 +46,8 @@ class TestGaudiPeftTextGeneration:
             "max_new_tokens": 128,
             "ignore_eos": True,
         }
+        if extra_kwargs:
+            generate_kwargs.update(extra_kwargs)
         generator = pipeline(
             "text-generation",
             model=model,
@@ -76,16 +78,12 @@ class TestGaudiPeftTextGeneration:
             )
         elif peft_method == "llama-adapter":
             from optimum.habana.peft.layer import (
-                GaudiAdaptedAttentionAttentionAllReduce,
-                GaudiAdaptedAttentionPostAttnForward,
+                GaudiAdaptedAttention_getattr,
                 GaudiAdaptedAttentionPreAttnForward,
             )
 
             tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
-            tuners.adaption_prompt.layer.AdaptedAttention.post_attn_forward = GaudiAdaptedAttentionPostAttnForward
-            tuners.adaption_prompt.layer.AdaptedAttention.attention_all_reduce = (
-                GaudiAdaptedAttentionAttentionAllReduce
-            )
+            tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
             config = AdaptionPromptConfig(
                 adapter_layers=2,
                 adapter_len=4,
