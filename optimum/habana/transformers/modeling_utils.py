@@ -441,7 +441,7 @@ def adapt_transformers_to_gaudi():
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
 
-    # Optimization for mamaba on Gaudi
+    # Optimization for mamba on Gaudi
     transformers.models.mamba.modeling_mamba.MambaForCausalLM.prepare_inputs_for_generation = (
         gaudi_MambaForCausalLM_prepare_inputs_for_generation
     )
