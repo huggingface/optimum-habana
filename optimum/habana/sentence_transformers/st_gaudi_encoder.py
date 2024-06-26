@@ -45,7 +45,7 @@ from sentence_transformers.util import (
 logger = logging.getLogger(__name__)
 
 
-def gaudi_st_encode(
+def st_gaudi_encode(
     self,
     sentences: Union[str, List[str]],
     prompt_name: Optional[str] = None,

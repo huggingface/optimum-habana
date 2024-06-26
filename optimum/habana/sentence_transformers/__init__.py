@@ -18,6 +18,6 @@
 
 from .st_gaudi_trainer import SentenceTransformerGaudiTrainer
 from .st_gaudi_training_args import SentenceTransformerGaudiTrainingArguments
-from .gaudi_st_encoder import gaudi_st_encode
-from .gaudi_st_transformer_tokenize import gaudi_st_transformer_tokenize
-from .gaudi_st_data_collator import gaudi_st_data_collator_call
+from .st_gaudi_encoder import st_gaudi_encode
+from .st_gaudi_transformer_tokenize import st_gaudi_transformer_tokenize
+from .st_gaudi_data_collator import st_gaudi_data_collator_call

@@ -6,7 +6,7 @@ from torch import nn
 from transformers import AutoConfig, AutoModel, AutoTokenizer, MT5Config, T5Config
 
 
-def gaudi_st_transformer_tokenize(self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]], padding: Union[str, bool] = True):
+def st_gaudi_transformer_tokenize(self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]], padding: Union[str, bool] = True):
     """Tokenizes a text and maps tokens to token-ids"""
     
     #print(f"----SSS.1-----  Gaudi Tokenize ------------ \n\n\n ")

@@ -5,7 +5,7 @@ import torch
 import math
 
 
-def gaudi_st_data_collator_call(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
+def st_gaudi_data_collator_call(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
     #print(f"--------------- SSS.2 Gaudi DataCollator ---------- \n\n ")
     columns = list(features[0].keys())
 
