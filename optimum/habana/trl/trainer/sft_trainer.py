@@ -14,9 +14,11 @@
 import dataclasses
 import inspect
 import warnings
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler, BatchSampler
 import torch.nn as nn
 from datasets import Dataset
 from transformers import (
@@ -28,7 +30,8 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 from transformers.trainer_callback import TrainerCallback
-from transformers.trainer_utils import EvalPrediction
+from transformers.trainer_utils import EvalPrediction, has_length, seed_worker
+from transformers.utils import is_datasets_available
 from trl import SFTTrainer
 from trl.extras.dataset_formatting import get_formatting_func_from_dataset
 from trl.import_utils import is_peft_available
@@ -41,7 +44,6 @@ if is_peft_available():
     from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 
 from ... import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-
 
 class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
     def __init__(
@@ -249,3 +251,297 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             self.train_dataset.infinite = True
         elif self.args.max_steps == -1 and packing:
             self.train_dataset.infinite = False
+
+    def _get_lengths(self, dataset) -> List[int]:
+        """
+        Returns list containing length of each example in dataset
+        """
+        return [len(example) for example in dataset['input_ids']]
+
+    def get_train_dataloader(self) -> DataLoader:
+        """
+        Returns the training Dataloader.
+        """
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        train_dataset = self.train_dataset
+        data_collator = self.data_collator
+
+        if is_datasets_available() and isinstance(train_dataset, Dataset):
+            train_dataset = self._remove_unused_columns(train_dataset, description="training")
+        else:
+            data_collator = self._get_collator_with_removed_columns(data_collator, description="training")
+
+        dataloader_params = {
+            #"batch_size": self._train_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+        }
+
+        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+            dataloader_params["batch_sampler"] =  BucketizeBatchSampler(self._get_lengths(train_dataset), num_buckets=100, batch_size=self._train_batch_size)#self._get_train_sampler()
+            #dataloader_params["drop_last"] = self.args.dataloader_drop_last
+            dataloader_params["worker_init_fn"] = seed_worker
+
+        return DataLoader(train_dataset, **dataloader_params)
+
+class BucketizeBatchSampler(BatchSampler):
+    """Buketized BatchSampler for sequential data with different lengths to reduce number of paddings.
+    Args:
+        lengths (List[int]): The lengths of the samples in the dataset.
+        num_buckets (int): The number of buckets to split the data samples.
+        min_len (int, optional): The minimum sample lengths to keep.
+            (Default: 0)
+        max_len (int or None, optional): The maximum sample lengths to keep. Inferred if not provided.
+            (Default ``None``)
+        max_token_count (int or None, optional): The max number of tokens in one mini-batch.
+            (Default: ``None``)
+        batch_size (int or None, optional): The number of samples in one mini-batch.
+            (Default: ``None``)
+        shuffle (bool, optional): Whether to shuffle buckets for non-monotonic length sampling.
+            (Default: True)
+        drop_last (bool, optional): If ``True``, the sampler will drop the last batch if
+            its size would be less than ``batch_size``
+            (Default: False)
+        align_buckets (str): Align sequences to bucket boundaries by padding
+            (Default: 'none')
+    Note:
+        ``max_token_count`` and ``batch_size`` are mutually exclusive. Only one argument of the two
+        should have value.
+    Note:
+        ``drop_last`` is only valid when ``batch_size`` argument is given.
+    Note:
+        if ``shuffle`` is True, it will only shuffle the data once. Please set ``reload_dataloaders_every_n_epochs=1``
+        in pytorch_lightning Trainer to enable shuffling every epoch.
+    """
+    def __init__(
+        self,
+        lengths: List[int],
+        num_buckets: int,
+        min_len: int = 0,
+        max_len: Optional[int] = None,
+        max_token_count: Optional[int] = None,
+        batch_size: Optional[int] = None,
+        shuffle: bool = True,
+        drop_last: bool = False,
+        align_buckets: str = 'none'
+    ) -> None:
+        if max_len is None:
+            max_len = max(lengths)
+        if not (0 <= min_len <= max_len):
+            raise AssertionError("``min_len`` should be non-negative and smaller than ``max_len``")
+        if max_token_count is not None and batch_size is not None:
+            raise AssertionError("The ``max_token_count`` and ``batch_size`` can't be both set.")
+        if max_token_count is None and batch_size is None:
+            raise AssertionError("One of ``max_token_count`` or ``batch_size`` must be set.")
+        if max_token_count is not None:
+            assert (
+                max_len <= max_token_count
+            ), "The  ``max_token_count`` must be greater than or equal to the maximum value of ``lengths``."
+        # Filter out samples which are outside the bounds of [min_len, max_len]
+        filtered_length_idx = [(length, i) for i, length in enumerate(lengths) if min_len <= length <= max_len]
+        if len(filtered_length_idx) == 0:
+            raise AssertionError("``lengths`` cannot be empty after filtering.")
+        sorted_filtered_length_idx = sorted(filtered_length_idx, key=lambda x: x[0])
+        self.lengths = [e[0] for e in sorted_filtered_length_idx]
+        self.indices = [e[1] for e in sorted_filtered_length_idx]
+        self.max_token_count = max_token_count
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.drop_last = drop_last
+        self.align_buckets = align_buckets
+        self.buckets, self.boundaries = self._get_buckets(self.lengths, num_buckets, min_len, max_len)
+        self._update_iter_list()
+
+    def gen_bucket_boundary_fn(self):
+        def helper(x):
+            idx = np.where(self.boundaries > x)[0][0]
+            return int(np.ceil(self.boundaries[idx].item()))
+        return helper
+
+    def _get_buckets(self, lengths: List[int], num_buckets: int, min_len: int, max_len: int) -> Dict[int, Tensor]:
+        """Generate buckets based on the dataset.
+        Args:
+            lengths (List[int]): The lengths of the samples in the dataset.
+            num_buckets (int): The number of buckets.
+            min_len (int): The lower bound of the evenly spaced length intervals to determine bucket width.
+            max_len (int): The upper bound of the evenly spaced length intervals to determine bucket width.
+        Returns:
+            (dict[int, Tensor]): A dictionary in which the key is the bucket index, the value is
+                the Tensor of corresponding sample indices.
+        """
+        buckets = {}
+        boundaries = torch.linspace(min_len - 1, max_len + 1, num_buckets + 1)
+        bucket_ids = torch.bucketize(torch.tensor(lengths), boundaries)
+        for i in range(bucket_ids.size(0)):
+            bucket_id = int(bucket_ids[i])
+            if bucket_id in buckets:
+                buckets[bucket_id].append(i)
+            else:
+                buckets[bucket_id] = [i]
+        for k in buckets:
+            buckets[k] = torch.as_tensor(buckets[k], dtype=torch.int)
+        buckets = {k: v for k, v in sorted(buckets.items())}
+        return buckets, boundaries
+
+    def _update_iter_list(self) -> None:
+        if self.shuffle:
+            for k in self.buckets:
+                self.buckets[k] = self.buckets[k][torch.randperm(self.buckets[k].size(0))]
+        self.iter_list = []
+        total_len = 0
+        batch = []
+        max_batch_size = self.max_token_count if self.max_token_count else self.batch_size
+        align_to_bucket_boundary = self.gen_bucket_boundary_fn()
+        for k in self.buckets:
+            for i in range(self.buckets[k].size(0)):
+                index = int(self.buckets[k][i])
+                sample_length = self.lengths[index] if self.max_token_count else 1
+                aligned_len = align_to_bucket_boundary(sample_length) if self.align_buckets=='bucket1' else sample_length
+                if total_len + aligned_len <= max_batch_size:
+                    batch.append(self.indices[index])
+                    total_len += aligned_len
+                else:
+                    self.iter_list.append(batch)
+                    batch = [self.indices[index]]
+                    total_len = aligned_len
+        if len(batch) > 0 and (self.max_token_count or not self.drop_last):
+            self.iter_list.append(batch)
+
+    def __iter__(self) -> Iterator[List[int]]:
+        return iter(self.iter_list)
+
+    def __len__(self):
+        if self.batch_size or (self.max_token_count and not self.shuffle):
+            return len(self.iter_list)
+
+class CollateFnDolly:
+    """The collate class for HuBERT pre-training and fine-tuning.
+    Args:
+        feature_type (str): The type of features for KMeans clustering.
+            Options: [``mfcc``, ``hubert``].
+        pad (bool): If ``True``, the waveforms and labels will be padded to the
+            max length in the mini-batch. If ``pad`` is False, the waveforms
+            and labels will be cropped to the minimum length in the mini-batch.
+            (Default: False)
+        rand_crop (bool): if ``True``, the starting index of the waveform
+            and label is random if the length is longer than the minimum
+            length in the mini-batch.
+    """
+    def __init__(
+        self,
+        feature_type: str,
+        pad: bool = False,
+        rand_crop: bool = True,
+        aligner = None
+    ) -> None:
+        self.feature_type = feature_type
+        self.pad = pad
+        self.rand_crop = rand_crop
+        self.aligner = aligner
+
+    def __call__(self, batch: List[Tuple[Tensor, Tensor, int]]) -> Tuple[Tensor, Tensor, Tensor]:
+        """
+        Args:
+            batch (List[Tuple(Tensor, Tensor, int)]):
+                The list of tuples that contains the waveforms, labels, and audio lengths.
+        Returns:
+            (Tuple(Tensor, Tensor, Tensor)):
+                The Tensor of waveforms with dimensions `(batch, time)`.
+                The Tensor of labels with dimensions `(batch, seq)`.
+                The Tensor of audio lengths with dimension `(batch,)`.
+        """
+        if self.pad:
+            num_frames = max([sample[0].shape[1] for sample in batch])
+        else:
+            num_frames = min([sample[0].shape[1] for sample in batch])
+        if self.aligner is not None:
+            bkt_boundary = self.aligner(num_frames)
+            assert bkt_boundary >= num_frames
+        else:
+            bkt_boundary = None
+        waveforms, labels, lengths = [], [], []
+        for sample in batch:
+            waveform, label, length = sample
+            # The MFCC feature is 10ms per frame, while the HuBERT's transformer output
+            # is 20ms per frame. Downsample the KMeans label if it's generated by MFCC features.
+            if self.feature_type == "mfcc":
+                label = label[::2]
+            waveform, label, length = _crop_audio_label(waveform, label, length, num_frames, self.rand_crop)
+            waveforms.append(waveform)
+            lengths.append(length)
+            labels.append(label)
+        # make sure the shapes are the same if not apply zero-padding
+        if not self.pad:
+            assert all(
+                [waveform.shape[0] == waveforms[0].shape[0] for waveform in waveforms]
+            ), "The dimensions of the waveforms should be identical in the same batch."
+            assert all(
+                [label.shape[0] == labels[0].shape[0] for label in labels]
+            ), "The dimensions of the labels should be identical in the same batch."
+        if bkt_boundary is not None:
+            waveforms.append(torch.zeros([bkt_boundary]))
+        waveforms = torch.nn.utils.rnn.pad_sequence(waveforms, batch_first=True)
+        if bkt_boundary is not None:
+            waveforms = waveforms[:-1,:]
+        labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True)
+        if bkt_boundary is not None:
+            diff = label_len(waveforms.shape[1]) - labels.shape[1]
+            labels = torch.nn.functional.pad(labels,(0,diff,0,0))
+        lengths = torch.tensor(lengths)
+        return waveforms, labels, lengths
+
+#    def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
+#        """
+#        Returns the eval Habana Media Dataloader.
+#        """
+#        if eval_dataset is None and self.eval_dataset is None:
+#            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+#        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+#        data_collator = self.data_collator
+#
+#        if is_datasets_available() and isinstance(eval_dataset, Dataset):
+#            eval_dataset = self._remove_unused_columns(eval_dataset, description="evaluation")
+#        else:
+#            data_collator = self._get_collator_with_removed_columns(data_collator, description="evaluation")
+#
+#        dataloader_params = {
+#            "batch_size": self.args.eval_batch_size,
+#            "collate_fn": data_collator,
+#            "num_workers": self.args.dataloader_num_workers,
+#            "pin_memory": self.args.dataloader_pin_memory,
+#        }
+#
+#        if not isinstance(eval_dataset, torch.utils.data.IterableDataset):
+#            dataloader_params["sampler"] = self._get_eval_sampler(eval_dataset)
+#            dataloader_params["drop_last"] = True
+#
+#        return DataLoader(eval_dataset, **dataloader_params)
+#
+#    def get_test_dataloader(self, test_dataset: Dataset) -> DataLoader:
+#        """
+#        Returns the test Habana Media Dataloader.
+#        """
+#        import pdb; pdb.set_trace()
+#        data_collator = self.data_collator
+#
+#        if is_datasets_available() and isinstance(test_dataset, Dataset):
+#            test_dataset = self._remove_unused_columns(test_dataset, description="test")
+#        else:
+#            data_collator = self._get_collator_with_removed_columns(data_collator, description="test")
+#
+#        dataloader_params = {
+#            "batch_size": self.args.eval_batch_size,
+#            "collate_fn": data_collator,
+#            "num_workers": self.args.dataloader_num_workers,
+#            "pin_memory": self.args.dataloader_pin_memory,
+#        }
+#
+#        if not isinstance(test_dataset, torch.utils.data.IterableDataset):
+#            dataloader_params["sampler"] = self._get_eval_sampler(test_dataset)
+#            dataloader_params["drop_last"] = True
+#
+#        # We use the same batch_size as for eval.
+#        return DataLoader(test_dataset, **dataloader_params)
