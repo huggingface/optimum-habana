@@ -533,7 +533,7 @@ python3 unconditional_image_generation.py \
     --model_name_or_path "google/ddpm-ema-celebahq-256" \
     --batch_size 16 \
     --use_habana \
-    --use_gaudi_optimized_scheduler \
+    --use_gaudi_ddim_scheduler \
     --use_hpu_graphs \
     --bf16 \
     --save_outputs \

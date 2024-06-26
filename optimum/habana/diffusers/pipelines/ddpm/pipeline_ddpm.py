@@ -26,6 +26,7 @@ from diffusers.schedulers import DDIMScheduler, DDPMScheduler
 from diffusers.utils import BaseOutput
 from diffusers.utils.torch_utils import randn_tensor
 
+from optimum.habana.diffusers import GaudiDDIMScheduler
 from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.utils import logging
