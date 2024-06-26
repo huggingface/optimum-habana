@@ -195,6 +195,12 @@ def main():
         type=int,
         help="Number of steps to capture for profiling.",
     )
+    parser.add_argument(
+        "--throughput_warmup_steps",
+        type=int,
+        default=None,
+        help="Number of steps to ignore for throughput calculation.",
+    )
     args = parser.parse_args()
 
     # Set image resolution
@@ -254,6 +260,9 @@ def main():
 
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
+
+    if args.throughput_warmup_steps is not None:
+        kwargs["throughput_warmup_steps"] = args.throughput_warmup_steps
 
     pipeline = Img2ImgPipeline.from_pretrained(
         args.model_name_or_path,
