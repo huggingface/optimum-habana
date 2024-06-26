@@ -40,7 +40,7 @@ def main():
         "--num_inference_steps", type=int, default=1000, help="Number of inference steps for the denoising UNet."
     )
     parser.add_argument(
-        "--use_gaudi_optimized_scheduler",
+        "--use_gaudi_ddim_scheduler",
         action="store_true",
         help="Where to use the Gaudi optimized DDIM scheduler.",
     )
@@ -74,7 +74,7 @@ def main():
     args = parser.parse_args()
     model_name = args.model_name_or_path
 
-    if args.use_gaudi_optimized_scheduler:
+    if args.use_gaudi_ddim_scheduler:
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name)
     else:
         scheduler = DDPMScheduler.from_pretrained(model_name)
