@@ -101,6 +101,7 @@ if __name__ == "__main__":
         for _, example in tqdm(zip(range(nb_examples), iter(dataset)), total=nb_examples):
             text = prepare_sample_text(example)
             total_characters += len(text)
+            print(f"Total chars {total_characters}")
             if tokenizer.is_fast:
                 total_tokens += len(tokenizer(text).tokens())
             else:
@@ -112,6 +113,10 @@ if __name__ == "__main__":
         """Prepare the text from a sample of the dataset."""
         text = f"Question: {example['question']}\n\nAnswer: {example['response_j']}"
         return text
+
+#    def prepare_sample_text(example):
+#        """Prepare the text from a sample of the dataset for non packed dataset"""
+#        return [f"Question: {q}\n\nAnswer: {r_j}" for q, r_j in zip(example['question'], example['response_j'])]
 
     def create_datasets(tokenizer, args, seed=None):
         if args.dataset_name:
@@ -160,7 +165,6 @@ if __name__ == "__main__":
         torch_dtype=torch.bfloat16,
         token=script_args.token,
     )
-
     base_model.config.use_cache = False
     if not script_args.use_flash_attention and (
         script_args.flash_attention_recompute or script_args.flash_attention_recompute
@@ -197,6 +201,7 @@ if __name__ == "__main__":
             tokenizer=tokenizer,
             args=training_args,
             formatting_func=formatting_func,
+            dataset_num_proc=1,
         )
         train_result = trainer.train()
         trainer.save_model(training_args.output_dir)
@@ -208,10 +213,9 @@ if __name__ == "__main__":
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
-        if isinstance(eval_dataset, torch.utils.data.IterableDataset):
-            eval_dataset = list(eval_dataset)
 
-        metrics["eval_samples"] = len(eval_dataset)
+        max_eval_samples = len(eval_dataset)
+        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 
         try:
             perplexity = math.exp(metrics["eval_loss"])
