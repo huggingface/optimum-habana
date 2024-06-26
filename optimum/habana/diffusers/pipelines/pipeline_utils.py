@@ -137,9 +137,8 @@ class GaudiDiffusionPipeline(DiffusionPipeline):
 
             # Patch for unconditional image generation
             from ..models import gaudi_unet_2d_model_forward
-            diffusers.models.unets.unet_2d.UNet2DModel.forward = (
-                gaudi_unet_2d_model_forward
-            )
+
+            diffusers.models.unets.unet_2d.UNet2DModel.forward = gaudi_unet_2d_model_forward
 
             if isinstance(gaudi_config, str):
                 # Config from the Hub

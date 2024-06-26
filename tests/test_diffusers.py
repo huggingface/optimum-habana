@@ -46,6 +46,7 @@ from diffusers import (
     PNDMScheduler,
     UNet2DModel,
     UNet2DConditionModel,
+    UNet2DModel,
     UNetSpatioTemporalConditionModel,
     UniPCMultistepScheduler,
 )
