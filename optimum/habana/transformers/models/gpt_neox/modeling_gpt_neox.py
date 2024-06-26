@@ -31,11 +31,6 @@ def gaudi_gpt_neox_attention_forward(
     - add new args token_idx
     - optimize KV cache
     """
-    # Workaround till FusedRoPE is fixed
-    global FusedRoPE
-    if self.training and FusedRoPE is not None:
-        FusedRoPE = None
-
     has_layer_past = layer_past is not None
 
     # Compute QKV
@@ -422,24 +417,27 @@ def gaudi_gpt_neox_rotary_embedding_set_cos_sin_cache(self, seq_len, device, dty
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        if q.dtype == torch.bfloat16:
-            rope_q = FusedRoPE.apply(
-                q,
-                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                position_ids,
-            )
-        else:
-            rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
-        if k.dtype == torch.bfloat16:
-            rope_k = FusedRoPE.apply(
-                k,
-                cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
-                position_ids,
-            )
-        else:
-            rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        # TODO: Enable FusedRoPE with bf16 after accuracy is fixed
+        #     if q.dtype == torch.bfloat16:
+        #         rope_q = FusedRoPE.apply(
+        #             q,
+        #             cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+        #             sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+        #             position_ids,
+        #         )
+        #     else:
+        #         rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        #     if k.dtype == torch.bfloat16:
+        #         rope_k = FusedRoPE.apply(
+        #             k,
+        #             cos.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+        #             sin.unsqueeze(0).unsqueeze(0).to(torch.bfloat16),
+        #             position_ids,
+        #         )
+        #     else:
+        #         rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        rope_q = FusedRoPE.apply(q, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
+        rope_k = FusedRoPE.apply(k, cos.unsqueeze(0).unsqueeze(0), sin.unsqueeze(0).unsqueeze(0), position_ids)
         return rope_q, rope_k
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
