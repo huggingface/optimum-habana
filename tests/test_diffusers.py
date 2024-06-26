@@ -26,7 +26,6 @@ from typing import Union
 from unittest import TestCase, skipUnless
 
 import numpy as np
-import pytest
 import requests
 import safetensors
 import torch
@@ -1753,7 +1752,6 @@ class TrainTextToImage(TestCase):
         self.assertEqual(return_code, 0)
 
     @slow
-    @pytest.mark.skip(reason="The dataset used in this test is not available at the moment.")
     def test_train_text_to_image_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (
@@ -1768,11 +1766,10 @@ class TrainTextToImage(TestCase):
                  python3
                  {path_to_script}
                  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0
-                 --pretrained_vae_model_name_or_path stabilityai/sdxl-vae
-                 --dataset_name lambdalabs/pokemon-blip-captions
-                 --resolution 512
-                 --crop_resolution 512
-                 --center_crop
+                 --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix
+                 --dataset_name lambdalabs/naruto-blip-captions
+                 --resolution 64
+                 --crop_resolution 64
                  --random_flip
                  --proportion_empty_prompts=0.2
                  --train_batch_size 16
@@ -1786,7 +1783,10 @@ class TrainTextToImage(TestCase):
                  --use_hpu_graphs_for_training
                  --use_hpu_graphs_for_inference
                  --bf16
+                 --adjust_throughput
+                 --center_crop
                  --max_train_steps 2
+                 --checkpointing_steps 2
                  --output_dir {tmpdir}
                 """.split()
 
@@ -1798,8 +1798,10 @@ class TrainTextToImage(TestCase):
             self.assertEqual(return_code, 0)
 
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+            self.assertTrue(
+                os.path.isfile(os.path.join(tmpdir, "checkpoint-2", "unet", "diffusion_pytorch_model.safetensors"))
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "checkpoint-2", "unet", "config.json")))
 
 
 class TrainControlNet(TestCase):

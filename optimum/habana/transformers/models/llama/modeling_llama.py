@@ -262,11 +262,10 @@ class KVCache(torch.nn.Module):
         if prev.shape == cur.shape:
             prev.copy_(cur)
             return orig_cur
-        if cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
+        if idx is not None and cur.shape[2] > 1 and cur.shape[2] <= prev.shape[2]:
             # Initialize
             prev[:, :, :inp_seq_len, :].copy_(cur)
             return orig_cur
-        assert cur.shape[2] == 1, f"Cannot update kv-cache. Unsupported shapes. prev:{prev.shape} cur:{cur.shape}"
         if idx is not None:
             prev.index_copy_(dim, idx - 1, cur)
             return prev
@@ -773,6 +772,12 @@ class GaudiLlamaModel(LlamaModel):
             batch_size, seq_length = inputs_embeds.shape[:2]
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
+        if hasattr(self.config, "use_fused_rope") and self.config.use_fused_rope is False:
+            global has_fused_rope
+            has_fused_rope = False
+        if hasattr(self.config, "use_fused_rms_norm") and self.config.use_fused_rms_norm is False:
+            global has_fused_rms_norm
+            has_fused_rms_norm = False
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
