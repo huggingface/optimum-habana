@@ -589,7 +589,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --num_train_epochs 2 \
   --max_seq_len 2048 \
   --per_device_train_batch_size 10 \
-  --per_device_eval_batch_size 10 \
+  --per_device_eval_batch_size 1 \
   --gradient_checkpointing \
   --evaluation_strategy epoch \
   --eval_delay 2 \
@@ -608,7 +608,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --throughput_warmup_steps 3 \
   --lora_rank 4 \
   --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
-  --validation_split_percentage 10 \
+  --validation_split_percentage 4 \
   --use_flash_attention True \
   --flash_attention_causal_mask True \
   --fp8 True
