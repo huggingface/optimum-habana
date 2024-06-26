@@ -359,7 +359,11 @@ class GaudiFalconAttention(FalconAttention):
         train_with_flash_attention = self.training and self._use_sdpa and not output_attentions and head_mask is None
         infer_with_flash_attention = not self.training and use_flash_attention
         (query_layer, key_layer, value_layer) = self._split_heads(
-            fused_qkv, not use_flash_attention and not self.is_fp8 and not train_with_flash_attention and infer_with_flash_attention
+            fused_qkv,
+            not use_flash_attention
+            and not self.is_fp8
+            and not train_with_flash_attention
+            and infer_with_flash_attention,
         )
 
         batch_size, query_length, _, _ = query_layer.shape
@@ -469,11 +473,13 @@ class GaudiFalconAttention(FalconAttention):
                         )
                     else:
                         if query_layer.shape != key_layer.shape:
-                            query_layer, key_layer, value_layer, attention_mask = repeat_kv(query_layer,
-                                                                                        key_layer,
-                                                                                        value_layer,
-                                                                                        attention_mask,
-                                                                                        self.config.num_attention_heads // self.config.num_kv_heads)
+                            query_layer, key_layer, value_layer, attention_mask = repeat_kv(
+                                query_layer,
+                                key_layer,
+                                value_layer,
+                                attention_mask,
+                                self.config.num_attention_heads // self.config.num_kv_heads,
+                            )
                         # Workaround util scaled_dot_product_attention support broadcast.
                         if self.training is True and query_layer.shape != key_layer.shape:
                             key_layer = torch.broadcast_to(key_layer, query_layer.shape)
