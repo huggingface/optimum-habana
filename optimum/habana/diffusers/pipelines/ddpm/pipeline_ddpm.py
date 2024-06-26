@@ -33,17 +33,19 @@ from optimum.utils import logging
 
 logger = logging.get_logger(__name__)
 
+
 @dataclass
 class GaudiDDPMPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
     throughput: float
+
 
 class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
     r"""
     Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/ddpm/pipeline_ddpm.py
     Changes are:
     - Clone a new UNet for calculations of timestep embeddings
-    - Seperate autocast mechanism for scheduler and UNet
+    - Separate autocast mechanism for scheduler and UNet
     - Markstep for non-graph mode
     - Support GaudiDDIMScheduler
 
@@ -57,12 +59,13 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
             A `UNet2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
-            [`DDPMScheduler`], or [`DDIMScheduler`].
+            [`DDPMScheduler`], or [`GaudiDDIMScheduler`].
     """
 
-    def __init__(self,
-        unet : UNet2DModel,
-        scheduler : Union[DDPMScheduler, DDIMScheduler],
+    def __init__(
+        self,
+        unet: UNet2DModel,
+        scheduler: Union[DDPMScheduler, GaudiDDIMScheduler],
         use_habana: bool = True,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
@@ -70,7 +73,6 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
     ):
         GaudiDiffusionPipeline.__init__(self, use_habana, use_hpu_graphs, gaudi_config, bf16_full_eval)
 
-        #torch.manual_seed(0)
         DDPMPipeline.__init__(self, unet, scheduler)
 
     @torch.no_grad()
@@ -132,30 +134,30 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
             image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
 
         if self._device.type == "mps":
-            # randn does not work reproducibly on mps
+            # Randn does not work reproducibly on mps
             image = randn_tensor(image_shape, generator=generator)
             image = image.to(self.device)
-        elif self._device.type =="hpu": # Patch random tensor
+        elif self._device.type == "hpu":  # Patch random tensor
             image = torch.randn(image_shape, generator=generator, device="cpu")
             image = image.to(self._device)
         else:
             image = randn_tensor(image_shape, generator=generator, device=self.device)
 
-        # set step values
-        self.scheduler.set_timesteps(num_inference_steps, device="cpu") # Patch timesteps
+        # Set step values
+        self.scheduler.set_timesteps(num_inference_steps, device="cpu")  # Patch timesteps
         timesteps = self.scheduler.timesteps.to(self._device)
         if isinstance(self.scheduler, DDIMScheduler):
             self.scheduler.reset_timestep_dependent_params()
         num_inference_steps = [1] * len(self.scheduler.timesteps)
 
-        #Gaudi Patch
-        if not hasattr(self, 'timestep_unet'):
+        # Gaudi Patch
+        if not hasattr(self, "timestep_unet"):
             self.timestep_unet = copy.deepcopy(self.unet)
-            logger.info('Prepared a Unet for timestep calculations')
+            logger.info("Preparing UNet for timestep calculations")
 
         if self.use_hpu_graphs:
-           self.unet = self.ht.hpu.wrap_in_hpu_graph(self.unet, disable_tensor_cache=True)
-           self.timestep_unet = self.ht.hpu.wrap_in_hpu_graph(self.timestep_unet, disable_tensor_cache=True)
+            self.unet = self.ht.hpu.wrap_in_hpu_graph(self.unet, disable_tensor_cache=True)
+            self.timestep_unet = self.ht.hpu.wrap_in_hpu_graph(self.timestep_unet, disable_tensor_cache=True)
 
         if self.use_habana:
             self.unet = self.unet.to(self._device)
@@ -167,13 +169,15 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
             timesteps = torch.roll(timesteps, shifts=-1, dims=0)
             emb = self.timestep_unet(image, timestep, True, None)
 
-            # 1. predict noise model_output
+            # 1. Predict noise model_output
             with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
                 model_output = self.unet(image, timestep, False, emb).sample
-            # 2. compute previous image: x_t -> x_t-1
-            image = self.scheduler.step(model_output.to(torch.float32), timestep, image, generator=generator).prev_sample
+            # 2. Compute previous image: x_t -> x_t-1
+            image = self.scheduler.step(
+                model_output.to(torch.float32), timestep, image, generator=generator
+            ).prev_sample
 
-            if not self.use_hpu_graphs: # for checking output resutls
+            if not self.use_hpu_graphs:  # For checking output resutls
                 self.htcore.mark_step()
 
         if self.gaudi_config.use_torch_autocast:
@@ -191,5 +195,5 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         if not return_dict:
             return (image,)
 
-        throughput = (end_time - start_time)/batch_size
+        throughput = (end_time - start_time) / batch_size
         return GaudiDDPMPipelineOutput(images=image, throughput=throughput)

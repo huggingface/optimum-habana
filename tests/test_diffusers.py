@@ -33,8 +33,8 @@ from diffusers import (
     AutoencoderKL,
     AutoencoderKLTemporalDecoder,
     ControlNetModel,
-    UNet2DModel,
     UNet2DConditionModel,
+    UNet2DModel,
     UNetSpatioTemporalConditionModel,
     UniPCMultistepScheduler,
 )
@@ -2221,6 +2221,7 @@ class GaudiDDPMPipelineTester(TestCase):
     """
     Tests for unconditional image generation
     """
+
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DModel(
@@ -2228,11 +2229,18 @@ class GaudiDDPMPipelineTester(TestCase):
             in_channels=3,
             out_channels=3,
             center_input_sample=False,
-            time_embedding_type = "positional",
+            time_embedding_type="positional",
             freq_shift=1,
             flip_sin_to_cos=False,
-            down_block_types=('DownBlock2D', 'DownBlock2D', 'DownBlock2D', 'DownBlock2D', 'AttnDownBlock2D', 'DownBlock2D'),
-            up_block_types=('UpBlock2D', 'AttnUpBlock2D', 'UpBlock2D', 'UpBlock2D', 'UpBlock2D', 'UpBlock2D'),
+            down_block_types=(
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "AttnDownBlock2D",
+                "DownBlock2D",
+            ),
+            up_block_types=("UpBlock2D", "AttnUpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D"),
             block_out_channels=(128, 128, 256, 256, 512, 512),
             downsample_padding=1,
             norm_eps=1e-6,
@@ -2255,7 +2263,7 @@ class GaudiDDPMPipelineTester(TestCase):
         inputs = {
             "generator": generator,
             "num_inference_steps": 2,
-            "batch_size" : 8,
+            "batch_size": 8,
         }
         return inputs
 
@@ -2338,6 +2346,7 @@ class GaudiDDPMPipelineTester(TestCase):
         self.assertEqual(len(images), 1)
         self.assertEqual(np.array(images[-1]).shape, (256, 256, 3))
 
+    @slow
     def test_no_throughput_regression_bf16(self):
         batch_size = 16  # use batch size 16 as the baseline
         model_name = "google/ddpm-ema-celebahq-256"

@@ -13,8 +13,8 @@ def gaudi_unet_2d_model_forward(
     self,
     sample: torch.FloatTensor,
     timestep: Union[torch.Tensor, float, int],
-    cal_timestep_only : bool = True,
-    emb : Optional[torch.Tensor] = None,
+    cal_timestep_only: bool = True,
+    emb: Optional[torch.Tensor] = None,
     class_labels: Optional[torch.Tensor] = None,
     return_dict: bool = True,
 ) -> Union[UNet2DOutput, Tuple]:
@@ -23,13 +23,13 @@ def gaudi_unet_2d_model_forward(
     Copied from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/unets/unet_2d.py#L243
 
     Changes:
-        1. Add an if case to seperate timestep calculations and the diffusion process
+        1. Add an if case to separate timestep calculations and the diffusion process
     """
     # 0. center input if necessary
     if self.config.center_input_sample:
         sample = 2 * sample - 1.0
 
-    if cal_timestep_only: #Gaudi patch to seperate the calculation of the time embeddings and UNet blocks
+    if cal_timestep_only:  # Gaudi patch to separate the calculation of the time embeddings and UNet blocks
         # 1. time
         timesteps = timestep
         if not torch.is_tensor(timesteps):

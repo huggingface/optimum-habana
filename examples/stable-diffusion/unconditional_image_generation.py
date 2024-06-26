@@ -17,6 +17,7 @@ except ImportError:
     def check_optimum_habana_min_version(*a, **b):
         return ()
 
+
 check_min_version("4.37.0")
 check_optimum_habana_min_version("1.10.4")
 
@@ -36,10 +37,7 @@ def main():
         help="Batch size for the task.",
     )
     parser.add_argument(
-        "--num_inference_steps",
-        type=int,
-        default=1000,
-        help="Number of inference steps for the denoising UNet."
+        "--num_inference_steps", type=int, default=1000, help="Number of inference steps for the denoising UNet."
     )
     parser.add_argument(
         "--use_gaudi_optimized_scheduler",
@@ -99,11 +97,8 @@ def main():
     if args.output_dir:
         logger.info(f"Generating outputs to {args.output_dir}")
         for i in range(len(output.images)):
-            output.images[i].save(args.output_dir + "unconditional_image_" + str(i) + '.jpg')
+            output.images[i].save(args.output_dir + "unconditional_image_" + str(i) + ".jpg")
+
 
 if __name__ == "__main__":
     main()
-
-
-
-
