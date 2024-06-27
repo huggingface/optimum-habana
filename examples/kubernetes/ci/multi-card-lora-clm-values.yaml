@@ -29,7 +29,7 @@ securityContext:
 hostIPC: true
 
 # -- Define a config map's data as container environment variables
-envFrom: 
+envFrom: [] 
 
 # -- Define environment variables to set in the container
 env:
