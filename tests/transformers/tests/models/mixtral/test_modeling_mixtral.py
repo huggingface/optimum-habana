@@ -12,34 +12,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Testing suite for the PyTorch Mixtral model. """
-
+"""Testing suite for the PyTorch Mixtral model."""
 
 import tempfile
 import unittest
 
 import pytest
-
 from transformers import MixtralConfig, is_torch_available
 from transformers.testing_utils import (
     require_flash_attn,
     require_torch,
     require_torch_gpu,
     slow,
-    torch_device,
 )
+
+from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, ids_tensor
-from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+
 
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
-
     from transformers import MixtralForCausalLM, MixtralForSequenceClassification, MixtralModel
 
 

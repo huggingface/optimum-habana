@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2020 The HuggingFace Team. All rights reserved.
 #
@@ -18,9 +17,14 @@ import tempfile
 import unittest
 
 import pytest
-
 from transformers import DistilBertConfig, is_torch_available
-from transformers.testing_utils import require_flash_attn, require_torch, require_torch_accelerator, require_torch_gpu, slow
+from transformers.testing_utils import (
+    require_flash_attn,
+    require_torch,
+    require_torch_accelerator,
+    require_torch_gpu,
+    slow,
+)
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 

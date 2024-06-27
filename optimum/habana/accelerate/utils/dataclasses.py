@@ -146,7 +146,6 @@ class GaudiFullyShardedDataParallelPlugin(FullyShardedDataParallelPlugin):
             self.param_init_fn = lambda x: x.to_empty(device=device, recurse=False)
 
 
-
 @dataclass
 class GaudiFP8RecipeKwargs(KwargsHandler):
     """
@@ -184,5 +183,8 @@ class GaudiFP8RecipeKwargs(KwargsHandler):
 
     def __post_init__(self):
         self.fp8_format = self.fp8_format.upper()
-        assert self.fp8_format in ('E5M2', 'HYBRID'), "Only E5M2 and HYBRID FP8 formats are currently supported."
-        assert self.amax_compute_algo in ('max', 'most_recent'), "Only max and most_recent `amax_compute_algo` modes are currently supported."
+        assert self.fp8_format in ("E5M2", "HYBRID"), "Only E5M2 and HYBRID FP8 formats are currently supported."
+        assert self.amax_compute_algo in (
+            "max",
+            "most_recent",
+        ), "Only max and most_recent `amax_compute_algo` modes are currently supported."

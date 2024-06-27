@@ -14,14 +14,18 @@
 # limitations under the License.
 
 import functools
+
 import torch
 
+
 has_transformer_engine = False
+
 
 def import_te():
     global te, has_transformer_engine
     try:
         import habana_frameworks.torch.hpex.experimental.transformer_engine as te
+
         has_transformer_engine = True
 
     except ImportError:
@@ -45,7 +49,11 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True):
             has_bias = module.bias is not None
             # Initializing TE linear without weights and biases and shallow copying them from the original module.
             te_module = te.Linear(
-                module.in_features, module.out_features, bias=has_bias, params_dtype=module.weight.dtype, skip_weight_param_allocation=True
+                module.in_features,
+                module.out_features,
+                bias=has_bias,
+                params_dtype=module.weight.dtype,
+                skip_weight_param_allocation=True,
             )
             te_module.weight = module.weight
 
@@ -56,7 +64,11 @@ def _convert_model(model, to_transformer_engine=True, _convert_linear=True):
         elif isinstance(module, te.Linear) and not to_transformer_engine and _convert_linear:
             has_bias = module.bias is not None
             new_module = torch.nn.Linear(
-                module.in_features, module.out_features, bias=has_bias, dtype=module.weight.dtype, device=module.weight.device
+                module.in_features,
+                module.out_features,
+                bias=has_bias,
+                dtype=module.weight.dtype,
+                device=module.weight.device,
             )
             new_module.weight.copy_(module.weight)
             if has_bias:
@@ -78,6 +90,7 @@ def has_transformer_engine_layers(model):
             return True
     return False
 
+
 def convert_model(model):
     """
     Converts torch.nn.Linear modules to `transformers_engine` Linear modules.
@@ -88,6 +101,7 @@ def convert_model(model):
             _convert_model(model)
         model._converted_to_transformer_engine = True
     return model
+
 
 def get_fp8_recipe(fp8_recipe_handler):
     """
@@ -103,10 +117,12 @@ def get_fp8_recipe(fp8_recipe_handler):
     fp8_recipe_handler.backend = "TE"
     return fp8_recipe_handler
 
+
 class FP8ContextWrapper:
     """
     Helper class for FP8 context related operations.
     """
+
     def __init__(self, ctx, fp8_recipe):
         self.ctx = ctx
         self.fp8_ctx = self.create_fp8_context(fp8_recipe)
@@ -125,10 +141,10 @@ class FP8ContextWrapper:
 
     @staticmethod
     def _gradient_checkpointing_wrap(func, *args, **kwargs):
-        '''
+        """
         `_gradient_checkpointing_func` always takes the function to be recomputed as the first argument. The function
         below wraps this first argument with `transformer_engine`'s `activation_checkpointing` context.
-        '''
+        """
         _args = list(args)
         _args[0] = te.distributed.activation_checkpointing()(_args[0])
         args = tuple(_args)
@@ -137,14 +153,18 @@ class FP8ContextWrapper:
 
     @staticmethod
     def gradient_checkpointing_wrap(model):
-        '''
+        """
         Wrap `_gradient_checkpointing_func` in the model with `transformer_engine`'s `activation_checkpointing` context.
         This context is used to signal the `transformer_engine` modules whether they have been called with activation checkpointing enabled or not.
-        '''
+        """
         if hasattr(model, "gradient_checkpointing") and model.gradient_checkpointing:
-            model._gradient_checkpointing_func = functools.partial(FP8ContextWrapper._gradient_checkpointing_wrap, model._gradient_checkpointing_func)
+            model._gradient_checkpointing_func = functools.partial(
+                FP8ContextWrapper._gradient_checkpointing_wrap, model._gradient_checkpointing_func
+            )
             return
 
         for module in model.modules():
             if hasattr(module, "gradient_checkpointing") and module.gradient_checkpointing:
-                module._gradient_checkpointing_func = functools.partial(FP8ContextWrapper._gradient_checkpointing_wrap, module._gradient_checkpointing_func)
+                module._gradient_checkpointing_func = functools.partial(
+                    FP8ContextWrapper._gradient_checkpointing_wrap, module._gradient_checkpointing_func
+                )

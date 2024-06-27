@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2022 The HuggingFace Inc. team. All rights reserved.
 #
@@ -370,4 +369,3 @@ class GPTNeoXLanguageGenerationTest(unittest.TestCase):
         input_ids = torch.as_tensor(input_ids)[None].to(torch_device)
         outputs = model(input_ids)["logits"][:, -1][0, :30]
         self.assertTrue(torch.allclose(EXPECTED_LOGITS, outputs, atol=1e-5))
-

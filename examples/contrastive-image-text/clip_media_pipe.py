@@ -31,7 +31,6 @@ try:
         media_ext_reader_op_impl,
         media_ext_reader_op_tensor_info,
     )
-    from habana_frameworks.torch.hpu import get_device_name
 except ImportError:
     pass
 

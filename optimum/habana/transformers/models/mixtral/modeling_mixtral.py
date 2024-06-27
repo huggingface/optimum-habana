@@ -680,7 +680,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                 # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
                 # input)
                 if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
-                    input_ids = input_ids[:, -(attention_mask.shape[1] - past_length):]
+                    input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
                 # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
                 # input_ids based on the past_length.
                 elif past_length < input_ids.shape[1]:
@@ -706,7 +706,7 @@ class GaudiMixtralForCausalLM(MixtralForCausalLM):
                 if token_idx is not None:
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
-                    position_ids = position_ids[:, -input_ids.shape[1]:]
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:

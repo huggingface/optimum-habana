@@ -23,14 +23,14 @@ import json
 import logging
 import math
 import os
+import struct
 import time
 from itertools import cycle
 from pathlib import Path
+
 import pandas as pd
-import struct
-import contextlib
 import torch
-from utils import adjust_batch, count_hpu_graphs, initialize_model, finalize_quantization
+from utils import adjust_batch, count_hpu_graphs, finalize_quantization, initialize_model
 
 from optimum.habana.utils import get_hpu_memory_stats
 
@@ -52,13 +52,12 @@ def setup_parser(parser):
             else:
                 # Flag passed with value -> pattern match and set accordingly
                 value_str = values.lower()
-                if value_str in ('true', '1', 'yes'):
+                if value_str in ("true", "1", "yes"):
                     setattr(namespace, self.dest, True)
-                elif value_str in ('false', '0', 'no'):
+                elif value_str in ("false", "0", "no"):
                     setattr(namespace, self.dest, False)
                 else:
                     raise ValueError(f"Invalid value for {option_string}: {values}")
-
 
     # Arguments management
     parser.add_argument("--device", "-d", type=str, choices=["hpu"], help="Device to run", default="hpu")
@@ -255,34 +254,34 @@ def setup_parser(parser):
 
     parser.add_argument(
         "--use_flash_attention",
-        nargs='?',
+        nargs="?",
         const=True,
         default=False,
         action=StoreTrueFalseAction,
-        help="Whether to enable Habana Flash Attention, provided that the model supports it."
+        help="Whether to enable Habana Flash Attention, provided that the model supports it.",
     )
     parser.add_argument(
         "--flash_attention_recompute",
-        nargs='?',
+        nargs="?",
         const=True,
         default=False,
         action=StoreTrueFalseAction,
-        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption."
+        help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
     )
     parser.add_argument(
         "--flash_attention_causal_mask",
-        nargs='?',
+        nargs="?",
         const=True,
         default=False,
         action=StoreTrueFalseAction,
-        help="Whether to enable Habana Flash Attention in causal mode on first token generation."
+        help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
     )
     parser.add_argument(
         "--flash_attention_fast_softmax",
-        nargs='?',
+        nargs="?",
         const=None,  # Default value handled post-parsing
         action=StoreTrueFalseAction,
-        help="Whether to enable Habana Flash Attention in fast softmax mode."
+        help="Whether to enable Habana Flash Attention in fast softmax mode.",
     )
     parser.add_argument(
         "--book_source",
@@ -323,7 +322,9 @@ def setup_parser(parser):
         raise RuntimeError("Setting both quant_config and gptq is unsupported. ")
 
     if args.quant_config == "" and args.disk_offload:
-        print("WARNING: --disk_offload was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag.")
+        print(
+            "WARNING: --disk_offload was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
+        )
     return args
 
 
@@ -337,12 +338,12 @@ def main():
         use_lazy_mode = False
 
     import habana_frameworks.torch.hpu as torch_hpu
+
     if args.dataset_name == "openorca":
         # Benchmark over the prompts below
         def get_ds(args):
             ds = pd.read_pickle(args.dataset)
             return ds
-
 
         def get_input(ds, batch_size):
             queries = []
@@ -351,15 +352,16 @@ def main():
                 end = start + batch_size
                 batch = tok_input[start:end]
                 input_ids = []
-                attention_mask=[]
+                attention_mask = []
                 for query in batch:
-                    input_ids.append(
-                        [0] * (args.max_input_tokens - len(query)) + query)
+                    input_ids.append([0] * (args.max_input_tokens - len(query)) + query)
                     attention_mask.append([0] * (args.max_input_tokens - len(query)) + [1] * len(query))
-                queries.append({
-                    'input_ids': torch.tensor(input_ids, dtype=torch.int32),
-                    'attention_mask': torch.tensor(attention_mask, dtype=torch.int32)
-                })
+                queries.append(
+                    {
+                        "input_ids": torch.tensor(input_ids, dtype=torch.int32),
+                        "attention_mask": torch.tensor(attention_mask, dtype=torch.int32),
+                    }
+                )
             return queries
 
         ds = get_ds(args)
@@ -390,7 +392,7 @@ def main():
             ).cpu()
             outputs = outputs.tolist()
             for i in range(len(outputs)):
-                outputs[i] = outputs[i][args.max_input_tokens:]
+                outputs[i] = outputs[i][args.max_input_tokens :]
             duration = time.perf_counter() - t0
             print(f"Total E2E time of this batch is {duration:.3f}s", flush=True)
             return outputs
@@ -443,7 +445,7 @@ def main():
                     generated = generate(sentence, None, args.reduce_recompile)
                     results.extend(generated)
                     print(f"Generatig batch {b}/{N}")
-                    b +=1
+                    b += 1
         else:
             repeated_prompt_len = cycle(dyn_prompt_lens)
             for i in range(args.n_iterations):
@@ -462,23 +464,21 @@ def main():
             output_dir = Path(args.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            #TODO dump in hex format
+            # TODO dump in hex format
             acc_file = []
             num_token = 0
             for i, idx in enumerate(ds.index):
                 pred = results[i]
                 eos_token_id = 2
                 try:
-                    ind_eos = pred.index(eos_token_id)+1
-                except:
+                    ind_eos = pred.index(eos_token_id) + 1
+                except:  # noqa
                     ind_eos = len(pred)
                 pred = pred[:ind_eos]
                 num_token += len(pred)
-                acc_file.append({
-                    "seq_id": idx,
-                    "qsl_idx": idx,
-                    "data": bytes(struct.pack('L' * len(pred), *pred)).hex().upper()
-                })
+                acc_file.append(
+                    {"seq_id": idx, "qsl_idx": idx, "data": bytes(struct.pack("L" * len(pred), *pred)).hex().upper()}
+                )
             with open(output_dir / "accuracy.json", "w") as outfile:
                 outfile.write(json.dumps(acc_file))
 

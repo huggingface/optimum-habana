@@ -1,5 +1,3 @@
-
-
 # coding=utf-8
 # Copyright 2018 Google T5 Authors and HuggingFace Inc. team.
 #
@@ -31,7 +29,6 @@ from transformers.testing_utils import (
     require_tokenizers,
     require_torch,
     slow,
-    torch_device,
 )
 from transformers.utils import cached_property, is_torch_fx_available
 

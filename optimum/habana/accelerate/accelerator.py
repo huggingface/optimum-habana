@@ -79,6 +79,7 @@ from .utils import (
     get_fp8_recipe,
 )
 
+
 logger = get_logger(__name__)
 
 
@@ -445,7 +446,11 @@ class GaudiAccelerator(Accelerator):
 
         is_dataloader_present = any(isinstance(obj, torch.utils.data.DataLoader) for obj in args)
         result = [
-            self._prepare_one(obj, first_pass=True) if isinstance(obj, torch.utils.data.DataLoader) else convert_model(obj) if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled  else obj
+            self._prepare_one(obj, first_pass=True)
+            if isinstance(obj, torch.utils.data.DataLoader)
+            else convert_model(obj)
+            if isinstance(obj, torch.nn.Module) and self.state.is_fp8_enabled
+            else obj
             for obj in args
         ]
 
@@ -636,7 +641,9 @@ class GaudiAccelerator(Accelerator):
 
             engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
             # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
-            if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(kwargs['model']):
+            if self.state.dynamo_plugin.backend == GaudiDynamoBackend.HPU_BACKEND and not is_compiled_module(
+                kwargs["model"]
+            ):
                 engine.compile()
             if optimizer is not None:
                 optimizer = DeepSpeedOptimizerWrapper(optimizer)

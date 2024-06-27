@@ -18,7 +18,6 @@ import tempfile
 import unittest
 
 from parameterized import parameterized
-
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -26,7 +25,7 @@ from transformers import (
     is_torch_available,
     set_seed,
 )
-from transformers.testing_utils import require_bitsandbytes, require_torch, require_torch_sdpa, slow, torch_device
+from transformers.testing_utils import require_bitsandbytes, require_torch, require_torch_sdpa, slow
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 

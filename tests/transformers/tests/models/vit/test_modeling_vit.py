@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2021 The HuggingFace Inc. team. All rights reserved.
 #
@@ -15,7 +14,6 @@
 # limitations under the License.
 """Testing suite for the PyTorch ViT model."""
 
-import inspect
 import unittest
 
 from transformers import ViTConfig
@@ -316,4 +314,3 @@ class ViTModelIntegrationTest(unittest.TestCase):
         # forward pass to make sure inference works in fp16
         with torch.no_grad():
             _ = model(pixel_values)
-

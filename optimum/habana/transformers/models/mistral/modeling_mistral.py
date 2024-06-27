@@ -19,12 +19,13 @@
 # limitations under the License.
 """PyTorch Mistral model."""
 
-import os
 import math
+import os
 from typing import List, Optional, Tuple, Union
 
 import habana_frameworks.torch.core as htcore
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
@@ -45,6 +46,7 @@ from optimum.habana.transformers.models.modeling_all_models import KVCache
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
 )
+
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -76,7 +78,8 @@ class ModuleFusedSDPA(torch.nn.Module):
         self._hpu_kernel_fsdpa = fusedSDPA
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
-        return  self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
+        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
+
 
 class Matmul(torch.nn.Module):
     def __init__(self):
@@ -190,14 +193,6 @@ class GaudiMistralAttention(MistralAttention):
         self.k_cache.allocate(inp_seq_len, dtype, device, cache_shape)
         self.v_cache.allocate(inp_seq_len, dtype, device, cache_shape)
 
-    def update_sincos_cache(self, seq_len):
-        # Call rotary emb forward() to update cos/sin cache when infering more than self.max_position_embeddings
-        # This helps in avoiding creation of these caches during actual model forward pass and
-        # reduce memory consumption and improve performance.
-        if seq_len > self.max_position_embeddings:
-            self.max_position_embeddings = seq_len
-            _, _ = self.rotary_emb(self.k_proj.weight, seq_len=seq_len)
-
     def reorder(self, tensor, beam_idx, dim_a, dim_b):
         updated = tensor.index_select(0, beam_idx)
         tensor.copy_(updated)
@@ -303,11 +298,12 @@ class GaudiMistralAttention(MistralAttention):
             past_key_value = None
 
         import habana_frameworks.torch.hpu as ht
-        if  FusedSDPA and use_flash_attention:
+
+        if FusedSDPA and use_flash_attention:
             if q_len == 1:
                 # next token
                 use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
-                with ht.sdp_kernel(enable_recompute=use_recompute):#False):
+                with ht.sdp_kernel(enable_recompute=use_recompute):  # False):
                     attn_output = self.fused_scaled_dot_product_attention(
                         query_states, key_states, value_states, attention_mask, 0.0, False, None
                     )
@@ -316,7 +312,9 @@ class GaudiMistralAttention(MistralAttention):
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = self.fused_scaled_dot_product_attention(query_states, key_states, value_states, None, 0.0, True, None)
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states, key_states, value_states, None, 0.0, True, None
+                        )
                 else:
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                         attn_output = self.fused_scaled_dot_product_attention(
@@ -717,7 +715,6 @@ class GaudiMistralForCausalLM(MistralForCausalLM):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
-
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape

@@ -646,12 +646,9 @@ class MultiCardCausalLanguageModelingLORAFSDPCompileExampleTester(
     TASK_NAME = "tatsu-lab/alpaca_fsdpcompile"
     DATASET_NAME = "tatsu-lab/alpaca"
 
+
 class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
-    ExampleTesterBase,
-    metaclass=ExampleTestMeta,
-    example_name="run_lora_clm",
-    multi_card=True,
-    fp8=True
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True, fp8=True
 ):
     TASK_NAME = "tatsu-lab/alpaca_fp8"
     DATASET_NAME = "tatsu-lab/alpaca"

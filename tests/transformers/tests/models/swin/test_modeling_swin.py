@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2022 The HuggingFace Inc. team. All rights reserved.
 #
@@ -16,7 +15,6 @@
 """Testing suite for the PyTorch Swin model."""
 
 import collections
-import inspect
 import unittest
 
 from transformers import SwinConfig
