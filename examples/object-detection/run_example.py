@@ -53,6 +53,12 @@ if __name__ == "__main__":
         help="Whether to use bf16 precision for object detection.",
     )
     parser.add_argument(
+        "--detect_threshold",
+        type=float,
+        default=0.9,
+        help="Detection threshold score (otherwise dismissed)",
+    )
+    parser.add_argument(
         "--print_result",
         action="store_true",
         help="Whether to print the detection results.",
@@ -97,10 +103,10 @@ if __name__ == "__main__":
             total_model_time = total_model_time + (model_end_time - model_start_time)
 
     if args.print_result:
-        # convert outputs (bounding boxes and class logits) to COCO API
-        # let's only keep detections with score > 0.9
         target_sizes = torch.tensor([image.size[::-1]])
-        results = processor.post_process_object_detection(outputs, target_sizes=target_sizes, threshold=0.9)[0]
+        results = processor.post_process_object_detection(
+            outputs, target_sizes=target_sizes, threshold=args.detect_threshold
+        )[0]
 
         for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
             box = [round(i, 2) for i in box.tolist()]
@@ -109,6 +115,12 @@ if __name__ == "__main__":
                 f"{round(score.item(), 3)} at location {box}"
             )
 
-print("n_iterations: " + str(args.n_iterations))
-print("Total latency (ms): " + str(total_model_time * 1000))
-print("Average latency (ms): " + str(total_model_time * 1000 / args.n_iterations))
+tot_stat = f"Total latency (ms): {str(total_model_time * 1000)} (for n_iterations={str(args.n_iterations)}) "
+avg_stat = f"Average latency (ms): {str(total_model_time * 1000 / args.n_iterations)} (per iteration) "
+separator = "-" * max(len(tot_stat), len(avg_stat))
+print()
+print("Stats:")
+print(separator)
+print(tot_stat)
+print(avg_stat)
+print(separator)

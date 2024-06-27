@@ -26,15 +26,17 @@ from transformers import AutoProcessor, DetrForObjectDetection
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
+from .test_examples import TIME_PERF_FACTOR
+
 
 adapt_transformers_to_gaudi()
 
 if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
-    LATENCY_DETR_BF16_GRAPH_BASELINE = 7.593865966796875
+    LATENCY_DETR_BF16_GRAPH_BASELINE = 7.0
 else:
     # Gaudi1 CI baselines
-    LATENCY_DETR_BF16_GRAPH_BASELINE = 15.25988267912151
+    LATENCY_DETR_BF16_GRAPH_BASELINE = 14.5
 
 
 class GaudiDETRTester(TestCase):
@@ -118,4 +120,4 @@ class GaudiDETRTester(TestCase):
                 total_model_time = total_model_time + (model_end_time - model_start_time)
 
         latency = total_model_time * 1000 / iterations  # in terms of ms
-        self.assertLessEqual(latency, 1.05 * LATENCY_DETR_BF16_GRAPH_BASELINE)
+        self.assertLessEqual(latency, TIME_PERF_FACTOR * LATENCY_DETR_BF16_GRAPH_BASELINE)
