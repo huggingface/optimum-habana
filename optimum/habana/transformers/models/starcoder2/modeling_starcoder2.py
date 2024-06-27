@@ -383,19 +383,33 @@ class GaudiStarcoder2Model(Starcoder2Model):
             position_ids = torch.arange(
                 past_seen_tokens, seq_length + past_seen_tokens, dtype=torch.long, device=inputs_embeds.device
             )
-            position_ids = position_ids.unsqueeze(0)
+            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+        else:
+            position_ids = position_ids.view(-1, seq_length).long()
         cache_position = None
 
+        if attention_mask is not None and self._attn_implementation == "flash_attention_2" and use_cache:
+            is_padding_right = attention_mask[:, -1].sum().item() != batch_size
+            if is_padding_right:
+                raise ValueError(
+                    "You are attempting to perform batched generation with padding_side='right'"
+                    " this may lead to unexpected behaviour for Flash Attention version of Starcoder2. Make sure to "
+                    " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
+                )
+            
         # HPU specific mask generation
         attention_mask = _gaudi_prepare_4d_causal_attention_mask(
             attention_mask,
             input_ids.shape if input_ids is not None else (batch_size, seq_length),
             inputs_embeds,
             past_seen_tokens,
+            sliding_window=self.config.sliding_window,
         )
+        
         # embed positions
         hidden_states = inputs_embeds
-
+        hidden_states = nn.functional.dropout(hidden_states, p=self.embedding_dropout, training=self.training)
+        
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -636,110 +650,6 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             outputs += (present_key_value,)
 
         return outputs
-
-
-def gaudi_starcoder2_model_forward(
-    
-    past_key_values_length = 0
-
-    if use_cache:
-        use_legacy_cache = not isinstance(past_key_values, Cache)
-        if use_legacy_cache:
-            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-        if token_idx is None:
-            past_key_values_length = past_key_values.get_usable_length(seq_length)
-
-    if position_ids is None:
-        device = input_ids.device if input_ids is not None else inputs_embeds.device
-        position_ids = torch.arange(
-            past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
-        )
-        position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-    else:
-        position_ids = position_ids.view(-1, seq_length).long()
-
-    if inputs_embeds is None:
-        inputs_embeds = self.embed_tokens(input_ids)
-
-    if attention_mask is not None and self._attn_implementation == "flash_attention_2" and use_cache:
-        is_padding_right = attention_mask[:, -1].sum().item() != batch_size
-        if is_padding_right:
-            raise ValueError(
-                "You are attempting to perform batched generation with padding_side='right'"
-                " this may lead to unexpected behaviour for Flash Attention version of Starcoder2. Make sure to "
-                " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
-            )
-
-    # 4d mask is passed through the layers
-    attention_mask = _gaudi_prepare_4d_causal_attention_mask(
-        attention_mask,
-        (batch_size, seq_length),
-        inputs_embeds,
-        past_key_values_length,
-        sliding_window=self.config.sliding_window,
-    )
-
-    hidden_states = inputs_embeds
-    hidden_states = nn.functional.dropout(hidden_states, p=self.embedding_dropout, training=self.training)
-
-    # decoder layers
-    all_hidden_states = () if output_hidden_states else None
-    all_self_attns = () if output_attentions else None
-    next_decoder_cache = None
-
-    for decoder_layer in self.layers:
-        if output_hidden_states:
-            all_hidden_states += (hidden_states,)
-
-        if self.gradient_checkpointing and self.training:
-            layer_outputs = self._gradient_checkpointing_func(
-                decoder_layer.__call__,
-                hidden_states,
-                attention_mask,
-                position_ids,
-                past_key_values,
-                output_attentions,
-                use_cache,
-                None,
-            )
-        else:
-            layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_value=past_key_values,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                token_idx=token_idx,
-            )
-
-        hidden_states = layer_outputs[0]
-
-        if use_cache:
-            next_decoder_cache = layer_outputs[2 if output_attentions else 1]
-
-        if output_attentions:
-            all_self_attns += (layer_outputs[1],)
-
-    hidden_states = self.norm(hidden_states)
-
-    # add hidden states from the last decoder layer
-    if output_hidden_states:
-        all_hidden_states += (hidden_states,)
-
-    next_cache = None
-    if use_cache:
-        next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
-
-    if not return_dict:
-        return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
-    return BaseModelOutputWithPast(
-        last_hidden_state=hidden_states,
-        past_key_values=next_cache,
-        hidden_states=all_hidden_states,
-        attentions=all_self_attns,
-    )
-
 
 class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
