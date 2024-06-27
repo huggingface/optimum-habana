@@ -105,50 +105,49 @@ class GaudiStarcoder2Model(Starcoder2Model):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
-    
-    output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-    output_hidden_states = (
-        output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-    )
-    use_cache = use_cache if use_cache is not None else self.config.use_cache
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
 
-    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-    self._attn_implementation = "eager"
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        self._attn_implementation = "eager"
 
-    # retrieve input_ids and inputs_embeds
-    if input_ids is not None and inputs_embeds is not None:
-        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
-    elif input_ids is not None:
-        batch_size, seq_length = input_ids.shape[:2]
-    elif inputs_embeds is not None:
-        batch_size, seq_length = inputs_embeds.shape[:2]
-    else:
-        raise ValueError("You have to specify either input_ids or inputs_embeds")
-
-    if self.gradient_checkpointing and self.training:
-        if use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-            )
-            use_cache = False 
-    
-    if inputs_embeds is None:
-        inputs_embeds = self.embed_tokens(input_ids)
-    
-    use_new_cache = False  # Ignoring new Cache path for HPU
-    past_seen_tokens = 0
-
-    if past_key_values is not None and use_cache:  # kept for BC (cache positions)
-        if reuse_cache:
-            past_seen_tokens = past_key_values[0][0][2]
+        # retrieve input_ids and inputs_embeds
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape[:2]
+        elif inputs_embeds is not None:
+            batch_size, seq_length = inputs_embeds.shape[:2]
         else:
-            if use_new_cache:
-                use_legacy_cache = not isinstance(past_key_values, Cache)
-                if use_legacy_cache:
-                    past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                past_seen_tokens = past_key_values.get_usable_length(seq_length)
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+        if self.gradient_checkpointing and self.training:
+            if use_cache:
+                logger.warning_once(
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                )
+                use_cache = False 
+    
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+    
+        use_new_cache = False  # Ignoring new Cache path for HPU
+        past_seen_tokens = 0
+
+        if past_key_values is not None and use_cache:  # kept for BC (cache positions)
+            if reuse_cache:
+                past_seen_tokens = past_key_values[0][0][2]
             else:
-                past_seen_tokens = past_key_values[0][0].shape[2]
+                if use_new_cache:
+                    use_legacy_cache = not isinstance(past_key_values, Cache)
+                    if use_legacy_cache:
+                        past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                    past_seen_tokens = past_key_values.get_usable_length(seq_length)
+                else:
+                    past_seen_tokens = past_key_values[0][0].shape[2]
 
         if position_ids is None:
             position_ids = torch.arange(
