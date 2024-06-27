@@ -576,7 +576,7 @@ class SentenceTransformerGaudiTrainer(Trainer):
         if self.args.use_hpu_graphs_for_training:
             import habana_frameworks.torch as ht
 
-            ht.hpu.ModuleCacher()(model=model, inplace=True)
+            ht.hpu.ModuleCacher()(model=model, allow_unused_input=True, inplace=True)
 
         return model
 

@@ -26,7 +26,7 @@ from transformers import is_torch_npu_available
 from sentence_transformers.model_card import SentenceTransformerModelCardData, generate_model_card
 from sentence_transformers.similarity_functions import SimilarityFunction
 
-#from . import __MODEL_HUB_ORGANIZATION__, __version__
+from sentence_transformers import __MODEL_HUB_ORGANIZATION__, __version__
 from sentence_transformers.evaluation import SentenceEvaluator
 from sentence_transformers.fit_mixin import FitMixin
 from sentence_transformers.models import Normalize, Pooling, Transformer
@@ -118,8 +118,6 @@ def st_gaudi_encode(
         #ht.hpu.wrap_in_hpu_graph(self, disable_tensor_cache=True)
         #self.is_hpu_graph_enabled = True
 
-    print(f"---------- XXX.YYYY  gaudi_encode ------ \n\n")
-
     self.eval()
     if show_progress_bar is None:
         show_progress_bar = (
@@ -208,8 +206,6 @@ def st_gaudi_encode(
                     )
         features = batch_to_device(features, device)
         features.update(extra_features)
-
-        #print(f"---------------- ST: encoder ----------- \n\n ")
 
         with torch.no_grad():
             out_features = self.forward(features)

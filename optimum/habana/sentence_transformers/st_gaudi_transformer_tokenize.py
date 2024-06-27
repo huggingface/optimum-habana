@@ -9,7 +9,6 @@ from transformers import AutoConfig, AutoModel, AutoTokenizer, MT5Config, T5Conf
 def st_gaudi_transformer_tokenize(self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]], padding: Union[str, bool] = True):
     """Tokenizes a text and maps tokens to token-ids"""
     
-    #print(f"----SSS.1-----  Gaudi Tokenize ------------ \n\n\n ")
     output = {}
     if isinstance(texts[0], str):
         to_tokenize = [texts]
@@ -38,12 +37,10 @@ def st_gaudi_transformer_tokenize(self, texts: Union[List[str], List[Dict], List
     output.update(
         self.tokenizer(
             *to_tokenize,
-            #padding=padding,
-            padding="max_length",
+            padding=True, 
             truncation="longest_first",
             return_tensors="pt",
-            max_length=256,
-            #max_length=self.max_seq_length,
+            max_length=self.max_seq_length,
         )
     )
     return output
