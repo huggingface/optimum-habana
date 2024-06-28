@@ -19,7 +19,7 @@ import unittest
 
 import pytest
 from parameterized import parameterized
-from transformers import LlamaConfig, is_torch_available
+from transformers import is_torch_available
 from transformers.testing_utils import (
     require_bitsandbytes,
     require_flash_attn,
@@ -31,6 +31,7 @@ from transformers.testing_utils import (
 )
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
+from optimum.habana.transformers.models.llama.configuration_llama import LlamaConfig
 from optimum.habana.utils import set_seed
 
 from ...generation.test_utils import GenerationTesterMixin
