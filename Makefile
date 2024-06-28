@@ -41,6 +41,11 @@ fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pytest tests/test_diffusers.py
 
+# Run unit and integration tests related to text feature extraction
+fast_tests_feature_extraction:
+	python -m pip install .[tests]
+	python -m pytest tests/test_feature_extraction.py
+
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
