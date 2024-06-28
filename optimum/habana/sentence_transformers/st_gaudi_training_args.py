@@ -31,12 +31,11 @@ from transformers.training_args import (
     _VALID_DICT_FIELDS,
     OptimizerNames,
     ParallelMode,
-    #TrainingArguments,
     _convert_str_dict,
     default_logdir,
 )
 
-from sentence_transformers.training_args import SentenceTransformerTrainingArguments as TrainingArguments
+from sentence_transformers.training_args import SentenceTransformerTrainingArguments
 
 
 from transformers.utils import (
@@ -83,9 +82,9 @@ SUPPORTED_DISTRIBUTION_STRATEGIES = [
 
 
 @dataclass
-class SentenceTransformerGaudiTrainingArguments(TrainingArguments):
+class SentenceTransformerGaudiTrainingArguments(SentenceTransformerTrainingArguments):
     """
-    GaudiTrainingArguments is built on top of the Tranformers' [TrainingArguments](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments)
+    SentenceTransformerGaudiTrainingArguments is built on top of the SentenceTranformers' [SentenceTranformersTrainingArguments](https://github.com/UKPLab/sentence-transformers/blob/master/sentence_transformers/training_args.py)
     to enable deployment on Habana's Gaudi.
 
     Args:
@@ -124,7 +123,6 @@ class SentenceTransformerGaudiTrainingArguments(TrainingArguments):
             Number of steps to be captured when enabling profiling.
     """
 
-    print(f"------------- SentenceTransformerGaudiTrainingArguments : init ------\n\n ")
     use_habana: Optional[bool] = field(
         default=False,
         metadata={"help": "Whether to use Habana's HPU for running the model."},
