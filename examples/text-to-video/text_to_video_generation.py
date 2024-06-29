@@ -25,6 +25,7 @@ from diffusers import DPMSolverMultistepScheduler
 from diffusers.utils.export_utils import export_to_video
 
 from optimum.habana.diffusers import GaudiTextToVideoSDPipeline
+from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import set_seed
 
 try:
@@ -136,16 +137,7 @@ def main():
     parser.add_argument(
         "--use_hpu_graphs", action="store_true", help="Use HPU graphs on HPU. This should lead to faster generations."
     )
-    parser.add_argument(
-        "--gaudi_config_name",
-        type=str,
-        default="Habana/stable-diffusion",
-        help=(
-            "Name or path of the Gaudi configuration. In particular, it enables to specify how to apply Habana Mixed"
-            " Precision."
-        ),
-    )
-    parser.add_argument("--bf16", action="store_true", help="Whether to perform generation in bf16 precision.")
+    parser.add_argument("--dtype", default="bf16", choices=["bf16", "fp32", "autocast_bf16"], help="Which runtime dtype to perform generation in.")
     args = parser.parse_args()
     # Setup logging
     logging.basicConfig(
@@ -163,21 +155,25 @@ def main():
         kwargs_call["height"] = args.height
         kwargs_call["num_frames"] = args.num_frames
 
+    gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
+    if args.dtype == "autocast_bf16":
+        gaudi_config_kwargs["use_torch_autocast"] = True
+
+    gaudi_config = GaudiConfig(**gaudi_config_kwargs)
+    logger.info(f"Gaudi Config: {gaudi_config}")
+
     kwargs = {
         "use_habana": args.use_habana,
         "use_hpu_graphs": args.use_hpu_graphs,
-        "gaudi_config": args.gaudi_config_name,
-        # "variant": "fp16",
+        "gaudi_config": gaudi_config,
     }
-
-    if args.bf16:
+    if args.dtype in ["bf16", "autocast_bf16"]:
         kwargs["torch_dtype"] = torch.bfloat16
 
     import habana_frameworks.torch.core as htcore
 
     # Generate images
     pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(args.model_name_or_path, **kwargs)
-    # pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
     set_seed(args.seed)
     outputs = pipeline(
         prompt=args.prompts,

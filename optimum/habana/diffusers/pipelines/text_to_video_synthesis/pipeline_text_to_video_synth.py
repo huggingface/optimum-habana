@@ -13,7 +13,6 @@
 # limitations under the License.
 # TODO: REMOVE ALL TYPE IGNORES
 
-import time  # TODO: REMOVE
 from dataclasses import dataclass
 from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -21,10 +20,10 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from diffusers.models import AutoencoderKL  # type: ignore[import]
-from diffusers.models import UNet3DConditionModel  # type: ignore[import]
-from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth import TextToVideoSDPipeline, tensor2vid
-from diffusers.schedulers import KarrasDiffusionSchedulers  # type: ignore[import]
+from diffusers.models import AutoencoderKL, UNet3DConditionModel
+from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth import (
+    TextToVideoSDPipeline, tensor2vid)
+from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.outputs import BaseOutput
 from diffusers.utils.torch_utils import randn_tensor
@@ -107,7 +106,9 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
         else:
             return super().enable_model_cpu_offload(*args, **kwargs)
 
-    def prepare_latents(self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
+        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
+    ):
         shape = (
             batch_size,
             num_channels_latents,
@@ -139,7 +140,6 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-
 
     # Copied from optimum.habana.diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.GaudiStableDiffusionPipeline._split_inputs_into_batches
     @classmethod
@@ -308,7 +308,6 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
             if num_batches < 3:
                 logger.warning("The first two iterations are slower so it is recommended to feed more batches.")
 
-            # TODO: Diagnose why device is still CPU
             device = self._execution_device
             # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
             # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -354,15 +353,13 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
             # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
             extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-            # # 7. Split into batches (HPU-specific step)
+            # 7. Split into batches (HPU-specific step)
             latents_batches, text_embeddings_batches, num_dummy_samples = self._split_inputs_into_batches(
                 batch_size,
                 latents,
                 prompt_embeds,
                 negative_prompt_embeds,
             )
-
-            # TODO:[DANIEL] Fix all below as well
 
             # 8. Denoising loop
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -396,15 +393,11 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
 
                     # reshape latents
                     bsz, channel, frames, width, height = latents_batch.shape
-                    latents_batch = latents_batch.permute(0, 2, 1, 3, 4).reshape(
-                        bsz * frames, channel, width, height
-                    )
+                    latents_batch = latents_batch.permute(0, 2, 1, 3, 4).reshape(bsz * frames, channel, width, height)
                     noise_pred = noise_pred.permute(0, 2, 1, 3, 4).reshape(bsz * frames, channel, width, height)
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents_batch = self.scheduler.step(
-                        noise_pred, t, latents_batch, **extra_step_kwargs
-                    ).prev_sample
+                    latents_batch = self.scheduler.step(noise_pred, t, latents_batch, **extra_step_kwargs).prev_sample
 
                     # reshape latents_batch back
                     latents_batch = (
@@ -415,9 +408,7 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
                         self.htcore.mark_step()
 
                     # call the callback, if provided
-                    if i == len(timesteps) - 1 or (
-                        (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                    ):
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         if callback is not None and i % callback_steps == 0:
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, t, latents_batch)
@@ -491,10 +482,6 @@ class GaudiTextToVideoSDPipeline(GaudiDiffusionPipeline, TextToVideoSDPipeline):
         cached = self.cache.get(h)
 
         if cached is None:
-            logger.info("Cache miss")
-            logger.info(f"Latent input shape: {latent_model_input.shape}")
-            logger.info(f"Timestep: {timestep}")
-            logger.info(f"Hidden state shape: {encoder_hidden_states.shape}")
             with self.ht.hpu.stream(self.hpu_stream):
                 graph = self.ht.hpu.HPUGraph()
                 graph.capture_begin()
