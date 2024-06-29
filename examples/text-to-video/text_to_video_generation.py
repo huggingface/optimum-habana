@@ -167,8 +167,10 @@ def main():
         "use_hpu_graphs": args.use_hpu_graphs,
         "gaudi_config": gaudi_config,
     }
-    if args.dtype in ["bf16", "autocast_bf16"]:
+    if args.dtype == "bf16":
         kwargs["torch_dtype"] = torch.bfloat16
+    elif args.dtype == "fp32":
+        kwargs["torch_dtype"] = torch.float32
 
     import habana_frameworks.torch.core as htcore
 
