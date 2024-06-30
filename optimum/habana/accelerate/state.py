@@ -48,10 +48,7 @@ class GaudiPartialState(PartialState):
             from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
 
             if int(os.environ.get("LOCAL_RANK", -1)) != -1 and not cpu:
-                world_size = os.environ.get("WORLD_SIZE", None)
-                local_rank = os.environ.get("LOCAL_RANK", None)
-                rank = os.environ.get("RANK", None)
-                world_size, rank, local_rank = initialize_distributed_hpu(world_size, rank, local_rank)
+                world_size, rank, local_rank = initialize_distributed_hpu()
                 self.backend = kwargs.pop("backend", "hccl")
 
                 if os.environ.get("ACCELERATE_USE_DEEPSPEED", "false") == "true":
