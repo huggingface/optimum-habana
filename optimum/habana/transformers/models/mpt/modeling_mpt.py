@@ -22,13 +22,24 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from transformers.models.mpt.modeling_mpt import MptForCausalLM, MptModel
+from transformers.models.mistral.modeling_mistral import apply_rotary_pos_emb
 from transformers.utils import logging
-
+from .configuration_mpt import MptConfig
 from ...modeling_attn_mask_utils import _gaudi_prepare_4d_causal_attention_mask
-
+from ..llama.modeling_llama import (
+    GaudiLlamaDynamicNTKScalingRotaryEmbedding,
+    GaudiLlamaLinearScalingRotaryEmbedding,
+    GaudiLlamaRotaryEmbedding,
+)
 
 logger = logging.get_logger(__name__)
 
+try:
+    from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
+    has_fused_rope = True
+except ImportError:
+    has_fused_rope = False
+    print("Not using HPU fused kernel for apply_rotary_pos_emb")
 
 def gaudi_mpt_attention_forward(
     self,
@@ -45,6 +56,37 @@ def gaudi_mpt_attention_forward(
     - optimize KV cache
     """
 
+    def init_rope():
+        """
+        Copied from: https://github.com/huggingface/transformers/blob/v4.38.2/src/transformers/models/llama/modeling_llama.py#L294
+        """
+        config = MptConfig()
+        if config.rope_scaling is None:
+            self.rotary_emb = GaudiLlamaRotaryEmbedding(
+                self.head_dim,
+                max_position_embeddings=self.max_seq_length,
+                base=config.rope_theta,
+            )
+        else:
+            scaling_type = config.rope_scaling["type"]
+            scaling_factor = config.rope_scaling["factor"]
+            if scaling_type == "linear":
+                self.rotary_emb = GaudiLlamaLinearScalingRotaryEmbedding(
+                    self.head_dim,
+                    max_position_embeddings=self.max_seq_length,
+                    scaling_factor=scaling_factor,
+                    base=config.rope_theta,
+                )
+            elif scaling_type == "dynamic":
+                self.rotary_emb = GaudiLlamaDynamicNTKScalingRotaryEmbedding(
+                    self.head_dim,
+                    max_position_embeddings=self.max_seq_length,
+                    scaling_factor=scaling_factor,
+                    base=config.rope_theta,
+                )
+            else:
+                raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
+
     batch_size, seq_length = hidden_states.shape[:2]
 
     mixed_qkv = self.Wqkv(hidden_states)
@@ -57,6 +99,7 @@ def gaudi_mpt_attention_forward(
         mixed_qkv[:, 2 * self.n_heads :, ...],
     )
 
+    kv_seq_len = key_states.shape[-2]
     if past_key_value is not None:
         if len(past_key_value) != 0:
             if token_idx is not None:
@@ -64,9 +107,11 @@ def gaudi_mpt_attention_forward(
                 past_key_value[1].index_copy_(2, token_idx - 1, value_states)
                 key_states = past_key_value[0]
                 value_states = past_key_value[1]
+                kv_seq_len = past_key_value[0].shape[-2]
             else:
                 key_states = torch.cat([past_key_value[0], key_states], dim=2)
                 value_states = torch.cat([past_key_value[1], value_states], dim=2)
+                kv_seq_len += past_key_value[0].shape[-2]
         past_key_value = (key_states, value_states)
     else:
         past_key_value = (key_states, value_states)
@@ -74,6 +119,10 @@ def gaudi_mpt_attention_forward(
     attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2)) * self.softmax_scale
 
     query_length = seq_length if past_key_value is None else seq_length + past_key_value[0].shape[2]
+    
+    init_rope()
+    cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+    query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, None) 
 
     if position_bias is not None:
         if len(position_bias.shape) != 3:
@@ -382,3 +431,23 @@ class GaudiMptForCausalLM(MptForCausalLM):
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
+
+def apply_customized_rope(q, k, cos, sin, position_ids):
+    if q.device.type == "hpu" and has_fused_rope:
+        # TODO: remove `.clone()` when SynapseAI v1.15 is released
+        if k.dtype == torch.bfloat16:
+            return FusedRoPE.apply(
+                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+            ), FusedRoPE.apply(
+                k,
+                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
+                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
+                position_ids,
+            )
+        return FusedRoPE.apply(
+            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+        ), FusedRoPE.apply(
+            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+        )
+    else:
+        return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
