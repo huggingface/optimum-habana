@@ -2,12 +2,6 @@
 The system trains BERT (or any other transformer model like RoBERTa, DistilBERT etc.) on the SNLI + MultiNLI (AllNLI) dataset
 with softmax loss function. At every 1000 training steps, the model is evaluated on the
 STS benchmark dataset
-
-Usage:
-python training_nli.py
-
-OR
-python training_nli.py pretrained_transformer_model_name
 """
 
 import logging

@@ -2,11 +2,6 @@
 This examples trains BERT (or any other transformer model like RoBERTa, DistilBERT etc.) for the STSbenchmark from scratch. It generates sentence embeddings
 that can be compared using cosine-similarity to measure the similarity.
 
-Usage:
-python training_nli.py
-
-OR
-python training_nli.py pretrained_transformer_model_name
 """
 
 import traceback
