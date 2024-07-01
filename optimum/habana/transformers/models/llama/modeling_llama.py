@@ -300,6 +300,9 @@ class GaudiLlamaAttention(LlamaAttention):
                 self.dim1 + 2 * self.dim2,
                 bias=config.attention_bias,
             )
+            self.q_proj = None
+            self.k_proj = None
+            self.v_proj = None
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
