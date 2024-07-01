@@ -28,6 +28,11 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
+try: 
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused sdpa kernel ")
+    FusedSDPA = None
 
 logger = logging.get_logger(__name__)
 
@@ -41,6 +46,8 @@ def gaudi_starcoder2_attention_forward(
     output_attentions: bool = False,
     use_cache: bool = False,
     token_idx: Optional[torch.Tensor] = None,
+    use_flash_attention: Optional[bool] = False,
+    flash_attention_recompute: Optional[bool] = False,
     **kwargs,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     """
@@ -48,6 +55,7 @@ def gaudi_starcoder2_attention_forward(
     The only differences are:
     - add new args token_idx
     - optimize KV cache
+    
     """
     if "padding_mask" in kwargs:
         warnings.warn(
@@ -99,7 +107,7 @@ def gaudi_starcoder2_attention_forward(
     value_states = repeat_kv(value_states, self.num_key_value_groups)
 
     attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * norm_factor
-
+    
     if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
         raise ValueError(
             f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
@@ -114,10 +122,35 @@ def gaudi_starcoder2_attention_forward(
 
         attn_weights = attn_weights + attention_mask
 
-    # upcast attention to fp32
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-    attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-    attn_output = torch.matmul(attn_weights, value_states)
+    query_length = q_len if past_key_value is None else q_len + past_key_value[0].shape[2]
+    # Taken from mpt PR 
+    if use_flash_attention and FusedSDPA:
+        import habana_frameworks.torch.hpu as ht
+
+        if query_length == 1:
+            # next token
+            with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                attn_output = FusedSDPA.apply(
+                    query_states, key_states, value_states, attention_mask, 0.0, False, None
+                )
+        else:
+            # first token
+            with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
+                if query_length > 8192:
+                    attn_output = self.gaudi_flash_attn_v1(
+                        query_states, key_states, value_states, attention_mask, 0.0, self.block_size
+                    )
+                    htcore.mark_step()
+                else:
+                    attn_output = FusedSDPA.apply(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                    )
+                    attn_weights = None
+    else:
+        
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+        attn_output = torch.matmul(attn_weights, value_states)
 
     if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
         raise ValueError(
@@ -151,6 +184,8 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         token_idx: Optional[torch.Tensor] = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -172,6 +207,8 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
             token_idx=token_idx,
+            use_flash_attention = use_flash_attention,
+            flash_attention_recompute= flash_attention_recompute,
         )
         hidden_states = residual + hidden_states
 
@@ -204,6 +241,8 @@ def gaudi_starcoder2_model_forward(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     token_idx: Optional[torch.Tensor] = None,
+    use_flash_attention: Optional[bool] = False,
+    flash_attention_recompute: Optional[bool] = False,
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     """
     Copied from Starcoder2Model.forward: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
@@ -297,6 +336,8 @@ def gaudi_starcoder2_model_forward(
                 output_attentions,
                 use_cache,
                 None,
+                use_flash_attention,
+                flash_attention_recompute
             )
         else:
             layer_outputs = decoder_layer(
@@ -307,6 +348,8 @@ def gaudi_starcoder2_model_forward(
                 output_attentions=output_attentions,
                 use_cache=use_cache,
                 token_idx=token_idx,
+                use_flash_attention = use_flash_attention,
+                flash_attention_recompute= flash_attention_recompute
             )
 
         hidden_states = layer_outputs[0]
