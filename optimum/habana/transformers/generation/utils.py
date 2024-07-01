@@ -840,9 +840,9 @@ class GaudiGenerationMixin(GenerationMixin):
             not generation_config.bucket_internal
             and generation_config.bucket_size > 0
             and (
-                self._get_generation_mode(generation_config, assistant_model) == GenerationMode.GREEDY_SEARCH
-                or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.BEAM_SEARCH
-                or self._get_generation_mode(generation_config, assistant_model) == GenerationMode.CONTRASTIVE_SEARCH
+                generation_config.get_generation_mode(assistant_model) == GenerationMode.GREEDY_SEARCH
+                or generation_config.get_generation_mode(assistant_model) == GenerationMode.BEAM_SEARCH
+                or generation_config.get_generation_mode(assistant_model) == GenerationMode.CONTRASTIVE_SEARCH
             )
         )
         model_kwargs["bucket_size"] = generation_config.bucket_size if generation_config.static_shapes else -1
@@ -1034,6 +1034,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 generation_mode == GenerationMode.GREEDY_SEARCH
                 or generation_mode == GenerationMode.SAMPLE
                 or generation_mode == GenerationMode.BEAM_SEARCH
+                or generation_mode == GenerationMode.CONTRASTIVE_SEARCH
             ), "generation_config.bucket_size > 0 supported only for greedy mode"
 
         if streamer is not None and (generation_config.num_beams > 1):
@@ -1609,16 +1610,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
         this_peer_finished = False
 
-        hb_profer = HabanaProfile(warmup=profiling_warmup_steps, active=profiling_steps)
+        hb_profer = HabanaProfile(
+            warmup=profiling_warmup_steps, active=profiling_steps, record_shapes=profiling_record_shapes
+        )
         hb_profer.start()
         bucket_size = model_kwargs.get("bucket_size", -1)
         bucket_internal = model_kwargs.get("bucket_internal", None)
         reduce_recompile = model_kwargs.get("reduce_recompile", False)
 
-        prompt_len = cur_len
         if not bucket_internal:
             if bucket_size >= 0:
-                inc = iter(incrementor(bucket_size, prompt_len))
+                inc = iter(incrementor(bucket_size, cur_len))
             if bucket_size > 0:
                 assert "position_ids" not in model_kwargs, "Untested path"
 
@@ -1629,6 +1631,8 @@ class GaudiGenerationMixin(GenerationMixin):
             cur_len = token_idx.item()
 
         time_to_first_token_done = False
+        model_kwargs["pad_done"] = False
+        model_kwargs["lazy_mode"] = lazy_mode
 
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
@@ -1640,8 +1644,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 input_ids, model_kwargs = self.update_model_kwargs_for_bucketing(
                     params, input_ids, model_kwargs, pad_token_id, bucket_size, reduce_recompile
                 )
-
-            model_kwargs["lazy_mode"] = lazy_mode
 
             # if the first step in the loop, encode all the prefix and obtain: (1) past_key_values;
             # (2) last_hidden_states; (3) logit_for_next_step; (4) update model kwargs for the next step
@@ -1725,6 +1727,11 @@ class GaudiGenerationMixin(GenerationMixin):
                     top_k_ids = torch.full(
                         (batch_size, top_k, input_ids.shape[-1]), pad_token_id, dtype=torch.int64
                     ).to(input_ids.device)
+                elif bucket_size > 0 and not bucket_internal:
+                    if input_ids.shape[-1] > top_k_ids.shape[-1]:  # needs expansion
+                        pad_amount = input_ids.shape[-1] - top_k_ids.shape[-1]
+                        top_k_ids = torch.nn.functional.pad(top_k_ids, (0, pad_amount), value=pad_token_id)
+
                 top_k_probs, top_k_prob_ids = torch.topk(next_probs, dim=-1, k=top_k)
                 top_k_ids[:, :, token_idx - 1] = top_k_prob_ids
             else:
@@ -1963,6 +1970,16 @@ class GaudiGenerationMixin(GenerationMixin):
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
 
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
+                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
+                # before starting the decode phase.
+                self._pad_past_key_values(model_kwargs)
+                model_kwargs["pad_done"] = True
+
             hb_profer.step()
 
             if hb_gen_time is not None:
@@ -1972,6 +1989,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+
+        if (
+            model_kwargs.get("use_hpu_graphs", False)
+            and model_kwargs.get("limit_hpu_graphs", False)
+            and not model_kwargs.get("reuse_cache", False)
+            and bucket_internal
+        ):
+            # Clear HPU graphs input tensors of the decode phase after the full generation while loop
+            self.clear_inputs()
+            # Delete past key value tensors
+            self._remove_past_key_values(model_kwargs)
 
         hb_profer.stop()
         if streamer is not None:
