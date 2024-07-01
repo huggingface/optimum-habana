@@ -22,6 +22,8 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
         "fp8": [
             ("llava-hf/llava-1.5-7b-hf", 1, 123.00953973789325),
             ("llava-hf/llava-1.5-13b-hf", 1, 82.81132373492122),
+            ("llava-hf/llava-v1.6-mistral-7b-hf", 1, 33.17984878151546),
+            ("llava-hf/llava-v1.6-vicuna-13b-hf", 1, 23.527610042925),
         ],
     }
 else:

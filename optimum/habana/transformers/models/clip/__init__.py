@@ -1,1 +1,9 @@
-from .modeling_clip import GaudiCLIPVisionEmbeddings
+from .modeling_clip import (
+    GaudiCLIPVisionEmbeddings,
+    GaudiCLIPAttention,
+    GaudiCLIPEncoderLayer,
+    GaudiCLIPEncoder,
+    GaudiCLIPVisionTransformer,
+    GaudiCLIPVisionModel,
+)
+

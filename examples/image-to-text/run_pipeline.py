@@ -91,6 +91,12 @@ def main():
         action="store_true",
         help="Whether to ignore eos, set False to disable it.",
     )
+    parser.add_argument(
+        "--use_flash_attention",
+        action="store_true",
+        help="Whether to enable Habana Flash Attention, provided that the model supports it.",
+    )
+
     args = parser.parse_args()
 
     # set args.quant_config with env variable if it is set
@@ -149,6 +155,7 @@ def main():
         "hpu_graphs": args.use_hpu_graphs,
         "max_new_tokens": args.max_new_tokens,
         "ignore_eos": args.ignore_eos,
+        "use_flash_attention": args.use_flash_attention,
     }
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
@@ -165,7 +172,6 @@ def main():
     # warm up
     for i in range(args.warmup):
         generator(images, prompt=args.prompt, batch_size=args.batch_size, generate_kwargs=generate_kwargs)
-
     torch.hpu.synchronize()
     if args.quant_config:
         habana_quantization_toolkit.finish_measurements(generator.model)

@@ -42,7 +42,7 @@ https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP
 Here is an example to measure the tensor quantization statistics on Llava-1.5-7b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-1.5-7b-hf \
+--model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
 --image_path "https://llava-vl.github.io/static/images/view.jpg" \
 --use_hpu_graphs \
 --bf16
@@ -51,7 +51,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
 Here is an example to quantize the model based on previous measurements for Llava-1.5-7b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-1.5-7b-hf \
+--model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
 --image_path "https://llava-vl.github.io/static/images/view.jpg" \
 --use_hpu_graphs \
 --bf16
