@@ -54,6 +54,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, LlavaNextCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L433
@@ -81,6 +82,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
                 token_idx=token_idx + self.image_offset,
+                use_flash_attention=use_flash_attention,
             )
 
             if inputs_embeds.shape[1] != 1 and pixel_values is not None:
@@ -386,6 +388,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                     "token_idx": token_idx,
                     "image_sizes": image_sizes,
                     "labels": labels,
+                    "use_flash_attention": use_flash_attention,
                 }
             )
 
