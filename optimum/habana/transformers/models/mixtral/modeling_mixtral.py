@@ -337,7 +337,7 @@ class GaudiMixtralAttention(MixtralAttention):
                     )
                     past_key_value = (past_key, past_value)
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                value_states = self.k_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+                value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
 
