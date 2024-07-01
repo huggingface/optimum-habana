@@ -123,8 +123,8 @@ def gaudi_starcoder2_attention_forward(
 
         attn_weights = attn_weights + attention_mask
 
-    query_length = q_len if past_key_value is None else q_len + past_key_value[0].shape[2]
-    # Taken from mpt PR 
+    query_length = q_len if past_key_value is None else q_len + past_key_value.key_cache[self.layer_idx].shape[2]
+    # Taken from mpt PR 1101
     if use_flash_attention and FusedSDPA:
         import habana_frameworks.torch.hpu as ht
 
