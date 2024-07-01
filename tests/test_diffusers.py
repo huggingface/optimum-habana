@@ -2216,16 +2216,13 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
 
 class GaudiDeterministicImageGenerationTester(TestCase):
     """
-    Test the deterministic_image_generation.py in stable-diffusion folder.
+    Test deterministic generation using text_to_image_generation.py.
     """
 
     @slow
     def test_deterministic_image_generation(self):
         path_to_script = (
-            Path(os.path.dirname(__file__)).parent
-            / "examples"
-            / "stable-diffusion"
-            / "deterministic_image_generation.py"
+            Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "text_to_image_generation.py"
         )
         install_requirements(path_to_script.parent / "requirements.txt")
 
@@ -2241,7 +2238,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
                 --use_hpu_graphs
                 --gaudi_config Habana/stable-diffusion
                 --bf16
-                --use_cpu_seed
+                --deterministic
                 """.split()
             test_args.append("--prompts")
             test_args.append("An image of a squirrel in Picasso style")

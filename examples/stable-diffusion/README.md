@@ -36,7 +36,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16
+    --bf16 \
+    --deterministic
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
@@ -57,7 +58,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16
+    --bf16 \
+    --deterministic
 ```
 
 ### Distributed inference with multiple HPUs
@@ -96,7 +98,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2
+    --gaudi_config Habana/stable-diffusion-2 \
+    --deterministic
 ```
 
 > There are two different checkpoints for Stable Diffusion 2:
@@ -123,7 +126,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2 \
-    --ldm3d
+    --ldm3d \
+    --deterministic
 ```
 Here is how to generate images and depth maps with two prompts on two HPUs:
 ```bash
@@ -164,7 +168,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16
+    --bf16 \ 
+    --deterministic
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
@@ -183,7 +188,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16
+    --bf16 \
+    --deterministic
 ```
 
 SDXL combines a second text encoder (OpenCLIP ViT-bigG/14) with the original text encoder to significantly
@@ -203,7 +209,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16
+    --bf16 \
+    --deterministic
 ```
 
 Here is how to generate SDXL images with two prompts on two HPUs:
@@ -247,7 +254,8 @@ python text_to_image_generation.py \
     --bf16 \
     --num_inference_steps 1 \
     --guidance_scale 0.0 \
-    --timestep_spacing trailing
+    --timestep_spacing trailing \
+    --deterministic
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
@@ -276,7 +284,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16
+    --bf16 \
+    --deterministic
 ```
 
 Here is how to generate images conditioned by canny edge model and with multiple prompts:
@@ -293,7 +302,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16
+    --bf16 \
+    --deterministic
 ```
 
 Here is how to generate images conditioned by canny edge model and with two prompts on two HPUs:
@@ -330,7 +340,8 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16
+    --bf16 \
+    --deterministic
 ```
 
 Here is how to generate images with conditioned by canny edge model using Stable Diffusion 2
@@ -348,7 +359,8 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/controlnet-2-1_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2
+    --gaudi_config Habana/stable-diffusion-2 \
+    --deterministic
 ```
 
 # Stable Video Diffusion Examples
@@ -394,19 +406,3 @@ python image_to_video_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --bf16
 ```
-
-# Deterministic Image Generation Example
-
-```bash
-python deterministic_image_generation.py \
-    --model_name_or_path runwayml/stable-diffusion-v1-5 \
-    --prompts "An image of a squirrel in Picasso style" \
-    --num_images_per_prompt 20 \
-    --batch_size 4 \
-    --image_save_dir /tmp/stable_diffusion_images \
-    --use_habana \
-    --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion \
-    --bf16
-```
-> Note: Users may wish to use CPU generator by passing `--use_cpu_seed` argument
