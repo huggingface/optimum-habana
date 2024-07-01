@@ -26,7 +26,6 @@ from diffusers.schedulers import DDIMScheduler, DDPMScheduler
 from diffusers.utils import BaseOutput
 from diffusers.utils.torch_utils import randn_tensor
 
-from optimum.habana.diffusers import GaudiDDIMScheduler
 from optimum.habana.diffusers.pipelines.pipeline_utils import GaudiDiffusionPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.utils import logging
@@ -60,13 +59,13 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
             A `UNet2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
-            [`DDPMScheduler`], or [`GaudiDDIMScheduler`].
+            [`DDPMScheduler`], or [`DDIMScheduler`].
     """
 
     def __init__(
         self,
         unet: UNet2DModel,
-        scheduler: Union[DDPMScheduler, GaudiDDIMScheduler],
+        scheduler: Union[DDPMScheduler, DDIMScheduler],
         use_habana: bool = True,
         use_hpu_graphs: bool = False,
         gaudi_config: Union[str, GaudiConfig] = None,
