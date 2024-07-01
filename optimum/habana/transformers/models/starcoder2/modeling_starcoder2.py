@@ -55,7 +55,8 @@ def gaudi_starcoder2_attention_forward(
     The only differences are:
     - add new args token_idx
     - optimize KV cache
-    
+    - add new args use_flash_attention
+    - add new arg flash_attention_recompute
     """
     if "padding_mask" in kwargs:
         warnings.warn(
