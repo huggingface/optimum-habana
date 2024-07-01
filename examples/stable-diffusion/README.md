@@ -58,8 +58,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16 \
-    --deterministic
+    --bf16
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
@@ -82,8 +81,7 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2 \
-    --deterministic
+    --gaudi_config Habana/stable-diffusion-2
 ```
 
 > There are two different checkpoints for Stable Diffusion 2:
@@ -110,8 +108,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2 \
-    --ldm3d \
-    --deterministic
+    --ldm3d
 ```
 
 > There are three different checkpoints for LDM3D:
@@ -135,8 +132,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16 \ 
-    --deterministic
+    --bf16
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
@@ -155,8 +151,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16 \
-    --deterministic
+    --bf16
 ```
 
 SDXL combines a second text encoder (OpenCLIP ViT-bigG/14) with the original text encoder to significantly
@@ -176,8 +171,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16 \
-    --deterministic
+    --bf16
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
@@ -202,8 +196,7 @@ python text_to_image_generation.py \
     --bf16 \
     --num_inference_steps 1 \
     --guidance_scale 0.0 \
-    --timestep_spacing trailing \
-    --deterministic
+    --timestep_spacing trailing
 ```
 
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
@@ -232,8 +225,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16 \
-    --deterministic
+    --bf16
 ```
 
 Here is how to generate images conditioned by canny edge model and with multiple prompts:
@@ -250,8 +242,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16 \
-    --deterministic
+    --bf16
 ```
 
 Here is how to generate images conditioned by open pose model:
@@ -269,8 +260,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
-    --bf16 \
-    --deterministic
+    --bf16
 ```
 
 Here is how to generate images with conditioned by canny edge model using Stable Diffusion 2
@@ -288,8 +278,7 @@ python text_to_image_generation.py \
     --image_save_dir /tmp/controlnet-2-1_images \
     --use_habana \
     --use_hpu_graphs \
-    --gaudi_config Habana/stable-diffusion-2 \
-    --deterministic
+    --gaudi_config Habana/stable-diffusion-2
 ```
 
 # Stable Video Diffusion Examples
