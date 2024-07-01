@@ -1702,7 +1702,10 @@ class GaudiGenerationMixin(GenerationMixin):
                         "for contrastive search."
                     )
                 elif (
-                    not isinstance(past_key_values[0], (tuple, torch.Tensor))
+                    (
+                        not isinstance(past_key_values[0], (tuple, torch.Tensor))
+                        and not isinstance(past_key_values[0], (list, torch.Tensor))
+                    )  # Added list type to support GaudiLlamaForCausalLM
                     or past_key_values[0][0].shape[0] != batch_size
                 ):
                     raise ValueError(
