@@ -1,5 +1,6 @@
 import argparse
 import logging
+import sys
 
 from diffusers import DDPMScheduler
 from transformers.utils import check_min_version
@@ -20,6 +21,14 @@ except ImportError:
 
 check_min_version("4.37.0")
 check_optimum_habana_min_version("1.10.4")
+
+# Setup logging
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger.setLevel(logging.INFO)
 
 
 def main():
