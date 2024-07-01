@@ -96,6 +96,40 @@
                 }
             }
         },
+        "mamamiya405/finred": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 8,
+                    "perplexity": 2.3665,
+                    "train_runtime": 294.5707,
+                    "train_samples_per_second": 148.093,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 2",
+                        "--evaluation_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--use_hpu_graphs_for_inference",
+                        "--lora_rank 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10",
+                        "--attn_softmax_bf16"
+                    ]
+                }
+            }
+	},
         "tatsu-lab/alpaca_fsdpcompile": {
             "num_train_epochs": 1,
             "eval_batch_size": 1,

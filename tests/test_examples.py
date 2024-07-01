@@ -719,6 +719,12 @@ class CausalLanguageModelingLORAExampleTester(
     TASK_NAME = "databricks/databricks-dolly-15k"
 
 
+class MultiCardCausalLanguageModelingLORAExampleTester2(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "mamamiya405/finred"
+
+
 class MultiCardCausalLanguageModelingLORAExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
 ):
