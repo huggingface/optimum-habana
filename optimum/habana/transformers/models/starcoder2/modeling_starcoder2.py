@@ -395,6 +395,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.Tensor] = None,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         """
         Inherits from Starcoder2ForCausalLM: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
@@ -419,6 +421,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             token_idx=token_idx,
+            use_flash_attention = use_flash_attention,
+            flash_attention_recompute = flash_attention_recompute,
         )
 
         hidden_states = outputs[0]
