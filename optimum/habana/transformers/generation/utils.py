@@ -2801,11 +2801,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             if self.generation_config.static_shapes:
-
-                next_tokens_old = next_tokens
                 beam_scores = next_token_scores.flatten()
-                static_beam_indices = (next_indices + torch.tensor([[batch_idx * num_beams] * next_indices.shape[1] for batch_idx in range(batch_size)], device=next_indices.device)).flatten()
-                static_beam_indices_other = next_indices.flatten() # TODO;.. give static_beam_indices_other a better name
+                static_beam_indices = (
+                    next_indices
+                    + torch.tensor(
+                        [[batch_idx * num_beams] * next_indices.shape[1] for batch_idx in range(batch_size)],
+                        device=next_indices.device,
+                    )
+                ).flatten()
+                static_beam_indices_other = (
+                    next_indices.flatten()
+                )  # TODO;.. give static_beam_indices_other a better name
 
                 beam_tokens = next_tokens.remainder(vocab_size).flatten()
 
