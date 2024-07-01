@@ -60,10 +60,6 @@ class GaudiPartialState(PartialState):
                     self.distributed_type = GaudiDistributedType.DEEPSPEED
                     import deepspeed
 
-                    if world_size > 1:
-                        os.environ["HLS_MODULE_ID"] = str(local_rank)
-                        os.environ["ID"] = str(rank)
-
                     deepspeed.init_distributed(dist_backend=self.backend, **kwargs)
                     logger.info("DeepSpeed is enabled.")
                     self._mixed_precision = "no"  # deepspeed handles mixed_precision using deepspeed_config
