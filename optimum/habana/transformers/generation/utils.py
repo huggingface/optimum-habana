@@ -2621,8 +2621,11 @@ class GaudiGenerationMixin(GenerationMixin):
             for step, (scores, indices, tokens) in enumerate(
                 zip(beam_trace_scores, beam_trace_indices, beam_trace_tokens)
             ):
+                print('finalize', step)
+                #import pdb; pdb.set_trace()
                 cur_beams = [[] for _ in range(bs)]
                 for idx, (s, i, t) in enumerate(zip(scores, indices, tokens)):
+                    print('finalize', step, idx, '....')
                     batch = idx // (num_beams * 2)
                     idx = idx % (num_beams * 2)
                     b_len = 1 + step
@@ -2631,7 +2634,21 @@ class GaudiGenerationMixin(GenerationMixin):
                     is_finished = b_tok == model_config.eos_token_id
                     if len(cur_beams[batch]) >= num_beams:
                         continue
-                    beam = (b_score, prev_beams[batch][i], b_tok, is_finished)
+                    try:
+                        #import pdb; pdb.set_trace()
+                        beam = (b_score, prev_beams[batch][i], b_tok, is_finished)
+                        print(beam, s, i, t)
+                    except:
+                        import pdb; pdb.set_trace()
+                        '''
+                         b_score
+-0.8397064208984375
+                         prev_beams[batch]
+[(-inf, None, None, False), (-inf, None, None, False), (-inf, None, None, False), (-inf, None, None, False), (-inf, None, None, False)]
+                        b_tok : 326
+                        is_finished: False
+                        '''
+                        print()
                     if not is_finished:
                         cur_beams[batch].append(beam)
                     if is_finished or (step + 1 == beam_trace_idx):
@@ -2681,7 +2698,10 @@ class GaudiGenerationMixin(GenerationMixin):
             initial_ids = input_ids[::num_beams, 0:cur_len]
 
         time_to_first_token_done = False
+        cnt = 0
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
+            cnt += 1
+            print('*'*50, cnt)
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -2801,37 +2821,145 @@ class GaudiGenerationMixin(GenerationMixin):
 
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             if self.generation_config.static_shapes:
-                beam_scores = next_token_scores.flatten()
-                static_beam_indices = next_indices.flatten()
 
-                beam_tokens = next_tokens.remainder(vocab_size).flatten()
+                next_tokens_old = next_tokens
+                    
+                import os
+                tryfix = int(os.environ.get('TRYFIX', '0')) == 1
+                if True:
+                    #import pdb; pdb.set_trace()
+                    beam_scores = next_token_scores.flatten()
+                    if tryfix:
+                        static_beam_indices = (next_indices + torch.tensor([[batch_idx * num_beams] * next_indices.shape[1] for batch_idx in range(batch_size)], device=next_indices.device)).flatten()
+                        static_beam_indices_other = next_indices.flatten()
+                    else:
+                        static_beam_indices = next_indices.flatten()
+                    beam_tokens = next_tokens.remainder(vocab_size).flatten()
 
-                beam_trace_scores.index_copy_(0, beam_trace_idx, beam_scores.unsqueeze(0))
-                beam_trace_indices.index_copy_(0, beam_trace_idx, static_beam_indices.unsqueeze(0))
-                beam_trace_tokens.index_copy_(0, beam_trace_idx, beam_tokens.unsqueeze(0))
-                beam_trace_idx.add_(1)
 
-                if self.generation_config.early_stopping:
-                    num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
+                    beam_trace_scores.index_copy_(0, beam_trace_idx, beam_scores.unsqueeze(0))
+                    beam_trace_indices.index_copy_(0, beam_trace_idx, static_beam_indices_other.unsqueeze(0))
+                    beam_trace_tokens.index_copy_(0, beam_trace_idx, beam_tokens.unsqueeze(0))
+                    beam_trace_idx.add_(1)
 
-                beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
-                beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
-                _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
-                offset = torch.arange(0, torch.numel(beam_scores), beam_scores.shape[-1]).unsqueeze(-1)
-                selected = (selected + offset).flatten()
-                beam_scores = beam_scores.flatten().index_select(0, selected)
-                beam_tokens = beam_tokens.index_select(0, selected)
-                static_beam_indices = static_beam_indices.index_select(0, selected)
+                    if self.generation_config.early_stopping:
+                        num_eos_tokens.add_(beam_tokens[0:num_beams].eq(self.config.eos_token_id).sum())
 
-                prev_beams = outputs.logits.shape[0] // batch_size
+                    beam_scores.add_(torch.where(beam_tokens.eq(self.config.eos_token_id), float("-inf"), 0.0))
+                    beam_scores = beam_scores.view(batch_size, -1).unsqueeze(0)
+                    _, selected = torch.topk(beam_scores, k=num_beams, dim=-1, largest=True, sorted=True)
+                    offset = torch.arange(0, torch.numel(beam_scores), beam_scores.shape[-1]).unsqueeze(-1)
+                    selected = (selected + offset).flatten()
+                    beam_scores = beam_scores.flatten().index_select(0, selected)
+                    beam_tokens = beam_tokens.index_select(0, selected)
+                    static_beam_indices = static_beam_indices.index_select(0, selected)
 
-                beam_offsets = torch.arange(0, 1, prev_beams, dtype=torch.int32)
-                beam_offsets = beam_offsets.to(device=outputs.logits.device)
-                static_beam_indices = (static_beam_indices.view(batch_size, -1) + beam_offsets.unsqueeze(-1)).flatten()
+                    prev_beams = outputs.logits.shape[0] // batch_size
 
-                next_tokens = beam_tokens.unsqueeze(-1)
-                beam_next_tokens = next_tokens
-                beam_idx = static_beam_indices
+                    beam_offsets = torch.arange(0, 1, prev_beams, dtype=torch.int32)
+                    beam_offsets = beam_offsets.to(device=outputs.logits.device)
+                    static_beam_indices = (static_beam_indices.view(batch_size, -1) + beam_offsets.unsqueeze(-1)).flatten()
+
+                    next_tokens = beam_tokens.unsqueeze(-1)
+                    beam_next_tokens = next_tokens
+                    beam_idx = static_beam_indices
+
+                    next_tokens_1 = next_tokens_old % vocab_size
+                    beam_outputs = beam_scorer.process(input_ids, next_token_scores,next_tokens_1, next_indices, pad_token_id=pad_token_id,eos_token_id=eos_token_id,beam_indices=beam_indices,decoder_prompt_len=prompt_len,)
+                    #beam_scores = beam_outputs["next_beam_scores"] # OK
+                    #beam_next_tokens = beam_outputs["next_beam_tokens"] # SAME, but shapes are diff.. 20x1 vs 20
+                    if not tryfix:
+                        beam_idx = beam_outputs["next_beam_indices"]   ## THIS IS THE ONLY INCORRECT BIT>>>>>
+                    #import pdb; pdb.set_trace()
+
+                    '''
+                    ([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       device='hpu:0')
+************************************************** 2
+tensor([2, 1, 3, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0],
+       device='hpu:0')
+************************************************** 3
+tensor([0, 1, 0, 1, 3, 1, 1, 3, 0, 4, 1, 1, 3, 0, 0, 0, 4, 2, 1, 0],
+       device='hpu:0')
+************************************************** 4
+
+                    '''
+
+                    #(beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens)
+
+                    print(beam_idx)
+
+                    
+                    '''
+
+                 beamscores   
+tensor([-3.0569, -3.1049, -3.4765, -3.6519, -4.1983, -0.8397, -2.9638, -2.9870,
+        -3.1867, -3.3194, -0.8483, -2.7700, -3.1434, -3.3380, -3.3500, -1.2737,
+        -2.2946, -2.3214, -3.0388, -3.3155], device='hpu:0')
+
+
+                     tensor([[  11],
+        [  13],
+        [ 198],
+        [ 290],
+        [ 284],
+        [ 326],
+        [9393],
+        [1912],
+        [7256],
+        [ 351],
+        [ 326],
+        [1912],
+        [9393],
+        [ 351],
+        [7256],
+        [1804],
+        [  30],
+        [4203],
+        [1701],
+        [  11]], device='hpu:0')
+       
+        tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       device='hpu:0')
+
+                    '''
+                    #import pdb; pdb.set_trace()
+                    #print()
+                else:
+
+                    beam_scores = next_token_scores.flatten()
+                    static_beam_indices = next_indices.flatten()
+
+                    beam_tokens = next_tokens.remainder(vocab_size).flatten()
+
+                    beam_trace_scores.index_copy_(0, beam_trace_idx, beam_scores.unsqueeze(0))
+                    beam_trace_indices.index_copy_(0, beam_trace_idx, static_beam_indices.unsqueeze(0))
+                    beam_trace_tokens.index_copy_(0, beam_trace_idx, beam_tokens.unsqueeze(0))
+                    beam_trace_idx.add_(1)
+
+                    next_tokens_1 = next_tokens_old % vocab_size
+                    beam_outputs = beam_scorer.process(input_ids, next_token_scores,next_tokens_1, next_indices, pad_token_id=pad_token_id,eos_token_id=eos_token_id,beam_indices=beam_indices,decoder_prompt_len=prompt_len,)
+                    beam_scores = beam_outputs["next_beam_scores"] # OK
+                    beam_next_tokens = beam_outputs["next_beam_tokens"] # SAME, but shapes are diff.. 20x1 vs 20
+                    beam_idx = beam_outputs["next_beam_indices"]
+
+
+                    #(beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens)
+
+                    print(beam_idx)
+                    '''
+                    tensor([-3.0569, -3.1049, -3.4765, -3.6519, -4.1983, -0.8397, -2.9638, -2.9870,
+        -3.1867, -3.3194, -0.8483, -2.7700, -3.1434, -3.3380, -3.3500, -1.2737,
+        -2.2946, -2.3214, -3.0388, -3.3155], device='hpu:0')
+
+
+tensor([  11,   13,  198,  290,  284,  326, 9393, 1912, 7256,  351,  326, 1912,
+        9393,  351, 7256, 1804,   30, 4203, 1701,   11], device='hpu:0')
+
+        
+tensor([ 0,  0,  0,  0,  0,  5,  5,  5,  5,  5, 10, 10, 10, 10, 10, 15, 15, 15,
+        15, 15], device='hpu:0')
+                    '''
             else:
                 next_tokens = next_tokens % vocab_size
                 # stateless
@@ -2902,29 +3030,93 @@ class GaudiGenerationMixin(GenerationMixin):
                 hb_gen_time.step()
         hb_profer.stop()
 
+        #import pdb ; pdb.set_trace()
+        '''
+        TRYFIX=0
+        beam_trace_indices  .. shape is 105x40.. (p+m)x40
+tensor([[0, 0, 0,  ..., 0, 0, 0],
+        [0, 1, 4,  ..., 2, 2, 1],
+        [2, 1, 1,  ..., 0, 0, 1],
+        ...,
+        [0, 0, 0,  ..., 0, 0, 0],
+        [0, 0, 0,  ..., 0, 0, 0],
+        [0, 0, 0,  ..., 0, 0, 0]], device='hpu:0')
+
+        beam_trace_indices[0]
+tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], device='hpu:0')
+(Pdb) beam_trace_indices[1]
+tensor([0, 1, 4, 1, 4, 2, 4, 2, 2, 3, 2, 3, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 4, 0,
+        2, 0, 0, 0, 0, 0, 0, 0, 2, 3, 0, 1, 2, 2, 2, 1], device='hpu:0')
+(Pdb) beam_trace_indices[2]
+tensor([2, 1, 1, 3, 1, 0, 0, 0, 2, 0, 3, 1, 1, 1, 0, 3, 1, 1, 0, 2, 1, 1, 2, 3,
+        2, 0, 3, 0, 1, 2, 3, 1, 0, 0, 2, 2, 0, 0, 0, 1], device='hpu:0')
+
+
+        TRYFIX=1:
+        (Pdb) beam_trace_indices
+tensor([[ 0,  0,  0,  ..., 15, 15, 15],
+        [ 0,  1,  4,  ..., 17, 17, 16],
+        [ 2,  1,  1,  ..., 15, 15, 16],
+        ...,
+        [ 0,  0,  0,  ...,  0,  0,  0],
+        [ 0,  0,  0,  ...,  0,  0,  0],
+        [ 0,  0,  0,  ...,  0,  0,  0]], device='hpu:0')
+(Pdb) beam_trace_indices[0]
+tensor([ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  5,  5,  5,  5,  5,  5,  5,  5,
+         5,  5, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 15, 15, 15, 15, 15, 15,
+        15, 15, 15, 15], device='hpu:0')
+(Pdb) beam_trace_indices[1]
+tensor([ 0,  1,  4,  1,  4,  2,  4,  2,  2,  3,  7,  8,  6,  5,  5,  5,  5,  6,
+         5,  5, 11, 10, 14, 10, 12, 10, 10, 10, 10, 10, 15, 15, 17, 18, 15, 16,
+        17, 17, 17, 16], device='hpu:0')
+(Pdb) beam_trace_indices[2]
+tensor([ 2,  1,  1,  3,  1,  0,  0,  0,  2,  0,  8,  6,  6,  6,  5,  8,  6,  6,
+         5,  7, 11, 11, 12, 13, 12, 10, 13, 10, 11, 12, 18, 16, 15, 15, 17, 17,
+        15, 15, 15, 16], device='hpu:0')
+
+        '''
+
+
+
         if self.generation_config.static_shapes:
-            beam_trace = (beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens)
-            from collections import UserDict
+            if True:  # NO ISSUES IN THIS SECTION
+                beam_trace = (beam_trace_idx, beam_trace_scores, beam_trace_indices, beam_trace_tokens)
+                from collections import UserDict
 
-            def map_tensors(obj, fn):
-                constructor = type(obj)
-                if isinstance(obj, tuple):
-                    return constructor(map_tensors(v, fn) for v in obj)
-                if isinstance(obj, list):
-                    return constructor([map_tensors(v, fn) for v in obj])
-                if isinstance(obj, dict) or isinstance(obj, UserDict):
-                    return constructor({k: map_tensors(v, fn) for k, v in obj.items()})
-                if isinstance(obj, torch.Tensor):
-                    return fn(obj)
-                return obj
+                def map_tensors(obj, fn):
+                    constructor = type(obj)
+                    if isinstance(obj, tuple):
+                        return constructor(map_tensors(v, fn) for v in obj)
+                    if isinstance(obj, list):
+                        return constructor([map_tensors(v, fn) for v in obj])
+                    if isinstance(obj, dict) or isinstance(obj, UserDict):
+                        return constructor({k: map_tensors(v, fn) for k, v in obj.items()})
+                    if isinstance(obj, torch.Tensor):
+                        return fn(obj)
+                    return obj
 
-            def move(obj, device):
-                return map_tensors(obj, lambda t: t.to(device))
+                def move(obj, device):
+                    return map_tensors(obj, lambda t: t.to(device))
 
-            sequence_outputs = {}
-            sequence_outputs["sequences"] = finalize_beams(
-                initial_ids.cpu(), move(beam_trace, "cpu"), self.config, self.generation_config.length_penalty
-            )
+                sequence_outputs = {}
+                sequence_outputs["sequences"] = finalize_beams(
+                    initial_ids.cpu(), move(beam_trace, "cpu"), self.config, self.generation_config.length_penalty
+                )
+                #import pdb; pdb.set_trace()
+                #print()
+            else:
+                sequence_outputs = beam_scorer.finalize(
+                     input_ids,
+                     beam_scores,
+                     next_tokens,
+                     beam_indices,
+                     pad_token_id=pad_token_id,
+                     eos_token_id=eos_token_id,
+                     max_length=stopping_criteria.max_length,
+                     beam_indices=beam_indices,
+                     decoder_prompt_len=1,
+                 )
         else:
             sequence_outputs = beam_scorer.finalize(
                 input_ids,
