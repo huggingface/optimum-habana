@@ -174,6 +174,13 @@ from .models import (
     gaudi_T5ForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
+    gaudi_mt5_layernorm_forward,
+    gaudi_MT5Attention_forward,
+    gaudi_MT5Block_forward,
+    gaudi_MT5ForConditionalGeneration_forward,
+    gaudi_MT5ForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_MT5LayerSelfAttention_forward,
+    gaudi_MT5Stack_forward,
     gaudi_unconstrained_rational_quadratic_spline,
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
     gaudi_vit_self_attention_forward,
@@ -389,6 +396,17 @@ def adapt_transformers_to_gaudi():
     )
     transformers.models.t5.modeling_t5.T5Attention.forward = gaudi_T5Attention_forward
     transformers.models.t5.modeling_t5.T5Block.forward = gaudi_T5Block_forward
+
+    # Optimization for mt5 on Gaudi
+    transformers.models.mt5.modeling_mt5.MT5LayerNorm.forward = gaudi_mt5_layernorm_forward
+    transformers.models.mt5.modeling_mt5.MT5Stack.forward = gaudi_MT5Stack_forward
+    transformers.models.mt5.modeling_mt5.MT5LayerSelfAttention.forward = gaudi_MT5LayerSelfAttention_forward
+    transformers.models.mt5.modeling_mt5.MT5ForConditionalGeneration.forward = gaudi_MT5ForConditionalGeneration_forward
+    transformers.models.mt5.modeling_mt5.MT5ForConditionalGeneration.prepare_inputs_for_generation = (
+        gaudi_MT5ForConditionalGeneration_prepare_inputs_for_generation
+    )
+    transformers.models.mt5.modeling_mt5.MT5Attention.forward = gaudi_MT5Attention_forward
+    transformers.models.mt5.modeling_mt5.MT5Block.forward = gaudi_MT5Block_forward
 
     # Optimization for mpt on Gaudi
     transformers.models.mpt.modeling_mpt.MptForCausalLM = GaudiMptForCausalLM
