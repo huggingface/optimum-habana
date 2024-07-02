@@ -96,7 +96,7 @@ from transformers.utils import (
 from optimum.utils import logging
 
 from ..accelerate import GaudiAccelerator
-from ..accelerate.utils import GaudiDistributedType
+from ..accelerate.utils import FP8ContextWrapper, GaudiDistributedType
 from ..utils import (
     HabanaProfile,
     get_hpu_memory_stats,
@@ -692,6 +692,10 @@ class GaudiTrainer(Trainer):
                 transformers.modeling_utils.checkpoint = lazy_mode_checkpointing
 
             self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
+
+            # Wrap `_gradient_checkpointing_func` in the model with `transformer_engine` `activation_checkpointing` context.
+            if self.accelerator.state.is_fp8_enabled:
+                FP8ContextWrapper.gradient_checkpointing_wrap(self.model)
         else:
             # Hack because `RegressionModel` in test_trainer.py doesn't have `gradient_checkpointing_disable`
             if hasattr(self.model, "gradient_checkpointing_disable"):
@@ -1518,6 +1522,11 @@ class GaudiTrainer(Trainer):
         else:
             ctx_manager = contextlib.nullcontext()
 
+        # Merge autocast context and `fp8_autocast` context if FP8 is enabled.
+        # Currently FP8 is enabled only for training.
+        if self.accelerator.state.is_fp8_enabled and self.model.training:
+            ctx_manager = FP8ContextWrapper(ctx_manager, self.accelerator.fp8_recipe_handler)
+
         return ctx_manager
 
     def training_step(self, model: torch.nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
@@ -1551,6 +1560,9 @@ class GaudiTrainer(Trainer):
             self.htcore.mark_step()
 
         if _is_peft_model(self.model) and self.model.peft_type == PeftType.ADALORA:
+            assert not (
+                self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing
+            ), "FP8 precision with gradient_checkpointing is currently not supported with PeftType.ADALORA"
             if self.is_deepspeed_enabled and not is_deepspeed_zero3_enabled():
                 self.accelerator.deepspeed_engine_wrapped.engine.backward(loss)
                 self.model.base_model.update_and_allocate(self.state.global_step)
@@ -1559,7 +1571,15 @@ class GaudiTrainer(Trainer):
                 self.accelerator.backward(loss)
                 self.model.base_model.update_and_allocate(self.state.global_step)
         else:
-            self.accelerator.backward(loss)
+            if self.accelerator.state.is_fp8_enabled and self.args.gradient_checkpointing:
+                # The precision used in backward pass should be same as the one used in forward pass.
+                # However when training with gradient_checkpointing and FP8 precision, recompute forward
+                # in backward does not automatically run with FP8 precision. In order to handle this,
+                # the backward is run in `fp8_autocast` context
+                with FP8ContextWrapper.create_fp8_context(self.accelerator.fp8_recipe_handler):
+                    self.accelerator.backward(loss)
+            else:
+                self.accelerator.backward(loss)
         return loss.detach() / self.args.gradient_accumulation_steps
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):

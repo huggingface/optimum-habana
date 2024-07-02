@@ -291,14 +291,6 @@ class GaudiTrainingArguments(TrainingArguments):
         metadata={"help": "Whether to use fp8 for training."},
     )
 
-    fp8_recipe_format: Optional[str] = field(
-        default="E5M2",
-        metadata={
-            "help": "Which fp8 format to use for fp8 training.",
-            "choices": ["E5M2", "E4M3", "HYBRID"],
-        },
-    )
-
     def __post_init__(self):
         if self.use_hpu_graphs:
             warnings.warn(
