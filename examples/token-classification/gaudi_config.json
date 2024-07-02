@@ -1,0 +1,22 @@
+{
+  "use_habana": true,
+  "use_hpu_graphs": true,
+  "use_lazy_mode": true,
+  "use_hpu_graphs_for_inference": false,
+  "use_hpu_graphs_for_training": true,
+  "disable_tensor_cache_hpu_graphs": false,
+  "max_hpu_graphs": null,
+  "distribution_strategy": "ddp",
+  "throughput_warmup_steps": 0,
+  "adjust_throughput": false,
+  "pipelining_fwd_bwd": true,
+  "non_blocking_data_copy": true,
+  "profiling_warmup_steps": 0,
+  "profiling_steps": 0,
+  "profiling_record_shapes": true,
+  "fp8": false,
+  "fp8_recipe_format": "E5M2",
+  "bf16": true,
+  "gradient_checkpointing": true,
+  "dataloader_num_workers": 4
+}
