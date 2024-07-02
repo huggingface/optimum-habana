@@ -10,29 +10,56 @@ import pytest
 from .test_examples import TIME_PERF_FACTOR
 
 
+prev_quant_model_name = None
+prev_quant_rank = 0
+
 if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 130.0472971205316),
-            ("gpt2-xl", 281.8734689674413),
-            ("EleutherAI/gpt-j-6b", 160.5823842101192),
-            ("EleutherAI/gpt-neox-20b", 50.67672679310354),
-            ("meta-llama/Llama-2-7b-hf", 141.25776956002076),
-            ("tiiuae/falcon-40b", 25.202450111088346),
-            ("bigcode/starcoder", 65.58632640700114),
-            ("Salesforce/codegen2-1B", 446.4029486883532),
-            ("mosaicml/mpt-30b", 36.06464336116623),
-            ("mistralai/Mistral-7B-v0.1", 130.2172236767782),
-            ("mistralai/Mixtral-8x7B-v0.1", 23.7931001677926),
-            ("microsoft/phi-2", 224.72307766211117),
+            ("bigscience/bloomz-7b1", 1, False, 130.0472971205316),
+            ("gpt2-xl", 1, False, 281.8734689674413),
+            ("EleutherAI/gpt-j-6b", 1, False, 160.5823842101192),
+            ("EleutherAI/gpt-neox-20b", 1, False, 50.67672679310354),
+            ("meta-llama/Llama-2-7b-hf", 1, True, 141.25776956002076),
+            ("tiiuae/falcon-40b", 1, True, 25.202450111088346),
+            ("bigcode/starcoder", 1, False, 65.58632640700114),
+            ("Salesforce/codegen2-1B", 1, False, 446.4029486883532),
+            ("mosaicml/mpt-30b", 1, False, 36.06464336116623),
+            ("mistralai/Mistral-7B-v0.1", 1, True, 130.2172236767782),
+            ("mistralai/Mixtral-8x7B-v0.1", 1, False, 23.7931001677926),
+            ("microsoft/phi-2", 1, False, 224.72307766211117),
+            ("meta-llama/Meta-Llama-3-8B", 1, True, 129),
+            ("meta-llama/Llama-2-7b-hf", 512, True, 12808),
+            ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
+            ("stabilityai/stablelm-2-12b", 1, False, 74.8904496532218),
+            ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
+            ("bigcode/starcoder2-3b", 1, False, 234.2649120507936),
+            ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
+            ("Qwen/Qwen1.5-7B", 4, False, 488.82855464593257),
+            ("google/gemma-7b", 1, False, 109.70751574382221),
         ],
         "fp8": [
-            ("tiiuae/falcon-180B", 52.85086442722326),
+            ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
+            ("meta-llama/Llama-2-7b-hf", 1, 1230, False, 128, 128, 13152.7),
+            ("meta-llama/Llama-2-7b-hf", 1, 163, False, 128, 2048, 4774.7),
+            ("meta-llama/Llama-2-7b-hf", 1, 94, False, 2048, 128, 1293.3),
+            ("meta-llama/Llama-2-7b-hf", 1, 81, False, 2048, 2048, 1942.9),
+            ("meta-llama/Llama-2-70b-hf", 4, 3042, False, 128, 128, 5374.6),
+            ("meta-llama/Llama-2-70b-hf", 4, 750, False, 128, 2048, 7422.4),
+            ("meta-llama/Llama-2-70b-hf", 4, 207, False, 2048, 128, 568.5),
+            ("meta-llama/Llama-2-70b-hf", 8, 172, False, 2048, 2048, 4656.2),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 896, True, 128, 128, 12397.11410288204),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 128, 2048, 5394.675714459493),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 120, True, 2048, 128, 919.8470890081497),
+            ("mistralai/Mistral-7B-Instruct-v0.2", 1, 44, True, 2048, 2048, 2471.950758729518),
+            ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 39.26845661768185),
+            ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
         "deepspeed": [
             ("bigscience/bloomz", 36.77314954096159),
             ("meta-llama/Llama-2-70b-hf", 64.10514998902435),
+            ("meta-llama/Meta-Llama-3-70B-Instruct", 64),
             ("facebook/opt-66b", 28.48069266504111),
         ],
         "torch_compile": [
@@ -46,18 +73,23 @@ else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 41.7555095197846),
-            ("gpt2-xl", 142.11481820425706),
+            ("bigscience/bloomz-7b1", 1, False, 41.7555095197846),
+            ("gpt2-xl", 1, False, 142.11481820425706),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 50.79545107991805),
-            ("meta-llama/Llama-2-7b-hf", 44.39616259946937),
-            ("tiiuae/falcon-7b", 44.82870145718665),
-            ("bigcode/starcoder", 15.945023767901013),
-            ("Salesforce/codegen2-1B", 155.32071248826423),
-            ("mosaicml/mpt-7b", 45.45168927038262),
-            ("mistralai/Mistral-7B-v0.1", 41.21906841459711),
-            ("microsoft/phi-2", 92.53083167241344),
+            ("EleutherAI/gpt-j-6b", 1, False, 50.79545107991805),
+            ("meta-llama/Llama-2-7b-hf", 1, True, 44.39616259946937),
+            ("tiiuae/falcon-7b", 1, True, 44.82870145718665),
+            ("bigcode/starcoder", 1, False, 15.945023767901013),
+            ("Salesforce/codegen2-1B", 1, False, 155.32071248826423),
+            ("mosaicml/mpt-7b", 1, False, 45.45168927038262),
+            ("mistralai/Mistral-7B-v0.1", 1, True, 41.21906841459711),
+            ("microsoft/phi-2", 1, False, 92.53083167241344),
+            ("google/gemma-7b", 1, False, 28.84284625836978),
+            ("stabilityai/stablelm-2-12b", 1, False, 26.80858949645992),
+            ("Qwen/Qwen1.5-7B", 1, False, 39.29068423087616),
+            ("adept/persimmon-8b-base", 1, False, 34.53559807384106),
+            ("bigcode/starcoder2-3b", 1, False, 82.09655684566117),
         ],
         "fp8": [],
         "deepspeed": [
@@ -72,10 +104,14 @@ def _test_text_generation(
     model_name: str,
     baseline: float,
     token: str,
+    batch_size: int = 1,
+    reuse_cache: bool = False,
     deepspeed: bool = False,
     world_size: int = 8,
     torch_compile: bool = False,
     fp8: bool = False,
+    max_input_tokens: int = 0,
+    max_output_tokens: int = 100,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
@@ -91,18 +127,22 @@ def _test_text_generation(
     command += [
         f"{path_to_example_dir / 'text-generation' / 'run_generation.py'}",
         f"--model_name_or_path {model_name}",
-        "--batch_size 1",
+        f"--batch_size {batch_size}",
         "--use_kv_cache",
-        "--max_new_tokens 100",
+        f"--max_new_tokens {max_output_tokens}",
     ]
 
+    if "llama" in model_name.lower():
+        command += ["--trim_logits", "--attn_softmax_bf16"]
+
+    if "falcon" in model_name.lower():
+        command += ["--use_flash_attention", "--flash_attention_causal_mask"]
+
+    if reuse_cache or torch_compile:
+        command += ["--reuse_cache"]
+
     if torch_compile:
-        command += [
-            "--attn_softmax_bf16",
-            "--reuse_cache",
-            "--trim_logits",
-            "--torch_compile",
-        ]
+        command += ["--torch_compile"]
         env_variables["PT_ENABLE_INT64_SUPPORT"] = "1"
         env_variables["PT_HPU_LAZY_MODE"] = "0"
     else:
@@ -114,30 +154,69 @@ def _test_text_generation(
         command.append("--bf16")
 
     if fp8:
+        if "--trim_logits" not in command:
+            command += ["--trim_logits"]
+        if "Llama-2" in model_name:
+            command.insert(-2, "--use_flash_attention")
+            command.insert(-2, "--flash_attention_recompute")
+            command.insert(-2, "--bucket_size 128")
+            command.insert(-2, "--bucket_internal")
+        elif "falcon-180b" in model_name.lower():
+            command.insert(-2, "--flash_attention_recompute")
+
+        global prev_quant_model_name
+        global prev_quant_rank
+        measure_command = None
+        # FP8 Measurement only needed
+        if (prev_quant_model_name is None) or (prev_quant_model_name != model_name) or (prev_quant_rank != world_size):
+            measure_command = [
+                x for x in command if not x.startswith("--max_new_tokens")
+            ]  # Remove max_new_tokens for measurement
+            measure_command = [
+                x if not x.startswith("--batch_size") else "--batch_size 1" for x in measure_command
+            ]  # Remove batch_size for measurement
+
+            prev_quant_model_name = model_name
+            prev_quant_rank = world_size
+
+        # FP8 text generation
         command += [
-            "--reuse_cache",
-            "--trim_logits",
+            f"--max_input_tokens {max_input_tokens}",
+            "--limit_hpu_graphs",
         ]
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
-        print(f"\n\nCommand to test: {' '.join(command)}\n")
-
         command.append(f"--token {token.value}")
 
         pattern = re.compile(r"([\"\'].+?[\"\'])|\s")
-        command = [x for y in command for x in re.split(pattern, y) if x]
 
         if fp8:
-            env_variables["QUANT_CONFIG"] = os.path.join(
-                path_to_example_dir, "text-generation/quantization_config/maxabs_measure_include_outputs.json"
-            )
-            subprocess.run(command, env=env_variables)
+            env_variables["TQDM_DISABLE"] = "1"
+            if measure_command is not None:
+                measure_command.append(f"--token {token.value}")
+                env_variables["QUANT_CONFIG"] = os.path.join(
+                    path_to_example_dir, "text-generation/quantization_config/maxabs_measure_include_outputs.json"
+                )
+                measure_command = [x for y in measure_command for x in re.split(pattern, y) if x]
+                print(f"\n\nMeasure Command to test: {' '.join(measure_command[:-2])}\n")
+                proc = subprocess.run(measure_command, env=env_variables)
+
+                # Ensure the run finished without any issue
+                # Use try-except to avoid logging the token if used
+                try:
+                    assert proc.returncode == 0
+                except AssertionError as e:
+                    if "'--token', 'hf_" in e.args[0]:
+                        e.args = (f"The following command failed:\n{' '.join(measure_command[:-2])}",)
+                    raise
+
             env_variables["QUANT_CONFIG"] = os.path.join(
                 path_to_example_dir, "text-generation/quantization_config/maxabs_quant.json"
             )
-            command.insert(-2, "--fp8")
 
+        command = [x for y in command for x in re.split(pattern, y) if x]
+        print(f"\n\nCommand to test: {' '.join(command[:-2])}\n")
         proc = subprocess.run(command, env=env_variables)
 
         # Ensure the run finished without any issue
@@ -156,16 +235,37 @@ def _test_text_generation(
         assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
 
 
-@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["bf16"])
-def test_text_generation_bf16(model_name: str, baseline: float, token: str):
-    _test_text_generation(model_name, baseline, token)
+@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16"])
+def test_text_generation_bf16(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
+    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache)
 
 
-@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["fp8"])
-def test_text_generation_fp8(model_name: str, baseline: float, token: str):
-    deepspeed = True if "falcon-180B" in model_name else False
-    world_size = 8 if "falcon-180B" in model_name else None
-    _test_text_generation(model_name, baseline, token, deepspeed=deepspeed, world_size=world_size, fp8=True)
+@pytest.mark.parametrize(
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["fp8"]
+)
+def test_text_generation_fp8(
+    model_name: str,
+    baseline: float,
+    world_size: int,
+    batch_size: int,
+    reuse_cache: bool,
+    input_len: int,
+    output_len: int,
+    token: str,
+):
+    deepspeed = True if world_size > 1 else False
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=deepspeed,
+        world_size=world_size,
+        fp8=True,
+        batch_size=batch_size,
+        reuse_cache=reuse_cache,
+        max_input_tokens=input_len,
+        max_output_tokens=output_len,
+    )
 
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["deepspeed"])

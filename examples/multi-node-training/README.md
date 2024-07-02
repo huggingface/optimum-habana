@@ -31,7 +31,7 @@ Check out the [documentation](https://huggingface.co/docs/optimum/habana/usage_g
 
 We provide two `Dockerfile` to easily start your multi-node runs:
 - A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/EFA/Dockerfile) for multi-node runs on AWS.
-- A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main.examples/multi-node-training/GaudiNIC/Dockerfile) for multi-node runs using GaudiNIC.
+- A `Dockerfile` provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/multi-node-training/GaudiNIC/Dockerfile) for multi-node runs using GaudiNIC.
 
 
 The Dockerfile is based on an image compatible with Ubuntu 22.04 but you can easily adapt it to another OS.
@@ -66,6 +66,28 @@ Finally, on each system, add all hosts (including itself) to `known_hosts`. The 
    ssh-keyscan -p 3022 -H 10.10.100.103 >> ~/.ssh/known_hosts
    ssh-keyscan -p 3022 -H 10.10.100.104 >> ~/.ssh/known_hosts
    ```
+
+You can check if ssh port is working with the following command:
+
+1. Run `lsof -i` inside docker of each node to make sure sshd is up. It should be something like below.
+```bash
+COMMAND PID USER   FD   TYPE   DEVICE SIZE/OFF NODE NAME
+sshd     35 root    3u  IPv4 23262521      0t0  TCP *:3022 (LISTEN)
+sshd     35 root    4u  IPv6 23262523      0t0  TCP *:3022 (LISTEN)
+```
+If no sshd, then do the following to restart sshd.
+```bash
+sed -i 's/#Port 22/Port 3022/g' /etc/ssh/sshd_config
+sed -i 's/#   Port 22/    Port 3022/g' /etc/ssh/ssh_config
+sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+service ssh restart
+```
+2. Test ssh with command `ssh -p 3022 IP-address` to each other to make sure the nodes can communicate with each other.
+
+3. Try gaudi_spawn.py training command with world_size 8 for few steps to make sure the command works for 8 ranks on each node.
+
+4. Start gaudi_spawn.py with multi-nodes run on main node docker. (the node with the 1st ip address in the hostfile)
+
 
 ## Hostfile
 

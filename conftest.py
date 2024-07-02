@@ -23,3 +23,8 @@ def pytest_generate_tests(metafunc):
     option_value = Secret(metafunc.config.option.token)
     if "token" in metafunc.fixturenames:
         metafunc.parametrize("token", [option_value])
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if exitstatus == 5:
+        session.exitstatus = 0

@@ -1,5 +1,6 @@
 import argparse
 import logging
+import math
 import time
 
 from pipeline import GaudiTextGenerationPipeline
@@ -33,19 +34,29 @@ def main():
             "Peace is the only way",
         ]
 
+    if args.batch_size > len(input_sentences):
+        times_to_extend = math.ceil(args.batch_size / len(input_sentences))
+        input_sentences = input_sentences * times_to_extend
+
+    input_sentences = input_sentences[: args.batch_size]
+
     logger.info("Initializing text-generation pipeline...")
     pipe = GaudiTextGenerationPipeline(args, logger)
 
-    logger.info("Running inference...")
-    for input_sentence in input_sentences:
-        print(f"Prompt: {input_sentence}")
+    duration = 0
+    for iteration in range(args.n_iterations):
+        logger.info(f"Running inference iteration {iteration+1}...")
         t0 = time.perf_counter()
-        output = pipe(input_sentence)
-        duration = time.perf_counter() - t0
-        throughput = args.max_new_tokens / duration
-        print(f"Generated Text: {repr(output)}")
-        print(f"Inference Duration: {duration} seconds")
-        print(f"Throughput: {throughput} tokens/second")
+        output = pipe(input_sentences)
+        duration += time.perf_counter() - t0
+
+        for i, (input_sentence, generated_text) in enumerate(zip(input_sentences, output)):
+            print(f"Prompt[{iteration+1}][{i+1}]: {input_sentence}")
+            print(f"Generated Text[{iteration+1}][{i+1}]: {repr(generated_text)}\n")
+
+    throughput = args.n_iterations * args.batch_size * args.max_new_tokens / duration
+    print(f"Inference Duration (for {args.n_iterations} iterations): {duration} seconds")
+    print(f"Throughput: {throughput} tokens/second")
 
 
 if __name__ == "__main__":

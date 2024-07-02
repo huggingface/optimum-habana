@@ -135,6 +135,146 @@
                     ]
                 }
             }
+        },
+        "trl-sft": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 1e-4,
+                    "train_batch_size": 4,
+                    "train_runtime": 206,
+                    "train_samples_per_second": 51.54,
+                    "extra_arguments": [
+                        "--bf16 True",
+                        "--gradient_accumulation_steps 2",
+                        "--evaluation_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--max_grad_norm  0.3",
+                        "--logging_steps 1",
+                        "--lora_r 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj",
+                        "--seq_length 1024",
+                        "--optim paged_adamw_32bit",
+                        "--weight_decay 0.05",
+                        "--report_to none",
+                        "--max_steps 100"
+                    ]
+                }
+            }
+        },
+        "trl-dpo": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 234.6471,
+                    "train_samples_per_second": 13.499,
+                    "extra_arguments": [
+                        "--logging_steps 1",
+                        "--lora_r 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj k_proj out_proj fc_in fc_out wte",
+                        "--max_length 1024",
+                        "--max_prompt_length 512",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--eval_steps 200",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--optimizer_type paged_adamw_32bit",
+                        "--beta 0.1",
+                        "--gradient_accumulation_steps 4",
+                        "--sanity_check"
+                    ]
+                }
+            }
+        },
+        "prompt-tuning": {
+            "num_train_epochs": 20,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 16.5,
+                    "train_samples_per_second": 63.161,
+                    "perplexity": 1.224,
+                    "extra_arguments": [
+                        "--num_virtual_tokens 8",
+                        "--max_seq_length 64",
+                        "--logging_steps 1",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--peft_type prompt_tuning",
+                        "--max_seq_length 64",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 1"
+                    ]
+                }
+            }
+        },
+        "prefix-tuning": {
+            "num_train_epochs": 20,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 16.5,
+                    "train_samples_per_second": 63.161,
+                    "perplexity": 1.224,
+                    "extra_arguments": [
+                        "--num_virtual_tokens 8",
+                        "--max_seq_length 64",
+                        "--logging_steps 1",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--peft_type prompt_tuning",
+                        "--max_seq_length 64",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 1"
+                    ]
+                }
+            }
+        },
+        "p-tuning": {
+            "num_train_epochs": 20,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 16.5,
+                    "train_samples_per_second": 63.161,
+                    "perplexity": 1.224,
+                    "extra_arguments": [
+                        "--num_virtual_tokens 8",
+                        "--max_seq_length 64",
+                        "--logging_steps 1",
+                        "--report_to none",
+                        "--max_steps 100",
+                        "--peft_type prompt_tuning",
+                        "--max_seq_length 64",
+                        "--lr_scheduler_type cosine",
+                        "--warmup_steps 0",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 1"
+                    ]
+                }
+            }
         }
     }
 }

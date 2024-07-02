@@ -1,24 +1,20 @@
-17c17
-< """ Fine-tuning a 🤗 Transformers CTC model for automatic speech recognition"""
----
-> """Fine-tuning a 🤗 Transformers CTC model for automatic speech recognition"""
-33,34d32
+32,33d31
 < from datasets import DatasetDict, load_dataset
 < 
-35a34
+34a33
 > from datasets import DatasetDict, load_dataset
-43,44d41
+42,43d40
 <     Trainer,
 <     TrainingArguments,
-46d42
+45d41
 <     set_seed,
-51a48,49
+50a47,48
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-53,54d50
+52,53d49
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-< check_min_version("4.40.0.dev0")
-56c52,57
+< check_min_version("4.42.0.dev0")
+55c51,56
 < require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 ---
 > try:
@@ -27,40 +23,40 @@
 > 
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-60a62,67
+59a61,66
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
-> check_min_version("4.38.0")
-> check_optimum_habana_min_version("1.10.0")
+> check_min_version("4.40.0")
+> check_optimum_habana_min_version("1.11.0")
 > 
 > require_version("datasets>=1.18.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 > 
-145c152
+144c151
 <             "help": "Whether a convolutional attention network should be stacked on top of the Wav2Vec2Bert Encoder. Can be very"
 ---
 >             "help": "Whether a convolutional attention network should be stacked on top of the Wav2Vec2Bert Encoder. Can be very "
-155d161
+154d160
 < 
-407c413
+400c406
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
 >     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
-450a457,462
+434a441,446
 >     gaudi_config = GaudiConfig.from_pretrained(
 >         training_args.gaudi_config_name,
 >         cache_dir=model_args.cache_dir,
->         use_auth_token=True if data_args.use_auth_token else None,
+>         token=data_args.token,
 >     )
 > 
-451a464
+435a448
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
-453,454c466,468
+437,438c450,452
 <         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
 <         f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
 ---
 >         f"Process rank: {training_args.local_rank}, device: {training_args.device}, "
 >         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, "
 >         + f"mixed-precision training: {mixed_precision}"
-467,473c481,486
+451,457c465,470
 <     if training_args.do_train:
 <         raw_datasets["train"] = load_dataset(
 <             data_args.dataset_name,
@@ -75,7 +71,7 @@
 >         split=data_args.train_split_name,
 >         token=data_args.token,
 >     )
-475,480c488,493
+459,464c472,477
 <         if data_args.audio_column_name not in raw_datasets["train"].column_names:
 <             raise ValueError(
 <                 f"--audio_column_name '{data_args.audio_column_name}' not found in dataset '{data_args.dataset_name}'."
@@ -89,7 +85,7 @@
 >             " Make sure to set `--audio_column_name` to the correct audio column - one of"
 >             f" {', '.join(raw_datasets['train'].column_names)}."
 >         )
-482,487c495,500
+466,471c479,484
 <         if data_args.text_column_name not in raw_datasets["train"].column_names:
 <             raise ValueError(
 <                 f"--text_column_name {data_args.text_column_name} not found in dataset '{data_args.dataset_name}'. "
@@ -103,32 +99,32 @@
 >             "Make sure to set `--text_column_name` to the correct text column - one of "
 >             f"{', '.join(raw_datasets['train'].column_names)}."
 >         )
-489,490c502,503
+473,474c486,487
 <         if data_args.max_train_samples is not None:
 <             raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
 ---
 >     if data_args.max_train_samples is not None:
 >         raw_datasets["train"] = raw_datasets["train"].select(range(data_args.max_train_samples))
-508c521
+492c505
 <         f'[{"".join(data_args.chars_to_ignore)}]' if data_args.chars_to_ignore is not None else None
 ---
 >         f'[{"".join(data_args.chars_to_ignore).replace(" ", "")}]' if data_args.chars_to_ignore is not None else None
-647a661,665
+631a645,649
 >         raise RuntimeError(
 >             f"The dataset sampling rate ({dataset_sampling_rate}) is different from the feature extractor one"
 >             f" ({feature_extractor.sampling_rate}).Data resampling should be done. The Datasets library does not"
 >             " support it on HPUs yet."
 >         )
-753c771,774
+741c759,762
 <         processor=processor, feature_extractor_input_name=feature_extractor_input_name
 ---
 >         processor=processor,
 >         feature_extractor_input_name=feature_extractor_input_name,
 >         pad_to_multiple_of=int(max_input_length),
 >         pad_to_multiple_of_labels=500,
-757c778
+745c766
 <     trainer = Trainer(
 ---
 >     trainer = GaudiTrainer(
-758a780
+746a768
 >         gaudi_config=gaudi_config,

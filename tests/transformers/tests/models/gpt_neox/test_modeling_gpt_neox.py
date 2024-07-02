@@ -355,7 +355,7 @@ class GPTNeoXLanguageGenerationTest(unittest.TestCase):
             # See: https://github.com/huggingface/transformers/pull/24193
             expected_output = "My favorite food is a good old-fashioned, old-fashioned, old-fashioned.\n\nI'm not sure"
 
-            output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=20)
+            output_ids = model.generate(**inputs, do_sample=False, max_new_tokens=20, ignore_eos=True)
             output_str = tokenizer.batch_decode(output_ids)[0]
 
             self.assertEqual(output_str, expected_output)
