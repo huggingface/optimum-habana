@@ -60,10 +60,26 @@ python text_to_image_generation.py \
     --bf16
 ```
 
+### Distributed inference with multiple HPUs
+Here is how to generate images with two prompts on two HPUs:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 2 text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16 \
+    --distributed
+```
+
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
-
 
 ### Stable Diffusion 2
 
@@ -108,6 +124,23 @@ python text_to_image_generation.py \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2 \
     --ldm3d
+```
+Here is how to generate images and depth maps with two prompts on two HPUs:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 2 text_to_image_generation.py \
+    --model_name_or_path "Intel/ldm3d-4c" \
+    --prompts "An image of a squirrel in Picasso style" "A shiny flying horse taking off" \
+    --num_images_per_prompt 10 \
+    --batch_size 2 \
+    --height 768 \
+    --width 768 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion-2 \
+    --ldm3d \
+    --distributed
 ```
 
 > There are three different checkpoints for LDM3D:
@@ -173,6 +206,25 @@ python text_to_image_generation.py \
     --bf16
 ```
 
+Here is how to generate SDXL images with two prompts on two HPUs:
+```bash
+python ../gaudi_spawn.py \
+    --world_size 2 text_to_image_generation.py \
+    --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --prompts "Sailing ship painting by Van Gogh" "A shiny flying horse taking off" \
+    --prompts_2 "Red tone" "Blue tone" \
+    --negative_prompts "Low quality" "Sketch" \
+    --negative_prompts_2 "Clouds" "Clouds" \
+    --num_images_per_prompt 20 \
+    --batch_size 8 \
+    --image_save_dir /tmp/stable_diffusion_xl_images \
+    --scheduler euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16 \
+    --distributed
+```
 > HPU graphs are recommended when generating images by batches to get the fastest possible generations.
 > The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
 > You can enable this mode with `--use_hpu_graphs`.
@@ -242,6 +294,25 @@ python text_to_image_generation.py \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
     --bf16
+```
+
+Here is how to generate images conditioned by canny edge model and with two prompts on two HPUs:
+```bash
+pip install -r requirements.txt
+python ../gaudi_spawn.py \
+    --world_size 2 text_to_image_generation.py \
+    --model_name_or_path runwayml/stable-diffusion-v1-5 \
+    --controlnet_model_name_or_path lllyasviel/sd-controlnet-canny \
+    --prompts "futuristic-looking woman" "a rusty robot" \
+    --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --num_images_per_prompt 10 \
+    --batch_size 4 \
+    --image_save_dir /tmp/controlnet_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16 \
+    --distributed
 ```
 
 Here is how to generate images conditioned by open pose model:
