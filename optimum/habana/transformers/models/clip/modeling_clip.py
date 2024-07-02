@@ -276,8 +276,6 @@ class GaudiCLIPEncoder(CLIPEncoder):
 
 class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
 
-    @add_start_docstrings_to_model_forward(CLIP_VISION_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=BaseModelOutputWithPooling, config_class=CLIPVisionConfig)
     def forward(
         self,
         pixel_values: Optional[torch.FloatTensor] = None,
@@ -322,8 +320,6 @@ class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
 
 class GaudiCLIPVisionModel(CLIPVisionModel):
 
-    @add_start_docstrings_to_model_forward(CLIP_VISION_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=BaseModelOutputWithPooling, config_class=CLIPVisionConfig)
     def forward(
         self,
         pixel_values: Optional[torch.FloatTensor] = None,
@@ -332,6 +328,7 @@ class GaudiCLIPVisionModel(CLIPVisionModel):
         return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
+
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         return self.vision_model(
