@@ -67,20 +67,17 @@ class Softmax(nn.Module):
         return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
 
 
-# https://github.com/huggingface/transformers/blob/v4.41.2/src/transformers/models/clip/modeling_clip.py
 
+# Below code is copied from# https://github.com/huggingface/transformers/blob/v4.41.2/src/transformers/models/clip/modeling_clip.py
 class GaudiCLIPAttention(CLIPAttention):
-    """Multi-headed attention from 'Attention Is All You Need' paper"""
 
     def __init__(self, config):
         super().__init__(config=config)
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
-        #print(config)
         self.first = True
         self.bmm1 = Matmul()
         self.bmm2 = Matmul()
         self.softmax = Softmax()
-        #print("init GaudiCLIPAttention ")
 
 
     def forward(
@@ -91,7 +88,6 @@ class GaudiCLIPAttention(CLIPAttention):
         output_attentions: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        """Input shape: Batch x Time x Channel"""
 
         bsz, tgt_len, embed_dim = hidden_states.size()
         attn_weights_reshaped = None
@@ -116,22 +112,13 @@ class GaudiCLIPAttention(CLIPAttention):
                         query_states, key_states, value_states, attention_mask, self.dropout, False, None,
                     )
             else:
-                '''
-                with ht.sdp_kernel(enable_recompute=True):
-                    attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, self.dropout, False, None
-                    )
-                '''
                 # first token
                 if causal_attention_mask is not None:
-                    #print("flash_attention_causal_mask True")
-                    # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=True):
                         attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, causal_attention_mask, self.dropout, False, None
                         )
                 else:
-                    #print("flash_attention_causal_mask False")
                     with ht.sdp_kernel(enable_recompute=True):
                         attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, attention_mask, self.dropout, False, None
@@ -167,7 +154,6 @@ class GaudiCLIPAttention(CLIPAttention):
             attn_weights = self.softmax(attn_weights, dim=-1)
 
             if output_attentions:
-                print(output_attentions)
                 # this operation is a bit akward, but it's required to
                 # make sure that attn_weights keeps its gradient.
                 # In order to do so, attn_weights have to reshaped
@@ -206,16 +192,6 @@ class GaudiCLIPEncoderLayer(CLIPEncoderLayer):
         output_attentions: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor]:
-        """
-        Args:
-            hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
-            attention_mask (`torch.FloatTensor`): attention mask of size
-                `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
-                `(config.encoder_attention_heads,)`.
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-        """
         residual = hidden_states
 
         hidden_states = self.layer_norm1(hidden_states)
@@ -252,35 +228,6 @@ class GaudiCLIPEncoder(CLIPEncoder):
         return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutput]:
-        r"""
-        Args:
-            inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
-                Optionally, instead of passing `input_ids` you can choose to directly pass an embedded representation.
-                This is useful if you want more control over how to convert `input_ids` indices into associated vectors
-                than the model's internal embedding lookup matrix.
-            attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
-
-                - 1 for tokens that are **not masked**,
-                - 0 for tokens that are **masked**.
-
-                [What are attention masks?](../glossary#attention-mask)
-            causal_attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Causal mask for the text model. Mask values selected in `[0, 1]`:
-
-                - 1 for tokens that are **not masked**,
-                - 0 for tokens that are **masked**.
-
-                [What are attention masks?](../glossary#attention-mask)
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-            output_hidden_states (`bool`, *optional*):
-                Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
-                for more detail.
-            return_dict (`bool`, *optional*):
-                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
-        """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -339,10 +286,6 @@ class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
         return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
-        r"""
-        Returns:
-
-        """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -389,30 +332,6 @@ class GaudiCLIPVisionModel(CLIPVisionModel):
         return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
-
-        #breakpoint()
-        r"""
-        Returns:
-
-        Examples:
-
-        ```python
-        >>> from PIL import Image
-        >>> import requests
-        >>> from transformers import AutoProcessor, CLIPVisionModel
-
-        >>> model = CLIPVisionModel.from_pretrained("openai/clip-vit-base-patch32")
-        >>> processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
-
-        >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-        >>> image = Image.open(requests.get(url, stream=True).raw)
-
-        >>> inputs = processor(images=image, return_tensors="pt")
-
-        >>> outputs = model(**inputs)
-        >>> last_hidden_state = outputs.last_hidden_state
-        >>> pooled_output = outputs.pooler_output  # pooled CLS states
-        ```"""
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         return self.vision_model(

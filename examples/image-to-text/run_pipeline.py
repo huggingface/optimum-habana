@@ -115,7 +115,7 @@ def main():
         args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
     elif args.prompt is None and model_type == "llava_next":
         args.prompt = "[INST] <image>\nWhat is shown in this image? [/INST]"
-        if args.model_name_or_path == "llava-hf/llava-v1.6-vicuna-13b-hf":
+        if "vicuna" in args.model_name_or_path:
             args.prompt = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nWhat is shown in this image? ASSISTANT:"
 
     image_paths = args.image_path

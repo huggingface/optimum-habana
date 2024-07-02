@@ -228,7 +228,6 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
         attention_mask=None,
         **kwargs,
     ):
-        #print(kwargs)
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/models/llava_next/modeling_llava_next.py#L635
         The only differences are:
