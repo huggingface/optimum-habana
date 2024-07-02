@@ -782,15 +782,15 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                 encoder_hidden_states = torch.cat([prompt_embeds_batch, prompt_image_emb], dim=1)
                 num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
-                for i in range(num_inference_steps):
-                    t = timesteps[0]  # it will help avoid graph recompilation
+                for i in range(len(timesteps)):
+                    timestep = timesteps[0]  # it will help avoid graph recompilation
                     timesteps = torch.roll(timesteps, shifts=-1, dims=0)
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
                         torch.cat([latents_batch] * 2) if self.do_classifier_free_guidance else latents_batch
                     )
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
 
                     added_cond_kwargs = {"text_embeds": add_text_embeddings_batch, "time_ids": add_time_ids_batch}
 
@@ -798,7 +798,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                     if guess_mode and self.do_classifier_free_guidance:
                         # Infer ControlNet only for the conditional batch.
                         control_model_input = latents_batch
-                        control_model_input = self.scheduler.scale_model_input(control_model_input, t)
+                        control_model_input = self.scheduler.scale_model_input(control_model_input, timestep)
                         controlnet_added_cond_kwargs = {
                             "text_embeds": add_text_embeddings_batch.chunk(2)[1],
                             "time_ids": add_time_ids_batch.chunk(2)[1],
@@ -817,7 +817,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
 
                     down_block_res_samples, mid_block_res_sample = self.controlnet_hpu(
                         control_model_input,
-                        t,
+                        timestep,
                         encoder_hidden_states=prompt_image_emb,
                         controlnet_cond=image,
                         conditioning_scale=cond_scale,
@@ -837,7 +837,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                     # predict the noise residual
                     noise_pred = self.unet_hpu(
                         latent_model_input,
-                        t,
+                        timestep,
                         encoder_hidden_states=encoder_hidden_states,
                         timestep_cond=timestep_cond,
                         cross_attention_kwargs=self.cross_attention_kwargs,
@@ -853,7 +853,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
 
                     # compute the previous noisy sample x_t -> x_t-1
                     latents_batch = self.scheduler.step(
-                        noise_pred, t, latents_batch, **extra_step_kwargs, return_dict=False
+                        noise_pred, timestep, latents_batch, **extra_step_kwargs, return_dict=False
                     )[0]
 
                     if not self.use_hpu_graphs:
@@ -863,7 +863,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
                             callback_kwargs[k] = locals()[k]
-                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                        callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
 
                         latents_batch = callback_outputs.pop("latents", latents_batch)
                         _prompt_embeds = callback_outputs.pop("prompt_embeds", None)
@@ -875,7 +875,7 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         if callback is not None and i % callback_steps == 0:
                             step_idx = i // getattr(self.scheduler, "order", 1)
-                            callback(step_idx, t, latents_batch)
+                            callback(step_idx, timestep, latents_batch)
 
                     hb_profiler.step()
 
