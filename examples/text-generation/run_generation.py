@@ -306,6 +306,11 @@ def setup_parser(parser):
         action="store_true",
         help="Whether to enable device map auto. In case no space left on cpu, weights will be offloaded to disk.",
     )
+    parser.add_argument(
+        "--run_partial_dataset",
+        action="store_true",
+        help="Run the inference with dataset for specified --n_iterations(default:5)",
+    )
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -813,6 +818,8 @@ def main():
                 f"Output: {tokenizer.batch_decode(outputs, skip_special_tokens=True)[:args.batch_size*args.num_return_sequences]}"
             )
             print(separator)
+            if args.run_partial_dataset and args.n_iterations == i+1:
+                break
         t_end = time.time()
 
         throughput = total_new_tokens_generated / duration
