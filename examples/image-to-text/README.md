@@ -34,12 +34,12 @@ Models that have been validated:
 
 ### Running with FP8
 
-Llava-1.5-7b and Llava-1.5-13b in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
+Llava-1.5-7b, Llava-1.5-13b, llava-v1.6-mistral-7b-hf and llava-v1.6-vicuna-13b-hf in FP8 are enabled using the Quantization Toolkit (HQT), which provides model measurement and quantization capabilities in PyTorch.
 
 More information on enabling fp8 in SynapseAI is available here:
 https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_FP8.html
 
-Here is an example to measure the tensor quantization statistics on Llava-1.5-7b:
+Here is an example to measure the tensor quantization statistics on llava-v1.6-mistral-7b-hf:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
 --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
@@ -48,7 +48,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
 --bf16
 ```
 
-Here is an example to quantize the model based on previous measurements for Llava-1.5-7b:
+Here is an example to quantize the model based on previous measurements for llava-v1.6-mistral-7b-hf:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
 --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
