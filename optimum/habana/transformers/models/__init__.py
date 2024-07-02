@@ -30,7 +30,14 @@ from .bloom import (
     gaudi_bloom_convert_to_standard_cache,
     gaudi_bloom_model_forward,
 )
-from .clip import GaudiCLIPVisionEmbeddings
+from .clip import (
+    GaudiCLIPVisionEmbeddings,
+    GaudiCLIPAttention,
+    GaudiCLIPEncoderLayer,
+    GaudiCLIPEncoder,
+    GaudiCLIPVisionTransformer,
+    GaudiCLIPVisionModel,
+)
 from .codegen import (
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
