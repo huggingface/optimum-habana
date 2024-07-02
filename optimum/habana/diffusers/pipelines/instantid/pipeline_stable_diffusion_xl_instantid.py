@@ -189,7 +189,11 @@ class GaudiStableDiffusionXLInstantIDPipeline(GaudiDiffusionPipeline, StableDiff
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def load_ip_adapter_instantid(self, model_ckpt, image_emb_dim=512, num_tokens=16, scale=0.5):     
+    def load_ip_adapter_instantid(self, model_ckpt, image_emb_dim=512, num_tokens=16, scale=0.5):
+        import os
+        if not os.path.exists(model_ckpt):
+            raise FileNotFoundError(f"ip adapter not found on path `{model_ckpt}`")
+
         self.set_image_proj_model(model_ckpt, image_emb_dim, num_tokens)
         self.set_ip_adapter(model_ckpt, num_tokens, scale)
         

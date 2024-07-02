@@ -463,6 +463,7 @@ python text_to_image_generation.py \
     --prompts "analog film photo of a woman. faded film, desaturated, 35mm photo, grainy, vignette, vintage, Kodachrome, Lomography, stained, highly detailed, found footage, masterpiece, best quality" \
     --negative_prompts "(lowres, low quality, worst quality:1.2), (text:1.2), watermark, painting, drawing, illustration, glitch, deformed, mutated, cross-eyed, ugly, disfigured (lowres, low quality, worst quality:1.2), (text:1.2), watermark, painting, drawing, illustration, glitch,deformed, mutated, cross-eyed, ugly, disfigured" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
+    --ip_adapter_path checkpoints/ip-adapter.bin \
     --control_preprocessing_type "none" \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \

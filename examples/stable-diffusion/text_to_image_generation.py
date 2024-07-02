@@ -257,6 +257,12 @@ def main():
         action="store_true",
         help="Enable deterministic generation using CPU Generator",
     )
+    parser.add_argument(
+        "--ip_adapter_path",
+        default=None,
+        type=str,
+        help="Path to ip adapter",
+    )
     args = parser.parse_args()
 
     # Set image resolution
@@ -353,7 +359,7 @@ def main():
         model_dtype = torch.bfloat16 if args.bf16 else None
         controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path, torch_dtype=model_dtype)
 
-        if sdxl:
+        if sdxl and args.ip_adapter_path:
             from optimum.habana.diffusers import GaudiStableDiffusionXLInstantIDPipeline
             from insightface.app import FaceAnalysis
 
@@ -361,16 +367,8 @@ def main():
             app = FaceAnalysis(name='antelopev2', root='./', providers=['CPUExecutionProvider'])
             app.prepare(ctx_id=0, det_size=(640, 640))
 
-            import os
-            face_adapter = f'./checkpoints/ip-adapter.bin'
-            if not os.path.exists(face_adapter):
-                from huggingface_hub import hf_hub_download
-                hf_hub_download(
-                    repo_id="InstantX/InstantID", filename="ip-adapter.bin", local_dir="./checkpoints"
-                )
-
             pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(args.model_name_or_path, controlnet=controlnet, **kwargs)
-            pipeline.load_ip_adapter_instantid(face_adapter)
+            pipeline.load_ip_adapter_instantid(args.ip_adapter_path)
 
             # prepare face emb
             face_info = app.get(cv2.cvtColor(np.array(control_image), cv2.COLOR_RGB2BGR))
@@ -393,7 +391,7 @@ def main():
                 ip_adapter_scale=0.8,
                 profiling_warmup_steps=args.profiling_warmup_steps,
                 profiling_steps=args.profiling_steps,
-                **res,
+                **kwargs_call,
             )
         else:
             from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
@@ -403,8 +401,8 @@ def main():
                 controlnet=controlnet,
                 **kwargs,
             )
-        if args.lora_id:
-            pipeline.load_lora_weights(args.lora_id)
+            if args.lora_id:
+                pipeline.load_lora_weights(args.lora_id)
 
         kwargs_call["image"] = control_image
 
