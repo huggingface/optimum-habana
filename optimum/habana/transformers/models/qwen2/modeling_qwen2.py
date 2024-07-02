@@ -17,6 +17,7 @@
 ###############################################################################
 
 import math
+import os
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -123,7 +124,15 @@ def gaudi_qwen2_repeat_kv(
 
     return query_states, key_states, value_states, attention_mask
 
+#  FusedScaledDotProductAttention
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
 
+    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
+        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
+    
 class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -181,6 +190,7 @@ class GaudiQwen2Attention(Qwen2Attention):
         self.matmul_av = Matmul()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
+        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
         self.block_size = 4096
@@ -255,6 +265,7 @@ class GaudiQwen2Attention(Qwen2Attention):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
@@ -266,6 +277,7 @@ class GaudiQwen2Attention(Qwen2Attention):
         - add new args reuse_cache
         - add new args use_flash_attention
         - add new arg flash_attention_recompute
+        - add new arg flash_attention_fast_softmax
         """
         if "padding_mask" in kwargs:
             warnings.warn(
@@ -310,7 +322,7 @@ class GaudiQwen2Attention(Qwen2Attention):
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.k_proj.weight.dtype, device=key_states.device
                     )
-                    past_key_value = (past_key, past_value)
+                    past_key_value = [past_key, past_value]
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
                 value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
                 if token_idx is None:
@@ -327,19 +339,24 @@ class GaudiQwen2Attention(Qwen2Attention):
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
+            
+            softmax_mode = "fast" if flash_attention_fast_softmax else "None"
 
             if q_len == 1:
                 # next token
-                with ht.sdp_kernel(enable_recompute=False):
-                    attn_output = FusedSDPA.apply(
-                        query_states, key_states, value_states, attention_mask, 0.0, False, None
+                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
+                with ht.sdp_kernel(enable_recompute=use_recompute):
+                    attn_output = self.fused_scaled_dot_product_attention(
+                        query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
                     )
             else:
                 # first token
                 if flash_attention_causal_mask:
                     # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
+                        attn_output = self.fused_scaled_dot_product_attention(
+                            query_states, key_states, value_states, None, 0.0, True, None, softmax_mode
+                        )
                 else:
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                         if q_len > 8192:
@@ -348,8 +365,8 @@ class GaudiQwen2Attention(Qwen2Attention):
                             )
                             htcore.mark_step()
                         else:
-                            attn_output = FusedSDPA.apply(
-                                query_states, key_states, value_states, attention_mask, 0.0, False, None
+                            attn_output = self.fused_scaled_dot_product_attention(
+                                query_states, key_states, value_states, attention_mask, 0.0, False, None, softmax_mode
                             )
 
         else:
@@ -390,7 +407,12 @@ class GaudiQwen2Attention(Qwen2Attention):
 
         if not output_attentions:
             attn_weights = None
-
+            
+        if not reuse_cache and token_idx is not None and cache_idx is not None and q_len == 1:
+            # Return only past key value shapes and not the tensors during decode phase (q len is 1)
+            # to avoid making past key values as persistent output tensors of HPU graphs.
+            past_key_value = (past_key_value[0].shape, past_key_value[1].shape)
+            
         return attn_output, attn_weights, past_key_value
 
     def attention_all_reduce(self, attn_output):
@@ -438,6 +460,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
@@ -456,6 +479,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
         )
         self.self_attn.attention_all_reduce(hidden_states)
@@ -488,6 +512,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
@@ -505,6 +530,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
             use_flash_attention,
             flash_attention_recompute,
             flash_attention_causal_mask,
+            flash_attention_fast_softmax,
             cache_idx=cache_idx,
         )
         return hidden_states, attn_weights, present_key_value
@@ -566,6 +592,7 @@ class GaudiQwen2Model(Qwen2Model):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
@@ -666,6 +693,8 @@ class GaudiQwen2Model(Qwen2Model):
                     use_flash_attention,
                     flash_attention_recompute,
                     flash_attention_causal_mask,
+                    flash_attention_fast_softmax,
+                    None,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -682,6 +711,7 @@ class GaudiQwen2Model(Qwen2Model):
                     use_flash_attention=use_flash_attention,
                     flash_attention_recompute=flash_attention_recompute,
                     flash_attention_causal_mask=flash_attention_causal_mask,
+                    flash_attention_fast_softmax=flash_attention_fast_softmax,
                     cache_idx=cache_idx,
                 )
 
@@ -744,6 +774,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         use_flash_attention: Optional[bool] = False,
         flash_attention_recompute: Optional[bool] = False,
         flash_attention_causal_mask: Optional[bool] = False,
+        flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
@@ -776,6 +807,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
             use_flash_attention=use_flash_attention,
             flash_attention_recompute=flash_attention_recompute,
             flash_attention_causal_mask=flash_attention_causal_mask,
+            flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
         )
@@ -821,6 +853,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
         past_length = 0
 
         reuse_cache = kwargs.get("reuse_cache")
+        bucket_internal = kwargs.get("bucket_internal")
         if past_key_values is not None:
             if token_idx is not None:
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
@@ -852,8 +885,9 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
                     and cache_length + input_ids.shape[1] > max_cache_length
                 ):
                     attention_mask = attention_mask[:, -max_cache_length:]
-        elif reuse_cache and token_idx is not None:
-            # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
+        elif (reuse_cache or bucket_internal) and token_idx is not None:
+            # KV cache is pre allocated with reuse cache or will be padded with bucket internal
+            # hence for the 1st token we can slice the inputs till token idx for the fwd pass.            
             input_ids = input_ids[:, :token_idx]
             attention_mask = attention_mask[:, :token_idx]
 
@@ -890,6 +924,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
                 "use_flash_attention": kwargs.get("use_flash_attention"),
                 "flash_attention_recompute": kwargs.get("flash_attention_recompute"),
                 "flash_attention_causal_mask": kwargs.get("flash_attention_causal_mask"),
+                "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax"),
                 "cache_idx": kwargs.get("cache_idx"),
                 "lazy_mode": kwargs.get("lazy_mode"),
             }
@@ -899,11 +934,15 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-        # TODO: remove `.clone()` when it is fixed in SynapseAI
-        return FusedRoPE.apply(
-            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        ), FusedRoPE.apply(
-            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
-        )
+       # TODO: remove `.clone()` when it is fixed in SynapseAI
+        if k.dtype == torch.bfloat16:
+            return FusedRoPE.apply(
+                q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+            ), FusedRoPE.apply(
+                k,
+                cos.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
+                sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
+                position_ids,
+            )
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
