@@ -238,6 +238,11 @@ def main():
         type=str,
         help="Path to lora id",
     )
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Enable deterministic generation or not",
+    )
     args = parser.parse_args()
 
     # Set image resolution
@@ -320,6 +325,12 @@ def main():
     if args.throughput_warmup_steps is not None:
         kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
 
+    if args.deterministic:
+        # Patch for the deterministic generation - Need to specify CPU as the torch generator
+        generator = [torch.Generator(device="cpu").manual_seed(i) for i in range(args.num_images_per_prompt)]
+    else:
+        generator = None
+
     # Generate images
     if args.control_image is not None:
         model_dtype = torch.bfloat16 if args.bf16 else None
@@ -347,6 +358,7 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
+            generator=generator,
             **kwargs_call,
         )
     elif sdxl:
@@ -373,6 +385,7 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
+            generator=generator,
             **kwargs_call,
         )
     else:
@@ -405,6 +418,7 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
+            generator=generator,
             **kwargs_call,
         )
 
