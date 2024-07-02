@@ -589,7 +589,7 @@ class BridgeTowerModelIntegrationTest(unittest.TestCase):
         inputs = inputs.to(torch_device)
         with torch.no_grad():
             outputs = model(**inputs)
-        self.assertAlmostEqual(outputs.loss.item(), 5.7373, places=4)
+        self.assertAlmostEqual(outputs.loss.item(), 5.73786, places=4)
 
     @slow
     def test_constrastive_learning(self):

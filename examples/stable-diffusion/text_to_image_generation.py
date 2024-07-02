@@ -38,7 +38,7 @@ except ImportError:
 
 
 # Will error if the minimal version of Optimum Habana is not installed. Remove at your own risks.
-check_optimum_habana_min_version("1.10.0")
+check_optimum_habana_min_version("1.11.0")
 
 
 logger = logging.getLogger(__name__)
@@ -203,24 +203,48 @@ def main():
         "--ldm3d", action="store_true", help="Use LDM3D to generate an image and a depth map from a given text prompt."
     )
     parser.add_argument(
-        "--profiling_warmup_steps",
-        default=0,
+        "--throughput_warmup_steps",
         type=int,
+        default=None,
+        help="Number of steps to ignore for throughput calculation.",
+    )
+    parser.add_argument(
+        "--profiling_warmup_steps",
+        type=int,
+        default=0,
         help="Number of steps to ignore for profiling.",
     )
     parser.add_argument(
         "--profiling_steps",
-        default=0,
         type=int,
+        default=0,
         help="Number of steps to capture for profiling.",
+    )
+    parser.add_argument(
+        "--unet_adapter_name_or_path",
+        default=None,
+        type=str,
+        help="Path to pre-trained model",
+    )
+    parser.add_argument(
+        "--text_encoder_adapter_name_or_path",
+        default=None,
+        type=str,
+        help="Path to pre-trained model",
+    )
+    parser.add_argument(
+        "--lora_id",
+        default=None,
+        type=str,
+        help="Path to lora id",
     )
     args = parser.parse_args()
 
     # Set image resolution
-    res = {}
+    kwargs_call = {}
     if args.width > 0 and args.height > 0:
-        res["width"] = args.width
-        res["height"] = args.height
+        kwargs_call["width"] = args.width
+        kwargs_call["height"] = args.height
 
     # ControlNet
     if args.control_image is not None:
@@ -293,6 +317,9 @@ def main():
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
 
+    if args.throughput_warmup_steps is not None:
+        kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
+
     # Generate images
     if args.control_image is not None:
         model_dtype = torch.bfloat16 if args.bf16 else None
@@ -302,6 +329,8 @@ def main():
             controlnet=controlnet,
             **kwargs,
         )
+        if args.lora_id:
+            pipeline.load_lora_weights(args.lora_id)
 
         # Set seed before running the model
         set_seed(args.seed)
@@ -318,13 +347,15 @@ def main():
             output_type=args.output_type,
             profiling_warmup_steps=args.profiling_warmup_steps,
             profiling_steps=args.profiling_steps,
-            **res,
+            **kwargs_call,
         )
     elif sdxl:
         pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
             args.model_name_or_path,
             **kwargs,
         )
+        if args.lora_id:
+            pipeline.load_lora_weights(args.lora_id)
 
         # Set seed before running the model
         set_seed(args.seed)
@@ -340,15 +371,27 @@ def main():
             negative_prompt_2=args.negative_prompts_2,
             eta=args.eta,
             output_type=args.output_type,
-            **res,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            **kwargs_call,
         )
     else:
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
             args.model_name_or_path,
             **kwargs,
         )
+        if args.unet_adapter_name_or_path is not None:
+            from peft import PeftModel
 
-        # Set seed before running the model
+            pipeline.unet = PeftModel.from_pretrained(pipeline.unet, args.unet_adapter_name_or_path)
+            pipeline.unet = pipeline.unet.merge_and_unload()
+        if args.text_encoder_adapter_name_or_path is not None:
+            from peft import PeftModel
+
+            pipeline.text_encoder = PeftModel.from_pretrained(
+                pipeline.text_encoder, args.text_encoder_adapter_name_or_path
+            )
+            pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
         set_seed(args.seed)
 
         outputs = pipeline(
@@ -360,7 +403,9 @@ def main():
             negative_prompt=args.negative_prompts,
             eta=args.eta,
             output_type=args.output_type,
-            **res,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+            **kwargs_call,
         )
 
     # Save the pipeline in the specified directory if not None

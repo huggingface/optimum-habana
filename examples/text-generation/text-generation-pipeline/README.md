@@ -28,12 +28,12 @@ export PYTHONPATH=${PYTHONPATH}:${OPTIMUM_HABANA_PATH}/examples/text-generation
 
 If you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 ```
 
 If you would like to use the pipeline with LangChain classes, you can install LangChain as follows:
 ```bash
-pip install langchain==0.0.191
+pip install langchain==0.1.16
 ```
 
 ## Usage
@@ -78,6 +78,7 @@ python run_pipeline.py \
 --use_kv_cache \
 --max_new_tokens 100 \
 --do_sample \
+--batch_size 2 \
 --prompt "Hello world" "How are you?"
 ```
 
@@ -101,6 +102,7 @@ python run_pipeline.py \
 --do_sample \
 --temperature 0.5 \
 --top_p 0.95 \
+--batch_size 2 \
 --prompt "Hello world" "How are you?"
 ```
 
@@ -114,6 +116,7 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --bf16 \
 --use_hpu_graphs \
 --use_kv_cache \
+--batch_size 4 \
 --prompt "Hello world" "How are you?" "Here is my prompt" "Once upon a time"
 ```
 
@@ -128,42 +131,23 @@ python ../../gaudi_spawn.py --use_deepspeed --world_size 8 run_pipeline.py \
 --do_sample \
 --temperature 0.5 \
 --top_p 0.95 \
+--batch_size 4 \
 --prompt "Hello world" "How are you?" "Here is my prompt" "Once upon a time"
 ```
 
 ### Usage with LangChain
 
-The text-generation pipeline can be fed as input to LangChain classes via the `use_with_langchain` constructor argument. Here is a sample snippet that shows how the pipeline class can be used with LangChain.
-```python
-from langchain.llms import HuggingFacePipeline
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-
-# Initialize the pipeline
-pipe = GaudiTextGenerationPipeline(args, logger, use_with_langchain=True)
-
-# Create LangChain object
-llm = HuggingFacePipeline(pipeline=pipe)
-
-template = """Use the following pieces of context to answer the question at the end. If you don't know the answer,\
-just say that you don't know, don't try to make up an answer.
-
-Context: Large Language Models (LLMs) are the latest models used in NLP.
-Their superior performance over smaller models has made them incredibly
-useful for developers building NLP enabled applications. These models
-can be accessed via Hugging Face's `transformers` library, via OpenAI
-using the `openai` library, and via Cohere using the `cohere` library.
-
-Question: {question}
-Answer: """
-
-prompt = PromptTemplate(input_variables=["question"], template=template)
-llm_chain = LLMChain(prompt=prompt, llm=llm)
-
-# Use LangChain object
-question = "Which libraries and model providers offer LLMs?"
-response = llm_chain(prompt.format(question=question))
-print(f"Question: {question}")
-print(f"Response: {response['text']}")
+To run a Q&A example with LangChain, use the script `run_pipeline_langchain.py`. It supports a similar syntax to `run_pipeline.py`. For example, you can use following command:
 ```
-> The pipeline class has been validated for LangChain version 0.0.191 and may not work with other versions of the package.
+python run_pipeline_langchain.py \
+    --model_name_or_path meta-llama/Llama-2-7b-hf \
+    --bf16 \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --batch_size 32 \
+    --max_new_tokens 1024 \
+    --do_sample \
+    --device=hpu
+```
+
+> The pipeline class has been validated for LangChain version 0.1.16 and may not work with other versions of the package.

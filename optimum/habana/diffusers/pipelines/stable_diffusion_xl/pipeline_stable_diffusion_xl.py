@@ -37,7 +37,7 @@ from transformers import (
 from optimum.utils import logging
 
 from ....transformers.gaudi_configuration import GaudiConfig
-from ....utils import speed_metrics
+from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
 
@@ -330,6 +330,8 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
             "negative_pooled_prompt_embeds",
             "negative_add_time_ids",
         ],
+        profiling_warmup_steps: Optional[int] = 0,
+        profiling_steps: Optional[int] = 0,
         **kwargs,
     ):
         r"""
@@ -462,6 +464,10 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            profiling_warmup_steps (`int`, *optional*):
+                Number of steps to ignore for profling.
+            profiling_steps (`int`, *optional*):
+                Number of steps to be captured when enabling profiling.
 
         Examples:
 
@@ -646,6 +652,13 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
             self._num_timesteps = len(timesteps)
 
+            hb_profiler = HabanaProfile(
+                warmup=profiling_warmup_steps,
+                active=profiling_steps,
+                record_shapes=False,
+            )
+            hb_profiler.start()
+
             # 8. Denoising
             num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
@@ -679,11 +692,17 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
             # 8.3 Denoising loop
             throughput_warmup_steps = kwargs.get("throughput_warmup_steps", 3)
+            use_warmup_inference_steps = (
+                num_batches < throughput_warmup_steps and num_inference_steps > throughput_warmup_steps
+            )
+
             for j in self.progress_bar(range(num_batches)):
                 # The throughput is calculated from the 3rd iteration
                 # because compilation occurs in the first two iterations
                 if j == throughput_warmup_steps:
                     t1 = time.time()
+                if use_warmup_inference_steps:
+                    t0_inf = time.time()
 
                 latents_batch = latents_batches[0]
                 latents_batches = torch.roll(latents_batches, shifts=-1, dims=0)
@@ -695,6 +714,10 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 add_time_ids_batches = torch.roll(add_time_ids_batches, shifts=-1, dims=0)
 
                 for i in range(num_inference_steps):
+                    if use_warmup_inference_steps and i == throughput_warmup_steps:
+                        t1_inf = time.time()
+                        t1 += t1_inf - t0_inf
+
                     if self.interrupt:
                         continue
                     timestep = timesteps[0]
@@ -764,6 +787,13 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, timestep, latents)
 
+                    hb_profiler.step()
+
+                if use_warmup_inference_steps:
+                    t1 = warmup_inference_steps_time_adjustment(
+                        t1, t1_inf, num_inference_steps, throughput_warmup_steps
+                    )
+
                 if not output_type == "latent":
                     # Post-processing
                     # To resolve the dtype mismatch issue
@@ -780,12 +810,14 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
                 if not self.use_hpu_graphs:
                     self.htcore.mark_step()
 
+            hb_profiler.stop()
+
             speed_metrics_prefix = "generation"
             speed_measures = speed_metrics(
                 split=speed_metrics_prefix,
                 start_time=t0,
                 num_samples=num_batches * batch_size
-                if t1 == t0
+                if t1 == t0 or use_warmup_inference_steps
                 else (num_batches - throughput_warmup_steps) * batch_size,
                 num_steps=num_batches,
                 start_time_after_warmup=t1,
@@ -808,10 +840,18 @@ class GaudiStableDiffusionXLPipeline(GaudiDiffusionPipeline, StableDiffusionXLPi
 
                 image = self.image_processor.postprocess(image, output_type=output_type)
 
-                if output_type == "pil":
+                if output_type == "pil" and isinstance(image, list):
                     outputs["images"] += image
+                elif output_type in ["np", "numpy"] and isinstance(image, np.ndarray):
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = np.concatenate((outputs["images"], image), axis=0)
                 else:
-                    outputs["images"] += [*image]
+                    if len(outputs["images"]) == 0:
+                        outputs["images"] = image
+                    else:
+                        outputs["images"] = torch.cat((outputs["images"], image), 0)
 
             # Offload all models
             self.maybe_free_model_hooks()

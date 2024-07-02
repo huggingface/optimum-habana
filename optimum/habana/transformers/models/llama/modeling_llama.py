@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
+from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
@@ -72,7 +73,88 @@ def gaudi_llama_rmsnorm_forward(self, hidden_states):
         return self.weight * hidden_states.to(input_dtype)
 
 
+class GaudiLlamaRotaryEmbedding(torch.nn.Module):
+    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
+        super().__init__()
+
+        self.scaling_factor = scaling_factor
+        self.dim = dim
+        self.max_position_embeddings = max_position_embeddings
+        self.base = base
+        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+        # Build here to make `torch.jit.trace` work.
+        self._set_cos_sin_cache(
+            seq_len=max_position_embeddings, device=self.inv_freq.device, dtype=torch.get_default_dtype()
+        )
+
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
+
+    def forward(self, x, seq_len=None):
+        # x: [bs, num_attention_heads, seq_len, head_size]
+        if seq_len > self.max_seq_len_cached:
+            self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
+
+        return (
+            self._cos_cached[:seq_len].to(dtype=x.dtype),
+            self._sin_cached[:seq_len].to(dtype=x.dtype),
+        )
+
+
+class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+        t = t / self.scaling_factor
+
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
+
+
+class GaudiLlamaDynamicNTKScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+
+        if seq_len > self.max_position_embeddings:
+            base = self.base * (
+                (self.scaling_factor * seq_len / self.max_position_embeddings) - (self.scaling_factor - 1)
+            ) ** (self.dim / (self.dim - 2))
+            inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+            self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
+
+
 class GaudiLlamaMLP(LlamaMLP):
+    def __init__(self, config):
+        super(LlamaMLP, self).__init__()
+        self.config = config
+        self.hidden_size = config.hidden_size
+        self.intermediate_size = config.intermediate_size
+        bias = config.mlp_bias if hasattr(config, "mlp_bias") else False
+        self.gate_proj = torch.nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
+        self.up_proj = torch.nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
+        self.down_proj = torch.nn.Linear(self.intermediate_size, self.hidden_size, bias=bias)
+        self.act_fn = ACT2FN[config.hidden_act]
+
     def pre_mlp_forward(self, x):
         if self.config.pretraining_tp > 1:
             slice = self.intermediate_size // self.config.pretraining_tp
@@ -200,76 +282,6 @@ class KVCache(torch.nn.Module):
         return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
 
 
-class GaudiLlamaRotaryEmbedding(torch.nn.Module):
-    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
-        super().__init__()
-
-        self.scaling_factor = scaling_factor
-        self.dim = dim
-        self.max_position_embeddings = max_position_embeddings
-        self.base = base
-        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
-
-        # Build here to make `torch.jit.trace` work.
-        self._set_cos_sin_cache(
-            seq_len=max_position_embeddings, device=self.inv_freq.device, dtype=torch.get_default_dtype()
-        )
-
-    def _set_cos_sin_cache(self, seq_len, device, dtype):
-        self.max_seq_len_cached = seq_len
-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-
-        freqs = torch.outer(t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
-        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
-
-    def forward(self, x, seq_len=None):
-        # x: [bs, num_attention_heads, seq_len, head_size]
-        if seq_len > self.max_seq_len_cached:
-            self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
-
-        return (
-            self._cos_cached[:seq_len].to(dtype=x.dtype),
-            self._sin_cached[:seq_len].to(dtype=x.dtype),
-        )
-
-
-class GaudiLlamaLinearScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
-    def _set_cos_sin_cache(self, seq_len, device, dtype):
-        self.max_seq_len_cached = seq_len
-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-        t = t / self.scaling_factor
-
-        freqs = torch.outer(t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
-        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
-
-
-class GaudiLlamaDynamicNTKScalingRotaryEmbedding(GaudiLlamaRotaryEmbedding):
-    def _set_cos_sin_cache(self, seq_len, device, dtype):
-        self.max_seq_len_cached = seq_len
-
-        if seq_len > self.max_position_embeddings:
-            base = self.base * (
-                (self.scaling_factor * seq_len / self.max_position_embeddings) - (self.scaling_factor - 1)
-            ) ** (self.dim / (self.dim - 2))
-            inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
-            self.register_buffer("inv_freq", inv_freq, persistent=False)
-
-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-
-        freqs = torch.outer(t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("_cos_cached", emb.cos().to(dtype), persistent=False)
-        self.register_buffer("_sin_cached", emb.sin().to(dtype), persistent=False)
-
-
 class GaudiLlamaAttention(LlamaAttention):
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
@@ -302,9 +314,9 @@ class GaudiLlamaAttention(LlamaAttention):
         return self.k_proj.weight
 
     def get_k_proj_weight_dtype(self):
-        """4bit quantization in GPTQ replaces the k_proj.weight with qweight.
-        Scales tensor gets the weight dtype."""
-        if hasattr(self.k_proj, "qweight"):
+        """ 4bit quantization in GPTQ replaces the k_proj.weight with qweight.
+            Scales tensor gets the weight dtype. """
+        if hasattr(self.k_proj, 'qweight'):
             return self.k_proj.scales.dtype
         return self.k_proj.weight.dtype
 
@@ -354,6 +366,7 @@ class GaudiLlamaAttention(LlamaAttention):
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
+        num_virtual_tokens: int = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
@@ -367,6 +380,7 @@ class GaudiLlamaAttention(LlamaAttention):
         - add new arg flash_attention_recompute
         - add new arg flash_attention_causal_mask
         - add new arg flash_attention_fast_softmax
+        - add new arg num_virtual_tokens
         """
         bsz, q_len, _ = hidden_states.size()
 
@@ -397,6 +411,7 @@ class GaudiLlamaAttention(LlamaAttention):
                 query_states = self.q_proj(hidden_states)
                 key_states = self.k_proj(hidden_states)
                 value_states = self.v_proj(hidden_states)
+
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         # TODO: update when auto mp params is enabled in DeepSpeed (cf. https://github.com/HabanaAI/DeepSpeed/blob/94309c7b5dfc1a69858f5c9f25737b2f81a332a5/deepspeed/module_inject/replace_module.py#L440)
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
@@ -410,32 +425,47 @@ class GaudiLlamaAttention(LlamaAttention):
                 else:
                     kv_seq_len += past_key_value[0].shape[-2]
             else:
-                if reuse_cache:
+                if reuse_cache and not isinstance(past_key_value[0], torch.Tensor):
                     kv_seq_len = past_key_value[0][-2]
                 else:
-                    kv_seq_len = past_key_value[0].shape[-2]
+                    if num_virtual_tokens is not None and num_virtual_tokens == past_key_value[0].shape[-2]:
+                        kv_seq_len = past_key_value[0].shape[-2] + kv_seq_len
+                    else:
+                        kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
-
         if use_cache:
             # reuse k, v, self_attention
             if reuse_cache:
+                if past_key_value is not None and isinstance(past_key_value[0], torch.Tensor):
+                    # prefix tuning case. attach past_key_value to generate first token.
+                    key_states = torch.cat((past_key_value[0], key_states), -2)
+                    value_states = torch.cat((past_key_value[1], value_states), -2)
                 key_states = self.k_cache(key_states, 2, token_idx)
                 value_states = self.v_cache(value_states, 2, token_idx)
                 past_key_value = (self.k_cache.get_shape(), self.v_cache.get_shape())
             else:
                 if past_key_value is None:
-                    past_key = torch.zeros(
-                        key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
-                    )
+                    past_key = torch.zeros(key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device)
                     past_value = torch.zeros(
                         key_states.shape, dtype=self.get_k_proj_weight_dtype(), device=key_states.device
                     )
                     # Return list instead of tuple
                     past_key_value = [past_key, past_value]
-                key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+                if (
+                    token_idx is not None
+                    and num_virtual_tokens is not None
+                    and num_virtual_tokens == past_key_value[0].shape[-2]
+                ):
+                    # prefix tunining case. attach past_key_value to generate first token.
+                    key_states = torch.cat((past_key_value[0], key_states), -2)
+                    value_states = torch.cat((past_key_value[1], value_states), -2)
+                    past_key_value = (key_states, value_states)
+                else:
+                    key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
+                    value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
 
@@ -463,7 +493,7 @@ class GaudiLlamaAttention(LlamaAttention):
             else:
                 # first token
                 if flash_attention_causal_mask:
-                    # causal masking on first token requires inputs to be of the same lenght
+                    # causal masking on first token requires inputs to be of the same length
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
                         attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, None, 0.0, True, None, softmax_mode
@@ -567,6 +597,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
+        num_virtual_tokens: int = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -602,6 +633,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             flash_attention_causal_mask=flash_attention_causal_mask,
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
+            num_virtual_tokens=num_virtual_tokens,
             **kwargs,
         )
         self.self_attn.attention_all_reduce(hidden_states)
@@ -635,6 +667,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
+        num_virtual_tokens: int = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
@@ -653,6 +686,7 @@ class GaudiLlamaDecoderLayer(LlamaDecoderLayer):
             flash_attention_causal_mask,
             flash_attention_fast_softmax,
             cache_idx=cache_idx,
+            num_virtual_tokens=num_virtual_tokens,
         )
         return hidden_states, attn_weights, present_key_value
 
@@ -705,14 +739,6 @@ class GaudiLlamaModel(LlamaModel):
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
 
-        # Register a causal mask to separate causal and padding mask creation. Merging happens in the attention class.
-        # NOTE: This is not friendly with TorchScript, ONNX, ExportedProgram serialization for very large `max_position_embeddings`.
-        causal_mask = torch.full(
-            (config.max_position_embeddings, config.max_position_embeddings),
-            fill_value=1,
-            dtype=torch.bool,
-        )
-        self.register_buffer("causal_mask", torch.triu(causal_mask, diagonal=1), persistent=False)
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -748,6 +774,7 @@ class GaudiLlamaModel(LlamaModel):
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
+        num_virtual_tokens: int = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         """
         Copied from LlamaModel.forward: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
@@ -778,6 +805,12 @@ class GaudiLlamaModel(LlamaModel):
             batch_size, seq_length = inputs_embeds.shape[:2]
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
+        if hasattr(self.config, "use_fused_rope") and self.config.use_fused_rope is False:
+            global has_fused_rope
+            has_fused_rope = False
+        if hasattr(self.config, "use_fused_rms_norm") and self.config.use_fused_rms_norm is False:
+            global has_fused_rms_norm
+            has_fused_rms_norm = False
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
@@ -787,13 +820,18 @@ class GaudiLlamaModel(LlamaModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
+
         ignore_cache_position = True  # Ignoring cache position for HPU
         use_new_cache = False  # Ignoring new Cache path for HPU
+
         past_seen_tokens = 0
 
         if past_key_values is not None and use_cache:  # kept for BC (cache positions)
             if reuse_cache:
-                past_seen_tokens = past_key_values[0][0][2]
+                if isinstance(past_key_values[0][0], torch.Tensor):
+                    past_seen_tokens = past_key_values[0][0].shape[2]
+                else:
+                    past_seen_tokens = past_key_values[0][0][2]
             else:
                 if use_new_cache:
                     if not isinstance(past_key_values, StaticCache):
@@ -804,6 +842,8 @@ class GaudiLlamaModel(LlamaModel):
 
         if ignore_cache_position is False:
             if cache_position is None:
+                if isinstance(past_key_values, StaticCache):
+                    raise ValueError("cache_position is a required argument when using StaticCache.")
                 cache_position = torch.arange(
                     past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
                 )
@@ -827,7 +867,8 @@ class GaudiLlamaModel(LlamaModel):
                 past_seen_tokens,
             )
         else:
-            causal_mask = self._update_causal_mask(attention_mask, inputs_embeds)
+            causal_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position, past_seen_tokens)
+
         # embed positions
         hidden_states = inputs_embeds
 
@@ -886,6 +927,7 @@ class GaudiLlamaModel(LlamaModel):
                     flash_attention_causal_mask=flash_attention_causal_mask,
                     flash_attention_fast_softmax=flash_attention_fast_softmax,
                     cache_idx=cache_idx,
+                    num_virtual_tokens=num_virtual_tokens,
                 )
             hidden_states = layer_outputs[0]
 
@@ -960,6 +1002,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
+        num_virtual_tokens: int = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -991,6 +1034,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             flash_attention_fast_softmax=flash_attention_fast_softmax,
             cache_idx=cache_idx,
             lazy_mode=lazy_mode,
+            num_virtual_tokens=num_virtual_tokens,
         )
         hidden_states = outputs[0]
         _, seq_len, _ = hidden_states.shape
@@ -1034,7 +1078,14 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        cache_position=None,
+        token_idx=None,
+        **kwargs,
     ):
         past_length = 0
 
@@ -1045,9 +1096,16 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 input_ids = torch.index_select(input_ids, 1, token_idx - 1)
             else:
                 if isinstance(past_key_values, Cache):
-                    cache_length = past_key_values.get_seq_length()
-                    past_length = past_key_values.seen_tokens
-                    max_cache_length = past_key_values.get_max_length()
+                    past_length = cache_position[0] if cache_position is not None else past_key_values.get_seq_length()
+                    max_cache_length = (
+                        torch.tensor(past_key_values.get_max_length(), device=input_ids.device)
+                        if past_key_values.get_max_length() is not None
+                        else None
+                    )
+                    cache_length = (
+                        past_length if max_cache_length is None else torch.min(max_cache_length, past_length)
+                    )
+                # TODO joao: remove this `else` after `generate` prioritizes `Cache` objects
                 else:
                     cache_length = past_length = past_key_values[0][0].shape[2]
                     max_cache_length = None
@@ -1087,22 +1145,10 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
-        # TODO: we are using token_idx, disable this for now
-        # if self.generation_config.cache_implementation == "static":
-        # generation with static cache
-        # cache_position = kwargs.get("cache_position", None)
-        # if cache_position is None:
-        # past_length = 0
-        # else:
-        # past_length = cache_position[-1] + 1
-        # input_ids = input_ids[:, past_length:]
-        # position_ids = position_ids[:, past_length:]
 
-        # TODO @gante we should only keep a `cache_position` in generate, and do +=1.
-        # same goes for position ids. Could also help with continued generation.
-        # cache_position = torch.arange(past_length, past_length + position_ids.shape[-1], device=position_ids.device)
         # keep cache_position implementation as None for HPU
         cache_position = None
+
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
@@ -1114,7 +1160,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
 
         model_inputs.update(
             {
-                "position_ids": position_ids.contiguous(),
+                "position_ids": position_ids,
                 "cache_position": cache_position,
                 "past_key_values": past_key_values,
                 "use_cache": kwargs.get("use_cache"),
@@ -1129,6 +1175,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
                 "flash_attention_fast_softmax": kwargs.get("flash_attention_fast_softmax"),
                 "cache_idx": kwargs.get("cache_idx"),
                 "lazy_mode": kwargs.get("lazy_mode"),
+                "num_virtual_tokens": kwargs.get("num_virtual_tokens"),
             }
         )
         return model_inputs

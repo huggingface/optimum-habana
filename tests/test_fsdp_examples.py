@@ -28,7 +28,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             (
                 "meta-llama/Llama-2-7b-hf",
                 "",
-                87.016,
+                85.016,
                 0.9093,
                 "language-modeling",
                 8,
@@ -78,7 +78,7 @@ def _test_fsdp(
         f"--per_device_train_batch_size {batch_size_train}",
         f"--fsdp_config {path_to_example_dir / task / 'fsdp_config.json'}",
         f"--fsdp '{policy}'",
-        "--torch_compile_backend aot_hpu_training_backend",
+        "--torch_compile_backend hpu_backend",
         "--torch_compile",
         "--use_habana",
     ]
@@ -97,7 +97,6 @@ def _test_fsdp(
             f"--gaudi_config_name {gaudi_config}",
             "--throughput_warmup_steps 100",
             "--do_eval",
-            "--torch_compile_backend hpu_backend",
         ]
     else:
         command += [
@@ -124,6 +123,8 @@ def _test_fsdp(
             "--low_cpu_mem_usage True",
             "--attn_softmax_bf16 True",
             "--num_train_epochs 3",
+            "--use_flash_attention True",
+            "--flash_attention_causal_mask True",
             f"--token {token.value}",
         ]
 

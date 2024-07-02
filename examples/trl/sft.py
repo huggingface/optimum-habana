@@ -1,17 +1,18 @@
 # Fine-Tune Llama2-7b on SE paired dataset
 # copy from https://github.com/huggingface/trl/blob/v0.7.6/examples/research_projects/stack_llama_2/scripts/sft_llama2.py, enable it for Gaudi2
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 import torch
 import transformers
 from datasets import load_dataset
-from peft import AutoPeftModelForCausalLM, LoraConfig
+from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
-from transformers.trainer_utils import is_main_process
+from transformers.integrations.deepspeed import (
+    is_deepspeed_available,
+)
 from trl.trainer import ConstantLengthDataset
 
 from optimum.habana import GaudiConfig, GaudiTrainingArguments
@@ -42,6 +43,16 @@ class ScriptArguments:
     lora_target_modules: List[str] = field(
         default_factory=lambda: None,
         metadata={"help": "Target modules for the LoRA method."},
+    )
+
+    token: str = field(
+        default=None,
+        metadata={
+            "help": (
+                "The token to use as HTTP bearer authorization for remote files. If not specified, will use the token "
+                "generated when running `huggingface-cli login` (stored in `~/.huggingface`)."
+            )
+        },
     )
 
 
@@ -89,7 +100,7 @@ def create_datasets(tokenizer, args, seed=None):
         args.dataset_name,
         data_dir=args.subset,
         split=args.split,
-        use_auth_token=True,
+        token=script_args.token,
         num_proc=args.num_workers if not args.streaming else None,
         streaming=args.streaming,
     )
@@ -126,13 +137,21 @@ def create_datasets(tokenizer, args, seed=None):
     return train_dataset, valid_dataset
 
 
+low_cpu_mem_usage = True
+if is_deepspeed_available():
+    from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
+
+    if is_deepspeed_zero3_enabled():
+        low_cpu_mem_usage = False
+
 base_model = AutoModelForCausalLM.from_pretrained(
     script_args.model_name_or_path,
-    low_cpu_mem_usage=True,
+    low_cpu_mem_usage=low_cpu_mem_usage,
     torch_dtype=torch.bfloat16,
-    use_auth_token=True,
+    token=script_args.token,
 )
 base_model.config.use_cache = False
+base_model.config.use_fused_rope = False
 
 tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path, trust_remote_code=True)
 tokenizer.pad_token = tokenizer.eos_token
@@ -149,7 +168,6 @@ train_dataset, eval_dataset = create_datasets(tokenizer, script_args, seed=train
 gaudi_config = GaudiConfig()
 gaudi_config.use_fused_adam = True
 gaudi_config.use_fused_clip_norm = True
-
 trainer = GaudiSFTTrainer(
     model=base_model,
     gaudi_config=gaudi_config,
@@ -161,15 +179,8 @@ trainer = GaudiSFTTrainer(
     tokenizer=tokenizer,
     args=training_args,
 )
-trainer.train()
+train_result = trainer.train()
 trainer.save_model(training_args.output_dir)
-
-# Free memory for merging weights
-del base_model
-with training_args.main_process_first(desc="merge peft model"):
-    if is_main_process(training_args.local_rank):
-        model = AutoPeftModelForCausalLM.from_pretrained(training_args.output_dir, torch_dtype=torch.bfloat16)
-        model = model.merge_and_unload()
-
-        output_merged_dir = os.path.join(training_args.output_dir, "final_merged_checkpoint")
-        model.save_pretrained(output_merged_dir, safe_serialization=True)
+metrics = train_result.metrics
+trainer.log_metrics("train", metrics)
+trainer.save_metrics("train", metrics)

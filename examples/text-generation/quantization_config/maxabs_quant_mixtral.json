@@ -3,8 +3,8 @@
     "mode": "QUANTIZE",
     "observer": "maxabs",
     "scale_method": "maxabs_hw",
-    "whitelist": {"types": [], "names":  ["gate","w1","w3","w2"]},
-    "blacklist": {"types": [], "names":  [
+    "allowlist": {"types": [], "names":  ["gate","w1","w3","w2"]},
+    "blocklist": {"types": [], "names":  [
         "model.layers.1.block_sparse_moe.experts.(3|4).w2",
         "model.layers.[29-31].block_sparse_moe.experts.[0-7].w2"
     ]},

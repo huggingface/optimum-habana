@@ -16,7 +16,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "summarization": {
             "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 5.233, 26.6928, 2, 1),
+                ("facebook/bart-large-cnn", "Habana/bart", 3.9, 28.9801, 2, 2),
                 ("t5-3b", "Habana/t5", 2.955, 21.8877, 2, 1),
             ],
         },
@@ -25,6 +25,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
                 ("Babelscape/mrebel-large", "Habana/t5", 1.323, 0.1618, 2, 1),
                 ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.815, 0.8132, 2, 1),
                 ("facebook/nllb-200-distilled-600M", "Habana/t5", 1.401, 1.2599, 2, 1),
+                ("t5-small", "Habana/t5", 14.482, 11.7277, 2, 1),
             ],
         },
     }
@@ -33,7 +34,7 @@ else:
     MODELS_TO_TEST = {
         "summarization": {
             "bf16": [
-                ("facebook/bart-large-cnn", "Habana/bart", 2.628, 26.7494, 2, 1),
+                ("facebook/bart-large-cnn", "Habana/bart", 2.304, 29.174, 2, 2),
                 ("t5-3b", "Habana/t5", 1.005, 21.7286, 2, 1),
             ],
         },
@@ -42,6 +43,7 @@ else:
                 ("Babelscape/mrebel-large", "Habana/t5", 0.995, 0.1784, 2, 1),
                 ("Helsinki-NLP/opus-mt-zh-en", "Habana/t5", 2.409, 0.7995, 2, 1),
                 ("facebook/nllb-200-distilled-600M", "Habana/t5", 0.998, 1.2457, 2, 1),
+                ("t5-small", "Habana/t5", 9.188, 11.6126, 2, 1),
             ],
         },
     }
@@ -144,7 +146,7 @@ class TestEncoderDecoderModels:
             "--use_habana",
             f"--per_device_eval_batch_size {batch_size}",
             f"--gaudi_config_name {gaudi_config}",
-            f"--generation_num_beams {num_beams}",
+            f"--num_beams {num_beams}",
             "--ignore_pad_token_for_loss False",
             "--pad_to_max_length",
             "--use_hpu_graphs_for_inference",

@@ -1,3 +1,4 @@
+# TODO: To remove when the repo is upgraded to Transformers >= 4.41.0
 from transformers.models.llama.configuration_llama import LlamaConfig
 
 
@@ -24,6 +25,7 @@ class LlamaConfig(LlamaConfig):
         rope_scaling=None,
         attention_bias=False,
         attention_dropout=0.0,
+        mlp_bias=False,
         fused_qkv=False,
         **kwargs,
     ):
@@ -51,4 +53,5 @@ class LlamaConfig(LlamaConfig):
             **kwargs,
         )
 
+        self.mlp_bias = mlp_bias
         self.fused_qkv = fused_qkv

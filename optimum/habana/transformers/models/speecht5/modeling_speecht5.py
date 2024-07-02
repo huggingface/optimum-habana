@@ -17,35 +17,6 @@ from ...modeling_attn_mask_utils import (
 logger = logging.get_logger(__name__)
 
 
-def gaudi_SpeechT5SpeechDecoderPrenet_forward(
-    self,
-    input_values: torch.Tensor,
-    speaker_embeddings: Optional[torch.Tensor] = None,
-):
-    """
-    Copied from SpeechT5SpeechDecoderPrenet.forward: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/speecht5/modeling_speecht5.py
-    The only differences are:
-    - disable dropout in inference, or else hpu graph could not be used
-    """
-
-    inputs_embeds = input_values
-    for layer in self.layers:
-        inputs_embeds = nn.functional.relu(layer(inputs_embeds))
-        if self.training:
-            inputs_embeds = self._consistent_dropout(inputs_embeds, self.config.speech_decoder_prenet_dropout)
-
-    inputs_embeds = self.final_layer(inputs_embeds)
-    inputs_embeds = self.encode_positions(inputs_embeds)
-
-    if speaker_embeddings is not None:
-        speaker_embeddings = nn.functional.normalize(speaker_embeddings)
-        speaker_embeddings = speaker_embeddings.unsqueeze(1).expand(-1, inputs_embeds.size(1), -1)
-        inputs_embeds = torch.cat([inputs_embeds, speaker_embeddings], dim=-1)
-        inputs_embeds = nn.functional.relu(self.speaker_embeds_layer(inputs_embeds))
-
-    return inputs_embeds
-
-
 def gaudi_SpeechT5Attention_forward(
     self,
     hidden_states: torch.Tensor,

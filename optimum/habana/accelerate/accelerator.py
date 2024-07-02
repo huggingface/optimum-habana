@@ -111,6 +111,7 @@ class GaudiAccelerator(Accelerator):
         dynamo_backend: GaudiDynamoBackend | str | None = None,
         distribution_strategy: str = None,
         force_autocast: bool = False,
+        fp8_recipe_format: str = None,
     ):
         self.trackers = []
         if project_config is not None:
@@ -143,7 +144,7 @@ class GaudiAccelerator(Accelerator):
         if deepspeed_plugin:
             if not is_deepspeed_available():
                 raise ImportError(
-                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0`."
+                    "DeepSpeed is not installed => run `pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0`."
                 )
 
             mixed_precision = (
@@ -178,6 +179,7 @@ class GaudiAccelerator(Accelerator):
         self.scaler_handler = None
         self.init_handler = None
         self.fp8_recipe_handler = None
+        self.fp8_recipe_format = None
         self.autocast_handler = None
         if kwargs_handlers is not None:
             for handler in kwargs_handlers:
