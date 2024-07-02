@@ -1,5 +1,8 @@
 import torch
-from typing import Any, Optional, Tuple, Union
+import os
+from torch import nn
+from typing import Optional, Tuple, Union
+from transformers.modeling_outputs import BaseModelOutput,BaseModelOutputWithPooling
 from transformers.models.clip.modeling_clip import (
     CLIPVisionEmbeddings,
     CLIPAttention,
@@ -7,19 +10,8 @@ from transformers.models.clip.modeling_clip import (
     CLIPEncoder,
     CLIPVisionTransformer,
     CLIPVisionModel,
-    CLIP_VISION_INPUTS_DOCSTRING
 )
 
-from transformers.utils import (
-    add_start_docstrings_to_model_forward,
-    replace_return_docstrings,
-)
-
-from transformers.modeling_outputs import BaseModelOutput,BaseModelOutputWithPooling
-from transformers.models.clip.configuration_clip import CLIPVisionConfig
-import os
-from torch import nn
-import habana_frameworks.torch.core as htcore
 
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
