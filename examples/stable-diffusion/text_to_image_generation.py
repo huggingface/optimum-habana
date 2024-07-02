@@ -238,6 +238,12 @@ def main():
         type=str,
         help="Path to lora id",
     )
+    parser.add_argument(
+        "--ip_adapter_path",
+        default=None,
+        type=str,
+        help="Path to ip adapter",
+    )
     args = parser.parse_args()
 
     # Set image resolution
@@ -250,12 +256,11 @@ def main():
     if args.control_image is not None:
         from diffusers.utils import load_image
         from PIL import Image
+        import cv2
 
         # get control image
         control_image = load_image(args.control_image)
         if args.control_preprocessing_type == "canny":
-            import cv2
-
             image = np.array(control_image)
             # get canny image
             image = cv2.Canny(image, 100, 200)
@@ -265,26 +270,7 @@ def main():
 
     # Import selected pipeline
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
-
-    if args.control_image is not None:
-        from diffusers import ControlNetModel
-
-        from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
-
-        sdxl = False
-    elif any(model in args.model_name_or_path for model in sdxl_models):
-        from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
-
-        sdxl = True
-    else:
-        if args.ldm3d:
-            from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
-
-            if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
-                args.model_name_or_path = "Intel/ldm3d-4c"
-        else:
-            from optimum.habana.diffusers import GaudiStableDiffusionPipeline
-        sdxl = False
+    sdxl = True if any(model in args.model_name_or_path for model in sdxl_models) else False
 
     # Setup logging
     logging.basicConfig(
@@ -319,37 +305,79 @@ def main():
 
     if args.throughput_warmup_steps is not None:
         kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
-
+    
     # Generate images
     if args.control_image is not None:
+        from diffusers import ControlNetModel
+
         model_dtype = torch.bfloat16 if args.bf16 else None
         controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path, torch_dtype=model_dtype)
-        pipeline = GaudiStableDiffusionControlNetPipeline.from_pretrained(
-            args.model_name_or_path,
-            controlnet=controlnet,
-            **kwargs,
-        )
-        if args.lora_id:
-            pipeline.load_lora_weights(args.lora_id)
 
-        # Set seed before running the model
-        set_seed(args.seed)
+        if sdxl and args.ip_adapter_path:
+            from optimum.habana.diffusers import GaudiStableDiffusionXLInstantIDPipeline
+            from insightface.app import FaceAnalysis
 
-        outputs = pipeline(
-            prompt=args.prompts,
-            image=control_image,
-            num_images_per_prompt=args.num_images_per_prompt,
-            batch_size=args.batch_size,
-            num_inference_steps=args.num_inference_steps,
-            guidance_scale=args.guidance_scale,
-            negative_prompt=args.negative_prompts,
-            eta=args.eta,
-            output_type=args.output_type,
-            profiling_warmup_steps=args.profiling_warmup_steps,
-            profiling_steps=args.profiling_steps,
-            **kwargs_call,
-        )
+            # prepare 'antelopev2' under ./models
+            app = FaceAnalysis(name='antelopev2', root='./', providers=['CPUExecutionProvider'])
+            app.prepare(ctx_id=0, det_size=(640, 640))
+
+            pipeline = GaudiStableDiffusionXLInstantIDPipeline.from_pretrained(args.model_name_or_path, controlnet=controlnet, **kwargs)
+            pipeline.load_ip_adapter_instantid(args.ip_adapter_path)
+
+            # prepare face emb
+            face_info = app.get(cv2.cvtColor(np.array(control_image), cv2.COLOR_RGB2BGR))
+            face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]  # only use the maximum face
+            face_emb = face_info['embedding']
+            face_kps = GaudiStableDiffusionXLInstantIDPipeline.draw_kps(control_image, face_info['kps'])
+
+            outputs = pipeline(
+                prompt=args.prompts,
+                num_inference_steps=args.num_inference_steps,
+                guidance_scale=args.guidance_scale,
+                negative_prompt=args.negative_prompts,
+                eta=args.eta,
+                output_type=args.output_type,
+                image_embeds=face_emb,
+                image=face_kps,
+                num_images_per_prompt=args.num_images_per_prompt,
+                batch_size=args.batch_size,
+                controlnet_conditioning_scale=0.8,
+                ip_adapter_scale=0.8,
+                profiling_warmup_steps=args.profiling_warmup_steps,
+                profiling_steps=args.profiling_steps,
+                **kwargs_call,
+            )
+        else:
+            from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
+
+            pipeline = GaudiStableDiffusionControlNetPipeline.from_pretrained(
+                args.model_name_or_path,
+                controlnet=controlnet,
+                **kwargs,
+            )
+            if args.lora_id:
+                pipeline.load_lora_weights(args.lora_id)
+
+            # Set seed before running the model
+            set_seed(args.seed)
+
+            outputs = pipeline(
+                prompt=args.prompts,
+                image=control_image,
+                num_images_per_prompt=args.num_images_per_prompt,
+                batch_size=args.batch_size,
+                num_inference_steps=args.num_inference_steps,
+                guidance_scale=args.guidance_scale,
+                negative_prompt=args.negative_prompts,
+                eta=args.eta,
+                output_type=args.output_type,
+                profiling_warmup_steps=args.profiling_warmup_steps,
+                profiling_steps=args.profiling_steps,
+                **kwargs_call,
+            )
     elif sdxl:
+        from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
+
         pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
             args.model_name_or_path,
             **kwargs,
@@ -376,6 +404,14 @@ def main():
             **kwargs_call,
         )
     else:
+        if args.ldm3d:
+            from optimum.habana.diffusers import GaudiStableDiffusionLDM3DPipeline as GaudiStableDiffusionPipeline
+
+            if args.model_name_or_path == "runwayml/stable-diffusion-v1-5":
+                args.model_name_or_path = "Intel/ldm3d-4c"
+        else:
+            from optimum.habana.diffusers import GaudiStableDiffusionPipeline
+
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
             args.model_name_or_path,
             **kwargs,
