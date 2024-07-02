@@ -2,7 +2,7 @@ import torch
 import os
 from torch import nn
 from typing import Optional, Tuple, Union
-from transformers.modeling_outputs import BaseModelOutput,BaseModelOutputWithPooling
+from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from transformers.models.clip.modeling_clip import (
     CLIPVisionEmbeddings,
     CLIPAttention,
@@ -44,6 +44,7 @@ class ModuleFusedSDPA(torch.nn.Module):
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
 
+
 class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -51,13 +52,13 @@ class Matmul(torch.nn.Module):
     def forward(self, x, y):
         return torch.matmul(x, y)
 
+
 class Softmax(nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, x, dim=None, invAttnHead=None):
         return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
-
 
 
 # Below code is copied from# https://github.com/huggingface/transformers/blob/v4.41.2/src/transformers/models/clip/modeling_clip.py
@@ -70,7 +71,6 @@ class GaudiCLIPAttention(CLIPAttention):
         self.bmm1 = Matmul()
         self.bmm2 = Matmul()
         self.softmax = Softmax()
-
 
     def forward(
         self,
@@ -96,12 +96,19 @@ class GaudiCLIPAttention(CLIPAttention):
         src_len = key_states.size(1)
         if FusedSDPA and use_flash_attention:
             import habana_frameworks.torch.hpu as ht
+
             if tgt_len == 1:
                 # next token
                 use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
                 with ht.sdp_kernel(enable_recompute=use_recompute):
                     attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, self.dropout, False, None,
+                        query_states,
+                        key_states,
+                        value_states,
+                        attention_mask,
+                        self.dropout,
+                        False,
+                        None,
                     )
             else:
                 # first token
@@ -115,8 +122,6 @@ class GaudiCLIPAttention(CLIPAttention):
                         attn_output = self.fused_scaled_dot_product_attention(
                             query_states, key_states, value_states, attention_mask, self.dropout, False, None
                         )
-                #'''
-
         else:
             attn_weights = self.bmm1(query_states, key_states.transpose(1, 2))
             if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
@@ -207,6 +212,7 @@ class GaudiCLIPEncoderLayer(CLIPEncoderLayer):
             outputs += (attn_weights,)
 
         return outputs
+
 
 class GaudiCLIPEncoder(CLIPEncoder):
 
@@ -309,6 +315,7 @@ class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,
         )
+
 
 class GaudiCLIPVisionModel(CLIPVisionModel):
 

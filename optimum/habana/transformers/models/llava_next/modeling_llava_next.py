@@ -266,8 +266,9 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 # 2. Merge text and images
                 batch_size, num_patches, num_channels, height, width = pixel_values.shape
                 reshaped_pixel_values = pixel_values.view(batch_size * num_patches, num_channels, height, width)
-                image_features = self.vision_tower(reshaped_pixel_values, output_hidden_states=True,
-                                                   use_flash_attention = use_flash_attention)
+                image_features = self.vision_tower(
+                    reshaped_pixel_values, output_hidden_states=True, use_flash_attention=use_flash_attention
+                )
 
                 selected_image_feature = image_features.hidden_states[vision_feature_layer]
 
