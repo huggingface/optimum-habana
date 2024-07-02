@@ -2932,7 +2932,6 @@ class GaudiGenerationMixin(GenerationMixin):
             sequence_outputs["sequences"] = finalize_beams(
                 initial_ids.cpu(), move(beam_trace, "cpu"), self.config, self.generation_config.length_penalty
             )
-
         else:
             sequence_outputs = beam_scorer.finalize(
                 input_ids,
