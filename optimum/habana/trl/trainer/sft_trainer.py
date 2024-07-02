@@ -30,6 +30,7 @@ from transformers import (
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from trl import SFTTrainer
+from trl.extras.dataset_formatting import get_formatting_func_from_dataset
 from trl.import_utils import is_peft_available
 from trl.trainer.utils import (
     DataCollatorForCompletionOnlyLM,
@@ -70,6 +71,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         neftune_noise_alpha: Optional[float] = None,
         model_init_kwargs: Optional[Dict] = None,
         dataset_kwargs: Optional[Dict] = None,
+        eval_packing: Optional[bool] = None,
     ):
         """
         Copied from SFTTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/sft_trainer.py#L120
@@ -171,6 +173,11 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         elif not self._trainer_supports_neftune:
             self.neftune_noise_alpha = neftune_noise_alpha
 
+        if formatting_func is None and dataset_text_field is None:
+            # check if dataset has ChatML format or instruction format and is supported
+            # if not stays #None
+            formatting_func = get_formatting_func_from_dataset(train_dataset, tokenizer)
+
         if not packing:
             if dataset_text_field is None and formatting_func is None:
                 raise ValueError(
@@ -194,6 +201,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
                 chars_per_token,
                 **dataset_kwargs,
             )
+
         if eval_dataset is not None:
             _multiple = isinstance(eval_dataset, dict)
             _eval_datasets = eval_dataset if _multiple else {"singleton": eval_dataset}
