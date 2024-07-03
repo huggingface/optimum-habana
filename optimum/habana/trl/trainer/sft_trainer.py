@@ -35,7 +35,7 @@ from trl.import_utils import is_peft_available
 from trl.trainer.utils import (
     DataCollatorForCompletionOnlyLM,
 )
-
+import numpy as np
 
 if is_peft_available():
     from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
@@ -72,6 +72,7 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         model_init_kwargs: Optional[Dict] = None,
         dataset_kwargs: Optional[Dict] = None,
         eval_packing: Optional[bool] = None,
+        bucketing: bool = True,
     ):
         """
         Copied from SFTTrainer.__init__: https://github.com/huggingface/trl/blob/v0.7.6/trl/trainer/sft_trainer.py#L120
@@ -249,3 +250,15 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
             self.train_dataset.infinite = True
         elif self.args.max_steps == -1 and packing:
             self.train_dataset.infinite = False
+
+        self.buckets = None
+        if bucketing:
+            train_dataloader=self.get_train_dataloader()
+            batched_sentence_lengths=[batch['input_ids'].shape[1] for batch in train_dataloader]
+            self.buckets = self._get_buckets(batched_sentence_lengths, num_buckets=3)
+            import pdb; pdb.set_trace()
+            print()
+            #self.data_collator = self.collate_fn_bucketing
+
+    def _get_buckets(self, sentence_lengths, num_buckets):
+        return np.unique(np.percentile(sentence_lengths, np.linspace(0, 100, num_buckets + 1), interpolation="lower",)[1:])

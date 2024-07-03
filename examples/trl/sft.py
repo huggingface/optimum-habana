@@ -37,6 +37,7 @@ class ScriptArguments:
     max_seq_length: Optional[int] = field(default=1024, metadata={"help": "the max sequence length"})
     num_workers: Optional[int] = field(default=4, metadata={"help": "the number of workers"})
     packing: Optional[bool] = field(default=True, metadata={"help": "whether to use packing for SFTTrainer"})
+    bucketing: Optional[bool] = field(default=True, metadata={"help": "whether to use bucketing for SFTTrainer"})
     validation_split_percentage: Optional[int] = field(
         default=5,
         metadata={
@@ -197,6 +198,7 @@ if __name__ == "__main__":
             tokenizer=tokenizer,
             args=training_args,
             formatting_func=formatting_func,
+            bucketing=script_args.bucketing,
         )
         train_result = trainer.train()
         trainer.save_model(training_args.output_dir)
