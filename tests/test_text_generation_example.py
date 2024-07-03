@@ -99,6 +99,7 @@ else:
             ("stabilityai/stablelm-2-12b", 1, False, 26.80858949645992),
             ("Qwen/Qwen1.5-7B", 1, False, 39.29068423087616),
             ("adept/persimmon-8b-base", 1, False, 34.53559807384106),
+            ("state-spaces/mamba-130m-hf", 224, False, 794.542),
         ],
         "fp8": [],
         "deepspeed": [
