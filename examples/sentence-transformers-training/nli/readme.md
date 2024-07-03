@@ -7,7 +7,7 @@ Given two sentence (premise and hypothesis), Natural Language Inference (NLI) is
 
 ## Requirements
 
-First, you should install the requirements:
+First, you should install -
 ```bash
 pip install -U sentence-transformers
 pip install git+https://github.com/huggingface/optimum-habana.git
@@ -21,7 +21,7 @@ To training on NLI -
 ```bash
 python examples/sentence-transformers-training/nli/training_nli.py model_name
 ```
-
+You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
 
 
 ## Data
