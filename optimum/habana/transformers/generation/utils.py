@@ -63,6 +63,7 @@ from ...utils import HabanaGenerationtime, HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .candidate_generator import GaudiAssistedCandidateGenerator
 from .configuration_utils import GaudiGenerationConfig
+from habana_frameworks.torch.hpu.metrics import metric_global
 
 
 if TYPE_CHECKING:
@@ -314,6 +315,9 @@ class GaudiGenerationMixin(GenerationMixin):
 
     def _pad_past_key_values(self, model_kwargs):
         pad_amount = model_kwargs.get("kv_cache_pad_len", 0)
+        self.htcore_generation.mark_step(sync=True)
+        gc_metric = metric_global("graph_compilation")
+        print(f'   _pad_past_key_values start {gc_metric.stats()}', flush=True)
         if model_kwargs["past_key_values"]:
             for i in range(len(model_kwargs["past_key_values"])):
                 for j in range(len(model_kwargs["past_key_values"][i])):
@@ -323,8 +327,14 @@ class GaudiGenerationMixin(GenerationMixin):
                         )
                         if model_kwargs.get("lazy_mode", False):
                             self.htcore_generation.mark_step()
+        self.htcore_generation.mark_step(sync=True)
+        gc_metric = metric_global("graph_compilation")
+        print(f'   _pad_past_key_values done {gc_metric.stats()}', flush=True)  # INCREASES by 1 here
 
     def _remove_past_key_values(self, model_kwargs):
+        self.htcore_generation.mark_step(sync=True)
+        gc_metric = metric_global("graph_compilation")
+        print(f'   _remove_past_key_values start {gc_metric.stats()}', flush=True)
         if model_kwargs["past_key_values"]:
             for i in range(len(model_kwargs["past_key_values"])):
                 for j in range(len(model_kwargs["past_key_values"][i])):
@@ -334,6 +344,9 @@ class GaudiGenerationMixin(GenerationMixin):
                         model_kwargs["past_key_values"][i][j] = None
         del model_kwargs["past_key_values"]
         model_kwargs["past_key_values"] = None
+        self.htcore_generation.mark_step(sync=True)
+        gc_metric = metric_global("graph_compilation")
+        print(f'   _remove_past_key_values done {gc_metric.stats()}', flush=True)
 
     def _update_model_kwargs_for_generation(
         self,
@@ -351,9 +364,15 @@ class GaudiGenerationMixin(GenerationMixin):
         model_kwargs["first_token"] = False
         if not model_kwargs.get("pad_done", False):
             # update past_key_values
+            self.htcore_generation.mark_step(sync=True)
+            gc_metric = metric_global("graph_compilation")
+            print(f'   _extract_past_from_model_output start {gc_metric.stats()}', flush=True)
             model_kwargs["past_key_values"] = self._extract_past_from_model_output(
                 outputs, standardize_cache_format=standardize_cache_format
             )
+            self.htcore_generation.mark_step(sync=True)
+            gc_metric = metric_global("graph_compilation")
+            print(f'   _extract_past_from_model_output done {gc_metric.stats()}', flush=True) # NO CHANGES HERE
         if getattr(outputs, "state", None) is not None:
             model_kwargs["state"] = outputs.state
 
@@ -985,6 +1004,7 @@ class GaudiGenerationMixin(GenerationMixin):
 
         # determine whether limit_hpu_graphs needs to be used
         model_kwargs["use_hpu_graphs"] = hpu_graphs
+        #import pdb; pdb.set_trace()
         model_kwargs["limit_hpu_graphs"] = generation_config.limit_hpu_graphs
 
         # prepare for allocate kv cache
@@ -1746,6 +1766,7 @@ class GaudiGenerationMixin(GenerationMixin):
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
         model_kwargs["lazy_mode"] = lazy_mode
+        cnt = -1
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
             if lazy_mode:
                 self.htcore_generation.mark_step()
@@ -1882,9 +1903,14 @@ class GaudiGenerationMixin(GenerationMixin):
                 self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
+            cnt += 1
+            gc_metric = metric_global("graph_compilation")
+            print(f'cnt={cnt} ... {gc_metric.stats()}')
+
+        #import pdb; pdb.set_trace()
         if (
             model_kwargs.get("use_hpu_graphs", False)
-            and model_kwargs.get("limit_hpu_graphs", False)
+            and model_kwargs.get("limit_hpu_graphs", False) # F
             and not model_kwargs.get("reuse_cache", False)
             and bucket_internal
         ):
@@ -1896,6 +1922,10 @@ class GaudiGenerationMixin(GenerationMixin):
         hb_profer.stop()
         if streamer is not None:
             streamer.end()
+
+
+        gc_metric = metric_global("graph_compilation")
+        print(f'EXITING GREEDY: {gc_metric.stats()}')
 
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:

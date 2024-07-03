@@ -447,6 +447,7 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     generation_config.num_return_sequences = args.num_return_sequences
     generation_config.trim_logits = args.trim_logits
     generation_config.attn_softmax_bf16 = args.attn_softmax_bf16
+    #import pdb; pdb.set_trace()
     generation_config.limit_hpu_graphs = args.limit_hpu_graphs
     generation_config.reuse_cache = args.reuse_cache
     generation_config.reduce_recompile = args.reduce_recompile
@@ -481,8 +482,9 @@ def exclude_hpu_graph_configs(args):
 def initialize_model(args, logger):
     init_start = time.perf_counter()
     setup_distributed(args)
-    if exclude_hpu_graph_configs(args):
-        args.limit_hpu_graphs = False
+    #import pdb; pdb.set_trace()
+    #if exclude_hpu_graph_configs(args):
+    #    args.limit_hpu_graphs = False
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
     setup_env(args)
     setup_device(args)
@@ -490,7 +492,7 @@ def initialize_model(args, logger):
     get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     if args.assistant_model is not None:
         get_repo_root(args.assistant_model, local_rank=args.local_rank, token=args.token)
-    use_deepspeed = args.world_size > 0
+    use_deepspeed = args.world_size > 1
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:

@@ -303,6 +303,15 @@ class GaudiFalconAttention(FalconAttention):
             return fused_qkv[..., 0, :], fused_qkv[..., 1, :], fused_qkv[..., 2, :]
         else:
             batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
+            print(f' SARKAR:: {fused_qkv.shape}=fused_qkv.shape, view={(batch_size, seq_length, self.num_heads + 2, self.head_dim)}', flush=True)
+            #import pdb; pdb.set_trace()
+            '''
+            in 1x: fused_qkv.shape = torch.Size([1, 200, 4672])
+            (batch_size, seq_length, self.num_heads + 2, self.head_dim) = (1, 200, 73, 64)
+
+            in 2x:
+            torch.Size([1, 200, 2368])=fused_qkv.shape, view=(1, 200, 38, 64)
+            '''
             fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads + 2, self.head_dim)
             # return fused_qkv[..., :-2, :], fused_qkv[..., [-2], :], fused_qkv[..., [-1], :]
             d2 = fused_qkv.shape[2] - 2
