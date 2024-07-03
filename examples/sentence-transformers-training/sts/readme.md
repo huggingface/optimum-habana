@@ -26,7 +26,7 @@ You can specify any Hugging Face pre-trained model here, for example, bert-base-
 
 ## Training data
 ```eval_rst
-In STS, we have sentence pairs annotated together with a score indicating the similarity. In the original STSbenchmark dataset, the scores range from 0 to 5. We have normalized these scores to range between 0 and 1 in `stsb <https://huggingface.co/datasets/sentence-transformers/stsb>`_, as that is required for :class:`~sentence_transformers.losses.CosineSimilarityLoss` as you can see in the `Loss Overiew <../../../docs/sentence_transformer/loss_overview.html>`_.
+In STS, we have sentence pairs annotated together with a score indicating the similarity. In the original STSbenchmark dataset, the scores range from 0 to 5. We have normalized these scores to range between 0 and 1 in `stsb <https://huggingface.co/datasets/sentence-transformers/stsb>`_, as that is required for :class:`~sentence_transformers.losses.CosineSimilarityLoss`.
 ```
 
 Here is a simplified version of our training data:
