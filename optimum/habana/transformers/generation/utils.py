@@ -97,6 +97,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "llava",
     "llava_next",
     "stablelm",
+    "mamba",
 ]
 
 
