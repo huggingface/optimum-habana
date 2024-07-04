@@ -30,7 +30,7 @@ adapt_sentence_transformers_to_gaudi()
 # Set the log level to INFO to get more information
 logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
-model_name = "distilroberta-base"  
+model_name = sys.argv[1] if len(sys.argv) > 1 else "distilroberta-base"  
 num_epochs = 1
 batch_size = 128
 max_seq_length = 128
@@ -141,7 +141,7 @@ test_evaluator = EmbeddingSimilarityEvaluator(
     main_similarity=SimilarityFunction.COSINE,
     name="sts-test",
 )
-#test_evaluator(model)
+test_evaluator(model)
 
 # 8. Save the trained & evaluated model locally
 final_output_dir = f"{output_dir}/final"

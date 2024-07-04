@@ -15,9 +15,9 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 To training on Paraphrases -
 
 ```bash
-python examples/sentence-transformers-training/paraphrases/training_paraphrases.py 
+python examples/sentence-transformers-training/paraphrases/training_paraphrases.py model_name 
 ```
-
+You can specify any Hugging Face pre-trained model here, for example, all-MiniLM-L12-v2, bert-base-uncased, roberta-base, xlm-roberta-base
 
 
 ## Paraphrase Data
