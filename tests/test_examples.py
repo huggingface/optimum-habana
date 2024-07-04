@@ -208,7 +208,7 @@ class ExampleTestMeta(type):
             "meta-llama/LlamaGuard-7b",
         ]
 
-        if fsdp and not IS_GAUDI2:
+        if (fsdp or fp8) and not IS_GAUDI2:
             return False
         elif (
             "sft" in example_name
