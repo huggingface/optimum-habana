@@ -123,16 +123,6 @@ class DataTrainingArguments:
         default=20,
         metadata={"help": "Audio clips will be randomly cut to this length during training if the value is set."},
     )
-    trust_dataset_remote_code: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Whether or not to allow for custom datasets defined on the Hub with their own loading files. This option "
-                "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
-                "execute code present on the Hub on your local machine."
-            )
-        },
-    )
 
 
 @dataclass
@@ -177,9 +167,9 @@ class ModelArguments:
         default=False,
         metadata={
             "help": (
-                "Whether or not to allow for custom models defined on the Hub in their own modeling files. This option "
-                "should only be set to `True` for repositories you trust and in which you have read the code, as it will "
-                "execute code present on the Hub on your local machine."
+                "Whether to trust the execution of code from datasets/models defined on the Hub."
+                " This option should only be set to `True` for repositories you trust and in which you have read the"
+                " code, as it will execute code present on the Hub on your local machine."
             )
         },
     )
@@ -264,14 +254,14 @@ def main():
         data_args.dataset_config_name,
         split=data_args.train_split_name,
         token=model_args.token,
-        trust_remote_code=data_args.trust_dataset_remote_code,
+        trust_remote_code=model_args.trust_remote_code,
     )
     raw_datasets["eval"] = load_dataset(
         data_args.dataset_name,
         data_args.dataset_config_name,
         split=data_args.eval_split_name,
         token=model_args.token,
-        trust_remote_code=data_args.trust_dataset_remote_code,
+        trust_remote_code=model_args.trust_remote_code,
     )
 
     if data_args.audio_column_name not in raw_datasets["train"].column_names:

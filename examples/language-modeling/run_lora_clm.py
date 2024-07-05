@@ -103,7 +103,11 @@ class ModelArguments:
     trust_remote_code: bool = field(
         default=False,
         metadata={
-            "help": "should enable when using custom model architecture that is not yet part of the Hugging Face transformers package like MPT)."
+            "help": (
+                "Whether to trust the execution of code from datasets/models defined on the Hub."
+                " This option should only be set to `True` for repositories you trust and in which you have read the"
+                " code, as it will execute code present on the Hub on your local machine."
+            )
         },
     )
     use_cache: bool = field(
@@ -493,6 +497,7 @@ def main():
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
+            trust_remote_code=model_args.trust_remote_code,
         )
 
         if "validation" not in raw_datasets.keys() and training_args.do_eval:
@@ -502,6 +507,7 @@ def main():
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                trust_remote_code=model_args.trust_remote_code,
             )
             raw_datasets["train"] = load_dataset(
                 data_args.dataset_name,
@@ -509,6 +515,7 @@ def main():
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                trust_remote_code=model_args.trust_remote_code,
             )
     else:
         data_files = {}

@@ -285,7 +285,7 @@ def setup_parser(parser):
     parser.add_argument(
         "--trust_remote_code",
         action="store_true",
-        help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
+        help="Whether to trust the execution of code from datasets/models defined on the Hub. This option should only be set to `True` for repositories you trust and in which you have read the code, as it will execute code present on the Hub on your local machine.",
     )
     args = parser.parse_args()
 
