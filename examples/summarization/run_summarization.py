@@ -764,6 +764,9 @@ def main():
     else:
         training_args.generation_config.max_length = data_args.val_max_target_length
     if data_args.num_beams is not None:
+        if data_args.num_beams == 1:
+            training_args.generation_config.length_penalty = None
+            training_args.generation_config.early_stopping = False
         training_args.generation_config.num_beams = data_args.num_beams
     elif training_args.generation_num_beams is not None:
         training_args.generation_config.num_beams = training_args.generation_num_beams
