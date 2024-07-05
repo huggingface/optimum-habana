@@ -375,6 +375,12 @@ def main():
             face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]  # only use the maximum face
             face_emb = face_info['embedding']
             face_kps = GaudiStableDiffusionXLInstantIDPipeline.draw_kps(control_image, face_info['kps'])
+            
+            if args.lora_id:
+                pipeline.load_lora_weights(args.lora_id)
+
+            # Set seed before running the model
+            set_seed(args.seed)
 
             outputs = pipeline(
                 prompt=args.prompts,
