@@ -1,4 +1,4 @@
-https://github.com/polisettyvarma/lm-evaluation-harness/archive/3cdc8daadad9f4559ae6cdfae96f1d83d6b3c1f4.zip
+git+https://github.com/EleutherAI/lm-evaluation-harness.git@master
 evaluate == 0.4.2
 rouge_score == 0.1.2
 accelerate == 0.31.0
