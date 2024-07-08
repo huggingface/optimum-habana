@@ -192,7 +192,9 @@ class ExampleTestMeta(type):
     """
 
     @staticmethod
-    def to_test(model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool, fp8: bool, , task_name: str):
+    def to_test(
+        model_name: str, multi_card: bool, deepspeed: bool, example_name: str, fsdp: bool, fp8: bool, task_name: str
+    ):
         models_with_specific_rules = [
             "albert-xxlarge-v1",
             "gpt2-xl",
