@@ -572,12 +572,12 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --validation_split_percentage 6
 ```
 
-- Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization and LoRA:
+- Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization, LoRA and FP8 precision:
 
   > The following command requires Habana DeepSpeed 1.13.0 or later.
 
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=10 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 \
+PT_HPU_MAX_COMPOUND_OP_SIZE=10 \
 python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --deepspeed llama2_ds_zero3_config.json \
@@ -587,7 +587,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --num_train_epochs 2 \
   --max_seq_len 2048 \
   --per_device_train_batch_size 10 \
-  --per_device_eval_batch_size 10 \
+  --per_device_eval_batch_size 1 \
   --gradient_checkpointing \
   --evaluation_strategy epoch \
   --eval_delay 2 \
@@ -608,7 +608,8 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
   --validation_split_percentage 4 \
   --use_flash_attention True \
-  --flash_attention_causal_mask True
+  --flash_attention_causal_mask True \
+  --fp8 True
 ```
 
 - Multi-card finetuning of Llama2-70B with FSDP and LoRA:
