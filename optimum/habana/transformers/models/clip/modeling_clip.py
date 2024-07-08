@@ -66,7 +66,6 @@ class GaudiCLIPAttention(CLIPAttention):
     def __init__(self, config):
         super().__init__(config=config)
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
-        self.first = True
         self.bmm1 = Matmul()
         self.bmm2 = Matmul()
         self.softmax = Softmax()
@@ -100,31 +99,16 @@ class GaudiCLIPAttention(CLIPAttention):
         if FusedSDPA and use_flash_attention:
             import habana_frameworks.torch.hpu as ht
 
-            if tgt_len == 1:
-                # next token
-                use_recompute = True if os.getenv("QUANT_CONFIG", "") else False
-                with ht.sdp_kernel(enable_recompute=use_recompute):
+            if tgt_len == 1 or causal_attention_mask is None:
+                with ht.sdp_kernel(enable_recompute=True):
                     attn_output = self.fused_scaled_dot_product_attention(
-                        query_states,
-                        key_states,
-                        value_states,
-                        attention_mask,
-                        self.dropout,
-                        False,
-                        None,
+                        query_states, key_states, value_states, attention_mask, self.dropout, False, None
                     )
-            else:
-                # first token
-                if causal_attention_mask is not None:
-                    with ht.sdp_kernel(enable_recompute=True):
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_states, key_states, value_states, causal_attention_mask, self.dropout, False, None
-                        )
-                else:
-                    with ht.sdp_kernel(enable_recompute=True):
-                        attn_output = self.fused_scaled_dot_product_attention(
-                            query_states, key_states, value_states, attention_mask, self.dropout, False, None
-                        )
+            elif causal_attention_mask is not None:
+                with ht.sdp_kernel(enable_recompute=True):
+                    attn_output = self.fused_scaled_dot_product_attention(
+                        query_states, key_states, value_states, causal_attention_mask, self.dropout, True, None
+                    )
         else:
             attn_weights = self.bmm1(query_states, key_states.transpose(1, 2))
             if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
