@@ -133,11 +133,7 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
         else:
             image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
 
-        if self._device.type == "mps":
-            # Randn does not work reproducibly on mps
-            image = randn_tensor(image_shape, generator=generator)
-            image = image.to(self.device)
-        elif self._device.type == "hpu":  # Patch random tensor
+        if self._device.type == "hpu":  # Patch random tensor
             image = torch.randn(image_shape, generator=generator, device="cpu")
             image = image.to(self._device)
         else:

@@ -77,7 +77,7 @@ def main():
         "--output_dir",
         type=str,
         default="/tmp/",
-        help="Where to save the generated images.",
+        help="Where to save the generated images. The default is DDPMScheduler.",
     )
 
     args = parser.parse_args()
