@@ -10,7 +10,6 @@ $ pip install -U -r requirements.txt
 ## Supervised Finetuneing
 The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
 
-    ```
     python sft.py \
         --model_name_or_path "Qwen/Qwen2-7B" \
         --dataset_name "philschmid/dolly-15k-oai-style" \
@@ -39,7 +38,6 @@ The following example is for the supervised Lora finetune with Qwen2 model for c
         --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
         --max_seq_length 512 \
         --adam_epsilon 1e-08
-    ```
 
 ## DPO pipeline
 
