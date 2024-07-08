@@ -16,12 +16,30 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 
 ## Usage
 
-To training on NLI -
+To pre-training on NLI dataset you can do following steps -
+
+1) choose the pretrained model as model_name command line below as args
+You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base 
+or pretained examples from  nreimers/MiniLM-L6-H384-uncases, microsoft/mpnet-base, etc to pretained into sentence-transformers/all-MiniLM-L6-v2 and sentence-transformers/all-mpnet-base-v2
+
+2) Choose the training dataset here we used NLI training data as below shown.
+```bash
+    train_dataset = load_dataset("sentence-transformers/all-nli", "pair-class", split="train").select(range(10000))
+    eval_dataset = load_dataset("sentence-transformers/all-nli", "pair-class", split="dev").select(range(1000))
+```
+
+3) Choose the test dataset
+```bash
+    test_dataset = load_dataset("sentence-transformers/stsb", split="test")
+```
+
+4) define the loss_model, TrainingArguments and Trainer
+
+5) execute the training command
 
 ```bash
 python examples/sentence-transformers-training/nli/training_nli.py model_name
 ```
-You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
 
 
 ## Data

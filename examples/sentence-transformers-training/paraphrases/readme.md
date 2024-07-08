@@ -12,7 +12,50 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 
 ## Usage
 
-To training on Paraphrases -
+To fine training on Paraphrase  you can do following steps -
+
+1) choose the pretrained model as model_name command line below as args
+You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
+
+2) Choose the training dataset here we applied the dataset_dict including multiple datasets
+```bash
+    all_nli_train_dataset = load_dataset("sentence-transformers/all-nli", "triplet", split="train")
+    sentence_compression_train_dataset = load_dataset("sentence-transformers/sentence-compression", split="train")
+    simple_wiki_train_dataset = load_dataset("sentence-transformers/simple-wiki", split="train")
+    altlex_train_dataset = load_dataset("sentence-transformers/altlex", split="train")
+    quora_train_dataset = load_dataset("sentence-transformers/quora-duplicates", "triplet", split="train")
+    coco_train_dataset = load_dataset("sentence-transformers/coco-captions", split="train")
+    flickr_train_dataset = load_dataset("sentence-transformers/flickr30k-captions", split="train")
+    yahoo_answers_train_dataset = load_dataset(
+        "sentence-transformers/yahoo-answers", "title-question-answer-pair", split="train"
+    )
+    stack_exchange_train_dataset = load_dataset(
+        "sentence-transformers/stackexchange-duplicates", "title-title-pair", split="train"
+    )
+
+    train_dataset_dict = {
+        "all-nli": all_nli_train_dataset,
+        "sentence-compression": sentence_compression_train_dataset,
+        "simple-wiki": simple_wiki_train_dataset,
+        "altlex": altlex_train_dataset,
+        "quora-duplicates": quora_train_dataset,
+        "coco-captions": coco_train_dataset,
+        "flickr30k-captions": flickr_train_dataset,
+        "yahoo-answers": yahoo_answers_train_dataset,
+        "stack-exchange": stack_exchange_train_dataset,
+    }
+    stsb_eval_dataset = load_dataset("sentence-transformers/stsb", split="validation")
+```
+
+3) Choose the test dataset
+```bash
+    test_dataset = load_dataset("sentence-transformers/stsb", split="test")
+```
+
+4) define the loss_model, TrainingArguments and Trainer
+
+5) execute the training command
+
 
 ```bash
 python examples/sentence-transformers-training/paraphrases/training_paraphrases.py model_name 

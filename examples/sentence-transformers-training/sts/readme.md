@@ -16,12 +16,29 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 
 ## Usage
 
-To training on STS -
+To fine training on STS you can do following steps -
+
+1) choose the pretrained model as model_name command line below as args
+You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
+
+2) Choose the training dataset like here we used 'sentence-transformers/stsb'.
+```bash
+    train_dataset = load_dataset("sentence-transformers/stsb", split="train")
+    eval_dataset = load_dataset("sentence-transformers/stsb", split="validation")
+```
+
+3) Choose the test dataset
+```bash
+    test_dataset = load_dataset("sentence-transformers/stsb", split="test")
+```
+
+4) define the loss_model, TrainingArguments and Trainer
+
+5) execute the training command
 
 ```bash
 python examples/sentence-transformers-training/sts/training_stsbenchmark.py model_name
 ```
-You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
 
 
 ## Training data
