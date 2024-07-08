@@ -7,7 +7,7 @@ First, you should install the requirements:
 ```
 $ pip install -U -r requirements.txt
 ```
-## Supervised Finetuneing
+## Supervised Finetuning
 The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
 
     python sft.py \
