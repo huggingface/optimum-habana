@@ -274,6 +274,43 @@
                     ]
                 }
             }
+        },
+        "tatsu-lab/alpaca_fp8": {
+            "num_train_epochs": 3,
+            "eval_batch_size": 4,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 3e-4,
+                    "train_batch_size": 16,
+                    "perplexity": 2.3692,
+                    "train_runtime": 411.9935,
+                    "train_samples_per_second": 232.439,
+                    "extra_arguments": [
+                        "--bf16",
+                        "--gradient_accumulation_steps 1",
+                        "--evaluation_strategy no",
+                        "--save_strategy no",
+                        "--warmup_ratio  0.03",
+                        "--lr_scheduler_type constant",
+                        "--logging_steps 40",
+                        "--lora_rank 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj",
+                        "--dataset_concatenation",
+                        "--max_seq_length 512",
+                        "--low_cpu_mem_usage True",
+                        "--adam_epsilon 1e-08",
+                        "--ddp_bucket_cap_mb 50",
+                        "--validation_split_percentage 10",
+                        "--pipelining_fwd_bwd",
+                        "--throughput_warmup_steps 18",
+                        "--use_lazy_mode",
+                        "--max_grad_norm 0.3",
+                        "--fp8"
+                    ]
+                }
+            }
         }
     }
 }
