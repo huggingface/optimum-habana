@@ -61,7 +61,6 @@ class Softmax(nn.Module):
         return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
 
 
-# Below code is copied from# https://github.com/huggingface/transformers/blob/v4.41.2/src/transformers/models/clip/modeling_clip.py
 class GaudiCLIPAttention(CLIPAttention):
 
     def __init__(self, config):
@@ -80,7 +79,11 @@ class GaudiCLIPAttention(CLIPAttention):
         output_attentions: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-
+        """
+        Copied from CLIPAttention.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
+        The only differences are:
+        - add new args use_flash_attention
+        """
         bsz, tgt_len, embed_dim = hidden_states.size()
         attn_weights_reshaped = None
         # get query proj
@@ -189,6 +192,11 @@ class GaudiCLIPEncoderLayer(CLIPEncoderLayer):
         output_attentions: Optional[bool] = False,
         use_flash_attention: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor]:
+        """
+        Copied from CLIPEncoderLayer.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
+        The only differences are:
+        - add new args use_flash_attention
+        """
         residual = hidden_states
 
         hidden_states = self.layer_norm1(hidden_states)
@@ -226,6 +234,11 @@ class GaudiCLIPEncoder(CLIPEncoder):
         return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutput]:
+        """
+        Copied from CLIPEncoder.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
+        The only differences are:
+        - add new args use_flash_attention
+        """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -267,9 +280,7 @@ class GaudiCLIPEncoder(CLIPEncoder):
 
         if not return_dict:
             return tuple(v for v in [hidden_states, encoder_states, all_attentions] if v is not None)
-        return BaseModelOutput(
-            last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
-        )
+        return BaseModelOutput(last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions)
 
 
 class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
@@ -282,6 +293,11 @@ class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
         return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
+        """
+        Copied from CLIPVisionTransformer.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
+        The only differences are:
+        - add new args use_flash_attention
+        """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -327,7 +343,11 @@ class GaudiCLIPVisionModel(CLIPVisionModel):
         return_dict: Optional[bool] = None,
         use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
-
+        """
+        Copied from CLIPVisionModel.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
+        The only differences are:
+        - add new args use_flash_attention
+        """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         return self.vision_model(
