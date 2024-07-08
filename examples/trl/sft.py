@@ -127,8 +127,7 @@ if __name__ == "__main__":
             ext = args.dataset_path.split(".")[-1]
             dataset = load_dataset(ext, data_files=args.dataset_path, split=args.split, token=script_args.token)
         else:
-            logger.info("No dataset_name or dataset_path")
-            exit()
+            raise ValueError("No dataset_name or dataset_path")
         if not args.dataset_path and args.streaming:
             logger.info("Loading the dataset in streaming mode")
             valid_data = dataset.take(args.size_valid_set)
