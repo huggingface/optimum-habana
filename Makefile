@@ -44,6 +44,7 @@ fast_tests_diffusers:
 # Run single-card non-regression tests on image classification models
 fast_tests_image_classifications:
 	pip install timm
+	python -m pip install .[tests]
 	python -m pytest tests/test_image_classification.py
 
 # Run single-card non-regression tests
