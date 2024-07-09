@@ -1880,7 +1880,7 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
-                if outputs.past_key_values[0][0].shape[2] ==  model_inputs['input_ids'].shape[1]:
+                if outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
                     self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
@@ -2300,7 +2300,7 @@ class GaudiGenerationMixin(GenerationMixin):
             ):
                 # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
-                if outputs.past_key_values[0][0].shape[2] ==  model_inputs['input_ids'].shape[1]:
+                if outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
                     self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
