@@ -1873,17 +1873,16 @@ class GaudiGenerationMixin(GenerationMixin):
                     torch_hpu.synchronize()
                 hb_gen_time.step()
 
-
-                if (
-                    not model_kwargs.get("pad_done", False)
-                    and not model_kwargs.get("reuse_cache", False)
-                    and bucket_internal
-                ):
-                    # Pad the returned pask key values tensors from prefill phase forward run to maximum length
-                    # before starting the decode phase.
-                    if outputs.past_key_values[0][0].shape[2] ==  model_inputs['input_ids'].shape[1]:
-                        self._pad_past_key_values(model_kwargs)
-                    model_kwargs["pad_done"] = True
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
+                # before starting the decode phase.
+                if outputs.past_key_values[0][0].shape[2] ==  model_inputs['input_ids'].shape[1]:
+                    self._pad_past_key_values(model_kwargs)
+                model_kwargs["pad_done"] = True
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -2299,7 +2298,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 and not model_kwargs.get("reuse_cache", False)
                 and bucket_internal
             ):
-                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
                 if outputs.past_key_values[0][0].shape[2] ==  model_inputs['input_ids'].shape[1]:
                     self._pad_past_key_values(model_kwargs)
