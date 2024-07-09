@@ -29,6 +29,7 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
+from transformers.data.data_collator import pad_without_fast_tokenizer_warning
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from trl import SFTTrainer
@@ -45,30 +46,6 @@ if is_peft_available():
 from ... import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 
 
-# TODO sasarkar.. see if this can be imported from transformers, instead of copying it here
-# https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/data/data_collator.py#L52
-def pad_without_fast_tokenizer_warning(tokenizer, *pad_args, **pad_kwargs):
-    """
-    Pads without triggering the warning about how using the pad function is sub-optimal when using a fast tokenizer.
-    """
-
-    # To avoid errors when using Feature extractors
-    if not hasattr(tokenizer, "deprecation_warnings"):
-        return tokenizer.pad(*pad_args, **pad_kwargs)
-
-    # Save the state of the warning, then disable it
-    warning_state = tokenizer.deprecation_warnings.get("Asking-to-pad-a-fast-tokenizer", False)
-    tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
-
-    try:
-        padded = tokenizer.pad(*pad_args, **pad_kwargs)
-    finally:
-        # Restore the state of the warning.
-        tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = warning_state
-
-    return padded
-
-
 class BucketedDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
     def _get_bucketed_len(self, examples):
         max_sentence_len = max([len(k["input_ids"]) for k in examples])
@@ -79,6 +56,8 @@ class BucketedDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
             curr_bucket = self.buckets[np.argmin(np.where(max_sentence_len <= self.buckets))]
         return curr_bucket
 
+    # copied from https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/data/data_collator.py#L758
+    # change is pad_to_multiple_of=self.pad_to_multiple_of -> pad_to_multiple_of=bucketed_len
     def torch_call(self, examples: List[Union[List[int], Any, Dict[str, Any]]]) -> Dict[str, Any]:
         # Handle dict or lists with proper padding and conversion to tensor.
         if isinstance(examples[0], Mapping):
@@ -90,8 +69,7 @@ class BucketedDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
                 pad_to_multiple_of=bucketed_len,  # self.pad_to_multiple_of
             )
         else:
-            assert False  # TODO add a "raise error with appropriate err msg, that this path isnt testet/supported yet"
-            # TODO: sasarkar: _torch_collate_batch is not defined in this file
+            assert False, "This path has not been implemented/tested yet"
             # https://github.com/huggingface/transformers/blob/v4.40.0/src/transformers/data/data_collator.py#L428
             # batch = {
             #    "input_ids": _torch_collate_batch(examples, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
@@ -151,7 +129,9 @@ class GaudiSFTTrainer(SFTTrainer, GaudiTrainer):
         - num_buckets: Number of buckets. > 0 means apply bucketing, <= 0  means no bucketing
         """
         if num_buckets > 0:
-            assert data_collator is None  # TODO add a better err msg here
+            assert (
+                data_collator is None
+            ), "For bucketing (num_buckets > 0), we only support data_collator=None (later it becomes DataCollatorForLanguageModeling)"
 
         if model_init_kwargs is None:
             model_init_kwargs = {}
