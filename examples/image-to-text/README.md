@@ -26,8 +26,8 @@ Models that have been validated:
   - [llava-hf/llava-1.5-7b-hf](https://huggingface.co/llava-hf/llava-1.5-7b-hf)
   - [llava-hf/llava-1.5-13b-hf](https://huggingface.co/llava-hf/llava-1.5-13b-hf)
   - [llava-hf/llava-v1.6-mistral-7b-hf](https://huggingface.co/llava-hf/llava-v1.6-mistral-7b-hf)
-  - [llava-hf/llava-v1.6-vicuna-7b-hf](https://huggingface.co/llava-hf/llava-v1.6-mistral-7b-hf)
-  - [llava-hf/llava-v1.6-vicuna-13b-hf](https://huggingface.co/llava-hf/llava-v1.6-mistral-7b-hf)
+  - [llava-hf/llava-v1.6-vicuna-7b-hf](https://huggingface.co/llava-hf/llava-v1.6-vicuna-7b-hf)
+  - [llava-hf/llava-v1.6-vicuna-13b-hf](https://huggingface.co/llava-hf/llava-v1.6-vicuna-13b-hf)
 
 ### Inference with BF16
 
@@ -125,7 +125,7 @@ QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
 --bf16
 ```
 
-Here is an example to quantize the model based on previous measurements for Llava-v1.6-mistral-7b:
+Here is an example to quantize the model based on previous measurements for Llava-v1.6-vicuna-13b:
 ```bash
 QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
 --model_name_or_path llava-hf/llava-v1.6-vicuna-13b-hf \
@@ -136,10 +136,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
 
 ### Inference with FusedSDPA
 
-More information on Using Fused Scaled Dot Product Attention (FusedSDPA) here:
-https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa
-
-Currently FusedSDPA only works for Llava-1.5-7b, Llava-1.5-13b models
+Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Habana online document](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). Currently FusedSDPA only works for Llava-1.5-7b, Llava-1.5-13b models.
 
 Use the following commands to run Llava-1.5-7b inference with FusedSDPA
 
