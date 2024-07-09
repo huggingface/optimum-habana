@@ -51,7 +51,7 @@ def main():
     parser.add_argument(
         "--use_gaudi_ddim_scheduler",
         action="store_true",
-        help="Where to use the Gaudi optimized DDIM scheduler.",
+        help="Whether to use the Gaudi optimized DDIM scheduler. The default is DDPMScheduler",
     )
     parser.add_argument(
         "--use_habana",
