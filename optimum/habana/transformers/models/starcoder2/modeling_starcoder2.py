@@ -1,22 +1,42 @@
+# coding=utf-8
+# Copyright 2024 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+# Copyright (C) 2022-2024 Habana Labs, Ltd. an Intel Company
+###############################################################################
+
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
-from torch import nn
-from torch.nn import CrossEntropyLoss
+import torch.nn.functional as F
+import torch.utils.checkpoint
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.models.starcoder2.configuration_starcoder2 import Starcoder2Config
 from transformers.models.starcoder2.modeling_starcoder2 import (
     Starcoder2Attention,
-    Starcoder2Config,
     Starcoder2DecoderLayer,
     Starcoder2ForCausalLM,
+    Starcoder2MLP,
     Starcoder2Model,
+    # Starcoder2RMSNorm,
     apply_rotary_pos_emb,
-    repeat_kv,
+    logger,
 )
-from transformers.utils import logging
+#from transformers.models.qwen2.modeling_qwen2 import Qwen2RMSNorm
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -29,8 +49,89 @@ except ImportError:
     print("Not using HPU fused kernel for apply_rotary_pos_emb")
     FusedRoPE = None
 
+try:
+    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
+except ImportError:
+    print("Not using HPU fused kernel for RMSNorm")
+    FusedRMSNorm = None
 
-logger = logging.get_logger(__name__)
+try:
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused scaled dot-product attention kernel.")
+    FusedSDPA = None
+
+
+import habana_frameworks.torch.core as htcore
+
+
+def gaudi_starcoder2_rmsnorm_forward(self, hidden_states):
+    if hidden_states.device.type == "hpu" and FusedRMSNorm:
+        # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
+        if hidden_states.dtype != self.weight.dtype:
+            orig_dtype = hidden_states.dtype
+            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
+            return hidden_states.to(orig_dtype)
+        else:
+            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
+            return hidden_states
+    else:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * hidden_states.to(input_dtype)
+
+
+class GaudiStarcoder2MLP(Starcoder2MLP):
+    def pre_mlp_forward(self, x):
+        inputs = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
+        output = self.down_proj(inputs)
+        return output
+
+    def mlp_all_reduce(self, x):
+        if hasattr(self.down_proj, "all_reduce"):
+            self.down_proj.all_reduce(x)
+
+    def post_mlp_forward(self, x):
+        if hasattr(self.down_proj, "post_all_reduce"):
+            return self.down_proj.post_all_reduce(x)
+        return x
+
+
+def gaudi_starcoder2_repeat_kv(
+    query_states: torch.Tensor,
+    key_states: torch.Tensor,
+    value_states: torch.Tensor,
+    attention_mask: torch.Tensor,
+    n_rep: int,
+):
+    batch, num_key_value_heads, kv_len, head_dim = key_states.shape
+    if n_rep == 1 or num_key_value_heads == 1:
+        return query_states, key_states, value_states, attention_mask
+
+    new_kv_shape = (batch, num_key_value_heads, 1, kv_len, head_dim)
+    key_states = key_states.reshape(new_kv_shape)
+    value_states = value_states.reshape(new_kv_shape)
+
+    batch, _, q_len, head_dim = query_states.shape
+    new_q_shape = (batch, num_key_value_heads, n_rep, q_len, head_dim)
+    query_states = query_states.reshape(new_q_shape)
+
+    if attention_mask is not None:
+        # Add groups dim and set to 1
+        attention_mask = attention_mask.unsqueeze(1)
+
+    return query_states, key_states, value_states, attention_mask
+
+
+class Matmul(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, y):
+        return torch.matmul(x, y)
+
 
 class KVCache(torch.nn.Module):
     def __init__(self):
@@ -253,7 +354,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
                             )
 
         else:
-            query_states, key_states, value_states, attention_mask = gaudi_Starcoder2_repeat_kv(
+            query_states, key_states, value_states, attention_mask = gaudi_starcoder2_repeat_kv(
                 query_states, key_states, value_states, attention_mask, self.num_key_value_groups
             )
 
@@ -293,14 +394,152 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
         return attn_output, attn_weights, past_key_value
 
-    def attention_all_reduce(self, attn_output):
-        if hasattr(self.o_proj, "all_reduce"):
-            self.o_proj.all_reduce(attn_output)
+    # def attention_all_reduce(self, attn_output):
+    #     if hasattr(self.o_proj, "all_reduce"):
+    #         self.o_proj.all_reduce(attn_output)
 
-    def post_attn_forward(self, attn_output):
-        if hasattr(self.o_proj, "post_all_reduce"):
-            self.o_proj.post_all_reduce(attn_output)
-        return attn_output
+    # def post_attn_forward(self, attn_output):
+    #     if hasattr(self.o_proj, "post_all_reduce"):
+    #         self.o_proj.post_all_reduce(attn_output)
+    #     return attn_output
+
+
+class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
+    # def __init__(self, config: Starcoder2Config, layer_idx: int):
+    #     super(Starcoder2DecoderLayer, self).__init__()
+    def __init__(self, config: Starcoder2Config, layer_idx: int):
+        super().__init__(config, layer_idx)
+        #config.rms_norm_eps = 1e-06
+        self.hidden_size = config.hidden_size
+
+        self.self_attn = GaudiStarcoder2Attention(config, layer_idx)
+        #self.mlp = GaudiStarcoder2MLP(config)
+        #self.input_layernorm = #Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        #self.post_attention_layernorm = #Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+
+    def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
+        self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
+
+    def reorder_kv_cache(self, beam_idx: torch.LongTensor):
+        return self.self_attn.reorder_kv_cache(beam_idx)
+
+    def update_sincos_cache(self, seq_len):
+        self.self_attn.update_sincos_cache(seq_len)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+        attn_softmax_bf16: Optional[bool] = False,
+        reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        cache_idx: int = None,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        residual = hidden_states
+        hidden_states, self_attn_weights, present_key_value = self.pre_attn(
+            hidden_states,
+            attention_mask,
+            position_ids,
+            past_key_value,
+            output_attentions,
+            use_cache,
+            cache_position,
+            token_idx,
+            attn_softmax_bf16,
+            reuse_cache,
+            use_flash_attention=use_flash_attention,
+            flash_attention_recompute=flash_attention_recompute,
+            flash_attention_causal_mask=flash_attention_causal_mask,
+            cache_idx=cache_idx,
+        )
+        hidden_states = residual + hidden_states
+
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
+
+        outputs = (hidden_states,)
+
+        if output_attentions:
+            outputs += (self_attn_weights,)
+
+        if use_cache:
+            outputs += (present_key_value,)
+
+        return outputs
+
+    def pre_attn(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
+        attn_softmax_bf16: Optional[bool] = False,
+        reuse_cache: Optional[bool] = False,
+        use_flash_attention: Optional[bool] = False,
+        flash_attention_recompute: Optional[bool] = False,
+        flash_attention_causal_mask: Optional[bool] = False,
+        cache_idx: int = None,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        hidden_states = self.input_layernorm(hidden_states)
+        hidden_states, attn_weights, present_key_value = self.self_attn.pre_attn_forward(
+            hidden_states,
+            attention_mask,
+            position_ids,
+            past_key_value,
+            output_attentions,
+            use_cache,
+            cache_position,
+            token_idx,
+            attn_softmax_bf16,
+            reuse_cache,
+            use_flash_attention,
+            flash_attention_recompute,
+            flash_attention_causal_mask,
+            cache_idx=cache_idx,
+        )
+        return hidden_states, attn_weights, present_key_value
+
+    def post_attn_pre_mlp(self, hidden_states, residual):
+        hidden_states = self.self_attn.post_attn_forward(hidden_states)
+
+        if self.training:
+            hidden_states = hidden_states + residual
+            residual = hidden_states
+        else:
+            residual.add_(hidden_states)
+            hidden_states = residual
+
+        hidden_states = self.post_attention_layernorm(hidden_states)
+
+        hidden_states = self.mlp.pre_mlp_forward(hidden_states)
+        return hidden_states, residual
+
+    def post_mlp(self, hidden_states, residual):
+        hidden_states = self.mlp.post_mlp_forward(hidden_states)
+
+        if self.training:
+            hidden_states = hidden_states + residual
+        else:
+            residual.add_(hidden_states)
+            hidden_states = residual
+
+        return hidden_states
+
 
 class GaudiStarcoder2Model(Starcoder2Model):
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
@@ -313,7 +552,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
     def update_sincos_cache(self, seq_len):
         for layer in self.layers:
             layer.update_sincos_cache(seq_len)
-    
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -342,6 +581,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
         self._attn_implementation = "eager"
 
         # retrieve input_ids and inputs_embeds
@@ -359,11 +599,11 @@ class GaudiStarcoder2Model(Starcoder2Model):
                 logger.warning_once(
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
                 )
-                use_cache = False 
-    
+                use_cache = False
+
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-    
+
         use_new_cache = False  # Ignoring new Cache path for HPU
         past_seen_tokens = 0
 
@@ -383,33 +623,19 @@ class GaudiStarcoder2Model(Starcoder2Model):
             position_ids = torch.arange(
                 past_seen_tokens, seq_length + past_seen_tokens, dtype=torch.long, device=inputs_embeds.device
             )
-            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-        else:
-            position_ids = position_ids.view(-1, seq_length).long()
+            position_ids = position_ids.unsqueeze(0)
         cache_position = None
 
-        if attention_mask is not None and self._attn_implementation == "flash_attention_2" and use_cache:
-            is_padding_right = attention_mask[:, -1].sum().item() != batch_size
-            if is_padding_right:
-                raise ValueError(
-                    "You are attempting to perform batched generation with padding_side='right'"
-                    " this may lead to unexpected behaviour for Flash Attention version of Starcoder2. Make sure to "
-                    " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
-                )
-            
         # HPU specific mask generation
         attention_mask = _gaudi_prepare_4d_causal_attention_mask(
             attention_mask,
             input_ids.shape if input_ids is not None else (batch_size, seq_length),
             inputs_embeds,
             past_seen_tokens,
-            sliding_window=self.config.sliding_window,
         )
-        
         # embed positions
         hidden_states = inputs_embeds
-        hidden_states = nn.functional.dropout(hidden_states, p=self.embedding_dropout, training=self.training)
-        
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -477,7 +703,7 @@ class GaudiStarcoder2Model(Starcoder2Model):
         # add hidden states from the last decoder layer
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
-         
+
         next_cache = None
         if use_cache:
             next_cache = (
@@ -490,166 +716,8 @@ class GaudiStarcoder2Model(Starcoder2Model):
             past_key_values=next_cache,
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
-        )  
-        
-def gaudi_starcoder2_attention_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Cache] = None,
-    output_attentions: bool = False,
-    use_cache: bool = False,
-    token_idx: Optional[torch.Tensor] = None,
-    **kwargs,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-    """
-    Copied from Starcoder2Attention.forward: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
-    The only differences are:
-    - add new args token_idx
-    - optimize KV cache
-    """
-    if "padding_mask" in kwargs:
-        warnings.warn(
-            "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-        )
-    bsz, q_len, _ = hidden_states.size()
-    self.norm_factor = 1.0 / math.sqrt(self.head_dim)
-
-    query_states = self.q_proj(hidden_states)
-    key_states = self.k_proj(hidden_states)
-    value_states = self.v_proj(hidden_states)
-
-    query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-    value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-
-    kv_seq_len = key_states.shape[-2]
-    if past_key_value is not None:
-        if self.layer_idx is None:
-            raise ValueError(
-                f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                "with a layer index."
-            )
-        if token_idx is not None and past_key_value.get_usable_length(kv_seq_len, self.layer_idx) > 0:
-            # When token_idx is used, static seq len = (input token len + max output token len)
-            kv_seq_len = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-        else:
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-    cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-    query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
-
-    if past_key_value is not None:
-        if token_idx is not None:
-            if 0 <= self.layer_idx < len(past_key_value.key_cache):
-                past_key_value.key_cache[self.layer_idx].index_copy_(2, token_idx - 1, key_states)
-                past_key_value.value_cache[self.layer_idx].index_copy_(2, token_idx - 1, value_states)
-                key_states = past_key_value.key_cache[self.layer_idx]
-                value_states = past_key_value.value_cache[self.layer_idx]
-            else:
-                past_key_value.key_cache.append(key_states)
-                past_key_value.value_cache.append(value_states)
-        else:
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-
-    # repeat k/v heads if n_kv_heads < n_heads
-    key_states = repeat_kv(key_states, self.num_key_value_groups)
-    value_states = repeat_kv(value_states, self.num_key_value_groups)
-
-    attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.norm_factor
-
-    if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-        raise ValueError(
-            f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-            f" {attn_weights.size()}"
         )
 
-    if attention_mask is not None:
-        if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-            raise ValueError(
-                f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-            )
-
-        attn_weights = attn_weights + attention_mask
-
-    # upcast attention to fp32
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-    attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-    attn_output = torch.matmul(attn_weights, value_states)
-
-    if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-        raise ValueError(
-            f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-            f" {attn_output.size()}"
-        )
-
-    attn_output = attn_output.transpose(1, 2).contiguous()
-    attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-
-    attn_output = self.o_proj(attn_output)
-    attn_output = nn.functional.dropout(attn_output, p=self.residual_dropout, training=self.training)
-
-    if not output_attentions:
-        attn_weights = None
-
-    return attn_output, attn_weights, past_key_value
-
-
-class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
-    def __init__(self, config: Starcoder2Config, layer_idx: int):
-        super().__init__(config, layer_idx)
-        self.self_attn = Starcoder2Attention(config, layer_idx)
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        token_idx: Optional[torch.Tensor] = None,
-        **kwargs,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        """
-        Copied from Starcoder2DecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
-        The only differences are:
-        - add new args token_idx
-        """
-
-        residual = hidden_states
-
-        hidden_states = self.input_layernorm(hidden_states)
-
-        # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-            token_idx=token_idx,
-        )
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
-
-        outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
-
-        return outputs
 
 class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
@@ -673,8 +741,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        token_idx: Optional[torch.Tensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        token_idx: Optional[torch.Tensor] = None,
         trim_logits: Optional[bool] = False,
         attn_softmax_bf16: Optional[bool] = False,
         reuse_cache: Optional[bool] = False,
@@ -684,7 +752,6 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -707,8 +774,8 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            token_idx=token_idx,
             cache_position=cache_position,
+            token_idx=token_idx,
             attn_softmax_bf16=attn_softmax_bf16,
             reuse_cache=reuse_cache,
             use_flash_attention=use_flash_attention,
@@ -719,7 +786,6 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         )
 
         hidden_states = outputs[0]
-        
         _, seq_len, _ = hidden_states.shape
         if seq_len > 1 and trim_logits and not self.training:
             if token_idx is not None:
@@ -728,18 +794,18 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
                 hidden_states = hidden_states[:, -1, :]
 
         logits = self.lm_head(hidden_states).float()
-        
+
         loss = None
         if labels is not None:
             # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
+            loss_fct = torch.nn.CrossEntropyLoss()
             shift_logits = shift_logits.view(-1, self.config.vocab_size)
             shift_labels = shift_labels.view(-1)
-            # Ensure tensors are on the same device
+            # Enable model parallelism
             shift_labels = shift_labels.to(shift_logits.device)
-            loss_fct = torch.nn.CrossEntropyLoss()
             loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
@@ -758,7 +824,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, token_idx=None, **kwargs
     ):
         past_length = 0
-        # Omit tokens covered by past_key_values
+
         reuse_cache = kwargs.get("reuse_cache")
         if past_key_values is not None:
             if token_idx is not None:
@@ -791,10 +857,10 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
                     and cache_length + input_ids.shape[1] > max_cache_length
                 ):
                     attention_mask = attention_mask[:, -max_cache_length:]
-            elif reuse_cache and token_idx is not None:
-                # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
-                input_ids = input_ids[:, :token_idx]
-                attention_mask = attention_mask[:, :token_idx]
+        elif reuse_cache and token_idx is not None:
+            # With reuse_cache, KV cache is pre allocated hence for the 1st token we can slice the inputs till token idx for the fwd pass
+            input_ids = input_ids[:, :token_idx]
+            attention_mask = attention_mask[:, :token_idx]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
@@ -806,8 +872,9 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
                     position_ids = torch.index_select(position_ids, 1, token_idx - 1)
                 else:
                     position_ids = position_ids[:, -input_ids.shape[1] :]
-        
+
         cache_position = None
+
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
@@ -835,7 +902,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         return model_inputs
 
 
-def apply_customized_rope(q, k, cos, sin, position_ids, is_training):
+def apply_customized_rope(q, k, cos, sin, position_ids, is_training=False):
     if q.device.type == "hpu" and FusedRoPE:
         if not is_training and (q.dtype == torch.bfloat16 or k.dtype == torch.bfloat16):
             return FusedRoPE.apply(
