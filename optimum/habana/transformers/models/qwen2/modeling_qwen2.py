@@ -123,6 +123,7 @@ def gaudi_qwen2_repeat_kv(
 
     return query_states, key_states, value_states, attention_mask
 
+
 #  FusedScaledDotProductAttention
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
@@ -131,7 +132,8 @@ class ModuleFusedSDPA(torch.nn.Module):
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
-    
+
+
 class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -338,7 +340,7 @@ class GaudiQwen2Attention(Qwen2Attention):
 
         if use_flash_attention and FusedSDPA:
             import habana_frameworks.torch.hpu as ht
-            
+
             softmax_mode = "fast" if flash_attention_fast_softmax else "None"
 
             if q_len == 1:
@@ -406,12 +408,12 @@ class GaudiQwen2Attention(Qwen2Attention):
 
         if not output_attentions:
             attn_weights = None
-            
+
         if not reuse_cache and token_idx is not None and cache_idx is not None and q_len == 1:
             # Return only past key value shapes and not the tensors during decode phase (q len is 1)
             # to avoid making past key values as persistent output tensors of HPU graphs.
             past_key_value = (past_key_value[0].shape, past_key_value[1].shape)
-            
+
         return attn_output, attn_weights, past_key_value
 
     def attention_all_reduce(self, attn_output):
@@ -887,7 +889,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
                     attention_mask = attention_mask[:, -max_cache_length:]
         elif (reuse_cache or bucket_internal) and token_idx is not None:
             # KV cache is pre allocated with reuse cache or will be padded with bucket internal
-            # hence for the 1st token we can slice the inputs till token idx for the fwd pass.            
+            # hence for the 1st token we can slice the inputs till token idx for the fwd pass.
             input_ids = input_ids[:, :token_idx]
             attention_mask = attention_mask[:, :token_idx]
 
@@ -934,7 +936,7 @@ class GaudiQwen2ForCausalLM(Qwen2ForCausalLM):
 
 def apply_customized_rope(q, k, cos, sin, position_ids):
     if q.device.type == "hpu" and FusedRoPE:
-       # TODO: remove `.clone()` when it is fixed in SynapseAI
+        # TODO: remove `.clone()` when it is fixed in SynapseAI
         if k.dtype == torch.bfloat16:
             return FusedRoPE.apply(
                 q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
