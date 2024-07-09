@@ -397,6 +397,7 @@ def main():
                 "Peace is the only way",
             ]
 
+        # Format message with the command-r chat template
         if model.config.model_type == "cohere":
             for i, sentence in enumerate(input_sentences):
                 message = [{"role": "user", "content": sentence}]
