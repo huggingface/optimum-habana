@@ -25,6 +25,7 @@ from transformers import AutoModel, AutoTokenizer
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
+
 # Adapted from https://huggingface.co/Supabase/gte-small example
 
 adapt_transformers_to_gaudi()

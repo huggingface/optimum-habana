@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import time
 from unittest import TestCase
 
@@ -26,7 +27,13 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 
 
 adapt_transformers_to_gaudi()
-LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE = 0.68102
+
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    # Gaudi2 CI baselines
+    LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE = 0.6812
+else:
+    # Gaudi1 CI baselines
+    LATENCY_GTE_SMALL_BF16_GRAPH_BASELINE = 0.7987
 MODEL_NAME = "Supabase/gte-small"
 
 INPUT_TEXTS = [
