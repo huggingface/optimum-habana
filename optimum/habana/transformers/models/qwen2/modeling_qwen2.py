@@ -944,5 +944,10 @@ def apply_customized_rope(q, k, cos, sin, position_ids):
                 sin.unsqueeze(0).unsqueeze(0).clone().to(torch.bfloat16),
                 position_ids,
             )
+        return FusedRoPE.apply(
+            q, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+        ), FusedRoPE.apply(
+            k, cos.unsqueeze(0).unsqueeze(0).clone(), sin.unsqueeze(0).unsqueeze(0).clone(), position_ids
+        )
     else:
         return apply_rotary_pos_emb(q, k, cos, sin, position_ids)
