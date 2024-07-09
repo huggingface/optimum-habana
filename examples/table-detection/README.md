@@ -18,9 +18,16 @@ limitations under the License.
 
 This folder contains an example for using the [Table Transformer](https://huggingface.co/microsoft/table-transformer-detection) model fine tuned for table detection on the Gaudi platform.
 
+## Requirements
+
+First, you should install the requirements:
+```bash
+pip install -r requirements.txt
+```
+
 ## Single HPU Inference
 
-```sh
+```bash
 python run_example.py \
     --model_name_or_path microsoft/table-transformer-detection \
     --dataset_name nielsr/example-pdf \

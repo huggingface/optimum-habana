@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import time
 from unittest import TestCase
 
@@ -27,8 +28,11 @@ from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gau
 
 adapt_transformers_to_gaudi()
 
-LATENCY_TABLE_TRANSFORMER_BF16_GRAPH_BASELINE = 2.2
 MODEL_NAME = "microsoft/table-transformer-detection"
+if os.environ.get("GAUDI2_CI", "0") == "1":
+    LATENCY_TABLE_TRANSFORMER_BF16_GRAPH_BASELINE = 2.2
+else:
+    LATENCY_TABLE_TRANSFORMER_BF16_GRAPH_BASELINE = 6.6
 
 
 @pytest.fixture(scope="module")
