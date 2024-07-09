@@ -63,7 +63,7 @@ from ...utils import HabanaGenerationtime, HabanaProfile
 from ..integrations.deepspeed import unwrap_deepspeed_model
 from .candidate_generator import GaudiAssistedCandidateGenerator
 from .configuration_utils import GaudiGenerationConfig
-
+from habana_frameworks.torch.hpu.metrics import metric_global
 
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
@@ -1747,7 +1747,12 @@ class GaudiGenerationMixin(GenerationMixin):
         time_to_first_token_done = False
         model_kwargs["pad_done"] = False
         model_kwargs["lazy_mode"] = lazy_mode
+        cnt = -1
         while self._has_unfinished_sequences(this_peer_finished, synced_gpus, device=input_ids.device):
+            cnt += 1
+            self.htcore_generation.mark_step(sync=True)
+            gc_metric = metric_global("graph_compilation")
+            print(f'STEPa {cnt} {gc_metric.stats()}', flush=True)
             if lazy_mode:
                 self.htcore_generation.mark_step()
 
@@ -1762,7 +1767,27 @@ class GaudiGenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             hpu_graphs_kwargs = self._get_hpu_graphs_kwargs(model_kwargs)
+            #if cnt == 0:
+            #    model_inputs['foo'] = torch.tensor([1.0], device='hpu')
+            #else:
+            #    model_inputs['foo'] = torch.tensor([[1.0],[2.0]], device='hpu')
+            print('......', hpu_graphs_kwargs)
 
+            self.htcore_generation.mark_step(sync=True)
+            gc_metric = metric_global("graph_compilation")
+            print(f'STEPb {cnt} {gc_metric.stats()}', flush=True)
+
+            #import pdb; pdb.set_trace()
+            prnt_str = f'input_ids -> {model_inputs["input_ids"].shape}, position_ids -> {model_inputs["position_ids"].shape}'
+            if model_inputs["past_key_values"] is None:
+                print(prnt_str)
+            else:
+                try:
+                    print(prnt_str + f'kvcache ->  {model_inputs["past_key_values"][0][0].shape}')
+                except:
+                    pass
+            if cnt == 0:
+                print("model_inputs...", model_inputs)
             # forward pass to get next token
             outputs = self(
                 **model_inputs,
@@ -1771,6 +1796,15 @@ class GaudiGenerationMixin(GenerationMixin):
                 output_hidden_states=output_hidden_states,
                 **hpu_graphs_kwargs,
             )
+
+            self.htcore_generation.mark_step(sync=True)
+            gc_metric = metric_global("graph_compilation")
+            try:
+                xx = outputs.past_key_values[0][0].shape
+            except:
+                xx = outputs.past_key_values[0][0]
+            print(f'STEPc {cnt} {gc_metric.stats()} .... {xx}', flush=True)
+
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
 
@@ -1838,11 +1872,13 @@ class GaudiGenerationMixin(GenerationMixin):
                 input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
             if streamer is not None:
                 streamer.put(next_tokens.cpu())
+            #import pdb; pdb.set_trace()
             model_kwargs = self._update_model_kwargs_for_generation(
                 outputs,
                 model_kwargs,
                 is_encoder_decoder=self.config.is_encoder_decoder,
             )
+            #import pdb; pdb.set_trace()
             if bucket_size > 0 and bucket_internal:
                 # Calculate slice idx for kv cache during the decode phase.
                 # Breaking down the kv cache in the attention block helps to reduce computation time.
@@ -1873,15 +1909,34 @@ class GaudiGenerationMixin(GenerationMixin):
                     torch_hpu.synchronize()
                 hb_gen_time.step()
 
+            try:
+                print("BEFORE PAD", model_kwargs['past_key_values'][0][0].shape)
+            except:
+                print("BEFORE PAD", model_kwargs['past_key_values'][0][0])
+            #import pdb; pdb.set_trace()
             if (
                 not model_kwargs.get("pad_done", False)
                 and not model_kwargs.get("reuse_cache", False)
                 and bucket_internal
+                and outputs.past_key_values[0][0].shape[2] ==  model_inputs['input_ids'].shape[1]
             ):
                 # Pad the returned pask key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
                 self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
+            print("AFTER PAD", model_kwargs['past_key_values'][0][0].shape)
+
+
+        if (
+            model_kwargs.get("use_hpu_graphs", False)
+            #and model_kwargs.get("limit_hpu_graphs", False)
+            and not model_kwargs.get("reuse_cache", False)
+            and bucket_internal
+        ):
+            # Clear HPU graphs input tensors of the decode phase after the full generation while loop
+            self.clear_inputs()
+            # Delete past key value tensors
+            #self._remove_past_key_values(model_kwargs)
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -1890,7 +1945,7 @@ class GaudiGenerationMixin(GenerationMixin):
             and bucket_internal
         ):
             # Clear HPU graphs input tensors of the decode phase after the full generation while loop
-            self.clear_inputs()
+            #self.clear_inputs()
             # Delete past key value tensors
             self._remove_past_key_values(model_kwargs)
 

@@ -988,7 +988,9 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
         cache_idx: int = None,
         lazy_mode: Optional[bool] = True,
         num_virtual_tokens: int = None,
+        #foo = None
     ) -> Union[Tuple, CausalLMOutputWithPast]:
+        #print('IN MODEL: ', foo, flush=True)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -1143,6 +1145,10 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
             # TODO: use `next_tokens` directly instead.
             model_inputs = {"input_ids": input_ids.contiguous()}
 
+        try:
+            print("prepare_inputs_for_generation", past_key_values[0][0].shape)
+        except:
+            print("prepare_inputs_for_generation", past_key_values)
         model_inputs.update(
             {
                 "position_ids": position_ids,
