@@ -23,7 +23,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-import torch.utils.checkpoint
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
@@ -462,6 +461,7 @@ class GaudiQwen2DecoderLayer(Qwen2DecoderLayer):
         flash_attention_causal_mask: Optional[bool] = False,
         flash_attention_fast_softmax: Optional[bool] = False,
         cache_idx: int = None,
+        **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
 
