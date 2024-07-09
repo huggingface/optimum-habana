@@ -4,6 +4,7 @@ As a result, it does not produce exactly the same behaviour as the original scri
 """
 
 import logging
+import sys
 import traceback
 from datetime import datetime
 
