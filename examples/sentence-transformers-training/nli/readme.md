@@ -35,11 +35,30 @@ or pretained examples from  nreimers/MiniLM-L6-H384-uncases, microsoft/mpnet-bas
 
 4) define the loss_model, TrainingArguments and Trainer
 
-5) execute the training command
+5) run the training examples as
 
+5.1)  **[training_nli.py](training_nli.py)**:
 ```bash
 python examples/sentence-transformers-training/nli/training_nli.py model_name
 ```
+    ```eval_rst
+    This example uses :class:`~sentence_transformers.losses.SoftmaxLoss` as described in the original [Sentence Transformers paper](https://arxiv.org/abs/1908.10084).
+    ```
+2. **[training_nli_v2.py](training_nli_v2.py)**:
+```bash
+python examples/sentence-transformers-training/nli/training_nli_v2.py model_name
+```
+    ```eval_rst
+    The :class:`~sentence_transformers.losses.SoftmaxLoss` as used in our original SBERT paper does not yield optimal performance. A better loss is :class:`~sentence_transformers.losses.MultipleNegativesRankingLoss`, where we provide pairs or triplets. In this script, we provide a triplet of the format: (anchor, entailment_sentence, contradiction_sentence). The NLI data provides such triplets. The :class:`~sentence_transformers.losses.MultipleNegativesRankingLoss` yields much higher performances and is more intuitive than :class:`~sentence_transformers.losses.SoftmaxLoss`. We have used this loss to train the paraphrase model in our `Making Monolingual Sentence Embeddings Multilingual using Knowledge Distillation <https://arxiv.org/abs/2004.09813>`_ paper.
+    ```
+3. **[training_nli_v3.py](training_nli_v3.py)**
+```bash
+python examples/sentence-transformers-training/nli/training_nli_v3.py model_name
+```
+    ```eval_rst
+    Following the `GISTEmbed <https://arxiv.org/abs/2402.16829>`_ paper, we can modify the in-batch negative selection from :class:`~sentence_transformers.losses.MultipleNegativesRankingLoss` using a guiding model. Candidate negative pairs are ignored during training if the guiding model considers the pair to be too similar. In practice, the :class:`~sentence_transformers.losses.GISTEmbedLoss` tends to produce a stronger training signal than :class:`~sentence_transformers.losses.MultipleNegativesRankingLoss` at the cost of some training overhead for running inference on the guiding model.
+    ```
+
 
 
 ## Data
