@@ -21,7 +21,6 @@ import sys
 from pathlib import Path
 
 import torch
-from diffusers import DPMSolverMultistepScheduler
 from diffusers.utils.export_utils import export_to_video
 
 from optimum.habana.diffusers import GaudiTextToVideoSDPipeline
