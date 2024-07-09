@@ -41,8 +41,8 @@ class ModuleFusedSDPA(torch.nn.Module):
         super().__init__()
         self._hpu_kernel_fsdpa = fusedSDPA
 
-    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale):
-        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale)
+    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
+        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
 
 
 class Matmul(torch.nn.Module):
@@ -102,12 +102,12 @@ class GaudiCLIPAttention(CLIPAttention):
             if tgt_len == 1 or causal_attention_mask is None:
                 with ht.sdp_kernel(enable_recompute=True):
                     attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, attention_mask, self.dropout, False, None
+                        query_states, key_states, value_states, attention_mask, self.dropout, False, 1, "fast"
                     )
             elif causal_attention_mask is not None:
                 with ht.sdp_kernel(enable_recompute=True):
                     attn_output = self.fused_scaled_dot_product_attention(
-                        query_states, key_states, value_states, causal_attention_mask, self.dropout, True, None
+                        query_states, key_states, value_states, causal_attention_mask, self.dropout, True, 1, "fast"
                     )
         else:
             attn_weights = self.bmm1(query_states, key_states.transpose(1, 2))

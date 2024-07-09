@@ -83,6 +83,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 return_dict=return_dict,
                 token_idx=token_idx + self.image_offset,
                 use_flash_attention=use_flash_attention,
+                flash_attention_recompute=use_flash_attention,
             )
 
             if inputs_embeds.shape[1] != 1 and pixel_values is not None:

@@ -136,36 +136,25 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
 
 ### Inference with FusedSDPA
 
-Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Habana online document](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). Currently FusedSDPA only works for Llava-1.5-7b, Llava-1.5-13b models.
+Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Habana online document](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). Currently FusedSDPA only works with BF16 precision.
 
 Use the following commands to run Llava-1.5-7b inference with FusedSDPA
-
-BF16:
 ```bash
 python3 run_pipeline.py \
     --model_name_or_path llava-hf/llava-1.5-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
     --use_hpu_graphs \
     --bf16 \
     --use_flash_attention
 ```
 
-FP8:
-Here is an example to measure the tensor quantization statistics on Llava-1.5-7b:
-```bash
-QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-1.5-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16 \
---use_flash_attention
-```
 
-Here is an example to quantize the model based on previous measurements for Llava-1.5-7b:
+Use the following commands to run Llava-v1.6-mistral-7b inference with FusedSDPA
 ```bash
-QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
---model_name_or_path llava-hf/llava-1.5-7b-hf \
---image_path "https://llava-vl.github.io/static/images/view.jpg" \
---use_hpu_graphs \
---bf16 \
---use_flash_attention
+python3 run_pipeline.py \
+    --model_name_or_path llava-hf/llava-v1.6-mistral-7b-hf \
+    --image_path "https://llava-vl.github.io/static/images/view.jpg" \
+    --use_hpu_graphs \
+    --bf16 \
+    --use_flash_attention
 ```
