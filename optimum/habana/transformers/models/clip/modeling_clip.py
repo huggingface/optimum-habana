@@ -81,7 +81,7 @@ class GaudiCLIPAttention(CLIPAttention):
         """
         Copied from CLIPAttention.forward: https://github.com/huggingface/transformers/blob/ab0f050b42d903f34d6eb97f3f8c0c07f0517ad2/src/transformers/models/clip/modeling_clip.py
         The only differences are:
-        - add new args use_flash_attention
+        - add new args use_flash_attention to enable FusedSDPA
         """
         bsz, tgt_len, embed_dim = hidden_states.size()
         attn_weights_reshaped = None
