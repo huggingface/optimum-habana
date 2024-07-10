@@ -7,6 +7,37 @@ First, you should install the requirements:
 ```
 $ pip install -U -r requirements.txt
 ```
+## Supervised Finetuning
+The following example is for the supervised Lora finetune with Qwen2 model for conversational format dataset.
+
+    python sft.py \
+        --model_name_or_path "Qwen/Qwen2-7B" \
+        --dataset_name "philschmid/dolly-15k-oai-style" \
+        --streaming False \
+        --bf16 True \
+        --subset '' \
+        --output_dir ./model_qwen \
+        --num_train_epochs 1 \
+        --per_device_train_batch_size 16 \
+        --evaluation_strategy "no" \
+        --save_strategy "no" \
+        --learning_rate 3e-4 \
+        --warmup_ratio  0.03 \
+        --lr_scheduler_type "cosine" \
+        --max_grad_norm  0.3 \
+        --logging_steps 1 \
+        --do_train \
+        --do_eval \
+        --use_habana \
+        --use_lazy_mode \
+        --throughput_warmup_steps 3 \
+        --use_peft True \
+        --lora_r 4 \
+        --lora_alpha=16 \
+        --lora_dropout=0.05 \
+        --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
+        --max_seq_length 512 \
+        --adam_epsilon 1e-08
 
 ## DPO pipeline
 
@@ -19,10 +50,12 @@ There are two main steps to the DPO training process:
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
         --model_name_or_path meta-llama/Llama-2-7b-hf \
+        --dataset_name "lvwerra/stack-exchange-paired" \
         --output_dir="./sft" \
         --max_steps=500 \
         --logging_steps=10 \
         --save_steps=100 \
+        --do_train \
         --per_device_train_batch_size=4 \
         --per_device_eval_batch_size=1 \
         --gradient_accumulation_steps=2 \
@@ -60,8 +93,10 @@ steps like:
     ```
     DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 python ../gaudi_spawn.py --world_size 8 --use_deepspeed sft.py \
         --model_name_or_path meta-llama/Llama-2-70b-hf \
+        --dataset_name "lvwerra/stack-exchange-paired" \
         --deepspeed ../language-modeling/llama2_ds_zero3_config.json \
         --output_dir="./sft" \
+        --do_train \
         --max_steps=500 \
         --logging_steps=10 \
         --save_steps=100 \
@@ -133,7 +168,9 @@ There are three main steps to the PPO training process:
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi sft.py \
         --model_name_or_path meta-llama/Llama-2-7b-hf \
+        --dataset_name "lvwerra/stack-exchange-paired" \
         --output_dir="./sft" \
+        --do_train \
         --max_steps=500 \
         --logging_steps=10 \
         --save_steps=100 \
