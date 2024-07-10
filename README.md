@@ -229,6 +229,16 @@ The following model architectures, tasks and device distributions have been vali
 
 </div>
 
+- PyTorch Image Models/TIMM:
+
+<div align="center">
+
+| Architecture        | Training | Inference | Tasks |
+|---------------------|:--------:|:---------:|:------|
+| FastViT       |          | <div style="text-align:left"><li>Single card</li></div> | <li>[image classification](https://github.com/huggingface/optimum-habana/tree/main/examples/image-classification)</li> |
+
+</div>
+
 - TRL:
 
 <div align="center">
