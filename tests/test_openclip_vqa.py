@@ -15,7 +15,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     MODELS_TO_TEST = {
         "bf16": [
             ("laion/CLIP-ViT-g-14-laion2B-s12B-b42K", 1472),
-            ("microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224", 1816)
+            ("microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224", 1816),
         ],
     }
 else:
@@ -24,21 +24,21 @@ else:
         "bf16": [
             ("laion/CLIP-ViT-g-14-laion2B-s12B-b42K", 550),
             ("microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224", 1200),
-         ],
-     }
+        ],
+    }
 
 
 def _install_requirements():
-        PATH_TO_EXAMPLE_DIR = Path(__file__).resolve().parent.parent / "examples"
-        cmd_line = f"pip install -r {PATH_TO_EXAMPLE_DIR / 'visual-question-answering' / 'openclip_requirements.txt'}".split()
-        p = subprocess.Popen(cmd_line)
-        return_code = p.wait()
-        assert return_code == 0
+    PATH_TO_EXAMPLE_DIR = Path(__file__).resolve().parent.parent / "examples"
+    cmd_line = (
+        f"pip install -r {PATH_TO_EXAMPLE_DIR / 'visual-question-answering' / 'openclip_requirements.txt'}".split()
+    )
+    p = subprocess.Popen(cmd_line)
+    return_code = p.wait()
+    assert return_code == 0
 
-def _test_openclip_vqa(
-    model_name: str,
-    baseline: float
-):
+
+def _test_openclip_vqa(model_name: str, baseline: float):
     _install_requirements()
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"

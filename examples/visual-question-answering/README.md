@@ -37,7 +37,7 @@ Models that have been validated:
 ## OpenCLIP inference
 
 The `run_openclip_vqa.py` can be used to run zero shot image classification with [OpenCLIP Huggingface Models](https://huggingface.co/docs/hub/en/open_clip#using-openclip-at-hugging-face).
-The requirements for `run_openclip_vqa.py`can be installed with `openclip_requirements.txt` as follows:
+The requirements for `run_openclip_vqa.py` can be installed with `openclip_requirements.txt` as follows:
 
 ```bash
 pip install -r openclip_requirements.txt

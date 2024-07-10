@@ -24,32 +24,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DATASET_URL = 'https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224/resolve/main/example_data/biomed_image_classification_example_data/'
+DATASET_URL = "https://huggingface.co/microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224/resolve/main/example_data/biomed_image_classification_example_data/"
 LABELS = [
-        'adenocarcinoma histopathology',
-        'brain MRI',
-        'covid line chart',
-        'squamous cell carcinoma histopathology',
-        'immunohistochemistry histopathology',
-        'bone X-ray',
-        'chest X-ray',
-        'pie chart',
-        'hematoxylin and eosin histopathology'
-    ]
+    "adenocarcinoma histopathology",
+    "brain MRI",
+    "covid line chart",
+    "squamous cell carcinoma histopathology",
+    "immunohistochemistry histopathology",
+    "bone X-ray",
+    "chest X-ray",
+    "pie chart",
+    "hematoxylin and eosin histopathology",
+]
 
 TEST_IMGS = [
-        'squamous_cell_carcinoma_histopathology.jpeg',
-        'H_and_E_histopathology.jpg',
-        'bone_X-ray.jpg',
-        'adenocarcinoma_histopathology.jpg',
-        'covid_line_chart.png',
-        'IHC_histopathology.jpg',
-        'chest_X-ray.jpg',
-        'brain_MRI.jpg',
-        'pie_chart.png'
-    ]
+    "squamous_cell_carcinoma_histopathology.jpeg",
+    "H_and_E_histopathology.jpg",
+    "bone_X-ray.jpg",
+    "adenocarcinoma_histopathology.jpg",
+    "covid_line_chart.png",
+    "IHC_histopathology.jpg",
+    "chest_X-ray.jpg",
+    "brain_MRI.jpg",
+    "pie_chart.png",
+]
 
-def plot_images_with_metadata(images:list, metadata, output_dir: str, plot_name: str) -> None:
+
+def plot_images_with_metadata(images: list, metadata, output_dir: str, plot_name: str) -> None:
     print(f"plottypes {type(images)} {type(metadata)} {type(output_dir)} {type(plot_name)}")
 
     num_images = len(images)
@@ -62,11 +63,11 @@ def plot_images_with_metadata(images:list, metadata, output_dir: str, plot_name:
         else:
             ax = axes
         ax.imshow(img)
-        ax.axis('off')
+        ax.axis("off")
         ax.set_title(f"{metadata['filename']}\n{metadata['top_probs']}", fontsize=14)
 
     plt.tight_layout()
-    plt.savefig(f'{output_dir}/{plot_name}.png')
+    plt.savefig(f"{output_dir}/{plot_name}.png")
 
 
 def run_qa(model: model, images: torch.Tensor, texts: torch.Tensor, device: torch.device) -> tuple:
@@ -77,20 +78,20 @@ def run_qa(model: model, images: torch.Tensor, texts: torch.Tensor, device: torc
     return sorted_indices, logits
 
 
-def postprocess(args: argparse.Namespace, sorted_indices: torch.Tensor, logits: torch.Tensor , topk: int) -> list:
+def postprocess(args: argparse.Namespace, sorted_indices: torch.Tensor, logits: torch.Tensor, topk: int) -> list:
     logits = logits.float().cpu().numpy()
     sorted_indices = sorted_indices.int().cpu().numpy()
     metadata_list = []
     for i, img in enumerate(args.image_path):
-        img_name = img.split('/')[-1]
+        img_name = img.split("/")[-1]
 
         top_probs = []
-        topk  = len(args.labels) if topk == -1 else topk
+        topk = len(args.labels) if topk == -1 else topk
         for j in range(topk):
             jth_index = sorted_indices[i][j]
             top_probs.append(f"{args.labels[jth_index]}: {logits[i][jth_index] * 100:.1f}")
 
-        metadata = {'filename': img_name, 'top_probs': '\n'.join(top_probs)}
+        metadata = {"filename": img_name, "top_probs": "\n".join(top_probs)}
         metadata_list.append(metadata)
     return metadata_list
 
@@ -147,9 +148,12 @@ def main():
         help="Output directory to store results in.",
     )
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations for benchmarking.")
-    parser.add_argument("--n_iterations", type=int, default=10, help="Number of inference iterations for benchmarking.")
-    parser.add_argument("--plot_images",action="store_true", help="Plot images with metadata for verification")
-    parser.add_argument("--plot_name",
+    parser.add_argument(
+        "--n_iterations", type=int, default=10, help="Number of inference iterations for benchmarking."
+    )
+    parser.add_argument("--plot_images", action="store_true", help="Plot images with metadata for verification")
+    parser.add_argument(
+        "--plot_name",
         default="openclip_vqa_plot",
         type=str,
         help="Name of the plot generated with the image and corresponding top K results",
@@ -164,26 +168,27 @@ def main():
 
     adapt_transformers_to_gaudi()
 
-    precision ="fp32"
-    dtype =torch.float32
+    precision = "fp32"
+    dtype = torch.float32
     if args.bf16:
-        precision ="bf16"
+        precision = "bf16"
         dtype = torch.bfloat16
 
     model, preprocess = create_model_from_pretrained(f"hf-hub:{args.model_name_or_path}", precision=precision)
     tokenizer = get_tokenizer(f"hf-hub:{args.model_name_or_path}")
 
-    device = torch.device('hpu') if torch.hpu.is_available() else torch.device('cpu')
+    device = torch.device("hpu") if torch.hpu.is_available() else torch.device("cpu")
     device_type = "hpu" if torch.hpu.is_available() else "cpu"
 
     # Initialize model
     if args.use_hpu_graphs:
         from habana_frameworks.torch.hpu import wrap_in_hpu_graph
+
         model = wrap_in_hpu_graph(model)
     model = model.to(device)
     model.eval()
 
-    images = torch.stack([preprocess(Image.open(urlopen(img)))for img in args.image_path]).to(device)
+    images = torch.stack([preprocess(Image.open(urlopen(img))) for img in args.image_path]).to(device)
     texts = tokenizer([args.prompt + l for l in args.labels]).to(device)
 
     # Warm up
@@ -206,9 +211,9 @@ def main():
     if args.print_result:
         logger.info("Results from the last iteration:")
         pprint(metadata_list)
-    inference_time_per_iteration = (end-start) * 1000/args.n_iterations
+    inference_time_per_iteration = (end - start) * 1000 / args.n_iterations
     logger.info(f"Inference Time per iteration = {inference_time_per_iteration:.4}ms")
-    throughput = len(args.image_path)*args.n_iterations/(end-start)
+    throughput = len(args.image_path) * args.n_iterations / (end - start)
     logger.info(f"Throughput = {throughput:.4} images/s")
 
     # Store results if necessary
@@ -216,10 +221,7 @@ def main():
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        results = {
-            "throughput": throughput,
-            "inference time per iteration ": inference_time_per_iteration
-        }
+        results = {"throughput": throughput, "inference time per iteration ": inference_time_per_iteration}
         with (output_dir / "results.json").open("w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=4)
     if args.plot_images:
