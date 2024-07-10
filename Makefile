@@ -41,6 +41,11 @@ fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pytest tests/test_diffusers.py
 
+# Run unit and integration tests related to Image segmentation
+fast_tests_image_segmentation:
+	python -m pip install .[tests]
+	python -m pytest tests/test_image_segmentation.py
+
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
