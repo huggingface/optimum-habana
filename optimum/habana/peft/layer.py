@@ -6,7 +6,6 @@ import torch
 import torch.nn.functional as F
 from peft.tuners.adaption_prompt.config import TRANSFORMERS_MODEL_CONFIG
 from peft.tuners.adaption_prompt.utils import llama_apply_rotary_pos_emb, llama_rotate_half
-from peft.utils.other import transpose
 
 
 def GaudiAdaloraLayerSVDLinearForward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
@@ -176,56 +175,3 @@ def GaudiAdaptedAttention_getattr(self, name: str):
         # This is necessary as e.g. causal models have various methods that we
         # don't want to re-implement here.
         return getattr(self.model, name)
-
-
-class LoRALinear:
-    def __init__(self, module):
-        has_bias = module.bias is not None
-        self.module = module
-        import habana_frameworks.torch.hpex.experimental.transformer_engine as te
-
-        self.module.te_linear = te.Linear(
-            module.in_features,
-            module.out_features,
-            bias=has_bias,
-            params_dtype=module.weight.dtype,
-            skip_weight_param_allocation=True,
-        )
-
-    def _linear(self, input: torch.Tensor) -> torch.Tensor:
-        # TODO: to check if bias is removed from lora linear
-        if hasattr(self.module, "bias"):
-            return self.module.te_linear(
-                input, transpose(self.module.weight, self.module.fan_in_fan_out), bias=self.module.bias
-            )
-        else:
-            return self.module.te_linear(input, transpose(self.module.weight, self.module.fan_in_fan_out))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        previous_dtype = x.dtype
-
-        if self.module.disable_adapters:
-            if self.module.merged:
-                self.module.unmerge()
-            result = self._linear(x)
-        elif self.module.merged:
-            result = self._linear(x)
-        else:
-            result = self._linear(x)
-            for active_adapter in self.module.active_adapters:
-                if active_adapter not in self.module.lora_A.keys():
-                    continue
-                lora_A = self.module.lora_A[active_adapter]
-                lora_B = self.module.lora_B[active_adapter]
-                dropout = self.module.lora_dropout[active_adapter]
-                scaling = self.module.scaling[active_adapter]
-                x = x.to(lora_A.weight.dtype)
-                result = result.clone() + lora_B(lora_A(dropout(x))) * scaling
-
-        result = result.to(previous_dtype)
-        return result
-
-    @staticmethod
-    def replace_forward(module):
-        lora_linear = LoRALinear(module)
-        module.forward = lora_linear.forward

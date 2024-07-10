@@ -290,6 +290,19 @@ class GaudiLlamaAttention(LlamaAttention):
         self.k_cache = KVCache()
         self.v_cache = KVCache()
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
+        if config.fused_qkv:
+            self.num_heads = config.num_attention_heads
+            self.head_dim = config.hidden_size // self.num_heads
+            self.dim1 = self.num_heads * self.head_dim
+            self.dim2 = config.num_key_value_heads * self.head_dim
+            self.qkv_proj = torch.nn.Linear(
+                self.hidden_size,
+                self.dim1 + 2 * self.dim2,
+                bias=config.attention_bias,
+            )
+            self.q_proj = None
+            self.k_proj = None
+            self.v_proj = None
         self.inp_seq_len = -1
         self.norm_factor = 1.0 / math.sqrt(self.head_dim)
 
@@ -375,10 +388,15 @@ class GaudiLlamaAttention(LlamaAttention):
             value_states = torch.cat(value_states, dim=-1)
 
         else:
-            query_states = self.q_proj(hidden_states)
-            key_states = self.k_proj(hidden_states)
-            value_states = self.v_proj(hidden_states)
-
+            if self.config.fused_qkv:
+                qkv_states = self.qkv_proj(hidden_states)
+                query_states, key_states, value_states = torch.split(
+                    qkv_states, [self.dim1, self.dim2, self.dim2], dim=-1
+                )
+            else:
+                query_states = self.q_proj(hidden_states)
+                key_states = self.k_proj(hidden_states)
+                value_states = self.v_proj(hidden_states)
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         # TODO: update when auto mp params is enabled in DeepSpeed (cf. https://github.com/HabanaAI/DeepSpeed/blob/94309c7b5dfc1a69858f5c9f25737b2f81a332a5/deepspeed/module_inject/replace_module.py#L440)
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)

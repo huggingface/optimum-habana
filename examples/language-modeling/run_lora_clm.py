@@ -474,6 +474,7 @@ def main():
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
         "token": model_args.token,
+        "padding_side": "right",
     }
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
@@ -644,11 +645,16 @@ def main():
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     def tokenize(prompt, add_eos_token=True):
+        if not data_args.dataset_concatenation:
+            add_eos_token = False
+            padding = "max_length"
+        else:
+            padding = False
         results = tokenizer(
             prompt,
             truncation=True,
             max_length=data_args.max_seq_length,
-            padding=False,
+            padding=padding,
             return_tensors=None,
         )
         for i in range(len(results["input_ids"])):
