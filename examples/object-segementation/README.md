@@ -13,7 +13,7 @@ limitations under the License.
 
 # Object Segmentation Examples
 
-This directory contains two examples script that demonstrates how to perform object segmentation on Gaudi with graph mode.
+This directory contains two example scripts that demonstrate how to perform object segmentation on Gaudi with graph mode.
 
 ## Single-HPU inference
 
