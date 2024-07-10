@@ -16,7 +16,7 @@ limitations under the License.
 
 # Image Classification Examples
 
-This directory contains a script that showcases how to fine-tune any model supported by the [`AutoModelForImageClassification` API](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForImageClassification) (such as [ViT](https://huggingface.co/docs/transformers/main/en/model_doc/vit) or [Swin Transformer](https://huggingface.co/docs/transformers/main/en/model_doc/swin)) on HPUs. They can be used to fine-tune models on both [datasets from the hub](#using-datasets-from-hub) as well as on [your own custom data](#using-your-own-data).
+This directory contains a script that showcases how to fine-tune any model supported by the [`AutoModelForImageClassification` API](https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoModelForImageClassification) (such as [ViT](https://huggingface.co/docs/transformers/main/en/model_doc/vit) or [Swin Transformer](https://huggingface.co/docs/transformers/main/en/model_doc/swin)) on HPUs. They can be used to fine-tune models on both [datasets from the hub](#using-datasets-from-hub) as well as on [your own custom data](#using-your-own-data). This directory also contains a script to demonstrate a single HPU inference for [PyTorch-Image-Models/TIMM](https://huggingface.co/docs/timm/index).
 
 
 ## Requirements
@@ -295,3 +295,25 @@ python run_image_classification.py \
     --gaudi_config_name Habana/vit \
     --dataloader_num_workers 1 \
     --bf16
+```
+
+## TIMM/FastViT Examples
+
+This directory contains an example script that demonstrates using FastViT with graph mode.
+
+### Single-HPU inference
+
+```bash
+python3 run_timm_example.py \
+    --model_name_or_path "timm/fastvit_t8.apple_in1k" \
+    --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png" \
+    --warmup 3 \
+    --n_iterations 20 \
+    --use_hpu_graphs \
+    --bf16 \
+    --print_result
+```
+Models that have been validated:
+  - [timm/fastvit_t8.apple_dist_in1k](https://huggingface.co/timm/fastvit_t8.apple_dist_in1k)
+  - [timm/fastvit_t8.apple_in1k](https://huggingface.co/timm/fastvit_t8.apple_in1k)
+  - [timm/fastvit_sa12.apple_in1k](https://huggingface.co/timm/fastvit_sa12.apple_in1k)
