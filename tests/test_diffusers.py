@@ -16,25 +16,43 @@
 
 import json
 import os
+import random
 import re
 import subprocess
 import tempfile
 from io import BytesIO
 from pathlib import Path
+from typing import Union
 from unittest import TestCase, skipUnless
 
 import numpy as np
-import pytest
 import requests
+import safetensors
 import torch
-from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel, UniPCMultistepScheduler
+from diffusers import (
+    AutoencoderKL,
+    AutoencoderKLTemporalDecoder,
+    ControlNetModel,
+    UNet2DConditionModel,
+    UNetSpatioTemporalConditionModel,
+    UniPCMultistepScheduler,
+)
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils import load_image, numpy_to_pil
+from diffusers.utils.testing_utils import floats_tensor
 from diffusers.utils.torch_utils import randn_tensor
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 from transformers.testing_utils import parse_flag_from_env, slow
 
 from optimum.habana import GaudiConfig
@@ -48,6 +66,7 @@ from optimum.habana.diffusers import (
     GaudiStableDiffusionPipeline,
     GaudiStableDiffusionUpscalePipeline,
     GaudiStableDiffusionXLPipeline,
+    GaudiStableVideoDiffusionPipeline,
 )
 from optimum.habana.utils import set_seed
 
@@ -431,7 +450,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
 
-        # Test batch_size > 1 where batch_size is a divider of the total number of generated images
+        # Test num_images > 1 where num_images is a divider of the total number of generated images
         batch_size = 3
         num_images_per_prompt = batch_size**2
         images = sd_pipe(
@@ -458,7 +477,7 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         self.assertEqual(len(images), num_prompts * num_images_per_prompt)
         self.assertEqual(images[-1].shape, (64, 64, 3))
 
-        # Test batch_size when it is not a divider of the toal number of generated images for a single prompt
+        # Test num_images when it is not a divider of the total number of generated images for a single prompt
         num_images_per_prompt = 7
         images = sd_pipe(
             prompt,
@@ -1729,7 +1748,6 @@ class TrainTextToImage(TestCase):
         self.assertEqual(return_code, 0)
 
     @slow
-    @pytest.mark.skip(reason="The dataset used in this test is not available at the moment.")
     def test_train_text_to_image_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path_to_script = (
@@ -1744,11 +1762,10 @@ class TrainTextToImage(TestCase):
                  python3
                  {path_to_script}
                  --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0
-                 --pretrained_vae_model_name_or_path stabilityai/sdxl-vae
-                 --dataset_name lambdalabs/pokemon-blip-captions
-                 --resolution 512
-                 --crop_resolution 512
-                 --center_crop
+                 --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix
+                 --dataset_name lambdalabs/naruto-blip-captions
+                 --resolution 64
+                 --crop_resolution 64
                  --random_flip
                  --proportion_empty_prompts=0.2
                  --train_batch_size 16
@@ -1762,7 +1779,10 @@ class TrainTextToImage(TestCase):
                  --use_hpu_graphs_for_training
                  --use_hpu_graphs_for_inference
                  --bf16
+                 --adjust_throughput
+                 --center_crop
                  --max_train_steps 2
+                 --checkpointing_steps 2
                  --output_dir {tmpdir}
                 """.split()
 
@@ -1774,8 +1794,10 @@ class TrainTextToImage(TestCase):
             self.assertEqual(return_code, 0)
 
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+            self.assertTrue(
+                os.path.isfile(os.path.join(tmpdir, "checkpoint-2", "unet", "diffusion_pytorch_model.safetensors"))
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "checkpoint-2", "unet", "config.json")))
 
 
 class TrainControlNet(TestCase):
@@ -1876,3 +1898,316 @@ class TrainControlNet(TestCase):
             ).images[0]
 
             self.assertEqual(image.shape, (512, 512, 3))
+
+
+def install_requirements(requirements_filename: Union[str, os.PathLike]):
+    """
+    Installs the necessary requirements to run the example if the provided file exists, otherwise does nothing.
+    """
+
+    if not Path(requirements_filename).exists():
+        return
+
+    cmd_line = f"pip install -r {requirements_filename}".split()
+    p = subprocess.Popen(cmd_line)
+    return_code = p.wait()
+    assert return_code == 0
+
+
+class DreamBooth(TestCase):
+    def _test_dreambooth(self, extra_config, train_text_encoder=False):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_dreambooth.py"
+        )
+        install_requirements(path_to_script.parent / "requirements.txt")
+        instance_prompt = "soccer player kicking a ball"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                python3
+                {path_to_script}
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --instance_data_dir {Path(os.path.dirname(__file__))/'resource/img'}
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --train_text_encoder
+                --max_train_steps 1
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --gaudi_config_name Habana/stable-diffusion
+                --output_dir {tmpdir}
+                """.split()
+
+            test_args.append("--instance_prompt")
+            test_args.append(instance_prompt)
+            if "oft" not in extra_config:
+                test_args.append("--use_hpu_graphs_for_training")
+                test_args.append("--use_hpu_graphs_for_inference")
+            if train_text_encoder:
+                test_args.append("--train_text_encoder")
+            test_args.append(extra_config)
+            p = subprocess.Popen(test_args)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+            # save_pretrained smoke test
+            if "full" in extra_config:
+                self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
+                if train_text_encoder:
+                    self.assertTrue(os.path.isfile(os.path.join(tmpdir, "text_encoder", "model.safetensors")))
+                self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+            else:
+                self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "adapter_model.safetensors")))
+                if train_text_encoder:
+                    self.assertTrue(os.path.isfile(os.path.join(tmpdir, "text_encoder", "adapter_model.safetensors")))
+
+    def test_dreambooth_full(self):
+        self._test_dreambooth("full")
+
+    def test_dreambooth_full_with_text_encoder(self):
+        self._test_dreambooth("full", train_text_encoder=True)
+
+    def test_dreambooth_lora(self):
+        self._test_dreambooth("lora")
+
+    def test_dreambooth_lora_with_text_encoder(self):
+        self._test_dreambooth("lora", train_text_encoder=True)
+
+    def test_dreambooth_lokr(self):
+        self._test_dreambooth("lokr")
+
+    def test_dreambooth_lokr_with_text_encoder(self):
+        self._test_dreambooth("lokr", train_text_encoder=True)
+
+    def test_dreambooth_loha(self):
+        self._test_dreambooth("loha")
+
+    def test_dreambooth_loha_with_text_encoder(self):
+        self._test_dreambooth("loha", train_text_encoder=True)
+
+    def test_dreambooth_oft(self):
+        self._test_dreambooth("oft")
+
+    def test_dreambooth_oft_with_text_encoder(self):
+        self._test_dreambooth("oft", train_text_encoder=True)
+
+
+class DreamBoothLoRASDXL(TestCase):
+    def _test_dreambooth_lora_sdxl(self, train_text_encoder=False):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent
+            / "examples"
+            / "stable-diffusion"
+            / "training"
+            / "train_dreambooth_lora_sdxl.py"
+        )
+        install_requirements(path_to_script.parent / "requirements.txt")
+
+        instance_prompt = "soccer player kicking a ball"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                python3
+                {path_to_script}
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
+                --instance_data_dir {Path(os.path.dirname(__file__))/'resource/img'}
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 1
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --gaudi_config_name Habana/stable-diffusion
+                --use_hpu_graphs_for_training
+                --use_hpu_graphs_for_inference
+                --output_dir {tmpdir}
+                """.split()
+            if train_text_encoder:
+                test_args.append("--train_text_encoder")
+            test_args.append("--instance_prompt")
+            test_args.append(instance_prompt)
+            p = subprocess.Popen(test_args)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+            # when not training the text encoder, all the parameters in the state dict should start
+            # with `"unet"` in their names.
+            if train_text_encoder:
+                starts_with_unet = all(
+                    k.startswith("unet") or k.startswith("text_encoder") or k.startswith("text_encoder_2")
+                    for k in lora_state_dict.keys()
+                )
+            else:
+                starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
+            self.assertTrue(starts_with_unet)
+
+    def test_dreambooth_lora_sdxl_with_text_encoder(self):
+        self._test_dreambooth_lora_sdxl(train_text_encoder=True)
+
+    def test_dreambooth_lora_sdxl(self):
+        self._test_dreambooth_lora_sdxl(train_text_encoder=False)
+
+
+class GaudiStableVideoDiffusionPipelineTester(TestCase):
+    """
+    Tests the StableVideoDiffusionPipeline for Gaudi.
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.24.0-release/tests/pipelines/stable_video_diffusion/test_stable_video_diffusion.py
+    """
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNetSpatioTemporalConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=8,
+            out_channels=4,
+            down_block_types=(
+                "CrossAttnDownBlockSpatioTemporal",
+                "DownBlockSpatioTemporal",
+            ),
+            up_block_types=("UpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal"),
+            cross_attention_dim=32,
+            num_attention_heads=8,
+            projection_class_embeddings_input_dim=96,
+            addition_time_embed_dim=32,
+        )
+        scheduler = GaudiEulerDiscreteScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            interpolation_type="linear",
+            num_train_timesteps=1000,
+            prediction_type="v_prediction",
+            sigma_max=700.0,
+            sigma_min=0.002,
+            steps_offset=1,
+            timestep_spacing="leading",
+            timestep_type="continuous",
+            trained_betas=None,
+            use_karras_sigmas=True,
+        )
+
+        torch.manual_seed(0)
+        vae = AutoencoderKLTemporalDecoder(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            latent_channels=4,
+        )
+
+        torch.manual_seed(0)
+        config = CLIPVisionConfig(
+            hidden_size=32,
+            projection_dim=32,
+            num_hidden_layers=5,
+            num_attention_heads=4,
+            image_size=32,
+            intermediate_size=37,
+            patch_size=1,
+        )
+        image_encoder = CLIPVisionModelWithProjection(config)
+
+        torch.manual_seed(0)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
+        components = {
+            "unet": unet,
+            "image_encoder": image_encoder,
+            "scheduler": scheduler,
+            "vae": vae,
+            "feature_extractor": feature_extractor,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(device)
+        inputs = {
+            "generator": generator,
+            "image": image,
+            "num_inference_steps": 2,
+            "output_type": "pt",
+            "min_guidance_scale": 1.0,
+            "max_guidance_scale": 2.5,
+            "num_frames": 2,
+            "height": 32,
+            "width": 32,
+        }
+        return inputs
+
+    def test_stable_video_diffusion_single_video(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        gaudi_config = GaudiConfig(use_torch_autocast=False)
+        sd_pipe = GaudiStableVideoDiffusionPipeline(use_habana=True, gaudi_config=gaudi_config, **components)
+        for component in sd_pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        outputs = sd_pipe(
+            **self.get_dummy_inputs(device),
+        ).frames
+        image = outputs[0]
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(len(outputs), 1)
+        self.assertEqual(image.shape, (2, 3, 32, 32))
+
+        expected_slice = np.array([0.5910, 0.5797, 0.5521, 0.6628, 0.6212, 0.6422, 0.5681, 0.5232, 0.5343])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
+
+    @slow
+    def test_stable_video_diffusion_no_throughput_regression_bf16(self):
+        image_url = (
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png"
+        )
+        model_name = "stabilityai/stable-video-diffusion-img2vid-xt"
+        scheduler = GaudiEulerDiscreteScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+        pipeline = GaudiStableVideoDiffusionPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig.from_pretrained("Habana/stable-diffusion"),
+            torch_dtype=torch.bfloat16,
+        )
+        set_seed(42)
+        prompt_image = load_image(image_url)
+        outputs = pipeline(
+            image=prompt_image,
+            num_videos_per_prompt=1,
+            batch_size=1,
+            height=256,
+            width=256,
+        )
+
+        self.assertEqual(len(outputs.frames[0]), 25)
+        if IS_GAUDI2:
+            self.assertGreaterEqual(outputs.throughput, 0.95 * 0.012)

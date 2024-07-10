@@ -220,6 +220,8 @@ class GaudiMixtralAttentionLongSequence:
 class GaudiMixtralAttention(MixtralAttention):
     def __init__(self, config: MixtralConfig, layer_idx: Optional[int] = None):
         super().__init__(config, layer_idx)
+        config.rope_scaling = config.rope_scaling if hasattr(config, "rope_scaling") else None
+        self.config = config
         self._init_rope()
         self.k_cache = KVCache()
         self.v_cache = KVCache()
@@ -335,7 +337,7 @@ class GaudiMixtralAttention(MixtralAttention):
                     )
                     past_key_value = (past_key, past_value)
                 key_states = self.k_cache.update(past_key_value[0], key_states, 2, token_idx, self.inp_seq_len)
-                value_states = self.k_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
+                value_states = self.v_cache.update(past_key_value[1], value_states, 2, token_idx, self.inp_seq_len)
                 if token_idx is None:
                     past_key_value = (key_states, value_states)
 
@@ -349,6 +351,9 @@ class GaudiMixtralAttention(MixtralAttention):
             past_key_value = None
 
         if FusedSDPA:
+            if query_states.dtype != key_states.dtype:
+                key_states = key_states.type(query_states.dtype)
+                value_states = value_states.type(query_states.dtype)
             # support long sequences exceeding 8192
             if not self.training and q_len == key_states.size(-2) and q_len > 8192:
                 htcore.mark_step()
