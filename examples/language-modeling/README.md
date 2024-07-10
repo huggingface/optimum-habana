@@ -791,7 +791,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_genera
     --save_strategy "no" \
     --learning_rate 5e-5  \
     --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
+    --per_device_eval_batch_size 4 \
     --bf16 \
     --use_hpu_graphs_for_inference \
     --use_hpu_graphs_for_training

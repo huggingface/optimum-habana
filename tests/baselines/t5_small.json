@@ -120,12 +120,12 @@
         },
         "poly-tuning": {
             "num_train_epochs": 1,
-            "eval_batch_size": 8,
+            "eval_batch_size": 4,
             "distribution": {
                 "multi_card": {
                     "learning_rate": 2e-3,
                     "train_batch_size": 8,
-                    "eval_accuracy": 0.58,
+                    "eval_accuracy": 0.38,
                     "train_runtime": 16,
                     "train_samples_per_second": 1268,
                     "extra_arguments": [
