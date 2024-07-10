@@ -29,6 +29,7 @@ def gaudi_unet_2d_model_forward(
     if self.config.center_input_sample:
         sample = 2 * sample - 1.0
 
+    # Run on CPU
     if cal_timestep_only:  # Gaudi patch to separate the calculation of the time embeddings and UNet blocks
         # 1. time
         timesteps = timestep
@@ -61,6 +62,7 @@ def gaudi_unet_2d_model_forward(
             raise ValueError("class_embedding needs to be initialized in order to use class conditioning")
 
         return emb
+    # Run on Gaudi
     else:
         # 2. pre-process
         skip_sample = sample
