@@ -142,6 +142,13 @@ Here is a DeepSpeed configuration you can use to train your models on Gaudi:
 ```
 
 
+### Training in torch.compile mode
+
+Albert XXL model training in [torch.compile](pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) mode is enabled by applying the following changes to your command, \
+a) Set the following environment variables `PT_HPU_LAZY_MODE=0` and `PT_ENABLE_INT64_SUPPORT=1`. \
+b) Run the above commands with `--model_name_or_path albert-xxlarge-v1`, `--use_lazy_mode False` and add `--torch_compile`, `--torch_compile_backend hpu_backend` and remove `--use_hpu_graphs_for_inference` flags.
+
+
 ## Fine-tuning Llama on SQuAD1.1
 
 > [!NOTE]
@@ -204,8 +211,8 @@ python run_qa.py \
 | RoBERTa large              | 3e-5 | 2 | 12 | 8 |
 | ALBERT large (single-card) | 5e-5 | 2 | 32 | 4 |
 | ALBERT large (multi-card)  | 6e-5 | 2 | 32 | 4 |
-| ALBERT XXL (single-card)   | 5e-6 | 2 | 12 | 2 |
-| ALBERT XXL (multi-card)    | 5e-5 | 2 | 12 | 2 |
+| ALBERT XXL (single-card)   | 5e-6 | 2 | 16 | 2 |
+| ALBERT XXL (multi-card)    | 5e-5 | 2 | 16 | 2 |
 | DistilBERT                 | 5e-5 | 3 | 8  | 8 |
 | meta-llama/Llama-2-13b-chat-hf (multi-card) | 3e-5 | 2 | 8 | 8 |
 | FlagAlpha/Llama2-Chinese-13b-Chat (multi-card) | 3e-5 | 2 | 8 | 8 |

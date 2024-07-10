@@ -55,6 +55,7 @@ from .models import (
     GaudiLlamaModel,
     GaudiLlamaRotaryEmbedding,
     GaudiLlavaForConditionalGeneration,
+    GaudiLlavaNextForConditionalGeneration,
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
     GaudiMistralForCausalLM,
@@ -132,6 +133,8 @@ from .models import (
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
@@ -249,6 +252,7 @@ def adapt_transformers_to_gaudi():
     transformers.generation.GenerationMixin._group_beam_search = GaudiGenerationMixin._group_beam_search
     transformers.generation.GenerationMixin._constrained_beam_search = GaudiGenerationMixin._constrained_beam_search
     transformers.generation.GenerationMixin._assisted_decoding = GaudiGenerationMixin._assisted_decoding
+    transformers.generation.GenerationMixin._get_candidate_generator = GaudiGenerationMixin._get_candidate_generator
     transformers.generation.GenerationConfig = GaudiGenerationConfig
     transformers.modeling_utils.GenerationConfig = GaudiGenerationConfig
     transformers.generation.MaxLengthCriteria.__call__ = gaudi_MaxLengthCriteria_call
@@ -362,6 +366,9 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for llava on Gaudi
     transformers.models.llava.modeling_llava.LlavaForConditionalGeneration = GaudiLlavaForConditionalGeneration
+    transformers.models.llava_next.modeling_llava_next.LlavaNextForConditionalGeneration = (
+        GaudiLlavaNextForConditionalGeneration
+    )
 
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
@@ -516,3 +523,11 @@ def adapt_transformers_to_gaudi():
 
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
+
+    # Optimization for mamba on Gaudi
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM.prepare_inputs_for_generation = (
+        gaudi_MambaForCausalLM_prepare_inputs_for_generation
+    )
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
+        gaudi_MambaForCausalLM_update_model_kwargs_for_generation
+    )

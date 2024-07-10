@@ -47,7 +47,7 @@
 < from transformers.modeling_outputs import CausalLMOutputWithPast
 ---
 > from optimum.habana.utils import get_hpu_memory_stats
-60,281d42
+60,282d42
 < MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 < 
 < MODEL_CLASSES = {
@@ -270,8 +270,8 @@
 <         beam_idx at every generation step.
 <         """
 <         return self._default._reorder_cache(past_key_values, beam_idx)
-283,285c44,46
 < 
+284,285c44,46
 < def main():
 <     parser = argparse.ArgumentParser()
 ---
@@ -318,35 +318,35 @@
 >     )
 >     parser.add_argument(
 >         "--dataset_name",
-297,298c86
+297,298c86,92
 <         required=True,
 <         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
 ---
 >         help="Optional argument if you want to assess your model on a given dataset of the HF Hub.",
-300,304d87
+>     )
+>     parser.add_argument(
+>         "--column_name",
+>         default=None,
+>         type=str,
+>         help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
+300,304d93
 < 
 <     parser.add_argument("--prompt", type=str, default="")
 <     parser.add_argument("--length", type=int, default=20)
 <     parser.add_argument("--stop_token", type=str, default=None, help="Token at which text generation is stopped")
 < 
-306,309c89,92
+306,309c95,97
 <         "--temperature",
 <         type=float,
 <         default=1.0,
 <         help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
 ---
->         "--column_name",
->         default=None,
->         type=str,
->         help="If `--dataset_name` was given, this will be the name of the column to use as prompts for generation.",
-312c95,227
-<         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
----
 >         "--do_sample",
 >         action="store_true",
 >         help="Whether to use sampling for generation.",
->     )
->     parser.add_argument(
+312c100,233
+<         "--repetition_penalty", type=float, default=1.0, help="primarily useful for CTRL model; in that case, use 1.2"
+---
 >         "--num_beams",
 >         default=1,
 >         type=int,
@@ -374,6 +374,12 @@
 >         default=0,
 >         type=int,
 >         help="Number of steps to capture for profiling.",
+>     )
+>     parser.add_argument(
+>         "--profiling_record_shapes",
+>         default=False,
+>         type=bool,
+>         help="Record shapes when enabling profiling.",
 >     )
 >     parser.add_argument(
 >         "--prompt",
@@ -475,44 +481,47 @@
 >         "--reduce_recompile",
 >         action="store_true",
 >         help="Preprocess on cpu, and some other optimizations. Useful to prevent recompilations when using dynamic prompts (simulate_dyn_prompt)",
-314,319d228
+314,319d234
 <     parser.add_argument("--k", type=int, default=0)
 <     parser.add_argument("--p", type=float, default=0.9)
 < 
 <     parser.add_argument("--prefix", type=str, default="", help="Text added prior to input.")
 <     parser.add_argument("--padding_text", type=str, default="", help="Deprecated, the use of `--prefix` is preferred.")
 <     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
-321c230,235
+321d235
 <     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
+323c237,252
+<         "--use_cpu",
 ---
->     parser.add_argument("--fp8", action="store_true", help="Enable Quantization to fp8")
->     parser.add_argument(
 >         "--use_flash_attention",
 >         action="store_true",
 >         help="Whether to enable Habana Flash Attention, provided that the model supports it.",
 >     )
-323c237
-<         "--use_cpu",
----
+>     parser.add_argument(
 >         "--flash_attention_recompute",
-325c239
-<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
----
+>         action="store_true",
 >         help="Whether to enable Habana Flash Attention in recompute mode on first token generation. This gives an opportunity of splitting graph internally which helps reduce memory consumption.",
-327d240
-<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
-329c242
-<         "--fp16",
----
+>     )
+>     parser.add_argument(
 >         "--flash_attention_causal_mask",
-331c244,278
-<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
----
+>         action="store_true",
 >         help="Whether to enable Habana Flash Attention in causal mode on first token generation.",
 >     )
 >     parser.add_argument(
+>         "--flash_attention_fast_softmax",
+325c254
+<         help="Whether or not to use cpu. If set to False, " "we will use gpu/npu or mps device if available",
+---
+>         help="Whether to enable Habana Flash Attention in fast softmax mode.",
+327d255
+<     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
+329c257
+<         "--fp16",
+---
 >         "--book_source",
->         action="store_true",
+331c259,288
+<         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
+---
 >         help="Whether to use project Guttenberg books data as input. Usefull for testing large sequence lenghts.",
 >     )
 >     parser.add_argument(
@@ -543,30 +552,23 @@
 >         "--trust_remote_code",
 >         action="store_true",
 >         help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
-333d279
+333d289
 <     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
-336,337c282,283
+336,339c292,293
 <     # Initialize the distributed state.
 <     distributed_state = PartialState(cpu=args.use_cpu)
+< 
+<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
 ---
 >     if args.torch_compile:
 >         args.use_hpu_graphs = False
-339c285,286
-<     logger.warning(f"device: {distributed_state.device}, 16-bits inference: {args.fp16}")
----
->     if not args.use_hpu_graphs:
->         args.limit_hpu_graphs = False
-341,342c288,293
+341,342c295,296
 <     if args.seed is not None:
 <         set_seed(args.seed)
 ---
->     args.quant_config = os.getenv("QUANT_CONFIG", "")
->     if args.quant_config == "" and args.disk_offload:
->         logger.warning(
->             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
->         )
->     return args
-344,371d294
+>     if not args.use_hpu_graphs:
+>         args.limit_hpu_graphs = False
+344,371c298,303
 <     # Initialize the model and tokenizer
 <     try:
 <         args.model_type = args.model_type.lower()
@@ -595,12 +597,19 @@
 <     if requires_preprocessing:
 <         prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
 <         preprocessed_prompt_text = prepare_input(args, model, tokenizer, prompt_text)
-373,384c296,299
+---
+>     args.quant_config = os.getenv("QUANT_CONFIG", "")
+>     if args.quant_config == "" and args.disk_offload:
+>         logger.warning(
+>             "`--disk_offload` was tested only with fp8, it may not work with full precision. If error raises try to remove the --disk_offload flag."
+>         )
+>     return args
+373,376d304
 <         if model.__class__.__name__ in ["TransfoXLLMHeadModel"]:
 <             tokenizer_kwargs = {"add_space_before_punct_symbol": True}
 <         else:
 <             tokenizer_kwargs = {}
-< 
+378,384c306,309
 <         encoded_prompt = tokenizer.encode(
 <             preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", **tokenizer_kwargs
 <         )
@@ -613,7 +622,7 @@
 >     parser = argparse.ArgumentParser()
 >     args = setup_parser(parser)
 >     model, assistant_model, tokenizer, generation_config = initialize_model(args, logger)
-386,387c301,495
+386,387c311,506
 <     if encoded_prompt.size()[-1] == 0:
 <         input_ids = None
 ---
@@ -720,6 +729,7 @@
 >                 profiling_warmup_steps=args.profiling_warmup_steps,
 >                 ignore_eos=args.ignore_eos,
 >                 iteration_times=iteration_times,
+>                 profiling_record_shapes=args.profiling_record_shapes,
 >             ).cpu()
 >             first_token_time = iteration_times[0] + encode_duration
 >             logger.info(f"Time to first token = {first_token_time*1000}ms")
@@ -812,7 +822,7 @@
 >         print(f"Graph compilation duration          = {compilation_duration} seconds")
 >         print(separator)
 >         print()
-389c497,514
+389c508,525
 <         input_ids = encoded_prompt
 ---
 >         # Downloading and loading a dataset from the hub.
@@ -833,7 +843,7 @@
 >             .shuffle()
 >             .select(range(args.dataset_max_samples if args.dataset_max_samples > 0 else (raw_dataset[split]).num_rows))
 >         )
-391,397c516,523
+391,397c527,534
 <     if args.jit:
 <         jit_input_texts = ["enable jit"]
 <         jit_inputs = prepare_jit_inputs(jit_input_texts, model, tokenizer)
@@ -850,7 +860,7 @@
 >             logger.info(
 >                 f"No column name was given so automatically choosing '{column_name}' for prompts. If you would like to use another column of the dataset, you can set the argument `--column_name`."
 >             )
-399,437c525,545
+399,437c536,556
 <             sig = inspect.signature(model.__call__)
 <         jit_inputs = tuple(jit_inputs[key] for key in sig.parameters if jit_inputs.get(key, None) is not None)
 <         traced_model = torch.jit.trace(model, jit_inputs, strict=False)
@@ -912,7 +922,7 @@
 >             preprocess_function,
 >             batched=True,
 >             desc="Running tokenizer on dataset",
-438a547,628
+438a558,640
 >         # After tokenization, we can remove the column of interest
 >         raw_dataset = raw_dataset.remove_columns([column_name])
 >         raw_dataset.set_format(type="torch")
@@ -953,6 +963,7 @@
 >                 profiling_steps=args.profiling_steps,
 >                 profiling_warmup_steps=args.profiling_warmup_steps,
 >                 ignore_eos=args.ignore_eos,
+>                 profiling_record_shapes=args.profiling_record_shapes,
 >             ).cpu()
 >             return prompt, outputs
 > 
@@ -995,7 +1006,7 @@
 > 
 >         throughput = total_new_tokens_generated / duration
 >         # Print Stats
-440,441c630,648
+440,441c642,660
 <         generated_sequences.append(total_sequence)
 <         print(total_sequence)
 ---
@@ -1018,7 +1029,7 @@
 >         habana_quantization_toolkit.finish_measurements(model)
 >     if args.const_serialization_path and os.path.isdir(args.const_serialization_path):
 >         import shutil
-443c650
+443c662
 <     return generated_sequences
 ---
 >         shutil.rmtree(args.const_serialization_path)

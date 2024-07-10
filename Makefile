@@ -41,6 +41,17 @@ fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pytest tests/test_diffusers.py
 
+# Run single-card non-regression tests on image classification models
+fast_tests_image_classifications:
+	pip install timm
+	python -m pip install .[tests]
+	python -m pytest tests/test_image_classification.py
+
+# Run unit and integration tests related to Image segmentation
+fast_tests_image_segmentation:
+	python -m pip install .[tests]
+	python -m pytest tests/test_image_segmentation.py
+
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
@@ -52,7 +63,7 @@ slow_tests_8x: test_installs
 
 # Run DeepSpeed non-regression tests
 slow_tests_deepspeed: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 	python -m pytest tests/test_examples.py -v -s -k "deepspeed"
 
 slow_tests_diffusers: test_installs
@@ -64,7 +75,7 @@ slow_tests_diffusers: test_installs
 
 # Run text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
-	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.15.0
+	python -m pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.16.0
 	python -m pytest tests/test_text_generation_example.py tests/test_encoder_decoder.py -v -s --token $(TOKEN)
 
 # Run image-to-text non-regression tests

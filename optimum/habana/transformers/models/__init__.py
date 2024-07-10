@@ -90,6 +90,11 @@ from .llama import (
     gaudi_llama_rmsnorm_forward,
 )
 from .llava import GaudiLlavaForConditionalGeneration
+from .llava_next import GaudiLlavaNextForConditionalGeneration
+from .mamba import (
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+)
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
