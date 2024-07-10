@@ -87,6 +87,11 @@ slow_tests_text_generation_example: test_installs
 slow_tests_image_to_text_example: test_installs
 	python -m pytest tests/test_image_to_text_example.py -v -s --token $(TOKEN)
 
+# Run visual question answering tests
+slow_tests_openclip_vqa_example: test_installs
+	python -m pip install -r examples/visual-question-answering/openclip_requirements.txt
+	python -m pytest tests/test_openclip_vqa.py
+
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
 
