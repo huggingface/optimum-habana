@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     image = Image.open(requests.get(args.image_path, stream=True).raw).convert("RGB")
     points = []
-    for text in args.point_prompt.split(','):
+    for text in args.point_prompt.split(","):
         points.append(int(text))
     points = [[points]]
 
@@ -101,10 +101,10 @@ if __name__ == "__main__":
             total_model_time = total_model_time + (model_end_time - model_start_time)
 
             if args.print_result:
-                if (i == 0): # generate/output once only
+                if i == 0:  # generate/output once only
                     iou = outputs.iou_scores
                     print("iou score: " + str(iou))
 
     print("n_iterations: " + str(args.n_iterations))
-    print("Total latency (ms): " + str(total_model_time*1000))
-    print("Average latency (ms): " + str(total_model_time*1000/args.n_iterations))
+    print("Total latency (ms): " + str(total_model_time * 1000))
+    print("Average latency (ms): " + str(total_model_time * 1000 / args.n_iterations))

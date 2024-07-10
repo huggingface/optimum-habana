@@ -32,10 +32,12 @@ adapt_transformers_to_gaudi()
 LATENCY_OWLVIT_BF16_GRAPH_BASELINE = 3.7109851837158203
 LATENCY_SAM_BF16_GRAPH_BASELINE = 98.92215728759766
 
+
 class GaudiSAMTester(TestCase):
     """
     Tests for Segment Anything Model - SAM
     """
+
     def prepare_model_and_processor(self):
         model = AutoModel.from_pretrained("facebook/sam-vit-huge").to("hpu")
         processor = AutoProcessor.from_pretrained("facebook/sam-vit-huge")
@@ -43,7 +45,11 @@ class GaudiSAMTester(TestCase):
         return model, processor
 
     def prepare_data(self):
-        image = Image.open(requests.get("https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png", stream=True).raw).convert("RGB")
+        image = Image.open(
+            requests.get(
+                "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png", stream=True
+            ).raw
+        ).convert("RGB")
         input_points = [[[450, 600]]]
         return input_points, image
 
@@ -63,7 +69,7 @@ class GaudiSAMTester(TestCase):
         input_points, image = self.prepare_data()
         inputs = processor(image, input_points=input_points, return_tensors="pt").to("hpu")
 
-        with torch.autocast(device_type="hpu", dtype=torch.bfloat16): # Autocast BF16
+        with torch.autocast(device_type="hpu", dtype=torch.bfloat16):  # Autocast BF16
             outputs = model(**inputs)
             scores = outputs.iou_scores
             scores = scores[0][0]
@@ -76,7 +82,7 @@ class GaudiSAMTester(TestCase):
         input_points, image = self.prepare_data()
         inputs = processor(image, input_points=input_points, return_tensors="pt").to("hpu")
 
-        model = ht.hpu.wrap_in_hpu_graph(model) #Apply graph
+        model = ht.hpu.wrap_in_hpu_graph(model)  # Apply graph
 
         outputs = model(**inputs)
         scores = outputs.iou_scores
@@ -109,6 +115,5 @@ class GaudiSAMTester(TestCase):
                 model_end_time = time.time()
                 total_model_time = total_model_time + (model_end_time - model_start_time)
 
-        latency = total_model_time*1000/iterations # in terms of ms
+        latency = total_model_time * 1000 / iterations  # in terms of ms
         self.assertLessEqual(latency, 1.05 * LATENCY_SAM_BF16_GRAPH_BASELINE)
-
