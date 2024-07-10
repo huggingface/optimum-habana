@@ -316,7 +316,7 @@ def setup_parser(parser):
         "--chat_template",
         default=None,
         type=str,
-        help='Optional JSON input file containing chat template for tokenizer.',
+        help="Optional JSON input file containing chat template for tokenizer.",
     )
     args = parser.parse_args()
 
@@ -403,9 +403,9 @@ def main():
                 "Peace is the only way",
             ]
 
-        # Apply tokenizer chat template
-        if args.chat_template and hasattr(tokenizer, 'chat_template'):
-            with open(args.chat_template, 'r') as fh:
+        # Apply tokenizer chat template if supported
+        if args.chat_template and hasattr(tokenizer, "chat_template"):
+            with open(args.chat_template, "r") as fh:
                 messages = json.load(fh)
                 input_sentences = [tokenizer.apply_chat_template(messages, tokenize=False)]
 
