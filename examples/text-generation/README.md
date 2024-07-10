@@ -589,3 +589,29 @@ deepspeed --num_gpus 8 run_lm_eval.py \
 ## Text-Generation Pipeline
 
 A Transformers-like pipeline is defined and provided [here](https://github.com/huggingface/optimum-habana/tree/main/examples/text-generation/text-generation-pipeline). It is optimized for Gaudi and can be called to generate text in your scripts.
+
+## Conversation generation
+
+For models that support chat like `CohereForAI/c4ai-command-r-v01` you can provide `--chat_template <JSON FILE>` that is applied to the tokenizer.
+
+### Examples
+
+Sample chat template `sample_command_r_template.json` for [CohereForAI/c4ai-command-r-v01](https://huggingface.co/CohereForAI/c4ai-command-r-v01) is shown below:
+
+```json
+[{"role": "user", "content": "Hello, how are you?"}]
+```
+
+Command to run chat generation:
+
+```
+python run_generation.py \
+    --model_name_or_path CohereForAI/c4ai-command-r-v01 \
+    --use_hpu_graphs \
+    --use_kv_cache \
+    --max_new_tokens 100 \
+    --do_sample \
+    --chat_template sample_command_r_template.json \
+    --bf16 \
+    --batch_size 2
+```

@@ -312,6 +312,12 @@ def setup_parser(parser):
         help="Run multi card with the specified parallel strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
     )
 
+    parser.add_argument(
+        "--chat_template",
+        default=None,
+        type=str,
+        help='Optional JSON input file containing chat template for tokenizer.',
+    )
     args = parser.parse_args()
 
     if args.torch_compile:
@@ -397,11 +403,11 @@ def main():
                 "Peace is the only way",
             ]
 
-        # Format message with the command-r chat template
-        if model.config.model_type == "cohere":
-            for i, sentence in enumerate(input_sentences):
-                message = [{"role": "user", "content": sentence}]
-                input_sentences[i] = tokenizer.apply_chat_template(message, tokenize=False)
+        # Apply tokenizer chat template
+        if args.chat_template and hasattr(tokenizer, 'chat_template'):
+            with open(args.chat_template, 'r') as fh:
+                messages = json.load(fh)
+                input_sentences = [tokenizer.apply_chat_template(messages, tokenize=False)]
 
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes
