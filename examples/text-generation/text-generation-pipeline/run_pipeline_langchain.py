@@ -19,8 +19,8 @@ import logging
 import math
 import time
 
-from langchain_huggingface.llms import HuggingFacePipeline
 from langchain_core.prompts import PromptTemplate
+from langchain_huggingface.llms import HuggingFacePipeline
 from pipeline import GaudiTextGenerationPipeline
 from run_generation import setup_parser
 
