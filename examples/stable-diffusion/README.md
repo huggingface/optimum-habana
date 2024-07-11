@@ -31,7 +31,7 @@ python text_to_image_generation.py \
     --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
@@ -90,7 +90,7 @@ python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-2-1 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 10 \
-    --batch_size 2 \
+    --batch_size 7 \
     --height 768 \
     --width 768 \
     --image_save_dir /tmp/stable_diffusion_images \
@@ -116,7 +116,7 @@ python text_to_image_generation.py \
     --model_name_or_path "Intel/ldm3d-4c" \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 10 \
-    --batch_size 2 \
+    --batch_size 7 \
     --height 768 \
     --width 768 \
     --image_save_dir /tmp/stable_diffusion_images \
@@ -158,7 +158,7 @@ python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" \
     --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/stable_diffusion_xl_images \
     --scheduler euler_discrete \
     --use_habana \
@@ -271,7 +271,7 @@ python text_to_image_generation.py \
     --prompts "futuristic-looking woman" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
     --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
     --use_hpu_graphs \
@@ -288,7 +288,7 @@ python text_to_image_generation.py \
     --prompts "futuristic-looking woman" "a rusty robot" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
     --num_images_per_prompt 10 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
     --use_hpu_graphs \
@@ -325,7 +325,7 @@ python text_to_image_generation.py \
     --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png \
     --control_preprocessing_type "none" \
     --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
     --use_hpu_graphs \
@@ -344,7 +344,7 @@ python text_to_image_generation.py \
     --prompts "bird" \
     --seed 0 \
     --num_images_per_prompt 10 \
-    --batch_size 2 \
+    --batch_size 7 \
     --image_save_dir /tmp/controlnet-2-1_images \
     --use_habana \
     --use_hpu_graphs \

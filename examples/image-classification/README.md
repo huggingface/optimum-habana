@@ -43,7 +43,7 @@ python run_image_classification.py \
     --do_eval \
     --learning_rate 3e-5 \
     --num_train_epochs 5 \
-    --per_device_train_batch_size 64 \
+    --per_device_train_batch_size 128 \
     --per_device_eval_batch_size 64 \
     --evaluation_strategy epoch \
     --save_strategy epoch \
@@ -195,7 +195,7 @@ python ../gaudi_spawn.py \
     --do_eval \
     --learning_rate 2e-4 \
     --num_train_epochs 5 \
-    --per_device_train_batch_size 64 \
+    --per_device_train_batch_size 128 \
     --per_device_eval_batch_size 64 \
     --evaluation_strategy epoch \
     --save_strategy epoch \
@@ -235,7 +235,7 @@ python ../gaudi_spawn.py \
     --do_eval \
     --learning_rate 2e-4 \
     --num_train_epochs 5 \
-    --per_device_train_batch_size 64 \
+    --per_device_train_batch_size 128 \
     --per_device_eval_batch_size 64 \
     --evaluation_strategy epoch \
     --save_strategy epoch \
