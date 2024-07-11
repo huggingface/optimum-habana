@@ -108,7 +108,7 @@ def gaudi_starcoder2_attention_forward(
     value_states = repeat_kv(value_states, self.num_key_value_groups)
 
     attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * norm_factor
-    
+
     if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
         raise ValueError(
             f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
@@ -124,7 +124,7 @@ def gaudi_starcoder2_attention_forward(
         attn_weights = attn_weights + attention_mask
 
     query_length = q_len if past_key_value is None else q_len + past_key_value.key_cache[self.layer_idx].shape[2]
-    # Taken from mpt PR 1101
+    # Taken from mpt: https://github.com/huggingface/optimum-habana/blob/main/optimum/habana/transformers/models/mpt/modeling_mpt.py
     if use_flash_attention and FusedSDPA:
         import habana_frameworks.torch.hpu as ht
 
@@ -137,7 +137,7 @@ def gaudi_starcoder2_attention_forward(
         else:
             # first token
             with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                if query_length > 8192:
+                if query_length > 16384:
                     attn_output = self.gaudi_flash_attn_v1(
                         query_states, key_states, value_states, attention_mask, 0.0, self.block_size
                     )
@@ -193,6 +193,8 @@ class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
         Copied from Starcoder2DecoderLayer.forward: https://github.com/huggingface/transformers/blob/v4.39.0/src/transformers/models/starcoder2/modeling_starcoder2.py
         The only differences are:
         - add new args token_idx
+        - add new args use_flash_attention
+        - add new arg flash_attention_recompute
         """
 
         residual = hidden_states
