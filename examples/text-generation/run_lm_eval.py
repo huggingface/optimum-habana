@@ -34,7 +34,28 @@ from optimum.habana.utils import get_hpu_memory_stats
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
 logger = logging.getLogger(__name__)
+
+import multiprocessing as mp
+import psutil
+
+# This hack is a workaround to limitations of lm_eval which always allocates
+# mp.Pool with max cpu count which explodes on multinode scenarios and for hpu
+# create multiprocess with spawn context
+OrigPool = mp.Pool
+def LimitedSpawnPool(_):
+    spawn_context = mp.get_context("spawn")
+    physical_cpu_count = psutil.cpu_count(logical=False)
+    pool_size = physical_cpu_count
+    world_size = int(os.getenv("WORLD_SIZE", 1))
+    if world_size == 0:
+        world_size = 1
+    pool_size //= world_size
+    if (pool_size * world_size) != physical_cpu_count:
+        pool_size -= 1
+    return spawn_context.Pool(pool_size)
+mp.Pool = LimitedSpawnPool
 
 
 def setup_lm_eval_parser():
