@@ -2803,12 +2803,19 @@ class GaudiGenerationMixin(GenerationMixin):
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             if self.generation_config.static_shapes:
                 beam_scores = next_token_scores.flatten()
-                static_beam_indices = next_indices.flatten()
+                next_indices_flattened = next_indices.flatten()
+                static_beam_indices = (
+                    next_indices_flattened
+                    + torch.tensor(
+                        [[batch_idx * num_beams] * next_indices.shape[1] for batch_idx in range(batch_size)],
+                        device=next_indices.device,
+                    ).flatten()
+                )
 
                 beam_tokens = next_tokens.remainder(vocab_size).flatten()
 
                 beam_trace_scores.index_copy_(0, beam_trace_idx, beam_scores.unsqueeze(0))
-                beam_trace_indices.index_copy_(0, beam_trace_idx, static_beam_indices.unsqueeze(0))
+                beam_trace_indices.index_copy_(0, beam_trace_idx, next_indices_flattened.unsqueeze(0))
                 beam_trace_tokens.index_copy_(0, beam_trace_idx, beam_tokens.unsqueeze(0))
                 beam_trace_idx.add_(1)
 
