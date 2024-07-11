@@ -59,9 +59,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 > ```
 > git clone https://github.com/huggingface/optimum-habana
-> cd optimum-habana && git checkout v1.12.0
+> cd optimum-habana && git checkout v1.12.1
 > ```
-> with `v1.12.0` the version number of this release.
+> with `v1.12.1` the version number of this release.
 
 ### Option 2: Use the latest main branch under development
 
@@ -215,6 +215,8 @@ The following model architectures, tasks and device distributions have been vali
 | ClipSeg |   | <div style="text-align:left"><li>Single card</li></div> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/main/examples/object-segementation)</li> |
 | Llava / Llava-next |    | <div style="text-align:left"><li>Single card</li></div> | <li>[image to text](https://github.com/huggingface/optimum-habana/tree/main/examples/image-to-text)</li> |
 | Segment Anything Model |   | <div style="text-align:left"><li>Single card</li></div> | <li>[object segmentation](https://github.com/huggingface/optimum-habana/tree/main/examples/object-segementation)</li> |
+| VideoMAE | | <div style="text-align:left"><li>Single card</li></div> | <li>[Video classification](https://github.com/huggingface/optimum-habana/tree/main/examples/video-classification)</li> |
+
 </div>
 
 - Diffusers:
