@@ -52,6 +52,11 @@ fast_tests_image_segmentation:
 	python -m pip install .[tests]
 	python -m pytest tests/test_image_segmentation.py
 
+# Run unit and integration tests related to text feature extraction
+fast_tests_feature_extraction:
+	python -m pip install .[tests]
+	python -m pytest tests/test_feature_extraction.py
+
 # Run unit and integration tests related to VideoMAE
 fast_test_videomae:
 	python -m pip install .[tests]
