@@ -34,12 +34,17 @@ You can specify any Hugging Face pre-trained model here, for example, bert-base-
 
 4) define the loss_model, TrainingArguments and Trainer
 
-5) execute the training command
+5) execute the training command in Single-Card
 
 ```bash
 python examples/sentence-transformers-training/sts/training_stsbenchmark.py model_name
 ```
 
+6) execute the training command in Multi-Card (2 cards, hpu2/3)
+
+```bash
+HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 examples/sentence-transformers-training/sts/training_stsbenchmark.py model_name
+```
 
 ## Training data
 ```eval_rst
