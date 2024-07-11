@@ -43,7 +43,7 @@ python examples/sentence-transformers-training/sts/training_stsbenchmark.py mode
 6) execute the training command in Multi-Card (2 cards, hpu2/3)
 
 ```bash
-HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 examples/sentence-transformers-training/sts/training_stsbenchmark.py model_name
+HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 sentence-transformers-training/sts/training_stsbenchmark.py model_name
 ```
 
 ## Training data
