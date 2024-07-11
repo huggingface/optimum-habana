@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import os
+import sys
 import time
 from itertools import cycle
 from pathlib import Path
@@ -370,8 +371,6 @@ def main():
                     return save_path
                 else:
                     print("Failed to download book! Exiting...")
-                    import sys
-
                     sys.exit()
 
             def assemble_prompt(prompt_size, book_path):
@@ -406,8 +405,16 @@ def main():
         # Apply tokenizer chat template if supported
         if args.chat_template and hasattr(tokenizer, "chat_template"):
             with open(args.chat_template, "r") as fh:
-                messages = json.load(fh)
-                input_sentences = [tokenizer.apply_chat_template(messages, tokenize=False)]
+                try:
+                    messages = json.load(fh)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error loading {args.chat_template}: {e}")
+                    sys.exit()
+                try:
+                    input_sentences = [tokenizer.apply_chat_template(messages, tokenize=False)]
+                except Exception as e:
+                    logger.error(f"Error applying chat template to tokenizer: {e}")
+                    sys.exit()
 
         if args.batch_size > len(input_sentences):
             # Dynamically extends to support larger batch sizes
