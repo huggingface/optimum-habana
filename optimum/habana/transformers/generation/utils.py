@@ -1865,6 +1865,14 @@ class GaudiGenerationMixin(GenerationMixin):
                     input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
+            hb_profer.step()
+            if hb_gen_time is not None:
+                if not time_to_first_token_done:
+                    time_to_first_token_done = True
+                    import habana_frameworks.torch.hpu as torch_hpu
+
+                    torch_hpu.synchronize()
+                hb_gen_time.step()
 
             if (
                 not model_kwargs.get("pad_done", False)
@@ -1875,14 +1883,7 @@ class GaudiGenerationMixin(GenerationMixin):
                 # before starting the decode phase.
                 self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
-            hb_profer.step()
-            if hb_gen_time is not None:
-                if not time_to_first_token_done:
-                    time_to_first_token_done = True
-                    import habana_frameworks.torch.hpu as torch_hpu
 
-                    torch_hpu.synchronize()
-                hb_gen_time.step()
             if greedy_first:
                 import habana_frameworks.torch.hpu as torch_hpu
 
@@ -2291,6 +2292,14 @@ class GaudiGenerationMixin(GenerationMixin):
                     input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
+            hb_profer.step()
+            if hb_gen_time is not None:
+                if not time_to_first_token_done:
+                    time_to_first_token_done = True
+                    import habana_frameworks.torch.hpu as torch_hpu
+
+                    torch_hpu.synchronize()
+                hb_gen_time.step()
 
             if (
                 not model_kwargs.get("pad_done", False)
@@ -2301,15 +2310,6 @@ class GaudiGenerationMixin(GenerationMixin):
                 # before starting the decode phase.
                 self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
-
-            hb_profer.step()
-            if hb_gen_time is not None:
-                if not time_to_first_token_done:
-                    time_to_first_token_done = True
-                    import habana_frameworks.torch.hpu as torch_hpu
-
-                    torch_hpu.synchronize()
-                hb_gen_time.step()
 
             if sample_first:
                 import habana_frameworks.torch.hpu as torch_hpu
