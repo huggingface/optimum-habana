@@ -349,7 +349,9 @@ def main():
 
     if args.use_cpu_rng:
         # Patch for the deterministic generation - Need to specify CPU as the torch generator
-        generator = [torch.Generator(device="cpu").manual_seed(args.seed) for i in range(args.num_images_per_prompt)]
+        generator = [
+            torch.Generator(device="cpu").manual_seed(args.seed + i) for i in range(args.num_images_per_prompt)
+        ]
     else:
         generator = None
 
