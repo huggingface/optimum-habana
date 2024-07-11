@@ -109,7 +109,7 @@ def main():
         args.prompt = "<image>\nUSER: What's the content of the image?\nASSISTANT:"
     elif args.prompt is None and model_type == "llava_next":
         args.prompt = "[INST] <image>\nWhat is shown in this image? [/INST]"
-        if args.model_name_or_path == "llava-hf/llava-v1.6-vicuna-13b-hf":
+        if args.model_name_or_path in ["llava-hf/llava-v1.6-vicuna-13b-hf", "llava-hf/llava-v1.6-vicuna-13b-hf"]:
             args.prompt = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nWhat is shown in this image? ASSISTANT:"
 
     image_paths = args.image_path
@@ -185,20 +185,25 @@ def main():
 
     total_new_tokens_generated = args.n_iterations * n_output_tokens
     throughput = total_new_tokens_generated / duration
-    logger.info(
-        f"result = {result}, time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second"
-    )
+    logger.info(f"result = {result}")
+    logger.info(f"time = {(end-start) * 1000 / args.n_iterations }ms, Throughput (including tokenization) = {throughput} tokens/second")
 
     # Store results if necessary
     if args.output_dir is not None:
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        dtype = "bf16" if args.bf16 else "fp32"
         results = {
+            "model": args.model_name_or_path,
+            "batchsize": args.batch_size,
+            "max_new_tokens": args.max_new_tokens,
+            "dtype": dtype,
             "throughput": throughput,
             "output": result,
         }
-        with (output_dir / "results.json").open("w", encoding="utf-8") as f:
+        res_json_name = f"{args.model_name_or_path.replace('/','--')}_bs{args.batch_size}_tz{args.max_new_tokens}_{dtype}_{time.strftime('%y%m%d%H%M%S', time.localtime())}.json"
+        with (output_dir / res_json_name).open("w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=4)
 
 
