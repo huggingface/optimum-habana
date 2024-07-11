@@ -21,7 +21,7 @@ This directory contains a script that showcases how to use text embedding models
 ## Single-HPU inference
 
 ```bash
-python run_example.py \
+python run_feature_extraction.py \
     --model_name_or_path Supabase/gte-small \
     --source_sentence "What is a deep learning architecture for feature extraction?" \
     --input_texts "There are many different variants of apples created every year." \
