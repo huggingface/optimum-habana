@@ -97,6 +97,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "llava",
     "llava_next",
     "stablelm",
+    "mamba",
 ]
 
 
@@ -1863,16 +1864,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
-
-            if (
-                not model_kwargs.get("pad_done", False)
-                and not model_kwargs.get("reuse_cache", False)
-                and bucket_internal
-            ):
-                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
-                # before starting the decode phase.
-                self._pad_past_key_values(model_kwargs)
-                model_kwargs["pad_done"] = True
             hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
@@ -1881,6 +1872,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
+                # before starting the decode phase.
+                if outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
+                    self._pad_past_key_values(model_kwargs)
+                model_kwargs["pad_done"] = True
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -2282,17 +2284,6 @@ class GaudiGenerationMixin(GenerationMixin):
                     input_ids, scores, token_idx=cur_len, ignore_eos=ignore_eos, eos_token_id=eos_token_id
                 )
                 this_peer_finished = unfinished_sequences.max() == 0
-
-            if (
-                not model_kwargs.get("pad_done", False)
-                and not model_kwargs.get("reuse_cache", False)
-                and bucket_internal
-            ):
-                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
-                # before starting the decode phase.
-                self._pad_past_key_values(model_kwargs)
-                model_kwargs["pad_done"] = True
-
             hb_profer.step()
             if hb_gen_time is not None:
                 if not time_to_first_token_done:
@@ -2301,6 +2292,17 @@ class GaudiGenerationMixin(GenerationMixin):
 
                     torch_hpu.synchronize()
                 hb_gen_time.step()
+
+            if (
+                not model_kwargs.get("pad_done", False)
+                and not model_kwargs.get("reuse_cache", False)
+                and bucket_internal
+            ):
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
+                # before starting the decode phase.
+                if outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
+                    self._pad_past_key_values(model_kwargs)
+                model_kwargs["pad_done"] = True
 
         if (
             model_kwargs.get("use_hpu_graphs", False)
@@ -2803,12 +2805,19 @@ class GaudiGenerationMixin(GenerationMixin):
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             if self.generation_config.static_shapes:
                 beam_scores = next_token_scores.flatten()
-                static_beam_indices = next_indices.flatten()
+                next_indices_flattened = next_indices.flatten()
+                static_beam_indices = (
+                    next_indices_flattened
+                    + torch.tensor(
+                        [[batch_idx * num_beams] * next_indices.shape[1] for batch_idx in range(batch_size)],
+                        device=next_indices.device,
+                    ).flatten()
+                )
 
                 beam_tokens = next_tokens.remainder(vocab_size).flatten()
 
                 beam_trace_scores.index_copy_(0, beam_trace_idx, beam_scores.unsqueeze(0))
-                beam_trace_indices.index_copy_(0, beam_trace_idx, static_beam_indices.unsqueeze(0))
+                beam_trace_indices.index_copy_(0, beam_trace_idx, next_indices_flattened.unsqueeze(0))
                 beam_trace_tokens.index_copy_(0, beam_trace_idx, beam_tokens.unsqueeze(0))
                 beam_trace_idx.add_(1)
 

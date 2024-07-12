@@ -97,6 +97,7 @@ from .models import (
     gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
+    gaudi_BertModel_forward,
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
     gaudi_BlipTextAttention_forward,
@@ -133,6 +134,8 @@ from .models import (
     gaudi_gptj_model_forward,
     gaudi_invert_attention_mask,
     gaudi_llama_rmsnorm_forward,
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
     gaudi_mistral_rmsnorm_forward,
     gaudi_mixtral_block_sparse_moe_forward,
     gaudi_mixtral_rmsnorm_forward,
@@ -286,6 +289,9 @@ def adapt_transformers_to_gaudi():
     transformers.models.bart.modeling_bart.BartForConditionalGeneration.prepare_inputs_for_generation = (
         gaudi_BartForConditionalGeneration_prepare_inputs_for_generation
     )
+
+    # Optimization for BERT on Gaudi
+    transformers.models.bert.modeling_bert.BertModel.forward = gaudi_BertModel_forward
 
     # Optimization for codegen generation on Gaudi
     transformers.models.codegen.modeling_codegen.CodeGenAttention = GaudiCodeGenAttention
@@ -521,3 +527,11 @@ def adapt_transformers_to_gaudi():
 
     # Tell transformers which Gaudi models support tracing
     transformers.utils.fx._SUPPORTED_MODELS += tuple(cls.__name__ for cls in models_with_tracing_support)
+
+    # Optimization for mamba on Gaudi
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM.prepare_inputs_for_generation = (
+        gaudi_MambaForCausalLM_prepare_inputs_for_generation
+    )
+    transformers.models.mamba.modeling_mamba.MambaForCausalLM._update_model_kwargs_for_generation = (
+        gaudi_MambaForCausalLM_update_model_kwargs_for_generation
+    )
