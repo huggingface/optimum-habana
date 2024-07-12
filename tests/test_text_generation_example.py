@@ -19,28 +19,28 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
     # Gaudi2 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 1, False, 130.0472971205316),
-            ("gpt2-xl", 1, False, 281.8734689674413),
-            ("EleutherAI/gpt-j-6b", 1, False, 160.5823842101192),
-            ("EleutherAI/gpt-neox-20b", 1, False, 50.67672679310354),
-            ("meta-llama/Llama-2-7b-hf", 1, True, 141.25776956002076),
-            ("tiiuae/falcon-40b", 1, True, 25.202450111088346),
-            ("bigcode/starcoder", 1, False, 65.58632640700114),
-            ("Salesforce/codegen2-1B", 1, False, 446.4029486883532),
-            ("mosaicml/mpt-30b", 1, False, 36.06464336116623),
-            ("mistralai/Mistral-7B-v0.1", 1, True, 130.2172236767782),
-            ("mistralai/Mixtral-8x7B-v0.1", 1, False, 23.7931001677926),
-            ("microsoft/phi-2", 1, False, 224.72307766211117),
-            ("meta-llama/Meta-Llama-3-8B", 1, True, 129),
-            ("meta-llama/Llama-2-7b-hf", 512, True, 12808),
-            ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
-            ("stabilityai/stablelm-2-12b", 1, False, 74.8904496532218),
-            ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
-            ("bigcode/starcoder2-3b", 1, False, 234.2649120507936),
-            ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
-            ("Qwen/Qwen1.5-7B", 4, False, 518.894516133132),
-            ("google/gemma-7b", 1, False, 109.70751574382221),
-            ("state-spaces/mamba-130m-hf", 1536, False, 8600),
+            ("bigscience/bloomz-7b1", 1, 1, False, 130.0472971205316),
+            ("gpt2-xl", 1, 1, False, 281.8734689674413),
+            ("EleutherAI/gpt-j-6b", 1, 1, False, 160.5823842101192),
+            ("EleutherAI/gpt-neox-20b", 1, 1, False, 50.67672679310354),
+            ("meta-llama/Llama-2-7b-hf", 1, 1, True, 141.25776956002076),
+            ("tiiuae/falcon-40b", 1, 1, True, 25.202450111088346),
+            ("bigcode/starcoder", 1, 1, False, 65.58632640700114),
+            ("Salesforce/codegen2-1B", 1, 1, False, 446.4029486883532),
+            ("mosaicml/mpt-30b", 1, 1, False, 36.06464336116623),
+            ("mistralai/Mistral-7B-v0.1", 1, 1, True, 130.2172236767782),
+            ("mistralai/Mixtral-8x7B-v0.1", 1, 1, False, 23.7931001677926),
+            ("microsoft/phi-2", 1, 1, False, 224.72307766211117),
+            ("meta-llama/Meta-Llama-3-8B", 1, 1, True, 129),
+            ("meta-llama/Llama-2-7b-hf", 1, 512, True, 12808),
+            ("meta-llama/Llama-2-7b-hf", 1, 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
+            ("stabilityai/stablelm-2-12b", 1, 1, False, 74.8904496532218),
+            ("codellama/CodeLlama-34b-hf", 1, 1, True, 32.644),
+            ("bigcode/starcoder2-3b", 1, 1, False, 234.2649120507936),
+            ("adept/persimmon-8b-base", 1, 4, False, 366.73968820698406),
+            ("Qwen/Qwen1.5-7B", 1, 4, False, 518.894516133132),
+            ("google/gemma-7b", 1, 1, False, 109.70751574382221),
+            ("state-spaces/mamba-130m-hf", 1, 1536, False, 8600),
         ],
         "fp8": [
             ("tiiuae/falcon-180B", 4, 950, True, 128, 128, 2506.68),
@@ -60,10 +60,10 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
         "deepspeed": [
-            ("bigscience/bloomz", 36.77314954096159),
-            ("meta-llama/Llama-2-70b-hf", 64.10514998902435),
-            ("meta-llama/Meta-Llama-3-70B-Instruct", 64),
-            ("facebook/opt-66b", 28.48069266504111),
+            ("bigscience/bloomz", 8, 1, 36.77314954096159),
+            ("meta-llama/Llama-2-70b-hf", 8, 1, 64.10514998902435),
+            ("meta-llama/Meta-Llama-3-70B-Instruct", 8, 1, 64),
+            ("facebook/opt-66b", 2, 1, 28.48069266504111),
         ],
         "torch_compile": [
             ("meta-llama/Llama-2-7b-hf", 102.27823420713148),
@@ -76,28 +76,28 @@ else:
     # Gaudi1 CI baselines
     MODELS_TO_TEST = {
         "bf16": [
-            ("bigscience/bloomz-7b1", 1, False, 41.7555095197846),
-            ("gpt2-xl", 1, False, 142.11481820425706),
+            ("bigscience/bloomz-7b1", 1, 1, False, 41.7555095197846),
+            ("gpt2-xl", 1, 1, False, 142.11481820425706),
             # TODO: fix OPT 6.7B
             # ("facebook/opt-6.7b", 0.0),
-            ("EleutherAI/gpt-j-6b", 1, False, 50.79545107991805),
-            ("meta-llama/Llama-2-7b-hf", 1, True, 44.39616259946937),
-            ("tiiuae/falcon-7b", 1, True, 44.82870145718665),
-            ("bigcode/starcoder", 1, False, 15.945023767901013),
-            ("Salesforce/codegen2-1B", 1, False, 155.32071248826423),
-            ("mosaicml/mpt-7b", 1, False, 45.45168927038262),
-            ("mistralai/Mistral-7B-v0.1", 1, True, 41.21906841459711),
-            ("microsoft/phi-2", 1, False, 92.53083167241344),
-            ("google/gemma-7b", 1, False, 28.84284625836978),
-            ("stabilityai/stablelm-2-12b", 1, False, 26.80858949645992),
-            ("Qwen/Qwen1.5-7B", 1, False, 39.29068423087616),
-            ("adept/persimmon-8b-base", 1, False, 34.53559807384106),
-            ("bigcode/starcoder2-3b", 1, False, 82.09655684566117),
-            ("state-spaces/mamba-130m-hf", 224, False, 794.542),
+            ("EleutherAI/gpt-j-6b", 1, 1, False, 50.79545107991805),
+            ("meta-llama/Llama-2-7b-hf", 1, 1, True, 44.39616259946937),
+            ("tiiuae/falcon-7b", 1, 1, True, 44.82870145718665),
+            ("bigcode/starcoder", 1, 1, False, 15.945023767901013),
+            ("Salesforce/codegen2-1B", 1, 1, False, 155.32071248826423),
+            ("mosaicml/mpt-7b", 1, 1, False, 45.45168927038262),
+            ("mistralai/Mistral-7B-v0.1", 1, 1, True, 41.21906841459711),
+            ("microsoft/phi-2", 1, 1, False, 92.53083167241344),
+            ("google/gemma-7b", 1, 1, False, 28.84284625836978),
+            ("stabilityai/stablelm-2-12b", 1, 1, False, 26.80858949645992),
+            ("Qwen/Qwen1.5-7B", 1, 1, False, 39.29068423087616),
+            ("adept/persimmon-8b-base", 1, 1, False, 34.53559807384106),
+            ("bigcode/starcoder2-3b", 1, 1, False, 82.09655684566117),
+            ("state-spaces/mamba-130m-hf", 1, 224, False, 794.542),
         ],
         "fp8": [],
         "deepspeed": [
-            ("bigscience/bloomz-7b1", 31.994268212011505),
+            ("bigscience/bloomz-7b1", 8, 1, 31.994268212011505),
         ],
         "torch_compile": [],
         "torch_compile_distributed": [],
@@ -239,13 +239,24 @@ def _test_text_generation(
         assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
 
 
-@pytest.mark.parametrize("model_name, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16"])
-def test_text_generation_bf16(model_name: str, baseline: float, batch_size: int, reuse_cache: bool, token: str):
-    _test_text_generation(model_name, baseline, token, batch_size, reuse_cache)
+@pytest.mark.parametrize("model_name, world_size, batch_size, reuse_cache, baseline", MODELS_TO_TEST["_bf16"])
+def test_text_generation_bf16(
+    model_name: str, baseline: float, world_size: int, batch_size: int, reuse_cache: bool, token: str
+):
+    deepspeed = True if world_size > 1 else False
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=deepspeed,
+        world_size=world_size,
+        batch_size=batch_size,
+        reuse_cache=reuse_cache,
+    )
 
 
 @pytest.mark.parametrize(
-    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["fp8"]
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["_fp8"]
 )
 def test_text_generation_fp8(
     model_name: str,
@@ -272,10 +283,9 @@ def test_text_generation_fp8(
     )
 
 
-@pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["deepspeed"])
-def test_text_generation_deepspeed(model_name: str, baseline: float, token: str):
-    world_size = 2 if "opt-66b" in model_name else 8
-    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size)
+@pytest.mark.parametrize("model_name,  world_size, batch_size, baseline", MODELS_TO_TEST["_deepspeed"])
+def test_text_generation_deepspeed(model_name: str, baseline: float, world_size: int, batch_size: int, token: str):
+    _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
 
 @pytest.mark.parametrize("model_name, baseline", MODELS_TO_TEST["torch_compile"])
