@@ -240,6 +240,11 @@ def main():
         type=str,
         help="Path to lora id",
     )
+    parser.add_argument(
+        "--use_cpu_rng",
+        action="store_true",
+        help="Enable deterministic generation using CPU Generator",
+    )
     args = parser.parse_args()
 
     # Set image resolution
@@ -341,6 +346,13 @@ def main():
     kwargs_call.update(kwargs_common)
     if args.throughput_warmup_steps is not None:
         kwargs_call["throughput_warmup_steps"] = args.throughput_warmup_steps
+
+    if args.use_cpu_rng:
+        # Patch for the deterministic generation - Need to specify CPU as the torch generator
+        generator = torch.Generator(device="cpu").manual_seed(args.seed)
+    else:
+        generator = None
+    kwargs_call["generator"] = generator
 
     # Generate images
     if args.control_image is not None:

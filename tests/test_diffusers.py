@@ -83,6 +83,7 @@ if IS_GAUDI2:
     TEXTUAL_INVERSION_RUNTIME = 114.1344320399221
     CONTROLNET_THROUGHPUT = 92.886919836857
     CONTROLNET_RUNTIME = 537.4276602957398
+    DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
     THROUGHPUT_BASELINE_AUTOCAST = 0.114
@@ -90,7 +91,7 @@ else:
     TEXTUAL_INVERSION_RUNTIME = 196.43840550999994
     CONTROLNET_THROUGHPUT = 44.7278034963213
     CONTROLNET_RUNTIME = 1116.084316640001
-
+    DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.302
 
 _run_custom_bf16_ops_test_ = parse_flag_from_env("CUSTOM_BF16_OPS", default=False)
 
@@ -2211,3 +2212,75 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.frames[0]), 25)
         if IS_GAUDI2:
             self.assertGreaterEqual(outputs.throughput, 0.95 * 0.012)
+
+
+class GaudiDeterministicImageGenerationTester(TestCase):
+    """
+    Test deterministic generation using text_to_image_generation.py.
+    """
+
+    @slow
+    def test_deterministic_image_generation(self):
+        path_to_script = (
+            Path(os.path.dirname(__file__)).parent / "examples" / "stable-diffusion" / "text_to_image_generation.py"
+        )
+        install_requirements(path_to_script.parent / "requirements.txt")
+
+        with tempfile.TemporaryDirectory():
+            test_args = f"""
+                python3
+                {path_to_script}
+                --model_name_or_path runwayml/stable-diffusion-v1-5
+                --num_images_per_prompt 20
+                --batch_size 4
+                --image_save_dir /tmp/stable_diffusion_images
+                --use_habana
+                --use_hpu_graphs
+                --gaudi_config Habana/stable-diffusion
+                --bf16
+                --use_cpu_rng
+                """.split()
+            test_args.append("--prompts")
+            test_args.append("An image of a squirrel in Picasso style")
+            p = subprocess.Popen(test_args)
+            return_code = p.wait()
+
+            # Ensure the run finished without any issue
+            self.assertEqual(return_code, 0)
+
+    @slow
+    def test_deterministic_image_generation_no_throughput_regression_bf16(self):
+        kwargs = {"timestep_spacing": "linspace"}
+        scheduler = GaudiDDIMScheduler.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", **kwargs, subfolder="scheduler"
+        )
+
+        kwargs = {
+            "scheduler": scheduler,
+            "use_habana": True,
+            "use_hpu_graphs": True,
+            "gaudi_config": "Habana/stable-diffusion",
+        }
+
+        pipeline = GaudiStableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            **kwargs,
+        )
+
+        num_images_per_prompt = 20
+        res = {}
+        generator = [set_seed(27) for i in range(num_images_per_prompt)]
+        outputs = pipeline(
+            prompt="An image of a squirrel in Picasso style",
+            num_images_per_prompt=num_images_per_prompt,
+            batch_size=4,
+            num_inference_steps=50,
+            guidance_scale=7.5,
+            negative_prompt=None,
+            eta=0.0,
+            output_type="pil",
+            generator=generator,
+            **res,
+        )
+
+        self.assertGreaterEqual(outputs.throughput, 0.95 * DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT)
