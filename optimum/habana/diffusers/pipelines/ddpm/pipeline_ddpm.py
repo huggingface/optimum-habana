@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import time
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
@@ -44,8 +43,6 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
     r"""
     Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/ddpm/pipeline_ddpm.py
     Changes are:
-    - Clone a new UNet for calculations of timestep embeddings
-    - Separate autocast mechanism for scheduler and UNet
     - Markstep for non-graph mode
     - Support GaudiDDIMScheduler
 
@@ -146,28 +143,20 @@ class GaudiDDPMPipeline(GaudiDiffusionPipeline, DDPMPipeline):
             self.scheduler.reset_timestep_dependent_params()
         num_inference_steps = [1] * len(self.scheduler.timesteps)
 
-        # Gaudi Patch
-        if not hasattr(self, "timestep_unet"):
-            self.timestep_unet = copy.deepcopy(self.unet)
-            logger.info("Preparing UNet for timestep calculations")
-
         if self.use_hpu_graphs:
             self.unet = self.ht.hpu.wrap_in_hpu_graph(self.unet, disable_tensor_cache=True)
-            self.timestep_unet = self.ht.hpu.wrap_in_hpu_graph(self.timestep_unet, disable_tensor_cache=True)
 
         if self.use_habana:
             self.unet = self.unet.to(self._device)
-            self.timestep_unet = self.timestep_unet.to(self._device)
 
         start_time = time.time()
         for i in self.progress_bar(num_inference_steps):
             timestep = timesteps[0]
             timesteps = torch.roll(timesteps, shifts=-1, dims=0)
-            emb = self.timestep_unet(image, timestep, True, None)
 
             # 1. Predict noise model_output
             with torch.autocast(device_type="hpu", dtype=torch.bfloat16, enabled=self.gaudi_config.use_torch_autocast):
-                model_output = self.unet(image, timestep, False, emb).sample
+                model_output = self.unet(image, timestep).sample
             # 2. Compute previous image: x_t -> x_t-1
             image = self.scheduler.step(
                 model_output.to(torch.float32), timestep, image, generator=generator
