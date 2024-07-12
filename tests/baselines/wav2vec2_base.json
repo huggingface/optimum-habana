@@ -29,14 +29,14 @@
     },
     "gaudi2": {
         "common_language": {
-            "num_train_epochs": 10,
+            "num_train_epochs": 5,
             "eval_batch_size": 64,
             "distribution": {
                 "multi_card": {
-                    "learning_rate": 5e-4,
+                    "learning_rate": 3e-4,
                     "train_batch_size": 32,
-                    "eval_accuracy": 0.8006,
-                    "train_runtime": 109.2047,
+                    "eval_accuracy": 0.7311,
+                    "train_runtime": 149.8893,
                     "train_samples_per_second": 3048.207,
                     "eval_samples_per_second": 631.601,
                     "extra_arguments": [
