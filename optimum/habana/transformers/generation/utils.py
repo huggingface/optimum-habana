@@ -97,6 +97,7 @@ MODELS_OPTIMIZED_WITH_STATIC_SHAPES = [
     "llava",
     "llava_next",
     "stablelm",
+    "mamba",
 ]
 
 
@@ -1877,9 +1878,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 and not model_kwargs.get("reuse_cache", False)
                 and bucket_internal
             ):
-                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
-                self._pad_past_key_values(model_kwargs)
+                if outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
+                    self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
         if (
@@ -2296,9 +2298,10 @@ class GaudiGenerationMixin(GenerationMixin):
                 and not model_kwargs.get("reuse_cache", False)
                 and bucket_internal
             ):
-                # Pad the returned pask key values tensors from prefill phase forward run to maximum length
+                # Pad the returned past key values tensors from prefill phase forward run to maximum length
                 # before starting the decode phase.
-                self._pad_past_key_values(model_kwargs)
+                if outputs.past_key_values[0][0].shape[2] == model_inputs["input_ids"].shape[1]:
+                    self._pad_past_key_values(model_kwargs)
                 model_kwargs["pad_done"] = True
 
         if (
@@ -2802,12 +2805,19 @@ class GaudiGenerationMixin(GenerationMixin):
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             if self.generation_config.static_shapes:
                 beam_scores = next_token_scores.flatten()
-                static_beam_indices = next_indices.flatten()
+                next_indices_flattened = next_indices.flatten()
+                static_beam_indices = (
+                    next_indices_flattened
+                    + torch.tensor(
+                        [[batch_idx * num_beams] * next_indices.shape[1] for batch_idx in range(batch_size)],
+                        device=next_indices.device,
+                    ).flatten()
+                )
 
                 beam_tokens = next_tokens.remainder(vocab_size).flatten()
 
                 beam_trace_scores.index_copy_(0, beam_trace_idx, beam_scores.unsqueeze(0))
-                beam_trace_indices.index_copy_(0, beam_trace_idx, static_beam_indices.unsqueeze(0))
+                beam_trace_indices.index_copy_(0, beam_trace_idx, next_indices_flattened.unsqueeze(0))
                 beam_trace_tokens.index_copy_(0, beam_trace_idx, beam_tokens.unsqueeze(0))
                 beam_trace_idx.add_(1)
 

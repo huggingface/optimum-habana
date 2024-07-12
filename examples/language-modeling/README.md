@@ -114,7 +114,7 @@ python ../gaudi_spawn.py \
     --model_name_or_path EleutherAI/gpt-j-6b \
     --dataset_name wikitext \
     --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 4 \
+    --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 4 \
     --do_train \
     --do_eval \
@@ -469,6 +469,43 @@ python ../gaudi_spawn.py \
     --low_cpu_mem_usage True
 ```
 
+- Multi-card finetuning of Llama2-7B with FP8:
+```bash
+LOWER_LIST=ops_bf16.txt python ../gaudi_spawn.py \
+	--world_size 8 --use_mpi run_lora_clm.py \
+	--model_name_or_path meta-llama/Llama-2-7b-hf \
+	--dataset_name tatsu-lab/alpaca \
+	--bf16 True \
+	--output_dir ./model_lora_llama \
+	--num_train_epochs 3 \
+	--per_device_train_batch_size 16 \
+	--gradient_accumulation_steps 1 \
+	--evaluation_strategy "no" \
+	--save_strategy "no" \
+	--learning_rate 3e-4 \
+	--warmup_ratio 0.03 \
+	--lr_scheduler_type "constant" \
+	--max_grad_norm 0.3 \
+	--logging_steps 20 \
+	--do_train \
+	--do_eval \
+	--use_habana \
+	--use_lazy_mode \
+	--throughput_warmup_steps 18 \
+	--lora_rank=8 \
+	--lora_alpha=16 \
+	--lora_dropout=0.05 \
+	--lora_target_modules "q_proj" "v_proj" \
+	--dataset_concatenation \
+	--max_seq_length 512 \
+	--ddp_bucket_cap_mb 50 \
+	--adam_epsilon 1e-08 \
+	--validation_split_percentage 10 \
+	--low_cpu_mem_usage True \
+	--pipelining_fwd_bwd \
+	--fp8 True
+```
+
 - Multi-card finetuning of codegen-16B-mono:
 ```bash
 python ../gaudi_spawn.py \
@@ -535,12 +572,12 @@ LOWER_LIST=ops_bf16.txt python3 ../gaudi_spawn.py \
     --validation_split_percentage 6
 ```
 
-- Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization and LoRA:
+- Multi-card finetuning of Llama2-70B with DeepSpeed ZeRO-3 optimization, LoRA and FP8 precision:
 
   > The following command requires Habana DeepSpeed 1.13.0 or later.
 
 ```bash
-PT_HPU_MAX_COMPOUND_OP_SIZE=10 DEEPSPEED_HPU_ZERO3_SYNC_MARK_STEP_REQUIRED=1 \
+PT_HPU_MAX_COMPOUND_OP_SIZE=10 \
 python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --model_name_or_path meta-llama/Llama-2-70b-hf \
   --deepspeed llama2_ds_zero3_config.json \
@@ -550,7 +587,7 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --num_train_epochs 2 \
   --max_seq_len 2048 \
   --per_device_train_batch_size 10 \
-  --per_device_eval_batch_size 10 \
+  --per_device_eval_batch_size 1 \
   --gradient_checkpointing \
   --evaluation_strategy epoch \
   --eval_delay 2 \
@@ -571,7 +608,8 @@ python3 ../gaudi_spawn.py --use_deepspeed  --world_size 8  run_lora_clm.py \
   --lora_target_modules "q_proj" "v_proj" "k_proj" "o_proj" \
   --validation_split_percentage 4 \
   --use_flash_attention True \
-  --flash_attention_causal_mask True
+  --flash_attention_causal_mask True \
+  --fp8 True
 ```
 
 - Multi-card finetuning of Llama2-70B with FSDP and LoRA:

@@ -41,6 +41,27 @@ fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pytest tests/test_diffusers.py
 
+# Run single-card non-regression tests on image classification models
+fast_tests_image_classifications:
+	pip install timm
+	python -m pip install .[tests]
+	python -m pytest tests/test_image_classification.py
+
+# Run unit and integration tests related to Image segmentation
+fast_tests_image_segmentation:
+	python -m pip install .[tests]
+	python -m pytest tests/test_image_segmentation.py
+
+# Run unit and integration tests related to text feature extraction
+fast_tests_feature_extraction:
+	python -m pip install .[tests]
+	python -m pytest tests/test_feature_extraction.py
+
+# Run unit and integration tests related to VideoMAE
+fast_test_videomae:
+	python -m pip install .[tests]
+	python -m pytest tests/test_video_mae.py
+
 # Run single-card non-regression tests
 slow_tests_1x: test_installs
 	python -m pytest tests/test_examples.py -v -s -k "single_card"
@@ -61,6 +82,7 @@ slow_tests_diffusers: test_installs
 	python -m pip install peft==0.7.0
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_text_to_image_"
 	python -m pytest tests/test_diffusers.py -v -s -k "test_train_controlnet"
+	python -m pytest tests/test_diffusers.py -v -s -k "test_deterministic_image_generation"
 
 # Run text-generation non-regression tests
 slow_tests_text_generation_example: test_installs
@@ -70,6 +92,11 @@ slow_tests_text_generation_example: test_installs
 # Run image-to-text non-regression tests
 slow_tests_image_to_text_example: test_installs
 	python -m pytest tests/test_image_to_text_example.py -v -s --token $(TOKEN)
+
+# Run visual question answering tests
+slow_tests_openclip_vqa_example: test_installs
+	python -m pip install -r examples/visual-question-answering/openclip_requirements.txt
+	python -m pytest tests/test_openclip_vqa.py
 
 slow_tests_fsdp: test_installs
 	python -m pytest tests/test_fsdp_examples.py -v -s --token $(TOKEN)
