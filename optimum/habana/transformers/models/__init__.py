@@ -10,6 +10,7 @@ from .bart import (
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
 )
+from .bert import gaudi_BertModel_forward
 from .blip import (
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
@@ -91,6 +92,10 @@ from .llama import (
 )
 from .llava import GaudiLlavaForConditionalGeneration
 from .llava_next import GaudiLlavaNextForConditionalGeneration
+from .mamba import (
+    gaudi_MambaForCausalLM_prepare_inputs_for_generation,
+    gaudi_MambaForCausalLM_update_model_kwargs_for_generation,
+)
 from .mistral import (
     GaudiMistralAttention,
     GaudiMistralDecoderLayer,
