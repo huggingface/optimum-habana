@@ -120,6 +120,15 @@ from .mpt import (
     gaudi_mpt_attention_forward,
     gaudi_mpt_block_forward,
 )
+from .mt5 import (
+    gaudi_mt5_layernorm_forward,
+    gaudi_MT5Attention_forward,
+    gaudi_MT5Block_forward,
+    gaudi_MT5ForConditionalGeneration_forward,
+    gaudi_MT5ForConditionalGeneration_prepare_inputs_for_generation,
+    gaudi_MT5LayerSelfAttention_forward,
+    gaudi_MT5Stack_forward,
+)
 from .opt import (
     GaudiOPTForCausalLM,
     GaudiOPTLearnedPositionalEmbedding,
@@ -189,22 +198,9 @@ from .t5 import (
     gaudi_T5LayerSelfAttention_forward,
     gaudi_T5Stack_forward,
 )
-
-from .mt5 import (
-    gaudi_mt5_layernorm_forward,
-    gaudi_MT5Attention_forward,
-    gaudi_MT5Block_forward,
-    gaudi_MT5ForConditionalGeneration_forward,
-    gaudi_MT5ForConditionalGeneration_prepare_inputs_for_generation,
-    gaudi_MT5LayerSelfAttention_forward,
-    gaudi_MT5Stack_forward,
-)
-
-
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
-
 from .vit import gaudi_vit_self_attention_forward
 from .vits import (
     gaudi_unconstrained_rational_quadratic_spline,

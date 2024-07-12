@@ -1,3 +1,19 @@
+# coding=utf-8
+# Copyright 2020 Mesh TensorFlow authors, T5 Authors and HuggingFace Inc. team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+""" PyTorch mT5 model."""
+
 import warnings
 from typing import Optional, Tuple, Union
 
@@ -15,6 +31,7 @@ from transformers.utils import (
     logging,
 )
 
+
 logger = logging.get_logger(__name__)
 
 try:
@@ -25,7 +42,7 @@ except ImportError:
 
 def gaudi_mt5_layernorm_forward(self, hidden_states):
     """
-    Copied from modelling_mt5.py 
+    Copied from https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/models/mt5/modeling_mt5.py 
     The only differences are:
         - override RMSNorm with Habana fused RMSNorm
     """
@@ -46,7 +63,7 @@ def gaudi_mt5_layernorm_forward(self, hidden_states):
             hidden_states = hidden_states.to(self.weight.dtype)
 
         return self.weight * hidden_states
-    
+
 def gaudi_MT5Attention_forward(
         self,
         hidden_states,
@@ -61,6 +78,7 @@ def gaudi_MT5Attention_forward(
         token_idx=None,
     ):
         """
+        Copied from https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/models/mt5/modeling_mt5.py
         Self-attention (if key_value_states is None) or attention over source sentence (provided by key_value_states).
         """
         # Input is (batch_size, seq_length, dim)
@@ -201,7 +219,11 @@ def gaudi_MT5LayerSelfAttention_forward(
     output_attentions=False,
     token_idx=None,
 ):
-    
+    """
+    Copied from https://github.com/huggingface/transformers/blob/v4.40.2/src/transformers/models/mt5/modeling_mt5.py
+    Self-attention (if key_value_states is None) or attention over source sentence (provided by key_value_states).
+    """
+
     normed_hidden_states = self.layer_norm(hidden_states)
     attention_output = self.SelfAttention(
             normed_hidden_states,
@@ -320,7 +342,7 @@ def gaudi_MT5Stack_forward(
         return_dict=None,
         token_idx=None,
     ):
-       
+
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -405,7 +427,7 @@ def gaudi_MT5Stack_forward(
         for i, (layer_module, past_key_value) in enumerate(zip(self.block, past_key_values)):
             layer_head_mask = head_mask[i]
             cross_attn_layer_head_mask = cross_attn_head_mask[i]
-            
+
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -511,7 +533,7 @@ def gaudi_MT5ForConditionalGeneration_forward(
         return_dict: Optional[bool] = None,
         token_idx: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
-        
+
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
