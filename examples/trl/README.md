@@ -197,8 +197,8 @@ There are three main steps to the PPO training process:
 2. Reward modeling using dialog pairs from the SE dataset on the llama-v2-7b-se to create llama-v2-7b-se-rm
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi reward_modeling.py \
-        --model_name=./sft/final_merged_checkpoint \
-        --tokenizer_name=meta-llama/Llama-2-7b-hf \
+        --model_name_or_path=./sft/final_merged_checkpoint \
+        --tokenizer_name_or_path=meta-llama/Llama-2-7b-hf \
         --output_dir=./rm
     ```
     To merge the adaptors into the base model we can use the `merge_peft_adapter.py` helper script that comes with TRL:
@@ -210,9 +210,9 @@ There are three main steps to the PPO training process:
 3. RL fine-tuning of llama-v2-7b-se with the llama-v2-7b-se-rm reward model:
     ```
     python ../gaudi_spawn.py --world_size 8 --use_mpi ppo.py \
-        --model_name=./sft/final_merged_checkpoint \
+        --model_name_or_path=./sft/final_merged_checkpoint \
         --reward_model_name=./rm_merged_checkpoint \
-        --tokenizer_name=meta-llama/Llama-2-7b-hf \
+        --tokenizer_name_or_path=meta-llama/Llama-2-7b-hf \
         --adafactor=False \
         --output_max_length=128 \
         --batch_size=8 \
