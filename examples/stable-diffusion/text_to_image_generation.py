@@ -93,6 +93,18 @@ def main():
         help="The second prompt or prompts to guide the image generation (applicable to SDXL).",
     )
     parser.add_argument(
+        "--base_image",
+        type=str,
+        default=None,
+        help=("Path to inpaint base image"),
+    )
+    parser.add_argument(
+        "--mask_image",
+        type=str,
+        default=None,
+        help=("Path to inpaint mask image"),
+    )
+    parser.add_argument(
         "--control_image",
         type=str,
         default=None,
@@ -274,6 +286,10 @@ def main():
         from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
 
         sdxl = False
+
+    elif (args.base_image is not None) and (args.mask_image is not None):
+        from optimum.habana.diffusers import AutoPipelineForInpainting
+
     elif any(model in args.model_name_or_path for model in sdxl_models):
         from optimum.habana.diffusers import GaudiStableDiffusionXLPipeline
 
@@ -354,9 +370,16 @@ def main():
         if args.lora_id:
             pipeline.load_lora_weights(args.lora_id)
 
-        # Set seed before running the model
-        set_seed(args.seed)
         kwargs_call["image"] = control_image
+
+    elif (args.base_image is not None) and (args.mask_image is not None):
+        from diffusers.utils import load_image
+
+        pipeline = AutoPipelineForInpainting.from_pretrained(args.model_name_or_path, **kwargs)
+        init_image = load_image(args.base_image)
+        mask_image = load_image(args.mask_image)
+        kwargs_call["image"] = init_image
+        kwargs_call["mask_image"] = mask_image
 
     elif sdxl:
         pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
@@ -365,9 +388,6 @@ def main():
         )
         if args.lora_id:
             pipeline.load_lora_weights(args.lora_id)
-
-        # Set seed before running the model
-        set_seed(args.seed)
 
         prompts_2 = args.prompts_2
         negative_prompts_2 = args.negative_prompts_2
@@ -398,7 +418,8 @@ def main():
                 pipeline.text_encoder, args.text_encoder_adapter_name_or_path
             )
             pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
-        set_seed(args.seed)
+
+    set_seed(args.seed)
 
     if args.distributed:
         with distributed_state.split_between_processes(args.prompts) as prompt:
