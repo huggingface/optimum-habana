@@ -754,7 +754,7 @@ python3 ../text-generation/run_generation.py \
 ### Multitask Prompt/Poly seq2seq tuning
 
 To run multitask prompt seq2seq finetuning, you can use `run_multitask_prompt_tuning.py`.
-Here is multi-device command examples for google/flan-t5-base
+Here is multi-device command example for google/flan-t5-base
 ```bash
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.py \
     --model_name_or_path google/flan-t5-base \
@@ -776,7 +776,7 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_multitask_prompt_tuning.p
 ```
 
 To run poly seq2seq finetuning, you can use `peft_poly_seq2seq_with_generate.py`.
-Here is multi-device command examples for google/flan-t5-xl
+Here is multi-device command example for google/flan-t5-xl
 ```bash
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi peft_poly_seq2seq_with_generate.py \
     --model_name_or_path google/flan-t5-xl \

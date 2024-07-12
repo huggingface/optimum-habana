@@ -58,7 +58,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
+# Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risk.
 check_min_version("4.38.0")
 check_optimum_habana_min_version("1.10.0")
 
