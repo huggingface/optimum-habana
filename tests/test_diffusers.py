@@ -2238,7 +2238,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
                 --use_hpu_graphs
                 --gaudi_config Habana/stable-diffusion
                 --bf16
-                --deterministic
+                --use_cpu_rng
                 """.split()
             test_args.append("--prompts")
             test_args.append("An image of a squirrel in Picasso style")

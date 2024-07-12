@@ -352,6 +352,7 @@ def main():
         generator = torch.Generator(device="cpu").manual_seed(args.seed)
     else:
         generator = None
+    kwargs_call["generator"] = generator
 
     # Generate images
     if args.control_image is not None:
@@ -369,24 +370,6 @@ def main():
         set_seed(args.seed)
         kwargs_call["image"] = control_image
 
-<<<<<<< HEAD
-=======
-        outputs = pipeline(
-            prompt=args.prompts,
-            image=control_image,
-            num_images_per_prompt=args.num_images_per_prompt,
-            batch_size=args.batch_size,
-            num_inference_steps=args.num_inference_steps,
-            guidance_scale=args.guidance_scale,
-            negative_prompt=args.negative_prompts,
-            eta=args.eta,
-            output_type=args.output_type,
-            profiling_warmup_steps=args.profiling_warmup_steps,
-            profiling_steps=args.profiling_steps,
-            generator=generator,
-            **kwargs_call,
-        )
->>>>>>> a0316a4 (Merged deterministic generation function into text_to_image_generation.)
     elif sdxl:
         pipeline = GaudiStableDiffusionXLPipeline.from_pretrained(
             args.model_name_or_path,
@@ -398,7 +381,6 @@ def main():
         # Set seed before running the model
         set_seed(args.seed)
 
-<<<<<<< HEAD
         prompts_2 = args.prompts_2
         negative_prompts_2 = args.negative_prompts_2
         if args.distributed and args.prompts_2 is not None:
@@ -411,24 +393,6 @@ def main():
         kwargs_call["prompt_2"] = prompts_2
         kwargs_call["negative_prompt_2"] = negative_prompts_2
 
-=======
-        outputs = pipeline(
-            prompt=args.prompts,
-            prompt_2=args.prompts_2,
-            num_images_per_prompt=args.num_images_per_prompt,
-            batch_size=args.batch_size,
-            num_inference_steps=args.num_inference_steps,
-            guidance_scale=args.guidance_scale,
-            negative_prompt=args.negative_prompts,
-            negative_prompt_2=args.negative_prompts_2,
-            eta=args.eta,
-            output_type=args.output_type,
-            profiling_warmup_steps=args.profiling_warmup_steps,
-            profiling_steps=args.profiling_steps,
-            generator=generator,
-            **kwargs_call,
-        )
->>>>>>> a0316a4 (Merged deterministic generation function into text_to_image_generation.)
     else:
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
             args.model_name_or_path,
@@ -448,28 +412,11 @@ def main():
             pipeline.text_encoder = pipeline.text_encoder.merge_and_unload()
         set_seed(args.seed)
 
-<<<<<<< HEAD
     if args.distributed:
         with distributed_state.split_between_processes(args.prompts) as prompt:
             outputs = pipeline(prompt=prompt, **kwargs_call)
     else:
         outputs = pipeline(prompt=args.prompts, **kwargs_call)
-=======
-        outputs = pipeline(
-            prompt=args.prompts,
-            num_images_per_prompt=args.num_images_per_prompt,
-            batch_size=args.batch_size,
-            num_inference_steps=args.num_inference_steps,
-            guidance_scale=args.guidance_scale,
-            negative_prompt=args.negative_prompts,
-            eta=args.eta,
-            output_type=args.output_type,
-            profiling_warmup_steps=args.profiling_warmup_steps,
-            profiling_steps=args.profiling_steps,
-            generator=generator,
-            **kwargs_call,
-        )
->>>>>>> a0316a4 (Merged deterministic generation function into text_to_image_generation.)
 
     # Save the pipeline in the specified directory if not None
     if args.pipeline_save_dir is not None:
