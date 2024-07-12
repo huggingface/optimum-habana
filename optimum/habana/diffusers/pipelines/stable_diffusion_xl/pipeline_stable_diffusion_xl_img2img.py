@@ -13,19 +13,17 @@
 # limitations under the License.
 
 import time
-from dataclasses import dataclass
 from math import ceil
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import PIL
 import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLImg2ImgPipeline
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import rescale_noise_cfg
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import BaseOutput, deprecate
+from diffusers.utils import deprecate
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -40,15 +38,10 @@ from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
 from ..stable_diffusion.pipeline_stable_diffusion import retrieve_timesteps
+from .pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-@dataclass
-class GaudiStableDiffusionXLPipelineOutput(BaseOutput):
-    images: Union[List[PIL.Image.Image], np.ndarray]
-    throughput: float
 
 
 class GaudiStableDiffusionXLImg2ImgPipeline(GaudiDiffusionPipeline, StableDiffusionXLImg2ImgPipeline):

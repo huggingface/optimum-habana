@@ -14,18 +14,16 @@
 # limitations under the License.
 
 import time
-from dataclasses import dataclass
 from math import ceil
 from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
 import torch
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionInstructPix2PixPipeline, StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import BaseOutput, deprecate
+from diffusers.utils import deprecate
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from optimum.utils import logging
@@ -33,16 +31,10 @@ from optimum.utils import logging
 from ....transformers.gaudi_configuration import GaudiConfig
 from ....utils import HabanaProfile, speed_metrics, warmup_inference_steps_time_adjustment
 from ..pipeline_utils import GaudiDiffusionPipeline
+from .pipeline_stable_diffusion import GaudiStableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)
-
-
-@dataclass
-class GaudiStableDiffusionPipelineOutput(BaseOutput):
-    images: Union[List[PIL.Image.Image], np.ndarray]
-    nsfw_content_detected: Optional[List[bool]]
-    throughput: float
 
 
 class GaudiStableDiffusionInstructPix2PixPipeline(GaudiDiffusionPipeline, StableDiffusionInstructPix2PixPipeline):
