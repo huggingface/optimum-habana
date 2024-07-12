@@ -32,6 +32,7 @@ import torch
 from diffusers import (
     AutoencoderKL,
     AutoencoderKLTemporalDecoder,
+    AutoencoderTiny,
     ControlNetModel,
     UNet2DConditionModel,
     UNetSpatioTemporalConditionModel,
@@ -62,9 +63,12 @@ from optimum.habana.diffusers import (
     GaudiEulerAncestralDiscreteScheduler,
     GaudiEulerDiscreteScheduler,
     GaudiStableDiffusionControlNetPipeline,
+    GaudiStableDiffusionImageVariationPipeline,
+    GaudiStableDiffusionInstructPix2PixPipeline,
     GaudiStableDiffusionLDM3DPipeline,
     GaudiStableDiffusionPipeline,
     GaudiStableDiffusionUpscalePipeline,
+    GaudiStableDiffusionXLImg2ImgPipeline,
     GaudiStableDiffusionXLPipeline,
     GaudiStableVideoDiffusionPipeline,
 )
@@ -2212,6 +2216,445 @@ class GaudiStableVideoDiffusionPipelineTester(TestCase):
         self.assertEqual(len(outputs.frames[0]), 25)
         if IS_GAUDI2:
             self.assertGreaterEqual(outputs.throughput, 0.95 * 0.012)
+
+
+class GaudiStableDiffusionInstructPix2PixPipelineTests(TestCase):
+    """
+    Tests the class StableDiffusionInstructPix2PixPipeline for Gaudi.
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/stable_diffusion/test_stable_diffusion_instruction_pix2pix.py
+    """
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=8,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        scheduler = GaudiDDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+            "image_encoder": None,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = Image.fromarray(np.uint8(image)).convert("RGB")
+        generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "image_guidance_scale": 1,
+            "output_type": "np",
+        }
+        return inputs
+
+    def test_stable_diffusion_pix2pix_default_case(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionInstructPix2PixPipeline(
+            **components,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+        self.assertEqual(image.shape, (1, 32, 32, 3))
+        expected_slice = np.array([0.7526, 0.3750, 0.4547, 0.6117, 0.5866, 0.5016, 0.4327, 0.5642, 0.4815])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
+
+    def test_stable_diffusion_pix2pix_negative_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionInstructPix2PixPipeline(
+            **components,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        negative_prompt = "french fries"
+        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(image.shape, (1, 32, 32, 3))
+        expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
+
+    def test_stable_diffusion_pix2pix_multiple_init_images(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionInstructPix2PixPipeline(
+            **components,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * 2
+
+        image = np.array(inputs["image"]).astype(np.float32) / 255.0
+        image = torch.from_numpy(image).unsqueeze(0).to(device)
+        image = image / 2 + 0.5
+        image = image.permute(0, 3, 1, 2)
+        inputs["image"] = image.repeat(2, 1, 1, 1)
+
+        image = sd_pipe(**inputs).images
+        image_slice = image[-1, -3:, -3:, -1]
+
+        self.assertEqual(image.shape, (2, 32, 32, 3))
+        expected_slice = np.array([0.5812, 0.5748, 0.5222, 0.5908, 0.5695, 0.7174, 0.6804, 0.5523, 0.5579])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
+
+    def test_stable_diffusion_pix2pix_euler(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["scheduler"] = GaudiEulerAncestralDiscreteScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
+        )
+        sd_pipe = GaudiStableDiffusionInstructPix2PixPipeline(
+            **components,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        slice = [round(x, 4) for x in image_slice.flatten().tolist()]
+        print(",".join([str(x) for x in slice]))
+
+        self.assertEqual(image.shape, (1, 32, 32, 3))
+        expected_slice = np.array([0.7417, 0.3842, 0.4732, 0.5776, 0.5891, 0.5139, 0.4052, 0.5673, 0.4986])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-3)
+
+
+class GaudiStableDiffusionImageVariationPipelineTests(TestCase):
+    """
+    Tests the class StableDiffusionImageVariationPipeline for Gaudi.
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/stable_diffusion_image_variation/test_stable_diffusion_image_variation.py
+    """
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        scheduler = GaudiDDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        torch.manual_seed(0)
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=32,
+            projection_dim=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            image_size=32,
+            patch_size=4,
+        )
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "image_encoder": image_encoder,
+            "feature_extractor": feature_extractor,
+            "safety_checker": None,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
+        generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_stable_diffusion_img_variation_default_case(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionImageVariationPipeline(
+            **components,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(image.shape, (1, 64, 64, 3))
+        expected_slice = np.array([0.5239, 0.5723, 0.4796, 0.5049, 0.5550, 0.4685, 0.5329, 0.4891, 0.4921])
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
+
+    def test_stable_diffusion_img_variation_multiple_images(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionImageVariationPipeline(
+            **components,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["image"] = 2 * [inputs["image"]]
+        output = sd_pipe(**inputs)
+
+        image = output.images
+
+        image_slice = image[-1, -3:, -3:, -1]
+
+        self.assertEqual(image.shape, (2, 64, 64, 3))
+        expected_slice = np.array([0.6892, 0.5637, 0.5836, 0.5771, 0.6254, 0.6409, 0.5580, 0.5569, 0.5289])
+
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-1)
+
+
+class GaudiStableDiffusionXLImg2ImgPipelineTests(TestCase):
+    def get_dummy_components(self, skip_first_text_encoder=False, time_cond_proj_dim=None):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            time_cond_proj_dim=time_cond_proj_dim,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            # SD2-specific config below
+            attention_head_dim=(2, 4),
+            use_linear_projection=True,
+            addition_embed_type="text_time",
+            addition_time_embed_dim=8,
+            transformer_layers_per_block=(1, 2),
+            projection_class_embeddings_input_dim=72,  # 5 * 8 + 32
+            cross_attention_dim=64 if not skip_first_text_encoder else 32,
+        )
+        scheduler = GaudiEulerDiscreteScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            steps_offset=1,
+            beta_schedule="scaled_linear",
+            timestep_spacing="leading",
+        )
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+            sample_size=128,
+        )
+        torch.manual_seed(0)
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=32,
+            image_size=224,
+            projection_dim=32,
+            intermediate_size=37,
+            num_attention_heads=4,
+            num_channels=3,
+            num_hidden_layers=5,
+            patch_size=14,
+        )
+
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+
+        feature_extractor = CLIPImageProcessor(
+            crop_size=224,
+            do_center_crop=True,
+            do_normalize=True,
+            do_resize=True,
+            image_mean=[0.48145466, 0.4578275, 0.40821073],
+            image_std=[0.26862954, 0.26130258, 0.27577711],
+            resample=3,
+            size=224,
+        )
+
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            # SD2-specific config below
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder if not skip_first_text_encoder else None,
+            "tokenizer": tokenizer if not skip_first_text_encoder else None,
+            "text_encoder_2": text_encoder_2,
+            "tokenizer_2": tokenizer_2,
+            "requires_aesthetics_score": True,
+            "image_encoder": image_encoder,
+            "feature_extractor": feature_extractor,
+        }
+        return components
+
+    def get_dummy_tiny_autoencoder(self):
+        return AutoencoderTiny(in_channels=3, out_channels=3, latent_channels=4)
+
+    def test_components_function(self):
+        init_components = self.get_dummy_components()
+        init_components.pop("requires_aesthetics_score")
+        pipe = GaudiStableDiffusionXLImg2ImgPipeline(
+            **init_components,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+
+        self.assertTrue(hasattr(pipe, "components"))
+        self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
+
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image / 2 + 0.5
+        generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 5.0,
+            "output_type": "np",
+            "strength": 0.8,
+        }
+        return inputs
+
+    def test_stable_diffusion_xl_img2img_euler(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = GaudiStableDiffusionXLImg2ImgPipeline(
+            **components,
+            use_habana=True,
+            use_hpu_graphs=True,
+            gaudi_config=GaudiConfig(use_torch_autocast=False),
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(image.shape, (1, 32, 32, 3))
+
+        expected_slice = np.array([0.4664, 0.4886, 0.4403, 0.6902, 0.5592, 0.4534, 0.5931, 0.5951, 0.5224])
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 1e-2)
 
 
 class GaudiDeterministicImageGenerationTester(TestCase):
