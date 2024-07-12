@@ -27,8 +27,6 @@ logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:
 
 model_name = sys.argv[1] if len(sys.argv) > 1 else "distilroberta-base"
 train_batch_size = 128  # The larger you select this, the better the results (usually). But it requires more GPU memory
-max_seq_length = 75
-num_epochs = 1
 
 # Save path of the model
 output_dir = (
