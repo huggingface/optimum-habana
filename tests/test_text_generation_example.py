@@ -239,7 +239,7 @@ def _test_text_generation(
         assert results["throughput"] >= (2 - TIME_PERF_FACTOR) * baseline
 
 
-@pytest.mark.parametrize("model_name, world_size, batch_size, reuse_cache, baseline", MODELS_TO_TEST["_bf16"])
+@pytest.mark.parametrize("model_name, world_size, batch_size, reuse_cache, baseline", MODELS_TO_TEST["bf16"])
 def test_text_generation_bf16(
     model_name: str, baseline: float, world_size: int, batch_size: int, reuse_cache: bool, token: str
 ):
@@ -256,7 +256,7 @@ def test_text_generation_bf16(
 
 
 @pytest.mark.parametrize(
-    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["_fp8"]
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["fp8"]
 )
 def test_text_generation_fp8(
     model_name: str,
@@ -283,7 +283,7 @@ def test_text_generation_fp8(
     )
 
 
-@pytest.mark.parametrize("model_name,  world_size, batch_size, baseline", MODELS_TO_TEST["_deepspeed"])
+@pytest.mark.parametrize("model_name,  world_size, batch_size, baseline", MODELS_TO_TEST["deepspeed"])
 def test_text_generation_deepspeed(model_name: str, baseline: float, world_size: int, batch_size: int, token: str):
     _test_text_generation(model_name, baseline, token, deepspeed=True, world_size=world_size, batch_size=batch_size)
 
