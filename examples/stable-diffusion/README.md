@@ -31,7 +31,7 @@ python text_to_image_generation.py \
     --model_name_or_path runwayml/stable-diffusion-v1-5 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/stable_diffusion_images \
     --use_habana \
     --use_hpu_graphs \
@@ -90,7 +90,7 @@ python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-2-1 \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 10 \
-    --batch_size 2 \
+    --batch_size 7 \
     --height 768 \
     --width 768 \
     --image_save_dir /tmp/stable_diffusion_images \
@@ -116,7 +116,7 @@ python text_to_image_generation.py \
     --model_name_or_path "Intel/ldm3d-4c" \
     --prompts "An image of a squirrel in Picasso style" \
     --num_images_per_prompt 10 \
-    --batch_size 2 \
+    --batch_size 7 \
     --height 768 \
     --width 768 \
     --image_save_dir /tmp/stable_diffusion_images \
@@ -158,7 +158,7 @@ python text_to_image_generation.py \
     --model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
     --prompts "Sailing ship painting by Van Gogh" \
     --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/stable_diffusion_xl_images \
     --scheduler euler_discrete \
     --use_habana \
@@ -271,7 +271,7 @@ python text_to_image_generation.py \
     --prompts "futuristic-looking woman" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
     --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
     --use_hpu_graphs \
@@ -288,7 +288,7 @@ python text_to_image_generation.py \
     --prompts "futuristic-looking woman" "a rusty robot" \
     --control_image https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png \
     --num_images_per_prompt 10 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
     --use_hpu_graphs \
@@ -325,7 +325,7 @@ python text_to_image_generation.py \
     --control_image https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png \
     --control_preprocessing_type "none" \
     --num_images_per_prompt 20 \
-    --batch_size 4 \
+    --batch_size 7 \
     --image_save_dir /tmp/controlnet_images \
     --use_habana \
     --use_hpu_graphs \
@@ -344,11 +344,105 @@ python text_to_image_generation.py \
     --prompts "bird" \
     --seed 0 \
     --num_images_per_prompt 10 \
-    --batch_size 2 \
+    --batch_size 7 \
     --image_save_dir /tmp/controlnet-2-1_images \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion-2
+```
+
+## Image-to-image Generation
+
+### Single Prompt
+
+Here is how to generate images with one prompt and one image.
+Take instruct-pix2pix as an example.
+
+```bash
+pip install -r requirements.txt
+python image_to_image_generation.py \
+    --model_name_or_path "timbrooks/instruct-pix2pix" \
+    --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
+    --prompts "turn him into cyborg" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --guidance_scale 7.5 \
+    --image_guidance_scale 1 \
+    --num_inference_steps 10 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
+
+### Multiple Prompts
+
+Here is how to generate images with several prompts and one image.
+```bash
+pip install -r requirements.txt
+python image_to_image_generation.py \
+    --model_name_or_path "timbrooks/instruct-pix2pix" \
+    --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
+    --prompts "turn him into cyborg" "a strong soldier"\
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --guidance_scale 7.5 \
+    --image_guidance_scale 1 \
+    --num_inference_steps 10 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
+
+### Stable Diffusion XL Refiner
+
+Here is how to generate SDXL images with a single prompt and one image:
+```bash
+pip install -r requirements.txt
+python image_to_image_generation.py \
+    --model_name_or_path "stabilityai/stable-diffusion-xl-refiner-1.0" \
+    --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
+    --prompts "turn him into cyborg" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --guidance_scale 7.5 \
+    --num_inference_steps 10 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+### Stable Diffusion Image Variations
+
+Here is how to generate images with one image, it does not accept prompt input
+```bash
+pip install -r requirements.txt
+python image_to_image_generation.py \
+    --model_name_or_path "lambdalabs/sd-image-variations-diffusers" \
+    --src_image_path "https://github.com/SHI-Labs/Versatile-Diffusion/blob/master/assets/demo/reg_example/ghibli.jpg?raw=true" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --guidance_scale 3 \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
 ```
 
 # Stable Video Diffusion Examples

@@ -231,6 +231,60 @@
                 }
             }
         },
+        "trl-reward": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 1,
+                    "train_runtime": 250,
+                    "train_samples_per_second": 1.6,
+                    "extra_arguments": [
+                        "--logging_steps 1",
+                        "--lora_r 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--lora_target_modules q_proj v_proj k_proj out_proj fc_in fc_out wte",
+                        "--max_length 1024",
+                        "--eval_steps 200",
+                        "--lr_scheduler_type cosine",
+                        "--weight_decay 0.05",
+                        "--gradient_accumulation_steps 4",
+                        "--train_subset 500",
+                        "--eval_subset 100"
+                    ]
+                }
+            }
+        },
+        "trl-ppo": {
+            "num_train_epochs": 1,
+            "eval_batch_size": 1,
+            "distribution": {
+                "multi_card": {
+                    "learning_rate": 5e-4,
+                    "train_batch_size": 8,
+                    "train_runtime": 62,
+                    "train_samples_per_second": 0.50,
+                    "extra_arguments": [
+                        "--lora_r 8",
+                        "--lora_alpha 16",
+                        "--lora_dropout 0.05",
+                        "--reward_model_name HuggingFaceH4/tiny-random-LlamaForSequenceClassification",
+                        "--lora_target_modules q_proj v_proj k_proj out_proj fc_in fc_out wte",
+                        "--max_train_samples 1000",
+                        "--use_habana",
+                        "--ppo_epochs 1",
+			"--batched_gen True",
+                        "--mini_batch_size 1",
+                        "--output_max_length 128",
+                        "--input_max_length 128",
+                        "--learning_rate 1.4e-5",
+                        "--early_stopping"
+                    ]
+                }
+            }
+        },
         "prompt-tuning": {
             "num_train_epochs": 20,
             "eval_batch_size": 1,
