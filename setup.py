@@ -47,6 +47,7 @@ TESTS_REQUIRE = [
     "safetensors",
     "pytest < 8.0.0",
     "torchsde",
+    "timm",
 ]
 
 QUALITY_REQUIRES = [
