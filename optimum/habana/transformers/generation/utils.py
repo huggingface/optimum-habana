@@ -1831,6 +1831,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
+            if not lazy_mode:
+                next_tokens = next_tokens.to(input_ids.dtype)
+
             if token_idx is not None:
                 input_ids.index_copy_(
                     1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
@@ -2258,6 +2261,9 @@ class GaudiGenerationMixin(GenerationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next step
+            if not lazy_mode:
+                next_tokens = next_tokens.to(input_ids.dtype)
+
             if token_idx is not None:
                 input_ids.index_copy_(
                     1, token_idx, next_tokens.unsqueeze(-1) if next_tokens.dim() == 1 else next_tokens
