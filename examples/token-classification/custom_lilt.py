@@ -2,7 +2,21 @@ import torch
 import torch.nn as nn
 import math
 
-class LiltSelfAttention(nn.Module):
+try:
+    from habana_frameworks.torch.hpex.kernels import FusedSDPA
+except ImportError:
+    print("Not using HPU fused scaled dot-product attention kernel.")
+    FusedSDPA = None
+
+class ModuleFusedSDPA(torch.nn.Module):
+    def __init__(self, fusedSDPA):
+        super().__init__()
+        self._hpu_kernel_fsdpa = fusedSDPA
+
+    def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
+        return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
+
+class CustomLiltSelfAttention(nn.Module):
     def __init__(self, config, position_embedding_type=None):
         super().__init__()
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
@@ -38,6 +52,7 @@ class LiltSelfAttention(nn.Module):
             self.distance_embedding = nn.Embedding(2 * config.max_position_embeddings - 1, self.attention_head_size)
 
         self.channel_shrink_ratio = config.channel_shrink_ratio
+        self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
 
     def transpose_for_scores(self, x, r=1):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size // r)
@@ -51,6 +66,7 @@ class LiltSelfAttention(nn.Module):
         attention_mask=None,
         head_mask=None,
         output_attentions=False,
+        use_fused_sdpa=False,  # Add use_fused_sdpa parameter for Fused SDPA
     ):
         layout_value_layer = self.transpose_for_scores(self.layout_value(layout_inputs), r=self.channel_shrink_ratio)
         layout_key_layer = self.transpose_for_scores(self.layout_key(layout_inputs), r=self.channel_shrink_ratio)
@@ -62,8 +78,20 @@ class LiltSelfAttention(nn.Module):
         value_layer = self.transpose_for_scores(self.value(hidden_states))
         query_layer = self.transpose_for_scores(mixed_query_layer)
 
-        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-        layout_attention_scores = torch.matmul(layout_query_layer, layout_key_layer.transpose(-1, -2))
+        if self.fused_scaled_dot_product_attention and use_fused_sdpa:
+            import habana_frameworks.torch.hpu as ht
+
+            use_recompute = not self.training
+            with ht.sdp_kernel(enable_recompute=use_recompute):
+                attention_scores = self.fused_scaled_dot_product_attention(
+                    query_layer, key_layer, value_layer, attention_mask, self.dropout, False, 1.0, "fast"
+                )
+                layout_attention_scores = self.fused_scaled_dot_product_attention(
+                    layout_query_layer, layout_key_layer, layout_value_layer, attention_mask, self.dropout, False, 1.0, "fast"
+                )
+        else:
+            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+            layout_attention_scores = torch.matmul(layout_query_layer, layout_key_layer.transpose(-1, -2))
 
         if self.position_embedding_type == "relative_key" or self.position_embedding_type == "relative_key_query":
             seq_length = hidden_states.size()[1]
@@ -137,4 +165,3 @@ class LiltSelfAttention(nn.Module):
         )
 
         return outputs
-

@@ -24,6 +24,15 @@ from transformers.utils import send_example_telemetry
 
 from optimum.habana import GaudiTrainer, GaudiTrainingArguments
 
+from custom_lilt import CustomLiltSelfAttention
+
+class CustomLiltForTokenClassification(LiltForTokenClassification):
+    def __init__(self, config):
+        super().__init__(config)
+        # Override the attention mechanism with the custom implementation for all layers
+        for layer in self.lilt.encoder.layer:
+            import pdb; pdb.set_trace()
+            layer.attention.self = CustomLiltSelfAttention(config)
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +116,7 @@ def main() -> None:
 
     logger.info(proc_dataset["train"].features.keys())
 
-    model = LiltForTokenClassification.from_pretrained(
+    model = CustomLiltForTokenClassification.from_pretrained(
         model_id, num_labels=len(labels), label2id=label2id, id2label=id2label
     )
 
@@ -168,10 +177,10 @@ def main() -> None:
 
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
+        import pdb; pdb.set_trace()
         metrics = trainer.evaluate()
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(proc_dataset["test"])
         metrics["eval_samples"] = min(max_eval_samples, len(proc_dataset["test"]))
-
         for key, value in metrics.items():
             if isinstance(value, dict):
                 for sub_key, sub_value in value.items():
