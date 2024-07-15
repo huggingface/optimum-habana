@@ -30,7 +30,7 @@ import evaluate
 import torch
 import transformers
 from datasets import load_dataset
-from peft import AdaLoraConfig, IA3Config, LoraConfig, TaskType, get_peft_model, tuners
+from peft import AdaLoraConfig, AdaptionPromptConfig, IA3Config, LoraConfig, TaskType, get_peft_model, tuners
 from peft.utils.other import fsdp_auto_wrap_policy
 from transformers import (
     AutoConfig,
@@ -338,7 +338,7 @@ class FinetuneArguments:
         default="lora",
         metadata={
             "help": ("The PEFT type to use."),
-            "choices": ["lora", "ia3", "adalora"],
+            "choices": ["lora", "ia3", "adalora", "llama-adapter"],
         },
     )
     ia3_target_modules: List[str] = field(
@@ -348,6 +348,14 @@ class FinetuneArguments:
     feedforward_modules: List[str] = field(
         default_factory=lambda: None,
         metadata={"help": "Target feedforward modules for the IA3 method."},
+    )
+    adapter_layers: int = field(
+        default=30,
+        metadata={"help": "Number of adapter layers (from the top) in llama-adapter"},
+    )
+    adapter_len: int = field(
+        default=10,
+        metadata={"help": "Number of adapter tokens to insert in llama-adapter"},
     )
 
 
@@ -785,6 +793,19 @@ def main():
                 feedforward_modules=finetune_args.feedforward_modules,
                 task_type=TaskType.CAUSAL_LM,
             )
+        elif finetune_args.peft_type == "llama-adapter":
+            peft_config = AdaptionPromptConfig(
+                adapter_layers=finetune_args.adapter_layers,
+                adapter_len=finetune_args.adapter_len,
+                task_type=TaskType.CAUSAL_LM,
+            )
+            from optimum.habana.peft.layer import (
+                GaudiAdaptedAttention_getattr,
+                GaudiAdaptedAttentionPreAttnForward,
+            )
+
+            tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
+            tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
         if training_args.gradient_checkpointing:
             model.enable_input_require_grads()
         lora_model = get_peft_model(model, peft_config)
