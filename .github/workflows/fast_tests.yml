@@ -15,7 +15,8 @@ concurrency:
 jobs:
   transformers:
     name: Run tests for optimum.habana.transformers
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: habana-gpu-runners
     steps:
       - name: Checkout
         uses: actions/checkout@v2
