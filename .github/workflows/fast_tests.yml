@@ -28,6 +28,7 @@ jobs:
             docker run \
             -v $PWD:/root/workspace \
             --workdir=/root/workspace \
+            --runtime=habana \
             -e HABANA_VISIBLE_DEVICES=all \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
             --cap-add=sys_nice \
@@ -52,6 +53,7 @@ jobs:
             docker run \
             -v $PWD:/root/workspace \
             --workdir=/root/workspace \
+            --runtime=habana \
             -e HABANA_VISIBLE_DEVICES=all \
             -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
             --cap-add=sys_nice \
