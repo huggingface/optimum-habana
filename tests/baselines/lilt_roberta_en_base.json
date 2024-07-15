@@ -30,7 +30,7 @@
                         "--bf16",
                         "--non_blocking_data_copy",
                         "--gradient_checkpointing",
-                        "--deepspeed examples/token-classification/ds_config_bf16.json"
+                        "--deepspeed tests/configs/deepspeed_zero_2.json"
                     ]
                 }
             }
