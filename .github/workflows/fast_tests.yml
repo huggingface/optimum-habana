@@ -25,15 +25,6 @@ jobs:
             docker pull vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest
       - name: Run tests
         run: |
-            docker run \
-            -v $PWD:/root/workspace \
-            --workdir=/root/workspace \
-            -e HABANA_VISIBLE_DEVICES=all \
-            -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
-            --cap-add=sys_nice \
-            --net=host \
-            --ipc=host \
-            vault.habana.ai/gaudi-docker/1.16.0/ubuntu22.04/habanalabs/pytorch-installer-2.2.2:latest \
             /bin/bash tests/ci/fast_tests.sh
   diffusers:
     name: Run tests for optimum.habana.diffusers
