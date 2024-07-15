@@ -83,13 +83,13 @@ from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
     GaudiStableDiffusionControlNetPipeline,
     GaudiStableDiffusionImageVariationPipeline,
-    GaudiStableDiffusionInstructPix2PixPipeline,
     GaudiStableDiffusionInpaintPipeline,
+    GaudiStableDiffusionInstructPix2PixPipeline,
     GaudiStableDiffusionLDM3DPipeline,
     GaudiStableDiffusionPipeline,
     GaudiStableDiffusionUpscalePipeline,
-    GaudiStableDiffusionXLInpaintPipeline,
     GaudiStableDiffusionXLImg2ImgPipeline,
+    GaudiStableDiffusionXLInpaintPipeline,
     GaudiStableDiffusionXLPipeline,
     GaudiStableVideoDiffusionPipeline,
 )
@@ -2753,6 +2753,7 @@ class GaudiDeterministicImageGenerationTester(TestCase):
 
         self.assertGreaterEqual(outputs.throughput, 0.95 * DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT)
 
+
 """
 Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/test_pipelines_common.py
 - Remove PipelinePushToHubTester testcase.
@@ -4287,6 +4288,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(TestCase):
 
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
         self.assertGreaterEqual(outputs.throughput, 0.95 * INPAINT_THROUGHPUT_BASELINE_BF16)
+
 
 """
 Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/stable_diffusion_xl/test_stable_diffusion_xl_inpaint.py

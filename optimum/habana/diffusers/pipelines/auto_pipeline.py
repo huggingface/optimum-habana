@@ -28,9 +28,9 @@ from diffusers.pipelines import (
 )
 from huggingface_hub.utils import validate_hf_hub_args
 
+from .controlnet.pipeline_controlnet import GaudiStableDiffusionControlNetPipeline
 from .stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
 from .stable_diffusion.pipeline_stable_diffusion_inpaint import GaudiStableDiffusionInpaintPipeline
-from .controlnet.pipeline_controlnet import GaudiStableDiffusionControlNetPipeline
 from .stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline
 from .stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline
 
