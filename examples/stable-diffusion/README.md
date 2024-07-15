@@ -396,7 +396,7 @@ python image_to_video_generation.py \
 ```
 
 ## Inpainting Example
-Inpainting replaces or edits specific areas of an image. For more details, please refer to [HugingFace inpaint](https://huggingface.co/docs/diffusers/en/using-diffusers/inpaint)
+Inpainting replaces or edits specific areas of an image. For more details, please refer to [Huging Face Diffusers doc](https://huggingface.co/docs/diffusers/en/using-diffusers/inpaint).
 ### Stable Diffusion Inpainting
 ```bash
 python text_to_image_generation.py \
