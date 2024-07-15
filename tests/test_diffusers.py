@@ -44,7 +44,6 @@ from diffusers import (
     EulerDiscreteScheduler,
     LCMScheduler,
     PNDMScheduler,
-    UNet2DModel,
     UNet2DConditionModel,
     UNet2DModel,
     UNetSpatioTemporalConditionModel,
@@ -5080,6 +5079,8 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
         self.assertGreaterEqual(outputs.throughput, 0.95 * INPAINT_XL_THROUGHPUT_BASELINE_BF16)
+
+
 class GaudiDDPMPipelineTester(TestCase):
     """
     Tests for unconditional image generation
