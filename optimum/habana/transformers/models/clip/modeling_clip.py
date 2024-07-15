@@ -1,15 +1,15 @@
-import torch
-import os
-from torch import nn
 from typing import Optional, Tuple, Union
+
+import torch
+from torch import nn
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from transformers.models.clip.modeling_clip import (
-    CLIPVisionEmbeddings,
     CLIPAttention,
-    CLIPEncoderLayer,
     CLIPEncoder,
-    CLIPVisionTransformer,
+    CLIPEncoderLayer,
+    CLIPVisionEmbeddings,
     CLIPVisionModel,
+    CLIPVisionTransformer,
 )
 
 
@@ -62,7 +62,6 @@ class Softmax(nn.Module):
 
 
 class GaudiCLIPAttention(CLIPAttention):
-
     def __init__(self, config):
         super().__init__(config=config)
         self.fused_scaled_dot_product_attention = ModuleFusedSDPA(FusedSDPA) if FusedSDPA else None
@@ -98,6 +97,7 @@ class GaudiCLIPAttention(CLIPAttention):
         src_len = key_states.size(1)
         if FusedSDPA and use_flash_attention:
             import habana_frameworks.torch.hpu as ht
+
             use_recompute = not self.training
             with ht.sdp_kernel(enable_recompute=use_recompute):
                 attn_output = self.fused_scaled_dot_product_attention(
@@ -161,7 +161,6 @@ class GaudiCLIPAttention(CLIPAttention):
 
 
 class GaudiCLIPEncoderLayer(CLIPEncoderLayer):
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -201,7 +200,6 @@ class GaudiCLIPEncoderLayer(CLIPEncoderLayer):
 
 
 class GaudiCLIPEncoder(CLIPEncoder):
-
     def forward(
         self,
         inputs_embeds,
@@ -258,11 +256,12 @@ class GaudiCLIPEncoder(CLIPEncoder):
 
         if not return_dict:
             return tuple(v for v in [hidden_states, encoder_states, all_attentions] if v is not None)
-        return BaseModelOutput(last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions)
+        return BaseModelOutput(
+            last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
+        )
 
 
 class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
-
     def forward(
         self,
         pixel_values: Optional[torch.FloatTensor] = None,
@@ -312,7 +311,6 @@ class GaudiCLIPVisionTransformer(CLIPVisionTransformer):
 
 
 class GaudiCLIPVisionModel(CLIPVisionModel):
-
     def forward(
         self,
         pixel_values: Optional[torch.FloatTensor] = None,

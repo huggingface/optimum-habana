@@ -31,12 +31,12 @@ from .bloom import (
     gaudi_bloom_model_forward,
 )
 from .clip import (
-    GaudiCLIPVisionEmbeddings,
     GaudiCLIPAttention,
-    GaudiCLIPEncoderLayer,
     GaudiCLIPEncoder,
-    GaudiCLIPVisionTransformer,
+    GaudiCLIPEncoderLayer,
+    GaudiCLIPVisionEmbeddings,
     GaudiCLIPVisionModel,
+    GaudiCLIPVisionTransformer,
 )
 from .codegen import (
     GaudiCodeGenAttention,
