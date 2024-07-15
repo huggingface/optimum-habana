@@ -351,6 +351,100 @@ python text_to_image_generation.py \
     --gaudi_config Habana/stable-diffusion-2
 ```
 
+## Image-to-image Generation
+
+### Single Prompt
+
+Here is how to generate images with one prompt and one image.
+Take instruct-pix2pix as an example.
+
+```bash
+pip install -r requirements.txt
+python image_to_image_generation.py \
+    --model_name_or_path "timbrooks/instruct-pix2pix" \
+    --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
+    --prompts "turn him into cyborg" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --guidance_scale 7.5 \
+    --image_guidance_scale 1 \
+    --num_inference_steps 10 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
+
+### Multiple Prompts
+
+Here is how to generate images with several prompts and one image.
+```bash
+pip install -r requirements.txt
+python image_to_image_generation.py \
+    --model_name_or_path "timbrooks/instruct-pix2pix" \
+    --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
+    --prompts "turn him into cyborg" "a strong soldier"\
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --guidance_scale 7.5 \
+    --image_guidance_scale 1 \
+    --num_inference_steps 10 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+> HPU graphs are recommended when generating images by batches to get the fastest possible generations.
+> The first batch of images entails a performance penalty. All subsequent batches will be generated much faster.
+> You can enable this mode with `--use_hpu_graphs`.
+
+
+### Stable Diffusion XL Refiner
+
+Here is how to generate SDXL images with a single prompt and one image:
+```bash
+pip install -r requirements.txt
+python image_to_image_generation.py \
+    --model_name_or_path "stabilityai/stable-diffusion-xl-refiner-1.0" \
+    --src_image_path "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg" \
+    --prompts "turn him into cyborg" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --guidance_scale 7.5 \
+    --num_inference_steps 10 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
+### Stable Diffusion Image Variations
+
+Here is how to generate images with one image, it does not accept prompt input
+```bash
+pip install -r requirements.txt
+python image_to_image_generation.py \
+    --model_name_or_path "lambdalabs/sd-image-variations-diffusers" \
+    --src_image_path "https://github.com/SHI-Labs/Versatile-Diffusion/blob/master/assets/demo/reg_example/ghibli.jpg?raw=true" \
+    --num_images_per_prompt 20 \
+    --batch_size 4 \
+    --image_save_dir /tmp/stable_diffusion_images \
+    --guidance_scale 3 \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --bf16
+```
+
 # Stable Video Diffusion Examples
 
 Stable Video Diffusion (SVD) was unveiled in [Stable Video Diffusion Announcement](https://stability.ai/news/stable-video-diffusion-open-ai-video-model)
@@ -393,4 +487,39 @@ python image_to_video_generation.py \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion \
     --bf16
+```
+
+## Inpainting Example
+Inpainting replaces or edits specific areas of an image. For more details, please refer to [Huging Face Diffusers doc](https://huggingface.co/docs/diffusers/en/using-diffusers/inpaint).
+### Stable Diffusion Inpainting
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path  runwayml/stable-diffusion-inpainting \
+    --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
+    --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
+    --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \
+    --seed 0 \
+    --num_images_per_prompt 12 \
+    --batch_size 4 \
+    --image_save_dir ./inpaiting_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion
+```
+
+### Stable Diffusion XL Inpainting
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1\
+    --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
+    --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
+    --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \
+    --seed 0 \
+    --scheduler euler_discrete \
+    --num_images_per_prompt 12 \
+    --batch_size 4 \
+    --image_save_dir ./xl_inpaiting_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion
 ```
