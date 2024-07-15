@@ -171,6 +171,16 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_FOR_CAUSAL_LM_MAPPING,
         ["llama"],
     ),
+    "reward_modeling": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
+        ["llama"],
+    ),
+    "ppo": _get_supported_models_for_script(
+        MODELS_TO_TEST_MAPPING,
+        MODEL_FOR_CAUSAL_LM_MAPPING,
+        ["llama"],
+    ),
     "run_prompt_tuning_clm": _get_supported_models_for_script(
         MODELS_TO_TEST_MAPPING,
         MODEL_FOR_CAUSAL_LM_MAPPING,
@@ -215,6 +225,8 @@ class ExampleTestMeta(type):
         elif (
             "sft" in example_name
             or "dpo" in example_name
+            or "reward_modeling" in example_name
+            or "ppo" in example_name
             or "prompt_tuning" in example_name
             or example_name == "run_sequence_classification"
         ) and not IS_GAUDI2:
@@ -451,7 +463,6 @@ class ExampleTestMeta(type):
 
                 with open(Path(tmp_dir) / "all_results.json") as fp:
                     results = json.load(fp)
-
                 # Ensure performance requirements (accuracy, training time) are met
                 self.assert_no_regression(results, baseline.get("distribution").get(distribution), model_name)
 
@@ -521,7 +532,7 @@ class ExampleTesterBase(TestCase):
                 "--num_gpus 8",
                 "--no_local_rank",
             ]
-        if self.EXAMPLE_NAME == "dpo":
+        if self.EXAMPLE_NAME in ["dpo", "reward_modeling"]:
             cmd_line += [
                 f"{script}",
                 f"--model_name_or_path {model_name}",
@@ -529,6 +540,14 @@ class ExampleTesterBase(TestCase):
                 f"--output_dir {output_dir}",
                 f"--per_device_train_batch_size {train_batch_size}",
                 f"--per_device_eval_batch_size {eval_batch_size}",
+            ]
+        elif self.EXAMPLE_NAME == "ppo":
+            cmd_line += [
+                f"{script}",
+                f"--model_name_or_path {model_name}",
+                f"--tokenizer_name_or_path {model_name}",
+                f"--output_dir {output_dir}",
+                f"--batch_size {train_batch_size}",
             ]
         else:
             cmd_line += [
@@ -550,10 +569,10 @@ class ExampleTesterBase(TestCase):
 
         if "compile" in task:
             cmd_line += ["--use_lazy_mode False"]
-        elif self.EXAMPLE_NAME != "dpo":
+        elif self.EXAMPLE_NAME not in ["dpo", "ppo", "reward_modeling"]:
             cmd_line += ["--use_lazy_mode"]
 
-        if "bloom" not in model_name and self.EXAMPLE_NAME != "dpo":
+        if "bloom" not in model_name and self.EXAMPLE_NAME not in ["dpo", "ppo", "reward_modeling"]:
             cmd_line.append("--do_eval")
 
         if extra_command_line_arguments is not None:
@@ -587,10 +606,12 @@ class ExampleTesterBase(TestCase):
         for metric_name in self.REGRESSION_METRICS.keys():
             if metric_name in baseline and metric_name in results:
                 metrics_to_assess.append(metric_name)
-
         # There is no accuracy metric for `run_clip.py`, `run_bridgetower.py` and BLOOM
         min_number_metrics = 3
-        if self.EXAMPLE_NAME in ["run_clip", "run_bridgetower", "sft", "dpo"] or "bloom" in model_name:
+        if (
+            self.EXAMPLE_NAME in ["run_clip", "run_bridgetower", "sft", "dpo", "ppo", "reward_modeling"]
+            or "bloom" in model_name
+        ):
             min_number_metrics = 2
 
         # Check that at least 3 metrics are assessed:
@@ -792,6 +813,18 @@ class MultiCardSFTChatPeftExampleTester(
 
 class MultiCardDPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="dpo", multi_card=True):
     TASK_NAME = "trl-dpo"
+    DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardRewardExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="reward_modeling", multi_card=True
+):
+    TASK_NAME = "trl-reward"
+    DATASET_NAME = "lvwerra/stack-exchange-paired"
+
+
+class MultiCardPPOExampleTester(ExampleTesterBase, metaclass=ExampleTestMeta, example_name="ppo", multi_card=True):
+    TASK_NAME = "trl-ppo"
     DATASET_NAME = "lvwerra/stack-exchange-paired"
 
 
