@@ -108,8 +108,8 @@ if IS_GAUDI2:
     TEXTUAL_INVERSION_RUNTIME = 114.1344320399221
     CONTROLNET_THROUGHPUT = 92.886919836857
     CONTROLNET_RUNTIME = 537.4276602957398
-    INPAINT_THROUGHPUT_BASELINE_BF16 = 0.84
-    INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 0.84
+    INPAINT_THROUGHPUT_BASELINE_BF16 = 4.584
+    INPAINT_XL_THROUGHPUT_BASELINE_BF16 = 1.151
     DETERMINISTIC_IMAGE_GENERATION_THROUGHPUT = 0.946
 else:
     THROUGHPUT_BASELINE_BF16 = 0.309
@@ -4288,7 +4288,6 @@ class StableDiffusionInpaintPipelineIntegrationTests(TestCase):
         self.assertEqual(len(outputs.images), num_images_per_prompt * len(prompts))
         self.assertGreaterEqual(outputs.throughput, 0.95 * INPAINT_THROUGHPUT_BASELINE_BF16)
 
-
 """
 Copied from: https://github.com/huggingface/diffusers/blob/v0.26.3/tests/pipelines/stable_diffusion_xl/test_stable_diffusion_xl_inpaint.py
 - Modified pipeline to Gaudi pipeline.
@@ -5066,7 +5065,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             image=init_image,
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
-            throughput_warmup_steps=2,
+            throughput_warmup_steps=3,
             num_inference_steps=num_inference_steps,
             batch_size=4,
         )
