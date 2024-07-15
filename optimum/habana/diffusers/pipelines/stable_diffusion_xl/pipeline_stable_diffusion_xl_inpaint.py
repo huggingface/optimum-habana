@@ -74,7 +74,7 @@ EXAMPLE_DOC_STRING = """
 
 class GaudiStableDiffusionXLInpaintPipeline(GaudiDiffusionPipeline, StableDiffusionXLInpaintPipeline):
     r"""
-    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py#L149
+    Adapted from: https://github.com/huggingface/diffusers/blob/v0.26.3/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl_inpaint.py#L312
     - Two `mark_step()` were added to add support for lazy mode
     - Added support for HPU graphs
 

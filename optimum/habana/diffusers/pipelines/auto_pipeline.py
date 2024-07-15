@@ -30,6 +30,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 
 from .stable_diffusion.pipeline_stable_diffusion import GaudiStableDiffusionPipeline
 from .stable_diffusion.pipeline_stable_diffusion_inpaint import GaudiStableDiffusionInpaintPipeline
+from .controlnet.pipeline_controlnet import GaudiStableDiffusionControlNetPipeline
 from .stable_diffusion_xl.pipeline_stable_diffusion_xl import GaudiStableDiffusionXLPipeline
 from .stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import GaudiStableDiffusionXLInpaintPipeline
 
@@ -40,6 +41,7 @@ GAUDI_AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
     [
         ("stable-diffusion", GaudiStableDiffusionPipeline),
         ("stable-diffusion-xl", GaudiStableDiffusionXLPipeline),
+        ("stable-diffusion-controlnet", GaudiStableDiffusionControlNetPipeline),
     ]
 )
 

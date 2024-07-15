@@ -84,9 +84,6 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
             This will be faster and save memory compared to fp32/mixed precision but can harm generated images.
     """
 
-    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
-    _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
-    _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "mask", "masked_image_latents"]
 
     def __init__(
@@ -435,7 +432,6 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
                     ip_adapter_image,
                     device,
                     num_prompts * num_images_per_prompt,
-                    self.do_classifier_free_guidance,
                 )
 
             # 4. set timesteps
