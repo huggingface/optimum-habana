@@ -350,11 +350,11 @@ class FinetuneArguments:
         metadata={"help": "Target feedforward modules for the IA3 method."},
     )
     adapter_layers: int = field(
-        default=2,
+        default=30,
         metadata={"help": "Number of adapter layers (from the top) in llama-adapter"},
     )
     adapter_len: int = field(
-        default=4,
+        default=10,
         metadata={"help": "Number of adapter tokens to insert in llama-adapter"},
     )
 
