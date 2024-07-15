@@ -375,30 +375,11 @@ def main():
             face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))[-1]  # only use the maximum face
             face_emb = face_info['embedding']
             face_kps = GaudiStableDiffusionXLInstantIDPipeline.draw_kps(control_image, face_info['kps'])
-            
-            if args.lora_id:
-                pipeline.load_lora_weights(args.lora_id)
 
-            # Set seed before running the model
-            set_seed(args.seed)
-
-            outputs = pipeline(
-                prompt=args.prompts,
-                num_inference_steps=args.num_inference_steps,
-                guidance_scale=args.guidance_scale,
-                negative_prompt=args.negative_prompts,
-                eta=args.eta,
-                output_type=args.output_type,
-                image_embeds=face_emb,
-                image=face_kps,
-                num_images_per_prompt=args.num_images_per_prompt,
-                batch_size=args.batch_size,
-                controlnet_conditioning_scale=0.8,
-                ip_adapter_scale=0.8,
-                profiling_warmup_steps=args.profiling_warmup_steps,
-                profiling_steps=args.profiling_steps,
-                **kwargs_call,
-            )
+            kwargs_call["image_embeds"] = face_emb
+            kwargs_call["image"] = face_kps
+            kwargs_call["controlnet_conditioning_scale"] = 0.8
+            kwargs_call["ip_adapter_scale"] = 0.8
         else:
             from optimum.habana.diffusers import GaudiStableDiffusionControlNetPipeline
 
@@ -407,11 +388,11 @@ def main():
                 controlnet=controlnet,
                 **kwargs,
             )
-            if args.lora_id:
-                pipeline.load_lora_weights(args.lora_id)
 
-        kwargs_call["image"] = control_image
+            kwargs_call["image"] = control_image
 
+        if args.lora_id:
+            pipeline.load_lora_weights(args.lora_id)
     elif (args.base_image is not None) and (args.mask_image is not None):
         from diffusers.utils import load_image
 
