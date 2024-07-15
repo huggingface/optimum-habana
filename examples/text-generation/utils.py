@@ -43,6 +43,7 @@ from optimum.habana.utils import (
     set_seed,
 )
 
+
 def adjust_batch(batch, size):
     curr_size = batch["input_ids"].shape[1]
     if curr_size >= size:
@@ -290,6 +291,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger):
         dist.init_process_group()
     
     torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
+    logger.info("Creating Model")
     config = AutoConfig.from_pretrained(args.model_name_or_path,torch_dtype=model_dtype, **model_kwargs)
     model_kwargs={}
     model_kwargs["distributed_strategy"] = TensorParallelStrategy()
@@ -299,6 +301,7 @@ def setup_distributed_model_tp(args, model_dtype, model_kwargs, logger):
     source="hf"
     checkpoint_sharding=None
     lazy_sd: MutableMapping[str, Any] = {}
+    logger.info("Loading Checkpoints")
     lazy_sd = serialization.load_state_dict(
         args.model_name_or_path,
         source=source,

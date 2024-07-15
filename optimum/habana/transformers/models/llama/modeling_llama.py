@@ -19,6 +19,7 @@ from transformers.models.llama.modeling_llama import (
     apply_rotary_pos_emb,
     logger,
 )
+
 import copy
 from torch.distributed.distributed_c10d import ProcessGroup
 from ...modeling_attn_mask_utils import (
@@ -28,13 +29,11 @@ from ...modeling_attn_mask_utils import (
 from optimum.habana.distributed.tp import TPModule
 from  optimum.habana import distributed
 from optimum.habana.distributed.tensorparallel import (
-    copy_to_tensor_model_parallel_region,
     reduce_from_tensor_model_parallel_region,
 )
 
 from optimum.habana.distributed.strategy import DistributedStrategy
-from optimum.habana.distributed.strategy import  NotDistributed
-NoOpStrategy = NotDistributed()
+from optimum.habana.distributed.strategy import  NoOpStrategy
 
 try:
     from habana_frameworks.torch.hpex.kernels import RotaryPosEmbeddingHelperV2 as FusedRoPE
@@ -855,13 +854,14 @@ class GaudiLlamaModel(LlamaModel):
         super(LlamaModel, self).__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
+
         self.distributed_strategy = config.distributed_strategy
         config.distributed_strategy = None
         self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         layers = []
-        for i in range(config.num_hidden_layers):
-            layer = GaudiLlamaDecoderLayer(config, i)
-            layer = self.distributed_strategy.distribute_layer(layer, i)
+        for layer_idx in range(config.num_hidden_layers):
+            layer = GaudiLlamaDecoderLayer(config, layer_idx)
+            layer = self.distributed_strategy.distribute_layer(layer, layer_idx)
             layers.append(layer)
         self.layers = torch.nn.ModuleList(layers)
         
@@ -870,7 +870,6 @@ class GaudiLlamaModel(LlamaModel):
 
         # Initialize weights and apply final processing
         self.post_init()
-
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         for layer in self.layers:
@@ -1099,6 +1098,7 @@ class GaudiLlamaForCausalLM(LlamaForCausalLM):
     - add new args attn_softmax_bf16
     - add new args reuse_cache
     """
+
     def __init__(self, config, distributed_strategy: DistributedStrategy = NoOpStrategy):
         config.distributed_strategy = distributed_strategy        
         super().__init__(config)

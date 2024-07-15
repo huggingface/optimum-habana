@@ -5,9 +5,6 @@ import torch
 import torch.distributed
 from torch import nn
 
-#from optimum.habana.distributed import tp_wrapping
-
-
 class DistributedStrategy:
     def __init__(self, from_meta=False):
         self.from_meta = from_meta
@@ -91,7 +88,6 @@ class UniformModelParallelStrategy(DistributedStrategy):
     def distribute_layer(self, block: nn.Module, layer: int) -> nn.Module:
         device = self.layer_to_device[layer]
         if self.from_meta:
-            # https://github.com/pytorch/pytorch/pull/113647
             block.to_empty(device=device)  # type: ignore[arg-type]
         wrapped = DeviceMover(block, device)
         return wrapped
