@@ -136,7 +136,7 @@ QUANT_CONFIG=./quantization_config/maxabs_quant.json python run_pipeline.py \
 
 ### Inference with FusedSDPA
 
-Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Habana online document](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). Currently FusedSDPA works with BF16 precision for Llava models.
+Habana FusedSDPA is a fused and optimized implementation of torch.nn.functional.scaled_dot_product_attention() for Gaudi. For more details, refer to [Gaudi online documentation](https://docs.habana.ai/en/latest/PyTorch/Model_Optimization_PyTorch/Optimization_in_PyTorch_Models.html?highlight=fusedsdpa#using-fused-scaled-dot-product-attention-fusedsdpa). Currently FusedSDPA works with BF16 precision for Llava models.
 
 Use the following commands to run Llava-1.5-7b inference with FusedSDPA
 ```bash
