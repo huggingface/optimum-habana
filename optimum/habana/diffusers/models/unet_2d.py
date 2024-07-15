@@ -13,8 +13,6 @@ def gaudi_unet_2d_model_forward(
     self,
     sample: torch.FloatTensor,
     timestep: Union[torch.Tensor, float, int],
-    # cal_timestep_only: bool = True,
-    # emb: Optional[torch.Tensor] = None,
     class_labels: Optional[torch.Tensor] = None,
     return_dict: bool = True,
 ) -> Union[UNet2DOutput, Tuple]:
