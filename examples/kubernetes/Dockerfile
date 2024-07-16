@@ -1,7 +1,8 @@
-ARG BASE_IMAGE_NAME=vault.habana.ai/gaudi-docker/1.16.1/ubuntu22.04/habanalabs/pytorch-installer-2.2.2
-ARG BASE_IMAGE_TAG=latest
+ARG GAUDI_SW_VER=1.16.1
+ARG OS=ubuntu22.04
+ARG TORCH_VER=2.2.2
 
-FROM ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG} AS optimum-habana
+FROM vault.habana.ai/gaudi-docker/${GAUDI_SW_VER}/${OS}/habanalabs/pytorch-installer-${TORCH_VER}:latest AS optimum-habana
 
 ARG GAUDI_SW_VER=1.16.1
 ARG OPTIMUM_HABANA_VER=1.12.0
@@ -11,7 +12,7 @@ RUN pip install --no-cache-dir optimum-habana==${OPTIMUM_HABANA_VER} && \
 
 FROM optimum-habana AS optimum-habana-examples
 
-ARG OPTIMUM_HABANA_VER=1.12.0
+ARG OPTIMUM_HABANA_VER
 
 WORKDIR /workspace
 

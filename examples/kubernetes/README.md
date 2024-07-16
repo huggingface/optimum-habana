@@ -1,6 +1,6 @@
-# Deploy Optimum for Intel® Gaudi® Accelerators Examples to Kubernetes
+# optimum-habana-example-chart
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.12.0](https://img.shields.io/badge/AppVersion-1.12.0-informational?style=flat-square)
+![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square)
 
 This folder contains a Dockerfile and [Helm chart](https://helm.sh) demonstrating how 🤗 Optimum Habana examples
 can be run using Intel® Gaudi® AI accelerator nodes from a vanilla Kubernetes cluster. The instructions below
@@ -34,13 +34,17 @@ optimum-habana and the Habana fork of Deep Speed.
 
 Use the the following commands to build the containers:
 
-```bash
-# Specify the base image name/tag
-export BASE_IMAGE_NAME=vault.habana.ai/gaudi-docker/1.16.1/ubuntu22.04/habanalabs/pytorch-installer-2.2.2
-export BASE_IMAGE_TAG=latest
+> Note that the `GAUDI_SW_VER`, `OS`, and `TORCH_VER` are used to
+> determine which [Intel Gaudi PyTorch base image](https://developer.habana.ai/catalog/pytorch-container/) to use. The
+> combination of versions provided must match one of the pre-built images that are available in the Intel Gaudi Vault.
 
-# Specify your Gaudi Software version and Optimum Habana version
+```bash
+# Specify the Gaudi SW version, OS, and PyTorch version which will be used for the base container
 export GAUDI_SW_VER=1.16.1
+export OS=ubuntu22.04
+export TORCH_VER=2.2.2
+
+# Specify the version of optimum-habana to install in the container
 export OPTIMUM_HABANA_VER=1.12.0
 
 git clone https://github.com/huggingface/optimum-habana.git
