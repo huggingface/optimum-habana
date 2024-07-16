@@ -366,9 +366,6 @@ class ExampleTestMeta(type):
                         --max_seq_length 1024
                     """.split()
                     print(f"\n\nCommand to test: {' '.join(cmd_line[:])}\n")
-                    assert 1 == 1
-                    return
-
                     p = subprocess.Popen(cmd_line)
                     return_code = p.wait()
                     # Ensure the run finished without any issue
