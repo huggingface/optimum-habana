@@ -1,3 +1,4 @@
+
 # coding=utf-8
 # Copyright 2020 The HuggingFace Team. All rights reserved.
 #
@@ -16,6 +17,7 @@ import os
 import tempfile
 import unittest
 
+import pytest
 from transformers import DistilBertConfig, is_torch_available
 from transformers.testing_utils import require_torch, require_torch_gpu, slow
 
@@ -30,6 +32,7 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
+
     from transformers import (
         DISTILBERT_PRETRAINED_MODEL_ARCHIVE_LIST,
         DistilBertForMaskedLM,
@@ -39,6 +42,7 @@ if is_torch_available():
         DistilBertForTokenClassification,
         DistilBertModel,
     )
+    from transformers.models.distilbert.modeling_distilbert import _create_sinusoidal_embeddings
 
 
 class DistilBertModelTester(object):
@@ -240,6 +244,15 @@ class DistilBertModelTest(ModelTesterMixin, unittest.TestCase):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_distilbert_model(*config_and_inputs)
 
+    def test_distilbert_model_with_sinusoidal_encodings(self):
+        config = DistilBertConfig(sinusoidal_pos_embds=True)
+        model = DistilBertModel(config=config)
+        sinusoidal_pos_embds = torch.empty((config.max_position_embeddings, config.dim), dtype=torch.float32)
+        _create_sinusoidal_embeddings(config.max_position_embeddings, config.dim, sinusoidal_pos_embds)
+        self.model_tester.parent.assertTrue(
+            torch.equal(model.embeddings.position_embeddings.weight, sinusoidal_pos_embds)
+        )
+
     def test_for_masked_lm(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_distilbert_for_masked_lm(*config_and_inputs)
@@ -262,12 +275,12 @@ class DistilBertModelTest(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in DISTILBERT_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = DistilBertModel.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "distilbert-base-uncased"
+        model = DistilBertModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
     @slow
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_torchscript_device_change(self):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         for model_class in self.all_model_classes:
@@ -288,6 +301,112 @@ class DistilBertModelTest(ModelTesterMixin, unittest.TestCase):
                 loaded = torch.jit.load(os.path.join(tmp, "traced_model.pt"), map_location=torch_device)
                 loaded(inputs_dict["input_ids"].to(torch_device), inputs_dict["attention_mask"].to(torch_device))
 
+    # Because DistilBertForMultipleChoice requires inputs with different shapes we need to override this test.
+    @require_flash_attn
+    @require_torch_accelerator
+    @pytest.mark.flash_attn_test
+    @slow
+    def test_flash_attn_2_inference_equivalence(self):
+        import torch
+
+        for model_class in self.all_model_classes:
+            dummy_input = torch.LongTensor(
+                [
+                    [1, 2, 3, 4],
+                    [1, 2, 8, 9],
+                    [1, 2, 11, 12],
+                    [1, 2, 13, 14],
+                ]
+            ).to(torch_device)
+            dummy_attention_mask = torch.LongTensor(
+                [
+                    [0, 1, 1, 1],
+                    [0, 1, 1, 1],
+                    [0, 1, 1, 1],
+                    [0, 1, 1, 1],
+                ]
+            ).to(torch_device)
+
+            config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
+            model = model_class(config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                model.save_pretrained(tmpdirname)
+                model_fa = model_class.from_pretrained(
+                    tmpdirname, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"
+                )
+                model_fa.to(torch_device)
+
+                model = model_class.from_pretrained(tmpdirname, torch_dtype=torch.bfloat16)
+                model.to(torch_device)
+
+                logits = model(dummy_input, output_hidden_states=True).hidden_states[-1]
+                logits_fa = model_fa(dummy_input, output_hidden_states=True).hidden_states[-1]
+
+                self.assertTrue(torch.allclose(logits_fa, logits, atol=4e-2, rtol=4e-2))
+
+                output_fa = model_fa(dummy_input, attention_mask=dummy_attention_mask, output_hidden_states=True)
+                logits_fa = output_fa.hidden_states[-1]
+
+                output = model(dummy_input, attention_mask=dummy_attention_mask, output_hidden_states=True)
+                logits = output.hidden_states[-1]
+
+                self.assertTrue(torch.allclose(logits_fa[1:], logits[1:], atol=4e-2, rtol=4e-2))
+
+    # Because DistilBertForMultipleChoice requires inputs with different shapes we need to override this test.
+    @require_flash_attn
+    @require_torch_accelerator
+    @pytest.mark.flash_attn_test
+    @slow
+    def test_flash_attn_2_inference_equivalence_right_padding(self):
+        import torch
+
+        for model_class in self.all_model_classes:
+            dummy_input = torch.LongTensor(
+                [
+                    [1, 2, 3, 4],
+                    [1, 2, 8, 9],
+                    [1, 2, 11, 12],
+                    [1, 2, 13, 14],
+                ]
+            ).to(torch_device)
+            dummy_attention_mask = torch.LongTensor(
+                [
+                    [0, 1, 1, 1],
+                    [0, 1, 1, 1],
+                    [0, 1, 1, 1],
+                    [0, 1, 1, 1],
+                ]
+            ).to(torch_device)
+
+            config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
+            model = model_class(config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                model.save_pretrained(tmpdirname)
+                model_fa = model_class.from_pretrained(
+                    tmpdirname, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"
+                )
+                model_fa.to(torch_device)
+
+                model = model_class.from_pretrained(
+                    tmpdirname,
+                    torch_dtype=torch.bfloat16,
+                )
+                model.to(torch_device)
+
+                logits = model(dummy_input, output_hidden_states=True).hidden_states[-1]
+                logits_fa = model_fa(dummy_input, output_hidden_states=True).hidden_states[-1]
+
+                self.assertTrue(torch.allclose(logits_fa, logits, atol=4e-2, rtol=4e-2))
+
+                output_fa = model_fa(dummy_input, attention_mask=dummy_attention_mask, output_hidden_states=True)
+                logits_fa = output_fa.hidden_states[-1]
+
+                output = model(dummy_input, attention_mask=dummy_attention_mask, output_hidden_states=True)
+                logits = output.hidden_states[-1]
+
+                self.assertTrue(torch.allclose(logits_fa[:-1], logits[:-1], atol=4e-2, rtol=4e-2))
 
 @require_torch
 class DistilBertModelIntergrationTest(unittest.TestCase):
@@ -305,3 +424,4 @@ class DistilBertModelIntergrationTest(unittest.TestCase):
         )
 
         self.assertTrue(torch.allclose(output[:, 1:4, 1:4], expected_slice, atol=1e-4))
+

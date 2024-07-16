@@ -1,3 +1,4 @@
+
 # coding=utf-8
 # Copyright 2020 The HuggingFace Team. All rights reserved.
 #
@@ -18,7 +19,7 @@ import unittest
 
 from transformers import BertConfig, is_torch_available
 from transformers.models.auto import get_values
-from transformers.testing_utils import CaptureLogger, require_torch, require_torch_gpu, slow
+from transformers.testing_utils import CaptureLogger, require_torch, require_torch_accelerator, slow, torch_device
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
@@ -32,6 +33,7 @@ adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
+
     from transformers import (
         MODEL_FOR_PRETRAINING_MAPPING,
         BertForMaskedLM,
@@ -45,7 +47,6 @@ if is_torch_available():
         BertModel,
         logging,
     )
-    from transformers.models.bert.modeling_bert import BERT_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
 class BertModelTester:
@@ -599,12 +600,12 @@ class BertModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in BERT_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = BertModel.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "google-bert/bert-base-uncased"
+        model = BertModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
     @slow
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_torchscript_device_change(self):
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         for model_class in self.all_model_classes:
@@ -630,7 +631,7 @@ class BertModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
 class BertModelIntegrationTest(unittest.TestCase):
     @slow
     def test_inference_no_head_absolute_embedding(self):
-        model = BertModel.from_pretrained("bert-base-uncased")
+        model = BertModel.from_pretrained("google-bert/bert-base-uncased")
         input_ids = torch.tensor([[0, 345, 232, 328, 740, 140, 1695, 69, 6078, 1588, 2]])
         attention_mask = torch.tensor([[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
         with torch.no_grad():
@@ -670,3 +671,4 @@ class BertModelIntegrationTest(unittest.TestCase):
         )
 
         self.assertTrue(torch.allclose(output[:, 1:4, 1:4], expected_slice, atol=1e-4))
+

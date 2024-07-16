@@ -1,3 +1,4 @@
+
 # coding=utf-8
 # Copyright 2023 The Intel Labs Team Authors, The Microsoft Research Team Authors and HuggingFace Inc. team. All rights reserved.
 #
@@ -12,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Testing suite for the PyTorch BridgeTower model."""
+""" Testing suite for the PyTorch BridgeTower model. """
 
 import tempfile
 import unittest
@@ -26,7 +27,7 @@ from transformers import (
     is_torch_available,
     is_vision_available,
 )
-from transformers.testing_utils import require_torch, require_vision, slow
+from transformers.testing_utils import require_torch, require_vision, slow, torch_device
 from transformers.utils import cached_property
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -42,23 +43,22 @@ from ...test_modeling_common import (
 
 
 torch_device = "hpu"
-
-
 adapt_transformers_to_gaudi()
 
 
 if is_torch_available():
     import torch
+
     from transformers import (
         BridgeTowerForContrastiveLearning,
         BridgeTowerForImageAndTextRetrieval,
         BridgeTowerForMaskedLM,
         BridgeTowerModel,
     )
-    from transformers.models.bridgetower.modeling_bridgetower import BRIDGETOWER_PRETRAINED_MODEL_ARCHIVE_LIST
 
 if is_vision_available():
     from PIL import Image
+
     from transformers import BridgeTowerProcessor
 
 
@@ -364,9 +364,9 @@ class BridgeTowerModelTest(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in BRIDGETOWER_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = BridgeTowerModel.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "BridgeTower/bridgetower-base"
+        model = BridgeTowerModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
     @slow
     def test_save_load_fast_init_from_base(self):
@@ -589,7 +589,7 @@ class BridgeTowerModelIntegrationTest(unittest.TestCase):
         inputs = inputs.to(torch_device)
         with torch.no_grad():
             outputs = model(**inputs)
-        self.assertAlmostEqual(outputs.loss.item(), 5.73786, places=4)
+        self.assertAlmostEqual(outputs.loss.item(), 5.7373, places=4)
 
     @slow
     def test_constrastive_learning(self):
@@ -664,3 +664,4 @@ class BridgeTowerModelTrainingTest(unittest.TestCase):
             for name, param in model.named_parameters():
                 if self._is_layer_used(model_class, name):
                     self.assertIsNotNone(param.grad, f"Gradients should not be None - got {param.grad} for {name}")
+

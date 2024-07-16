@@ -18,19 +18,19 @@ import unittest
 
 from transformers import AlbertConfig, is_torch_available
 from transformers.models.auto import get_values
-from transformers.testing_utils import require_torch, slow
+from transformers.testing_utils import require_torch, slow, torch_device
 
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
 
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, ids_tensor, random_attention_mask
 
-
 torch_device = "hpu"
 adapt_transformers_to_gaudi()
 
 if is_torch_available():
     import torch
+
     from transformers import (
         MODEL_FOR_PRETRAINING_MAPPING,
         AlbertForMaskedLM,
@@ -41,7 +41,6 @@ if is_torch_available():
         AlbertForTokenClassification,
         AlbertModel,
     )
-    from transformers.models.albert.modeling_albert import ALBERT_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
 class AlbertModelTester:
@@ -325,16 +324,16 @@ class AlbertModelTest(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        for model_name in ALBERT_PRETRAINED_MODEL_ARCHIVE_LIST[:1]:
-            model = AlbertModel.from_pretrained(model_name)
-            self.assertIsNotNone(model)
+        model_name = "albert/albert-base-v1"
+        model = AlbertModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
 
 
 @require_torch
 class AlbertModelIntegrationTest(unittest.TestCase):
     @slow
     def test_inference_no_head_absolute_embedding(self):
-        model = AlbertModel.from_pretrained("albert-base-v2")
+        model = AlbertModel.from_pretrained("albert/albert-base-v2")
         input_ids = torch.tensor([[0, 345, 232, 328, 740, 140, 1695, 69, 6078, 1588, 2]])
         attention_mask = torch.tensor([[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
         with torch.no_grad():
