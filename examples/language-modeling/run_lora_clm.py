@@ -28,10 +28,13 @@ from typing import List, Optional
 import datasets
 import evaluate
 import torch
-import transformers
 from datasets import load_dataset
 from peft import AdaLoraConfig, AdaptionPromptConfig, IA3Config, LoraConfig, TaskType, get_peft_model, tuners
 from peft.utils.other import fsdp_auto_wrap_policy
+
+import transformers
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
+from optimum.habana.utils import set_seed
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -40,9 +43,6 @@ from transformers import (
     HfArgumentParser,
 )
 from transformers.trainer_utils import is_main_process
-
-from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
-from optimum.habana.utils import set_seed
 
 
 try:
@@ -545,7 +545,7 @@ def main():
             if data_args.train_file is not None
             else data_args.validation_file.split(".")[-1]
         )
-        if extension == "txt":
+        if extension in ("txt", "text"):
             extension = "text"
             dataset_args["keep_linebreaks"] = data_args.keep_linebreaks
         if extension in ("json", "jsonl"):

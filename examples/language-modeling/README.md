@@ -733,6 +733,8 @@ The format of the text files (with extensions .text or .txt) is expected to be
 "<text>"
 ```
 
+> Note: When using both custom files i.e `--train_file` and `--validation_file`, all files are expected to be of the same type i.e json or text.
+
 ### Prompt/Prefix/P-tuning
 
 To run prompt tuning finetuning, you can use `run_prompt_tuning_clm.py`.
