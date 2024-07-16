@@ -28,7 +28,12 @@ from .generation import (
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
+    GaudiCLIPAttention,
+    GaudiCLIPEncoder,
+    GaudiCLIPEncoderLayer,
     GaudiCLIPVisionEmbeddings,
+    GaudiCLIPVisionModel,
+    GaudiCLIPVisionTransformer,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     GaudiFalconAttention,
@@ -376,6 +381,11 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
+    transformers.models.clip.modeling_clip.CLIPAttention = GaudiCLIPAttention
+    transformers.models.clip.modeling_clip.CLIPEncoderLayer = GaudiCLIPEncoderLayer
+    transformers.models.clip.modeling_clip.CLIPEncoder = GaudiCLIPEncoder
+    transformers.models.clip.modeling_clip.CLIPVisionTransformer = GaudiCLIPVisionTransformer
+    transformers.models.clip.modeling_clip.CLIPVisionModel = GaudiCLIPVisionModel
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention

@@ -235,6 +235,8 @@ class ExampleTestMeta(type):
             return False
         elif ("qwen2" in model_name or "Qwen2" in model_name) and task_name == "trl-sft":
             return False
+        elif "falcon" in model_name and task_name == "llama-adapter":
+            return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
@@ -287,7 +289,6 @@ class ExampleTestMeta(type):
             distribution = "multi_card"
         elif deepspeed:
             distribution = "deepspeed"
-
         if example_name is not None:
             models_to_test = _SCRIPT_TO_MODEL_MAPPING.get(example_name)
             if models_to_test is None:
@@ -838,22 +839,29 @@ class MultiCardProteinFoldingClassificationTester(
 class MultiCardCausalLanguageModelingPromptTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
-    TASK_NAME = ["prompt-tuning"]
+    TASK_NAME = "prompt-tuning"
     DATASET_NAME = "ought/raft"
 
 
 class MultiCardCausalLanguageModelingPrefixTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
-    TASK_NAME = ["prefix-tuning"]
+    TASK_NAME = "prefix-tuning"
     DATASET_NAME = "ought/raft"
 
 
 class MultiCardCausalLanguageModelingPTuningExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_prompt_tuning_clm", multi_card=True
 ):
-    TASK_NAME = ["p-tuning"]
+    TASK_NAME = "p-tuning"
     DATASET_NAME = "ought/raft"
+
+
+class MultiCardCausalLanguageModelingLlamaAdapterExampleTester(
+    ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_lora_clm", multi_card=True
+):
+    TASK_NAME = "llama-adapter"
+    DATASET_NAME = "tatsu-lab/alpaca"
 
 
 class MultiCardCausalLanguageModelingLoRAFP8ExampleTester(
