@@ -80,8 +80,8 @@ def setup_lm_eval_parser():
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
     parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
-    parser.add_argument('--dont-trust-remote-code', action='store_false', default=True,
-                        dest='trust_remote_code', help='Trust remote code')
+    parser.add_argument('--dont-trust-remote-datasets-code', action='store_false', default=True,
+                        dest='trust_remote_datasets_code', help='Trust remote code')
     args = setup_parser(parser)
 
     return args
@@ -179,7 +179,7 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
 
 def main():
     args = setup_lm_eval_parser()
-    if args.trust_remote_code:
+    if args.trust_remote_datasets_code:
         os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
