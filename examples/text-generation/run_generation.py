@@ -335,6 +335,11 @@ def setup_parser(parser):
         default="none",
         help="Run multi card with the specified distributed strategy. Choices are 'tp' for Tensor Parallel Strategy or 'none'.",
     )
+    parser.add_argument(
+        "--load_cp",
+        action="store_true",
+        help="Whether to load model from hugging face checkpoint.",
+    )
 
     args = parser.parse_args()
 
