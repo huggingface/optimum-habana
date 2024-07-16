@@ -19,16 +19,15 @@
                 },
                 "deepspeed": {
                     "learning_rate": 5e-5,
-                    "train_batch_size": 8,
-                    "train_runtime": 0,
-                    "train_samples_per_second": 0,
-                    "eval_f1": 0.0,
+                    "train_batch_size": 32,
+                    "train_runtime": 400,
+                    "train_samples_per_second": 664.385,
+                    "eval_overall_f1": 0.30,
                     "extra_arguments": [
                         "--max_steps 1000",
                         "--use_hpu_graphs_for_inference",
                         "--bf16",
-                        "--non_blocking_data_copy",
-                        "--gradient_checkpointing",
+                        "--throughput_warmup_steps 3",
                         "--deepspeed tests/configs/deepspeed_zero_2.json"
                     ]
                 }
