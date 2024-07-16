@@ -34,7 +34,6 @@ from optimum.habana.utils import get_hpu_memory_stats
 
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
 logger = logging.getLogger(__name__)
 
 import multiprocessing as mp
@@ -81,6 +80,8 @@ def setup_lm_eval_parser():
         default=["hellaswag", "lambada_openai", "piqa", "winogrande"],
     )
     parser.add_argument("--limit_iters", type=int, help="limit examples to run that many iterations", default=None)
+    parser.add_argument('--dont-trust-remote-code', action='store_false', default=True,
+                        dest='trust_remote_code', help='Trust remote code')
     args = setup_parser(parser)
 
     return args
@@ -178,6 +179,8 @@ class HabanaModelAdapter(lm_eval.base.BaseLM):
 
 def main():
     args = setup_lm_eval_parser()
+    if args.trust_remote_code:
+        os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "true")
     model, _, tokenizer, generation_config = initialize_model(args, logger)
 
     lm_tasks = lm_eval.tasks.get_task_dict(args.tasks)
