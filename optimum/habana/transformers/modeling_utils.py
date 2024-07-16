@@ -28,7 +28,12 @@ from .generation import (
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
+    GaudiCLIPAttention,
+    GaudiCLIPEncoder,
+    GaudiCLIPEncoderLayer,
     GaudiCLIPVisionEmbeddings,
+    GaudiCLIPVisionModel,
+    GaudiCLIPVisionTransformer,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     GaudiFalconAttention,
@@ -97,6 +102,7 @@ from .models import (
     gaudi_BartForConditionalGeneration_prepare_inputs_for_generation,
     gaudi_BartLearnedPositionalEmbedding,
     gaudi_BartModel_forward,
+    gaudi_BertModel_forward,
     gaudi_BlipForConditionalGeneration_generate,
     gaudi_BlipForQuestionAnswering_generate,
     gaudi_BlipTextAttention_forward,
@@ -289,6 +295,9 @@ def adapt_transformers_to_gaudi():
         gaudi_BartForConditionalGeneration_prepare_inputs_for_generation
     )
 
+    # Optimization for BERT on Gaudi
+    transformers.models.bert.modeling_bert.BertModel.forward = gaudi_BertModel_forward
+
     # Optimization for codegen generation on Gaudi
     transformers.models.codegen.modeling_codegen.CodeGenAttention = GaudiCodeGenAttention
     transformers.models.codegen.modeling_codegen.CodeGenForCausalLM = GaudiCodeGenForCausalLM
@@ -372,6 +381,11 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
+    transformers.models.clip.modeling_clip.CLIPAttention = GaudiCLIPAttention
+    transformers.models.clip.modeling_clip.CLIPEncoderLayer = GaudiCLIPEncoderLayer
+    transformers.models.clip.modeling_clip.CLIPEncoder = GaudiCLIPEncoder
+    transformers.models.clip.modeling_clip.CLIPVisionTransformer = GaudiCLIPVisionTransformer
+    transformers.models.clip.modeling_clip.CLIPVisionModel = GaudiCLIPVisionModel
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention

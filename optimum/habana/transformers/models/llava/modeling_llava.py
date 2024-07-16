@@ -123,6 +123,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
         token_idx: Optional[torch.Tensor] = None,
         image_offset: Optional[int] = None,
         tokens_pos: Optional[torch.LongTensor] = None,
+        use_flash_attention: Optional[bool] = False,
     ) -> Union[Tuple, LlavaCausalLMOutputWithPast]:
         """
         Inherits from LlavaForConditionalGeneration: https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/llava/modeling_llava.py
@@ -152,7 +153,9 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
 
             # 2. Merge text and images
             if pixel_values is not None and input_ids.shape[1] != 1:
-                image_outputs = self.vision_tower(pixel_values, output_hidden_states=True)
+                image_outputs = self.vision_tower(
+                    pixel_values, output_hidden_states=True, use_flash_attention=use_flash_attention
+                )
                 # this is not memory efficient at all (output_hidden_states=True) will save all the hidden stated.
                 selected_image_feature = image_outputs.hidden_states[vision_feature_layer]
 
@@ -180,6 +183,8 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
                 token_idx=token_idx + image_offset,
+                use_flash_attention=use_flash_attention,
+                flash_attention_recompute=use_flash_attention,
             )
 
             if input_ids.shape[1] != 1 and pixel_values is not None:
@@ -290,7 +295,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
             model_inputs = {"input_ids": input_ids}
-
+        use_flash_attention = kwargs.get("use_flash_attention", False)
         model_inputs.update(
             {
                 "position_ids": position_ids,
@@ -301,6 +306,7 @@ class GaudiLlavaForConditionalGeneration(LlavaForConditionalGeneration):
                 "token_idx": token_idx,
                 "image_offset": image_offset,
                 "tokens_pos": tokens_pos,
+                "use_flash_attention": use_flash_attention,
             }
         )
 
