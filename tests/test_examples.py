@@ -197,7 +197,6 @@ _SCRIPT_TO_MODEL_MAPPING = {
         MODEL_MAPPING,
         MODELS_TO_TEST_FOR_TOKEN_CLASSIFICATION,
     ),
-
 }
 
 
@@ -866,17 +865,19 @@ class MultiCardCausalLanguageModelingPTuningExampleTester(
     TASK_NAME = "p-tuning"
     DATASET_NAME = "ought/raft"
 
+
 class TokenClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_token_classification"
 ):
     TASK_NAME = "token_classification"
-    DATASET_NAME= "nielsr/funsd-layoutlmv3"
+    DATASET_NAME = "nielsr/funsd-layoutlmv3"
+
 
 class DeepSpeedTokenClassificationExampleTester(
     ExampleTesterBase, metaclass=ExampleTestMeta, example_name="run_token_classification", deepspeed=True
 ):
     TASK_NAME = "token_classification"
-    DATASET_NAME= "nielsr/funsd-layoutlmv3"
+    DATASET_NAME = "nielsr/funsd-layoutlmv3"
 
 
 class MultiCardCausalLanguageModelingLlamaAdapterExampleTester(

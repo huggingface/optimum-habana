@@ -16,12 +16,14 @@ from transformers.modeling_outputs import TokenClassifierOutput
 
 logger = logging.getLogger(__name__)
 
+
 def set_device(device_type: str) -> torch.device:
     if device_type == "hpu":
         device = torch.device("hpu")
     else:
         device = torch.device("cpu")
     return device
+
 
 def unnormalize_box(bbox: List[int], width: int, height: int) -> List[float]:
     return [
@@ -30,6 +32,7 @@ def unnormalize_box(bbox: List[int], width: int, height: int) -> List[float]:
         width * (bbox[2] / 1000),
         height * (bbox[3] / 1000),
     ]
+
 
 def draw_boxes(image: Image.Image, boxes: List[List[float]], predictions: List[str]) -> Image.Image:
     label2color = {
@@ -53,6 +56,7 @@ def draw_boxes(image: Image.Image, boxes: List[List[float]], predictions: List[s
         draw.text((box[0] + 10, box[1] - 10), text=prediction, fill=label2color[prediction], font=font)
     return image
 
+
 def run_inference(
     images: List[Image.Image],
     model: LiltForTokenClassification,
@@ -63,7 +67,7 @@ def run_inference(
     precision: str,
     use_hpu_graphs: bool,
     output_image: bool = True,
-    warm_up_steps: int = 5
+    warm_up_steps: int = 5,
 ) -> List[Union[Image.Image, List[str]]]:
     results = []
     total_inference_time = 0
@@ -87,7 +91,7 @@ def run_inference(
 
     # Main inference loop with performance measurement
     for i in range(0, len(images), batch_size):
-        batch_images = images[i:i+batch_size]
+        batch_images = images[i : i + batch_size]
         batch_feature_extraction = feature_extractor(images=batch_images, return_tensors="pt")
         batch_words = batch_feature_extraction["words"]
         batch_boxes = batch_feature_extraction["boxes"]
@@ -149,15 +153,18 @@ def run_inference(
 
     return results
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run inference on images using a specified model")
-    parser.add_argument('--device_type', type=str, default='hpu', help='Device type: cpu, or hpu')
-    parser.add_argument('--dataset_id', type=str, default='nielsr/funsd-layoutlmv3', help='Dataset ID for loading dataset')
-    parser.add_argument('--model_path', type=str, default='./results/', help='Path to the pretrained model')
-    parser.add_argument('--num_images', type=int, default=20, help='Number of test images to run inference on')
-    parser.add_argument('--batch_size', type=int, default=4, help='Batch size for inference')
-    parser.add_argument('--precision', type=str, default='bf16', help='Precision for inference: bf16 or fp16')
-    parser.add_argument('--use_hpu_graphs', action='store_true', help='Use HPU graphs for inference')
+    parser.add_argument("--device_type", type=str, default="hpu", help="Device type: cpu, or hpu")
+    parser.add_argument(
+        "--dataset_id", type=str, default="nielsr/funsd-layoutlmv3", help="Dataset ID for loading dataset"
+    )
+    parser.add_argument("--model_path", type=str, default="./results/", help="Path to the pretrained model")
+    parser.add_argument("--num_images", type=int, default=20, help="Number of test images to run inference on")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for inference")
+    parser.add_argument("--precision", type=str, default="bf16", help="Precision for inference: bf16 or fp16")
+    parser.add_argument("--use_hpu_graphs", action="store_true", help="Use HPU graphs for inference")
     args = parser.parse_args()
 
     device = set_device(args.device_type)
@@ -172,7 +179,9 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
 
     test_images: List[Image.Image] = [dataset["test"][i]["image"].convert("RGB") for i in range(args.num_images)]
-    result_images = run_inference(test_images, model, feature_extractor, tokenizer, device, args.batch_size, args.precision, args.use_hpu_graphs)
+    result_images = run_inference(
+        test_images, model, feature_extractor, tokenizer, device, args.batch_size, args.precision, args.use_hpu_graphs
+    )
 
     for idx, result_image in enumerate(result_images):
         if isinstance(result_image, Image.Image):

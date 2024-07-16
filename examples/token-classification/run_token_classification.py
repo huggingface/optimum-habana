@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import evaluate
 import numpy as np
+from custom_lilt import CustomLiltSelfAttention
 from datasets import Array2D, ClassLabel, DatasetDict, Features, Sequence, Value, load_dataset
 from transformers import (
     AutoTokenizer,
@@ -24,7 +25,6 @@ from transformers.utils import send_example_telemetry
 
 from optimum.habana import GaudiTrainer, GaudiTrainingArguments
 
-from custom_lilt import CustomLiltSelfAttention
 
 class CustomLiltForTokenClassification(LiltForTokenClassification):
     def __init__(self, config):
@@ -33,19 +33,45 @@ class CustomLiltForTokenClassification(LiltForTokenClassification):
         for layer in self.lilt.encoder.layer:
             layer.attention.self = CustomLiltSelfAttention(config)
 
+
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ModelArguments:
-    model_name_or_path: str = field(metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"})
-    cache_dir: Optional[str] = field(default=None, metadata={"help": "Path to directory to store the pretrained models downloaded from huggingface.co"})
+    model_name_or_path: str = field(
+        metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+    )
+    cache_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to directory to store the pretrained models downloaded from huggingface.co"},
+    )
+
 
 @dataclass
 class DataTrainingArguments:
-    dataset_name: Optional[str] = field(default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."})
-    max_train_samples: Optional[int] = field(default=None, metadata={"help": "For debugging purposes or quicker training, truncate the number of training examples to this value if set."})
-    max_eval_samples: Optional[int] = field(default=None, metadata={"help": "For debugging purposes or quicker training, truncate the number of evaluation examples to this value if set."})
-    max_predict_samples: Optional[int] = field(default=None, metadata={"help": "For debugging purposes or quicker training, truncate the number of prediction examples to this value if set."})
+    dataset_name: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    max_train_samples: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "For debugging purposes or quicker training, truncate the number of training examples to this value if set."
+        },
+    )
+    max_eval_samples: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "For debugging purposes or quicker training, truncate the number of evaluation examples to this value if set."
+        },
+    )
+    max_predict_samples: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "For debugging purposes or quicker training, truncate the number of prediction examples to this value if set."
+        },
+    )
+
 
 def main() -> None:
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, GaudiTrainingArguments))
@@ -77,7 +103,7 @@ def main() -> None:
     logger.info(f"Train dataset size: {len(dataset['train'])}")
     logger.info(f"Test dataset size: {len(dataset['test'])}")
 
-    labels: List[str] = dataset['train'].features['ner_tags'].feature.names
+    labels: List[str] = dataset["train"].features["ner_tags"].feature.names
     logger.info(f"Available labels: {labels}")
 
     id2label: Dict[int, str] = dict(enumerate(labels))
@@ -88,12 +114,14 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     processor = LayoutLMv3Processor(feature_extractor, tokenizer)
 
-    features = Features({
-        "input_ids": Sequence(feature=Value(dtype="int64")),
-        "attention_mask": Sequence(feature=Value(dtype="int64")),
-        "bbox": Array2D(dtype="int64", shape=(512, 4)),
-        "labels": Sequence(ClassLabel(names=labels)),
-    })
+    features = Features(
+        {
+            "input_ids": Sequence(feature=Value(dtype="int64")),
+            "attention_mask": Sequence(feature=Value(dtype="int64")),
+            "bbox": Array2D(dtype="int64", shape=(512, 4)),
+            "labels": Sequence(ClassLabel(names=labels)),
+        }
+    )
 
     def process(sample: Dict[str, Any], processor: LayoutLMv3Processor = None) -> Dict[str, Any]:
         encoding = processor(
@@ -168,7 +196,9 @@ def main() -> None:
         trainer.save_model()
         processor.save_pretrained(training_args.output_dir)
         metrics = train_result.metrics
-        max_train_samples = data_args.max_train_samples if data_args.max_train_samples is not None else len(proc_dataset["train"])
+        max_train_samples = (
+            data_args.max_train_samples if data_args.max_train_samples is not None else len(proc_dataset["train"])
+        )
         metrics["train_samples"] = min(max_train_samples, len(proc_dataset["train"]))
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
@@ -177,11 +207,14 @@ def main() -> None:
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(proc_dataset["test"])
+        max_eval_samples = (
+            data_args.max_eval_samples if data_args.max_eval_samples is not None else len(proc_dataset["test"])
+        )
         metrics["eval_samples"] = min(max_eval_samples, len(proc_dataset["test"]))
         trainer.log_metrics("eval", metrics)
 
         trainer.save_metrics("eval", metrics)
+
 
 if __name__ == "__main__":
     main()

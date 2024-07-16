@@ -1,12 +1,15 @@
+import math
+
 import torch
 import torch.nn as nn
-import math
+
 
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
+
 
 class ModuleFusedSDPA(torch.nn.Module):
     def __init__(self, fusedSDPA):
@@ -15,6 +18,7 @@ class ModuleFusedSDPA(torch.nn.Module):
 
     def forward(self, query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode):
         return self._hpu_kernel_fsdpa.apply(query, key, value, attn_mask, dropout_p, is_casual, scale, softmax_mode)
+
 
 class CustomLiltSelfAttention(nn.Module):
     def __init__(self, config, position_embedding_type=None):
@@ -87,7 +91,14 @@ class CustomLiltSelfAttention(nn.Module):
                     query_layer, key_layer, value_layer, attention_mask, self.dropout, False, 1.0, "fast"
                 )
                 layout_attention_scores = self.fused_scaled_dot_product_attention(
-                    layout_query_layer, layout_key_layer, layout_value_layer, attention_mask, self.dropout, False, 1.0, "fast"
+                    layout_query_layer,
+                    layout_key_layer,
+                    layout_value_layer,
+                    attention_mask,
+                    self.dropout,
+                    False,
+                    1.0,
+                    "fast",
                 )
         else:
             attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
