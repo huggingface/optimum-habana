@@ -1,12 +1,29 @@
+# Copyright 2024 The Foundation Model Stack Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This file has been modified from its original version.
+# The original version can be found at https://github.com/foundation-model-stack/foundation-model-stack
+
 import itertools
 from abc import ABCMeta, abstractmethod
-from typing import List, Type
+from typing import List
 
 import torch
 import torch.nn as nn
 from torch.distributed.distributed_c10d import ProcessGroup
 
-from optimum.habana.distributed.tensorparallel import (
+from .tensorparallel import (
     apply_colwise_tp,
     apply_embedding_tp,
     apply_rowwise_tp,
@@ -76,7 +93,7 @@ class TPModule(nn.Module, metaclass=ABCMeta):
         )
         with torch.no_grad():
             for mod_name, module in self.named_children():
-                if not mod_name in tp_sharded_modules:
+                if mod_name not in tp_sharded_modules:
                     for param_name, param in module.named_parameters(recurse=False):
                         param.copy_(
                             getattr(getattr(module, mod_name), param_name),

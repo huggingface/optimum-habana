@@ -1,7 +1,10 @@
+import os
+
+import torch
+
 from .distributed_runner import DistributedRunner
 from .fast_ddp import all_reduce_gradients
-import os
-import torch
+
 
 def rank_and_world(group=None):
     """

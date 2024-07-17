@@ -1,3 +1,20 @@
+# Copyright 2024 The Foundation Model Stack Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This file has been modified from its original version.
+# The original version can be found at https://github.com/foundation-model-stack/foundation-model-stack
+
 import collections
 import os
 from collections import ChainMap
@@ -7,7 +24,7 @@ from typing import Any, Callable, List, Mapping, MutableMapping, Optional, Union
 
 import torch
 
-from optimum.habana.distributed.tp import TPModule
+from .tp import TPModule
 
 
 __adapters: MutableMapping[str, MutableMapping[str, Callable[[Mapping], Mapping]]] = {}
@@ -34,9 +51,7 @@ def register_adapter(
         sources = __adapters[architecture]
 
     if source in sources:
-        raise KeyError(
-            f"Variant {source} already registered for architecture {architecture}"
-        )
+        raise KeyError(f"Variant {source} already registered for architecture {architecture}")
 
     sources[source] = adapter
     __adapters[architecture] = sources
@@ -55,14 +70,8 @@ def list_sources(architecture: str):
     return list(__adapters[architecture].keys())
 
 
-def _get_adapter(
-    architecture: str, source: Optional[str]
-) -> Callable[[Mapping[str, Any]], Mapping[str, Any]]:
-    if (
-        source is None
-        or architecture not in __adapters
-        or source not in __adapters[architecture]
-    ):
+def _get_adapter(architecture: str, source: Optional[str]) -> Callable[[Mapping[str, Any]], Mapping[str, Any]]:
+    if source is None or architecture not in __adapters or source not in __adapters[architecture]:
         # if no adapter is registered, assume the attributes are already in
         # fms format.
         # should we raise an error here instead?
@@ -71,9 +80,7 @@ def _get_adapter(
         return __adapters[architecture][source]
 
 
-def get_adapted(
-    architecture: str, source: Optional[str], state_dict: Mapping[str, Any]
-) -> Mapping[str, Any]:
+def get_adapted(architecture: str, source: Optional[str], state_dict: Mapping[str, Any]) -> Mapping[str, Any]:
     """
     Convert a state dict to FMS format, using an adapter specified by name.
 
@@ -91,18 +98,11 @@ def get_adapted(
     return adapted
 
 
-# `models` imports each model class, causing models and adapters to be registered.
-# down here to avoid circular dependencies.
-# from fms import models
-
-
 def _get_safetensors_item(key, file: Path, device: torch.device) -> torch.Tensor:
     from safetensors import safe_open  # type: ignore[import-untyped]
 
     with torch.no_grad():
-        with safe_open(
-            file, framework="pt", device=str(device)
-        ) as model_weights:  # type: ignore[attr-defined]
+        with safe_open(file, framework="pt", device=str(device)) as model_weights:  # type: ignore[attr-defined]
             return model_weights.get_tensor(key)
 
 
@@ -153,7 +153,7 @@ def load_state_dict(
     if model_path is None or initial_device.type == "meta":
         return {}
     if checkpoint_sharding == "fsdp" and distributed_strategy not in ["fsdp", "hsdp"]:
-        raise ValueError(f"FSDP checkpoints can only be loaded into an FSDP model")
+        raise ValueError("FSDP checkpoints can only be loaded into an FSDP model")
     if checkpoint_sharding == "tp" and distributed_strategy != "tp":
         raise ValueError("TP checkpoints can only be loaded into a TP model")
 
@@ -188,13 +188,11 @@ def load_state_dict(
         checkpoints = [model_path]
 
     # Check if we found some files
-    assert (
-        len(checkpoints) > 0
-    ), f"Can't find the requested checkpoint data at {model_path}"
+    assert len(checkpoints) > 0, f"Can't find the requested checkpoint data at {model_path}"
 
     if checkpoint_sharding is not None and checkpoint_sharding != "layer":
-        assert world_size == len(
-            checkpoints
+        assert (
+            world_size == len(checkpoints)
         ), f"Loading a {checkpoint_sharding}-sharded checkpoint with len={len(checkpoints)} but world size is {world_size}"
 
         checkpoints = [checkpoints[rank]]
@@ -304,13 +302,9 @@ def load_state_dict_into_model(
                     used_keys.add(weight)
                     partial_sd[weight] = state_dict[weight]
                     if partial_sd[weight].device != initial_device:
-                        partial_sd[weight] = partial_sd[weight].to(
-                            device=initial_device
-                        )
+                        partial_sd[weight] = partial_sd[weight].to(device=initial_device)
                 fms_partial_sd = adapter(partial_sd)
-            _load_partial_state_dict(
-                model, fms_partial_sd, needs_tp_sharding, rank, world_size
-            )
+            _load_partial_state_dict(model, fms_partial_sd, needs_tp_sharding, rank, world_size)
             for p_key in partial_sd.keys():
                 if isinstance(state_dict, ChainMap):
                     for child_sd in state_dict.maps:
@@ -341,17 +335,11 @@ def _copy_colwise(param: torch.nn.Parameter, tensor_value, is_bias, rank, world_
     output_size_per_partition = param.shape[0]
     if not is_bias:
         tensor = tensor_value[
-            (rank * output_size_per_partition) : (
-                (rank + 1) * output_size_per_partition
-            ),
+            (rank * output_size_per_partition) : ((rank + 1) * output_size_per_partition),
             :,
         ]
     else:
-        tensor = tensor_value[
-            (rank * output_size_per_partition) : (
-                (rank + 1) * output_size_per_partition
-            )
-        ]
+        tensor = tensor_value[(rank * output_size_per_partition) : ((rank + 1) * output_size_per_partition)]
     param.copy_(tensor, non_blocking=True)
 
 
@@ -376,9 +364,7 @@ def _copy_rowwise(param: torch.nn.Parameter, tensor_value, is_bias, rank, world_
         output_size_per_partition = param.shape[1]
         tensor = tensor_value[
             :,
-            (rank * output_size_per_partition) : (
-                (rank + 1) * output_size_per_partition
-            ),
+            (rank * output_size_per_partition) : ((rank + 1) * output_size_per_partition),
         ]
         param.copy_(tensor, non_blocking=True)
     else:
