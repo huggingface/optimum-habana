@@ -8,45 +8,41 @@ Semantic Textual Similarity (STS) assigns a score on the similarity of two texts
 ## Requirements
 
 First, you should install the requirements:
+
 ```bash
 pip install -U sentence-transformers
 pip install git+https://github.com/huggingface/optimum-habana.git
 ```
 
-
 ## Usage
 
-To fine training on STS you can do following steps -
+To fine tune on the STS task:
 
-1) choose the pretrained model as model_name command line below as args
-You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base
+1. Choose a pre-trained model `<model_name>` (ex: `bert-base-uncased`).
 
-2) Choose the training dataset like here we used 'sentence-transformers/stsb'.
-```bash
-    train_dataset = load_dataset("sentence-transformers/stsb", split="train")
-    eval_dataset = load_dataset("sentence-transformers/stsb", split="validation")
+2. Load the training, validation, and test dataset(s). Here, we use the STS benchmark dataset.
+
+```python
+train_dataset = load_dataset("sentence-transformers/stsb", split="train")
+eval_dataset = load_dataset("sentence-transformers/stsb", split="validation")
+test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 ```
 
-3) Choose the test dataset
-```bash
-    test_dataset = load_dataset("sentence-transformers/stsb", split="test")
-```
+3. Execute the script:
+   a. Single card training
 
-4) define the loss_model, TrainingArguments and Trainer
+   ```bash
+   python training_stsbenchmark.py <model_name>
+   ```
 
-5) execute the training command in Single-Card
+   b. Multi-card training (ex: using HPU 2/3)
 
-```bash
-python examples/sentence-transformers-training/sts/training_stsbenchmark.py model_name
-```
-
-6) execute the training command in Multi-Card (2 cards, hpu2/3)
-
-```bash
-HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 sentence-transformers-training/sts/training_stsbenchmark.py model_name
-```
+   ```bash
+   HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 sentence-transformers-training/sts/training_stsbenchmark.py <model_name>
+   ```
 
 ## Training data
+
 ```eval_rst
 In STS, we have sentence pairs annotated together with a score indicating the similarity. In the original STSbenchmark dataset, the scores range from 0 to 5. We have normalized these scores to range between 0 and 1 in `stsb <https://huggingface.co/datasets/sentence-transformers/stsb>`_, as that is required for :class:`~sentence_transformers.losses.CosineSimilarityLoss`.
 ```
@@ -87,14 +83,17 @@ train_dataset = load_dataset("sentence-transformers/stsb", split="train")
 ```
 
 ## Loss Function
+
 ```eval_rst
 We use :class:`~sentence_transformers.losses.CosineSimilarityLoss` as our loss function.
 ```
 
 <img src="https://raw.githubusercontent.com/UKPLab/sentence-transformers/master/docs/img/SBERT_Siamese_Network.png" alt="SBERT Siamese Network Architecture" width="250"/>
 
-For each sentence pair, we pass sentence A and sentence B through the BERT-based model, which yields the embeddings *u* und *v*. The similarity of these embeddings is computed using cosine similarity and the result is compared to the gold similarity score. Note that the two sentences are fed through the same model rather than two separate models. In particular, the cosine similarity for similar texts is maximized and the cosine similarity for dissimilar texts is minimized. This allows our model to be fine-tuned and to recognize the similarity of sentences.
+For each sentence pair, we pass sentence A and sentence B through the BERT-based model, which yields the embeddings _u_ und _v_. The similarity of these embeddings is computed using cosine similarity and the result is compared to the gold similarity score. Note that the two sentences are fed through the same model rather than two separate models. In particular, the cosine similarity for similar texts is maximized and the cosine similarity for dissimilar texts is minimized. This allows our model to be fine-tuned and to recognize the similarity of sentences.
 
 For more details, see [Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks](https://arxiv.org/abs/1908.10084).
+
+```
 
 ```

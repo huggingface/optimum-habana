@@ -1,87 +1,76 @@
 # Natural Language Inference
 
-Given two sentence (premise and hypothesis), Natural Language Inference (NLI) is the task of deciding if the premise entails the hypothesis, if they are contradiction, or if they are neutral. Commonly used NLI dataset are [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNLI](https://huggingface.co/datasets/nyu-mll/multi_nli). 
+Given two sentences (premise and hypothesis), Natural Language Inference (NLI) is the task of deciding if the premise entails the hypothesis, if they are contradiction, or if they are neutral. Commonly used NLI dataset are [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNLI](https://huggingface.co/datasets/nyu-mll/multi_nli).
 
 [Conneau et al.](https://arxiv.org/abs/1705.02364) showed that NLI data can be quite useful when training Sentence Embedding methods. We also found this in our [Sentence-BERT-Paper](https://arxiv.org/abs/1908.10084) and often use NLI as a first fine-tuning step for sentence embedding methods.
 
-
 ## Requirements
 
-First, you should install -
+First, you should install the requirements:
+
 ```bash
 pip install -U sentence-transformers
 pip install git+https://github.com/huggingface/optimum-habana.git
 ```
 
-
 ## Usage
 
-To pre-training on NLI dataset you can do following steps -
+To pre-train on the NLI task:
 
-1) choose the pretrained model as model_name command line below as args
-You can specify any Hugging Face pre-trained model here, for example, bert-base-uncased, roberta-base, xlm-roberta-base 
-or pretained examples from  nreimers/MiniLM-L6-H384-uncases, microsoft/mpnet-base, etc to pretained into sentence-transformers/all-MiniLM-L6-v2 and sentence-transformers/all-mpnet-base-v2
+1. Choose a pre-trained model `<model_name>` (ex: `bert-base-uncased`).
 
-2) Choose the training dataset here we used NLI training data as below shown.
-```bash
-    train_dataset = load_dataset("sentence-transformers/all-nli", "pair-class", split="train").select(range(10000))
-    eval_dataset = load_dataset("sentence-transformers/all-nli", "pair-class", split="dev").select(range(1000))
+2. Load the training, validation, and test dataset(s). Below is an example of using the AllNLI dataset for training and validation, while the test set uses the STS Benchmark dataset.
+
+```python
+train_dataset = load_dataset("sentence-transformers/all-nli", "pair-class", split="train").select(range(10000))
+eval_dataset = load_dataset("sentence-transformers/all-nli", "pair-class", split="dev").select(range(1000))
+test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 ```
 
-3) Choose the test dataset
-```bash
-    test_dataset = load_dataset("sentence-transformers/stsb", split="test")
-```
+3. Choose one of the following scripts based on the loss model:
+   a. **[training_nli.py](training_nli.py)**:
 
-4) define the loss_model, TrainingArguments and Trainer
+   > This example uses `sentence_transformers.losses.SoftmaxLoss` as described in the original [Sentence Transformers paper](https://arxiv.org/abs/1908.10084).
 
-5) run the training examples as
+   b. **[training_nli_v2.py](training_nli_v2.py)**:
 
-a)  **[training_nli.py](training_nli.py)**:
-```bash
-python examples/sentence-transformers-training/nli/training_nli.py model_name
-```
-    ```eval_rst
-    This example uses :class:`~sentence_transformers.losses.SoftmaxLoss` as described in the original [Sentence Transformers paper](https://arxiv.org/abs/1908.10084).
-    ```
-b) **[training_nli_v2.py](training_nli_v2.py)**:
-```bash
-python examples/sentence-transformers-training/nli/training_nli_v2.py model_name
-```
-    ```eval_rst
-    The :class:`~sentence_transformers.losses.SoftmaxLoss` as used in our original SBERT paper does not yield optimal performance. A better loss is :class:`~sentence_transformers.losses.MultipleNegativesRankingLoss`, where we provide pairs or triplets. In this script, we provide a triplet of the format: (anchor, entailment_sentence, contradiction_sentence). The NLI data provides such triplets. The :class:`~sentence_transformers.losses.MultipleNegativesRankingLoss` yields much higher performances and is more intuitive than :class:`~sentence_transformers.losses.SoftmaxLoss`. We have used this loss to train the paraphrase model in our `Making Monolingual Sentence Embeddings Multilingual using Knowledge Distillation <https://arxiv.org/abs/2004.09813>`_ paper.
-    ```
-c) **[training_nli_v3.py](training_nli_v3.py)**
-```bash
-python examples/sentence-transformers-training/nli/training_nli_v3.py model_name
-```
-    ```eval_rst
-    Following the `GISTEmbed <https://arxiv.org/abs/2402.16829>`_ paper, we can modify the in-batch negative selection from :class:`~sentence_transformers.losses.MultipleNegativesRankingLoss` using a guiding model. Candidate negative pairs are ignored during training if the guiding model considers the pair to be too similar. In practice, the :class:`~sentence_transformers.losses.GISTEmbedLoss` tends to produce a stronger training signal than :class:`~sentence_transformers.losses.MultipleNegativesRankingLoss` at the cost of some training overhead for running inference on the guiding model.
-    ```
+   > The `sentence_transformers.losses.SoftmaxLoss` as used in our original SBERT paper does not yield optimal performance. A better loss is `sentence_transformers.losses.MultipleNegativesRankingLoss`, where we provide pairs or triplets. In this script, we provide a triplet of the format: (anchor, entailment_sentence, contradiction_sentence). The NLI data provides such triplets. The `sentence_transformers.losses.MultipleNegativesRankingLoss` yields much higher performances and is more intuitive than `sentence_transformers.losses.SoftmaxLoss`. We have used this loss to train the paraphrase model in our [Making Monolingual Sentence Embeddings Multilingual using Knowledge Distillation](https://arxiv.org/abs/2004.09813) paper.
 
-6) execute the training command in Multi-Card (2 cards, hpu2/3)
+   c) **[training_nli_v3.py](training_nli_v3.py)**
 
-```bash
-HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 sentence-transformers-training/nli/training_nli.py model_name
-```
+   > Following the [GISTEmbed](https://arxiv.org/abs/2402.16829) paper, we can modify the in-batch negative selection from `sentence_transformers.losses.MultipleNegativesRankingLoss` using a guiding model. Candidate negative pairs are ignored during training if the guiding model considers the pair to be too similar. In practice, the `sentence_transformers.losses.GISTEmbedLoss` tends to produce a stronger training signal than `sentence_transformers.losses.MultipleNegativesRankingLoss` at the cost of some training overhead for running inference on the guiding model.
+
+4. Execute the script:
+   a. Single card training
+
+   ```bash
+   python <path/to/script.py> <model_name>
+   ```
+
+   b. Multi-card training (ex: using HPU 2/3)
+
+   ```bash
+   HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 <path/to/script.py> <model_name>
+   ```
 
 ## Data
+
 We combine [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) and [MultiNLI](https://huggingface.co/datasets/nyu-mll/multi_nli) into a dataset we call [AllNLI](https://huggingface.co/datasets/sentence-transformers/all-nli). These two datasets contain sentence pairs and one of three labels: entailment, neutral, contradiction:
 
-| Sentence A (Premise) | Sentence B (Hypothesis) | Label |
-| --- | --- | --- |
-| A soccer game with multiple males playing. | Some men are playing a sport. | entailment |
-| An older and younger man smiling. | Two men are smiling and laughing at the cats playing on the floor. | neutral |
-| A man inspects the uniform of a figure in some East Asian country. | The man is sleeping. | contradiction |
+| Sentence A (Premise)                                               | Sentence B (Hypothesis)                                            | Label         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------- |
+| A soccer game with multiple males playing.                         | Some men are playing a sport.                                      | entailment    |
+| An older and younger man smiling.                                  | Two men are smiling and laughing at the cats playing on the floor. | neutral       |
+| A man inspects the uniform of a figure in some East Asian country. | The man is sleeping.                                               | contradiction |
 
 We format AllNLI in a few different subsets, compatible with different loss functions. See for example the [triplet subset of AllNLI](https://huggingface.co/datasets/sentence-transformers/all-nli/viewer/triplet).
 
 ## SoftmaxLoss
+
 ```eval_rst
 `Conneau et al. <https://arxiv.org/abs/1705.02364>`_ described how a softmax classifier on top of a `siamese network <https://en.wikipedia.org/wiki/Siamese_neural_network>`_ can be used to learn meaningful sentence representation. We can achieve this by using :class:`~sentence_transformers.losses.SoftmaxLoss`:
 ```
 
 <img src="https://raw.githubusercontent.com/UKPLab/sentence-transformers/master/docs/img/SBERT_SoftmaxLoss.png" alt="SBERT SoftmaxLoss" width="250"/>
 
-We pass the two sentences through our SentenceTransformer model and get the sentence embeddings *u* and *v*. We then concatenate *u*, *v* and *|u-v|* to form one long vector. This vector is then passed to a softmax classifier, which predicts our three classes (entailment, neutral, contradiction).
-
+We pass the two sentences through our SentenceTransformer model and get the sentence embeddings _u_ and _v_. We then concatenate _u_, _v_ and _|u-v|_ to form one long vector. This vector is then passed to a softmax classifier, which predicts our three classes (entailment, neutral, contradiction).
