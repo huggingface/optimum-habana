@@ -67,13 +67,14 @@ python ../gaudi_spawn.py \
     --world_size 8 \
     --use_deepspeed run_token_classification.py \
     --model_name_or_path SCUT-DLVCLab/lilt-roberta-en-base \
-    --gaudi_config Habana/roberta-base  \
-    --do_train  \
+    --gaudi_config Habana/roberta-base \
+    --dataset_name nielsr/funsd-layoutlmv3 \
+    --do_train \
     --do_eval \
     --per_device_train_batch_size 32 \
-    --per_device_eval_batch_size 8  \
-    --learning_rate 5e-5  \
-    --num_train_epochs 3 \
+    --per_device_eval_batch_size 8 \
+    --learning_rate 5e-5 \
+    --num_train_epochs 100 \
     --output_dir /tmp/tkn_output/ \
     --overwrite_output_dir \
     --use_habana \
