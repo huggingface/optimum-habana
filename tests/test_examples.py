@@ -237,8 +237,6 @@ class ExampleTestMeta(type):
             return False
         elif "falcon" in model_name and task_name in ("llama-adapter", "databricks/databricks-dolly-15k"):
             return False
-        elif "llama" in model_name and task_name == "databricks/databricks-dolly-15k" and not IS_GAUDI2:
-            return False
         elif model_name not in models_with_specific_rules and not deepspeed:
             return True
         elif model_name == "gpt2-xl" and deepspeed:
