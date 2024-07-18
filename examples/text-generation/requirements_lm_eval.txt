@@ -2,4 +2,4 @@ git+https://github.com/EleutherAI/lm-evaluation-harness.git@master
 evaluate == 0.4.2
 rouge_score == 0.1.2
 accelerate == 0.31.0
-pandas == 2.2.2
+pandas <= 2.2.2
