@@ -56,6 +56,9 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("mistralai/Mixtral-8x7B-v0.1", 1, 1, True, 128, 128, 39.26845661768185),
             ("microsoft/phi-2", 1, 1, True, 128, 128, 254.08932787178165),
         ],
+        "gptq": [
+            ("TheBloke/Llama-2-7b-Chat-GPTQ", 1, 10, False, 128, 2048, 456.7),
+        ],
         "deepspeed": [
             ("bigscience/bloomz", 36.77314954096159),
             ("meta-llama/Llama-2-70b-hf", 64.10514998902435),
@@ -92,6 +95,7 @@ else:
             ("bigcode/starcoder2-3b", 1, False, 82.09655684566117),
         ],
         "fp8": [],
+        "gptq": [],
         "deepspeed": [
             ("bigscience/bloomz-7b1", 31.994268212011505),
         ],
@@ -110,6 +114,7 @@ def _test_text_generation(
     world_size: int = 8,
     torch_compile: bool = False,
     fp8: bool = False,
+    gptq: bool = False,
     max_input_tokens: int = 0,
     max_output_tokens: int = 100,
 ):
@@ -184,6 +189,8 @@ def _test_text_generation(
             f"--max_input_tokens {max_input_tokens}",
             "--limit_hpu_graphs",
         ]
+    if gptq:
+        command += ["--gptq"]
 
     with TemporaryDirectory() as tmp_dir:
         command.append(f"--output_dir {tmp_dir}")
@@ -261,6 +268,35 @@ def test_text_generation_fp8(
         deepspeed=deepspeed,
         world_size=world_size,
         fp8=True,
+        batch_size=batch_size,
+        reuse_cache=reuse_cache,
+        max_input_tokens=input_len,
+        max_output_tokens=output_len,
+    )
+
+
+@pytest.mark.parametrize(
+    "model_name, world_size, batch_size, reuse_cache, input_len, output_len, baseline", MODELS_TO_TEST["gptq"]
+)
+def test_text_generation_gptq(
+    model_name: str,
+    baseline: float,
+    world_size: int,
+    batch_size: int,
+    reuse_cache: bool,
+    input_len: int,
+    output_len: int,
+    token: str,
+):
+    deepspeed = True if world_size > 1 else False
+    _test_text_generation(
+        model_name,
+        baseline,
+        token,
+        deepspeed=deepspeed,
+        world_size=world_size,
+        fp8=False,
+        gptq=True,
         batch_size=batch_size,
         reuse_cache=reuse_cache,
         max_input_tokens=input_len,
