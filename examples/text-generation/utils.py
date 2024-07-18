@@ -490,7 +490,7 @@ def initialize_model(args, logger):
     get_repo_root(args.model_name_or_path, local_rank=args.local_rank, token=args.token)
     if args.assistant_model is not None:
         get_repo_root(args.assistant_model, local_rank=args.local_rank, token=args.token)
-    use_deepspeed = args.world_size > 1
+    use_deepspeed = args.world_size > 0
     if use_deepspeed or args.bf16:
         model_dtype = torch.bfloat16
     else:
