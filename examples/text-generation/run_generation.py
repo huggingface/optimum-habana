@@ -267,7 +267,7 @@ def setup_parser(parser):
         "--ignore_eos",
         default=True,
         action=argparse.BooleanOptionalAction,
-        help="Whether to ignore eos, set False to disable it",
+        help="Whether to disable stopping with eos token when calling `generate`. --no-ignore_eos to disable it",
     )
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature value for text generation")
     parser.add_argument("--top_p", default=1.0, type=float, help="Top_p value for generating text via sampling")

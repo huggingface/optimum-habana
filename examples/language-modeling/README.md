@@ -746,7 +746,7 @@ python3 ../text-generation/run_generation.py \
     --use_kv_cache \
     --batch_size 1 \
     --use_hpu_graphs \
-    --ignore_eos \
+    --no-ignore_eos \
     --peft_model prompt_tuning_out \
     --prompt "@SEPTA_SOCIAL Ok. Thanks. Label :"
 
