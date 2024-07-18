@@ -500,11 +500,18 @@ For more details see [documentation](https://docs.habana.ai/en/latest/PyTorch/Mo
 Llama2-7b in UINT4 weight only quantization is enabled using [AutoGPTQ Fork](https://github.com/HabanaAI/AutoGPTQ), which provides quantization capabilities in PyTorch.
 Currently, the support is for UINT4 inference of pre-quantized models only.
 
-You can run a *UINT4 weight quantized* model using AutoGPTQ with the argument `--gptq`.
+You can run a *UINT4 weight quantized* model using AutoGPTQ by setting the following environment variables:
+`SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false ENABLE_EXPERIMENTAL_FLAGS=true` before running the command,
+and by adding the argument `--gptq`.
+
+***Note:***
+Setting the above environment variables improves performance. These variables will be removed in future releases.
+ 
 
 Here is an example to run a quantized model on Llama2-7b `TheBloke/Llama-2-7b-Chat-GPTQ`:
 ```bash
-python run_generation.py \
+SRAM_SLICER_SHARED_MME_INPUT_EXPANSION_ENABLED=false \
+ENABLE_EXPERIMENTAL_FLAGS=true python run_generation.py \
 --attn_softmax_bf16 \
 --model_name_or_path TheBloke/Llama-2-7b-Chat-GPTQ \
 --use_hpu_graphs \
