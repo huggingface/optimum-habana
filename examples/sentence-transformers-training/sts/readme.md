@@ -14,7 +14,7 @@ pip install -U sentence-transformers
 pip install git+https://github.com/huggingface/optimum-habana.git
 ```
 
-## Usage
+## Single-card Training
 
 To fine tune on the STS task:
 
@@ -29,13 +29,14 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 ```
 
 3. Execute the script:
-   a. Single card training
 
    ```bash
    python training_stsbenchmark.py <model_name>
    ```
 
-   b. Multi-card training (ex: using HPU 2/3)
+## Multi-card Training
+
+   For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/ZhengHongming888/optimum-habana/blob/sentence_transformer_trainer/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  Multi-card training (ex: using HPU 2/3). 
 
    ```bash
    HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 sentence-transformers-training/sts/training_stsbenchmark.py <model_name>
