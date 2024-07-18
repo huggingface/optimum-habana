@@ -13,7 +13,7 @@ pip install -U sentence-transformers
 pip install git+https://github.com/huggingface/optimum-habana.git
 ```
 
-## Usage
+## Single-card Training
 
 To pre-train on the NLI task:
 
@@ -28,6 +28,7 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 ```
 
 3. Choose one of the following scripts based on the loss model:
+   
    a. **[training_nli.py](training_nli.py)**:
 
    > This example uses `sentence_transformers.losses.SoftmaxLoss` as described in the original [Sentence Transformers paper](https://arxiv.org/abs/1908.10084).
@@ -40,14 +41,15 @@ test_dataset = load_dataset("sentence-transformers/stsb", split="test")
 
    > Following the [GISTEmbed](https://arxiv.org/abs/2402.16829) paper, we can modify the in-batch negative selection from `sentence_transformers.losses.MultipleNegativesRankingLoss` using a guiding model. Candidate negative pairs are ignored during training if the guiding model considers the pair to be too similar. In practice, the `sentence_transformers.losses.GISTEmbedLoss` tends to produce a stronger training signal than `sentence_transformers.losses.MultipleNegativesRankingLoss` at the cost of some training overhead for running inference on the guiding model.
 
-4. Execute the script:
-   a. Single card training
+4. Execute the script:  
 
    ```bash
    python <path/to/script.py> <model_name>
    ```
 
-   b. Multi-card training (ex: using HPU 2/3)
+## Multi-card Training
+
+   For multi-card traning you can use the script of [gaudi_spawn.py](https://github.com/huggingface/optimum-habana/blob/main/examples/gaudi_spawn.py) to execute. There are two options to run the multi-card training by using '--use_deepspeed' or '--use_mpi'. We take the option of '--use_deepspeed' for our example of  Multi-card training (ex: using HPU 2/3). 
 
    ```bash
    HABANA_VISIBLE_MODULES="2,3" python ./gaudi_spawn.py --use_deepspeed --world_size 2 <path/to/script.py> <model_name>
