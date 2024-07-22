@@ -32,11 +32,9 @@ from transformers.models.starcoder2.modeling_starcoder2 import (
     Starcoder2ForCausalLM,
     Starcoder2MLP,
     Starcoder2Model,
-    # Starcoder2RMSNorm,
     apply_rotary_pos_emb,
-    logger,
 )
-#from transformers.models.qwen2.modeling_qwen2 import Qwen2RMSNorm
+from transformers.utils import logging
 
 from ...modeling_attn_mask_utils import (
     _gaudi_prepare_4d_causal_attention_mask,
@@ -50,38 +48,14 @@ except ImportError:
     FusedRoPE = None
 
 try:
-    from habana_frameworks.torch.hpex.normalization import FusedRMSNorm as FusedRMSNorm
-except ImportError:
-    print("Not using HPU fused kernel for RMSNorm")
-    FusedRMSNorm = None
-
-try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
 except ImportError:
     print("Not using HPU fused scaled dot-product attention kernel.")
     FusedSDPA = None
 
-
 import habana_frameworks.torch.core as htcore
 
-
-def gaudi_starcoder2_rmsnorm_forward(self, hidden_states):
-    if hidden_states.device.type == "hpu" and FusedRMSNorm:
-        # mixed dtypes are not good for FusedRMSNorm, both inputs need to have same dtype
-        if hidden_states.dtype != self.weight.dtype:
-            orig_dtype = hidden_states.dtype
-            hidden_states = FusedRMSNorm.apply(hidden_states.to(self.weight.dtype), self.weight, self.variance_epsilon)
-            return hidden_states.to(orig_dtype)
-        else:
-            hidden_states = FusedRMSNorm.apply(hidden_states, self.weight, self.variance_epsilon)
-            return hidden_states
-    else:
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return self.weight * hidden_states.to(input_dtype)
-
+logger = logging.get_logger(__name__)
 
 class GaudiStarcoder2MLP(Starcoder2MLP):
     def pre_mlp_forward(self, x):
@@ -297,7 +271,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
                     kv_seq_len = past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_customized_rope(query_states, key_states, cos, sin, position_ids, self.training)
 
         if use_cache:
             # reuse k, v, self_attention
@@ -358,7 +332,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
                 query_states, key_states, value_states, attention_mask, self.num_key_value_groups
             )
 
-            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) / math.sqrt(self.head_dim)
+            attn_weights = self.matmul_qk(query_states, key_states.transpose(-2, -1)) * self.norm_factor
 
             if attention_mask is not None:  # no matter the length, we just slice it
                 causal_mask = attention_mask
@@ -394,28 +368,21 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
 
         return attn_output, attn_weights, past_key_value
 
-    # def attention_all_reduce(self, attn_output):
-    #     if hasattr(self.o_proj, "all_reduce"):
-    #         self.o_proj.all_reduce(attn_output)
+    def attention_all_reduce(self, attn_output):
+        if hasattr(self.o_proj, "all_reduce"):
+            self.o_proj.all_reduce(attn_output)
 
-    # def post_attn_forward(self, attn_output):
-    #     if hasattr(self.o_proj, "post_all_reduce"):
-    #         self.o_proj.post_all_reduce(attn_output)
-    #     return attn_output
+    def post_attn_forward(self, attn_output):
+        if hasattr(self.o_proj, "post_all_reduce"):
+            self.o_proj.post_all_reduce(attn_output)
+        return attn_output
 
 
 class GaudiStarcoder2DecoderLayer(Starcoder2DecoderLayer):
-    # def __init__(self, config: Starcoder2Config, layer_idx: int):
-    #     super(Starcoder2DecoderLayer, self).__init__()
     def __init__(self, config: Starcoder2Config, layer_idx: int):
         super().__init__(config, layer_idx)
-        #config.rms_norm_eps = 1e-06
         self.hidden_size = config.hidden_size
-
         self.self_attn = GaudiStarcoder2Attention(config, layer_idx)
-        #self.mlp = GaudiStarcoder2MLP(config)
-        #self.input_layernorm = #Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        #self.post_attention_layernorm = #Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def allocate_kv_cache(self, batch_size, max_seq_len, inp_seq_len):
         self.self_attn.allocate_kv_cache(batch_size, max_seq_len, inp_seq_len)
@@ -901,8 +868,7 @@ class GaudiStarcoder2ForCausalLM(Starcoder2ForCausalLM):
         )
         return model_inputs
 
-
-def apply_customized_rope(q, k, cos, sin, position_ids, is_training=False):
+def apply_customized_rope(q, k, cos, sin, position_ids, is_training):
     if q.device.type == "hpu" and FusedRoPE:
         if not is_training and (q.dtype == torch.bfloat16 or k.dtype == torch.bfloat16):
             return FusedRoPE.apply(

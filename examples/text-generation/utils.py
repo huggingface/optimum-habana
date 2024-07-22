@@ -238,6 +238,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
             model.base_model = wrap_in_hpu_graph(model.base_model)
+            if model.peft_type == "ADAPTION_PROMPT":
+                model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
@@ -372,6 +374,17 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
 
         model.__class__.generate = gaudi_generate
         model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
+        if model.peft_type == "ADAPTION_PROMPT":
+            from peft import tuners
+
+            from optimum.habana.peft.layer import (
+                GaudiAdaptedAttention_getattr,
+                GaudiAdaptedAttentionPreAttnForward,
+            )
+
+            tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
+            tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
+
         return model
 
 
@@ -461,9 +474,28 @@ def setup_generation_config(args, model, assistant_model, tokenizer):
     return generation_config
 
 
+def exclude_hpu_graph_configs(args):
+    # Excluded configs for batch size 1 for hpu graph
+    if args.batch_size == 1 and args.limit_hpu_graphs:
+        if "falcon-180B" in args.model_name_or_path or "falcon-180b" in args.model_name_or_path:
+            return False
+        if args.world_size == 2 or args.world_size == 4 or args.world_size == 8:
+            if args.quant_config:
+                if args.max_input_tokens >= 8192 and args.max_new_tokens >= 128:
+                    return False
+            else:
+                if args.max_input_tokens >= 4096 and args.max_new_tokens >= 128:
+                    return False
+        return True
+    else:
+        return False
+
+
 def initialize_model(args, logger):
     init_start = time.perf_counter()
     setup_distributed(args)
+    if exclude_hpu_graph_configs(args):
+        args.limit_hpu_graphs = False
     override_prints(args.global_rank == 0 or args.verbose_workers, logger)
     setup_env(args)
     setup_device(args)

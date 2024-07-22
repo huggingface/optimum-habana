@@ -142,7 +142,7 @@ python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
 --bf16 \
 --use_hpu_graphs \
 --use_kv_cache \
---batch_size 52 \
+--batch_size 180 \
 --attn_softmax_bf16 \
 --limit_hpu_graphs \
 --reuse_cache \
