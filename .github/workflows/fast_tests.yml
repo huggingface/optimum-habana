@@ -16,7 +16,7 @@ jobs:
   transformers:
     name: Run tests for optimum.habana.transformers
     runs-on:
-      group: habana-gpu-runners
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -41,7 +41,7 @@ jobs:
     needs:
       - transformers # required to wait for the previous tests to finish
     runs-on:
-      group: habana-gpu-runners
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
