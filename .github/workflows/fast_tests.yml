@@ -15,7 +15,8 @@ concurrency:
 jobs:
   transformers:
     name: Run tests for optimum.habana.transformers
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -39,7 +40,8 @@ jobs:
     name: Run tests for optimum.habana.diffusers
     needs:
       - transformers # required to wait for the previous tests to finish
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2

@@ -28,7 +28,12 @@ from .generation import (
 from .models import (
     GaudiBloomForCausalLM,
     GaudiBloomMLP,
+    GaudiCLIPAttention,
+    GaudiCLIPEncoder,
+    GaudiCLIPEncoderLayer,
     GaudiCLIPVisionEmbeddings,
+    GaudiCLIPVisionModel,
+    GaudiCLIPVisionTransformer,
     GaudiCodeGenAttention,
     GaudiCodeGenForCausalLM,
     GaudiFalconAttention,
@@ -180,7 +185,6 @@ from .models import (
     gaudi_unconstrained_rational_quadratic_spline,
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
     gaudi_vit_self_attention_forward,
-    gaudi_VitsResidualCouplingLayer_forward,
     gaudi_wav2vec2_encoder_forward,
     gaudi_wav2vec2_forward,
     gaudi_wav2vec2_tdnnlayer_forward,
@@ -376,6 +380,11 @@ def adapt_transformers_to_gaudi():
 
     # Optimization for Clip on Gaudi
     transformers.models.clip.modeling_clip.CLIPVisionEmbeddings = GaudiCLIPVisionEmbeddings
+    transformers.models.clip.modeling_clip.CLIPAttention = GaudiCLIPAttention
+    transformers.models.clip.modeling_clip.CLIPEncoderLayer = GaudiCLIPEncoderLayer
+    transformers.models.clip.modeling_clip.CLIPEncoder = GaudiCLIPEncoder
+    transformers.models.clip.modeling_clip.CLIPVisionTransformer = GaudiCLIPVisionTransformer
+    transformers.models.clip.modeling_clip.CLIPVisionModel = GaudiCLIPVisionModel
 
     # Optimization for falcon generation on Gaudi
     transformers.models.falcon.modeling_falcon.FalconAttention = GaudiFalconAttention
@@ -496,7 +505,6 @@ def adapt_transformers_to_gaudi():
     transformers.models.vits.modeling_vits._unconstrained_rational_quadratic_spline = (
         gaudi_unconstrained_rational_quadratic_spline
     )
-    transformers.models.vits.modeling_vits.VitsResidualCouplingLayer.forward = gaudi_VitsResidualCouplingLayer_forward
 
     # Optimization for starcoder2 on Gaudi
     transformers.models.starcoder2.modeling_starcoder2.Starcoder2ForCausalLM = GaudiStarcoder2ForCausalLM

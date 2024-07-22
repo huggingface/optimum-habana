@@ -488,3 +488,38 @@ python image_to_video_generation.py \
     --gaudi_config Habana/stable-diffusion \
     --bf16
 ```
+
+## Inpainting Example
+Inpainting replaces or edits specific areas of an image. For more details, please refer to [Huging Face Diffusers doc](https://huggingface.co/docs/diffusers/en/using-diffusers/inpaint).
+### Stable Diffusion Inpainting
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path  runwayml/stable-diffusion-inpainting \
+    --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
+    --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
+    --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \
+    --seed 0 \
+    --num_images_per_prompt 12 \
+    --batch_size 4 \
+    --image_save_dir ./inpaiting_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion
+```
+
+### Stable Diffusion XL Inpainting
+```bash
+python text_to_image_generation.py \
+    --model_name_or_path  diffusers/stable-diffusion-xl-1.0-inpainting-0.1\
+    --base_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png \
+    --mask_image https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png \
+    --prompts "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k" \
+    --seed 0 \
+    --scheduler euler_discrete \
+    --num_images_per_prompt 12 \
+    --batch_size 4 \
+    --image_save_dir ./xl_inpaiting_images \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion
+```

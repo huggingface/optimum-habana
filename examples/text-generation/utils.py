@@ -238,6 +238,8 @@ def setup_model(args, model_dtype, model_kwargs, logger):
             assistant_model = wrap_in_hpu_graph(assistant_model)
         if _is_peft_model(model):
             model.base_model = wrap_in_hpu_graph(model.base_model)
+            if model.peft_type == "ADAPTION_PROMPT":
+                model.base_model.model = wrap_in_hpu_graph(model.base_model.model)
 
     if args.torch_compile and model.config.model_type == "llama":
         model = get_torch_compiled_model(model)
@@ -372,6 +374,17 @@ def peft_model(args, model_dtype, logger, **model_kwargs):
 
         model.__class__.generate = gaudi_generate
         model.__class__.prepare_inputs_for_generation = gaudi_prepare_inputs_for_generation
+        if model.peft_type == "ADAPTION_PROMPT":
+            from peft import tuners
+
+            from optimum.habana.peft.layer import (
+                GaudiAdaptedAttention_getattr,
+                GaudiAdaptedAttentionPreAttnForward,
+            )
+
+            tuners.adaption_prompt.layer.AdaptedAttention.pre_attn_forward = GaudiAdaptedAttentionPreAttnForward
+            tuners.adaption_prompt.layer.AdaptedAttention.__getattr__ = GaudiAdaptedAttention_getattr
+
         return model
 
 
