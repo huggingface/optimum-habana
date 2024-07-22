@@ -248,7 +248,7 @@ jobs:
       - albert-xxl-single-card
       - text-generation
       - trl  # run the job when the previous test jobs are done
-   runs-on:
+    runs-on:
       group: aws-dl1-24xlarge
     steps:
       - name: Checkout Optimum Habana
