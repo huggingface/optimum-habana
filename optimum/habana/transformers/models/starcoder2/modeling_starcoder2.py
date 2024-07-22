@@ -31,6 +31,7 @@ except ImportError:
 
 logger = logging.get_logger(__name__)
 
+
 def gaudi_starcoder2_attention_forward(
     self,
     hidden_states: torch.Tensor,
