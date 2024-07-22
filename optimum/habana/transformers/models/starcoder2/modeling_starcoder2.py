@@ -317,7 +317,7 @@ class GaudiStarcoder2Attention(Starcoder2Attention):
                         attn_output = FusedSDPA.apply(query_states, key_states, value_states, None, 0.0, True, None)
                 else:
                     with ht.sdp_kernel(enable_recompute=flash_attention_recompute):
-                        if q_len > 8192:
+                        if q_len > 16384:
                             attn_output = self.gaudi_flash_attn_v1(
                                 query_states, key_states, value_states, attention_mask, 0.0, self.block_size
                             )
