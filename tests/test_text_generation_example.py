@@ -137,9 +137,9 @@ def _test_text_generation(
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
-    if "falcon, starcoder2"in model_name.lower():
+    if "falcon" in model_name.lower() or "starcoder2" in model_name.lower():
         command += ["--use_flash_attention", "--flash_attention_causal_mask"]
-    
+
     if "starcoder2" in model_name.lower():
         command += ["--flash_attention_recompute"]
 
