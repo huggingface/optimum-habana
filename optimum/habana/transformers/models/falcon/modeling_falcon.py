@@ -106,14 +106,6 @@ class Softmax(nn.Module):
         return torch.ops.hpu.softmax_fp8(x, dim, None, None, invAttnHead)
 
 
-class Matmul(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, *args, **kwargs):
-        return torch.matmul(*args, **kwargs)
-
-
 # ScaledDotProductAttention is based on torch.nn.functional.scaled_dot_product_attention
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, config: FalconConfig):
@@ -203,34 +195,6 @@ def update(prev, cur, dim, idx, inp_seq_len):
         return prev_cast
     else:
         return torch.cat((prev, cur), dim=dim)
-
-
-class KVCache(torch.nn.Module):
-    def __init__(self):
-        super(KVCache, self).__init__()
-        self.cache = None
-        self.inp_seq_len = -1
-
-    def allocate(self, inp_seq_len, dtype, device, shape):
-        if self.cache is None or self.cache.shape != shape:
-            self.inp_seq_len = inp_seq_len
-            self.cache = torch.zeros(shape, dtype=dtype, device=device)
-        else:
-            assert (
-                self.inp_seq_len == inp_seq_len
-            ), f"inp_seq_len must be the same. self.inp_seq_len:{self.inp_seq_len} inp_seq_len:{inp_seq_len}"
-            self.cache.fill_(0)
-
-    def get_shape(self):
-        if self.cache is None:
-            return None
-        return self.cache.shape
-
-    def forward(self, cur, dim, idx):
-        return self.update(self.cache, cur, dim, idx, self.inp_seq_len)
-
-    def update(self, prev, cur, dim, idx, inp_seq_len):
-        return update(prev, cur, dim, idx, inp_seq_len)
 
 
 class GaudiFalconAttention(FalconAttention):
