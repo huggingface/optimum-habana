@@ -12,7 +12,8 @@ concurrency:
 jobs:
   example-diff:
     name: Test examples differences
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -37,7 +38,8 @@ jobs:
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
       - example-diff  # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -63,7 +65,8 @@ jobs:
     needs:
       - example-diff
       - stable-diffusion  # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -89,7 +92,8 @@ jobs:
     needs:
       - example-diff
       - deepspeed  # run the job when the previous test job is done
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -116,7 +120,8 @@ jobs:
       - example-diff
       - deepspeed
       - multi-card  # run the job when the previous test jobs are done
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -144,7 +149,8 @@ jobs:
       - deepspeed
       - multi-card
       - single-card  # run the job when the previous test jobs are done
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         if: github.event.schedule == '0 21 * * 6'
@@ -179,7 +185,8 @@ jobs:
       - multi-card
       - single-card
       - albert-xxl-single-card  # run the job when the previous test jobs are done
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -209,7 +216,8 @@ jobs:
       - single-card
       - albert-xxl-single-card
       - text-generation  # run the job when the previous test jobs are done
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+    runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -240,7 +248,8 @@ jobs:
       - albert-xxl-single-card
       - text-generation
       - trl  # run the job when the previous test jobs are done
-    runs-on: [self-hosted, linux, x64, gaudi-habana] # run the job on the newly created runner
+   runs-on:
+      group: aws-dl1-24xlarge
     steps:
       - name: Checkout Optimum Habana
         uses: actions/checkout@v2
