@@ -21,7 +21,7 @@ import torch
 from transformers.modeling_utils import ModuleUtilsMixin, PretrainedConfig
 from transformers.utils.import_utils import is_torch_sdpa_available
 
-class Matmul(nn.Module):
+class Matmul(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
