@@ -15,7 +15,10 @@ In order to build the docker images and deploy a job to Kubernetes you will need
 * [Docker](https://docs.docker.com/engine/install/)
 * [Docker compose](https://docs.docker.com/compose/install/)
 * [kubectl](https://kubernetes.io/docs/tasks/tools/) installed and configured to access a cluster
+* [Optional] [Minikube](https://minikube.sigs.k8s.io/docs/start/) installed and configured to access a Kubernetes cluster on a single node
 * [Helm CLI](https://helm.sh/docs/intro/install/)
+
+> If you are intending to run a Kubernetes cluster on a single node (locally), you will need a tool like [Minikube](https://minikube.sigs.k8s.io/docs/start/) to be installed first
 
 ### Cluster Requirements
 
@@ -40,12 +43,12 @@ Use the the following commands to build the containers:
 
 ```bash
 # Specify the Gaudi SW version, OS, and PyTorch version which will be used for the base container
-export GAUDI_SW_VER=1.16.1
+export GAUDI_SW_VER=1.16.2
 export OS=ubuntu22.04
 export TORCH_VER=2.2.2
 
 # Specify the version of optimum-habana to install in the container
-export OPTIMUM_HABANA_VER=1.12.0
+export OPTIMUM_HABANA_VER=1.12.1
 
 git clone https://github.com/huggingface/optimum-habana.git
 
