@@ -125,6 +125,8 @@ from .modeling_all_models import (
     gaudi_conv1d_forward,
     gaudi_get_extended_attention_mask,
     gaudi_invert_attention_mask,
+    Matmul,
+    KVCache
 )
 from .mpt import (
     GaudiMptForCausalLM,
