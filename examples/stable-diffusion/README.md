@@ -522,6 +522,7 @@ python text_to_image_generation.py \
     --use_habana \
     --use_hpu_graphs \
     --gaudi_config Habana/stable-diffusion
+
 ### Unconditional Image Generation Example
 
 Here is how to perform unconditional-image-generation on Gaudi/HPU.
