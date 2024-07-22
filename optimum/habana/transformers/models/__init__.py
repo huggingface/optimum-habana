@@ -205,10 +205,7 @@ from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
 from .vit import gaudi_vit_self_attention_forward
-from .vits import (
-    gaudi_unconstrained_rational_quadratic_spline,
-    gaudi_VitsResidualCouplingLayer_forward,
-)
+from .vits import gaudi_unconstrained_rational_quadratic_spline
 from .wav2vec2 import (
     _gaudi_wav2vec2_compute_mask_indices,
     _gaudi_wav2vec2_mask_hidden_states,
