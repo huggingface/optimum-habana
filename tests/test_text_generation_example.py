@@ -36,7 +36,7 @@ if os.environ.get("GAUDI2_CI", "0") == "1":
             ("meta-llama/Llama-2-7b-hf", 512, False, 8711),  # in some cases like TGI, reuse_cache isnt used
             ("stabilityai/stablelm-2-12b", 1, False, 74.8904496532218),
             ("codellama/CodeLlama-34b-hf", 1, True, 32.644),
-            ("bigcode/starcoder2-3b", 1, False, 234.2649120507936),
+            ("bigcode/starcoder2-3b", 1, False, 261.07213776344133),
             ("adept/persimmon-8b-base", 4, False, 366.73968820698406),
             ("Qwen/Qwen1.5-7B", 4, False, 488.82855464593257),
             ("google/gemma-7b", 1, False, 109.70751574382221),
@@ -137,8 +137,11 @@ def _test_text_generation(
     if "llama" in model_name.lower():
         command += ["--trim_logits", "--attn_softmax_bf16"]
 
-    if "falcon" in model_name.lower():
+    if "falcon, starcoder2"in model_name.lower():
         command += ["--use_flash_attention", "--flash_attention_causal_mask"]
+    
+    if "starcoder2" in model_name.lower():
+        command += ["--flash_attention_recompute"]
 
     if reuse_cache or torch_compile:
         command += ["--reuse_cache"]
